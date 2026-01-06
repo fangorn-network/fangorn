@@ -1,0 +1,21 @@
+{
+	"noir_version": "1.0.0-beta.16+2d46fca7203545cbbfb31a0d0328de6c10a8db95",
+	"hash": "8311387136586683953",
+	"abi": {
+		"parameters": [
+			{ "name": "x", "type": { "kind": "field" }, "visibility": "private" },
+			{ "name": "y", "type": { "kind": "field" }, "visibility": "private" }
+		],
+		"return_type": null,
+		"error_types": {}
+	},
+	"bytecode": "H4sIAAAAAAAA/5XNMQ5AQBSE4TcbB1HSEUcQiUqUGoVEoyCiU+4RxAWcQjjOdjqV1pLYQijYr/mbSQZ0MVTLrKhwFvTGVE36BTpb3LZOHjXCHewpDkbOk9TylrCd684XW79KubPnyYcDYH9xoeQAAAA=",
+	"debug_symbols": "lZDBCoMwDIbfJecedLgdfJUxpNYohZCW2A6G+O6Lops77OApTf5+f8g/QYdtHhrPfRihvk/QiifyQ0PB2eQD63SaDextkwRRR3DQlYpWkBPUnIkMPC3l9dMYLa81WVG1MIDcaVXD3hMur9l86eI/WpUbW90+8LU8TStypB/aWefl51oooL7Mi5l42xJuCfSZ3SGQ9Iq7skcWJTjssuBit2q64A0=",
+	"file_map": {
+		"51": {
+			"source": "fn main(x: Field, y: Field) {\n    assert(x + y == 3);\n}",
+			"path": "/home/driemworks/fangorn/example-naga-litaction-decryption/circuit/src/main.nr"
+		}
+	},
+	"expression_width": { "Bounded": { "width": 4 } }
+}

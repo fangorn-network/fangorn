@@ -1,0 +1,7 @@
+/coverage
+/lib
+/node_modules
+.env
+.env.*
+lit-auth-storage
+ignore

@@ -1,0 +1,6 @@
+[package]
+name = "recursive_verifier"
+type = "bin"
+authors = [""]
+
+[dependencies]

@@ -1,0 +1,144 @@
+diff --git a/src/chains/ChronicleYellowstone.js b/src/chains/ChronicleYellowstone.js
+index d656c1101d53435533792d646dc5a267217a505b..217a0e7cc75f931cc0183b2ccee78984caa91b0b 100644
+--- a/src/chains/ChronicleYellowstone.js
++++ b/src/chains/ChronicleYellowstone.js
+@@ -1,68 +1,99 @@
+ "use strict";
+ Object.defineProperty(exports, "__esModule", { value: true });
+-exports.WagmiConfig = exports.viemChainConfig = exports.EXPLORER_NAME = exports.EXPLORER_URL = exports.RPC_URL = exports.CHAIN_SYMBOL = exports.CHAIN_NAME = exports.CHAIN_ID = void 0;
++exports.WagmiConfig =
++  exports.viemChainConfig =
++  exports.EXPLORER_NAME =
++  exports.EXPLORER_URL =
++  exports.RPC_URL =
++  exports.CHAIN_SYMBOL =
++  exports.CHAIN_NAME =
++  exports.CHAIN_ID =
++    void 0;
+ exports.resolveRpcUrl = resolveRpcUrl;
+ exports.buildViemChainConfig = buildViemChainConfig;
+ const viem_1 = require("viem");
+-const core_1 = require("@wagmi/core");
++// Use dynamic import for @wagmi/core to support ESM modules
++let core_1 = null;
++let wagmiConfigCache = null;
++async function getWagmiCore() {
++  if (!core_1) {
++    core_1 = await import("@wagmi/core");
++  }
++  return core_1;
++}
++async function getWagmiConfig() {
++  if (wagmiConfigCache) {
++    return wagmiConfigCache;
++  }
++  const wagmiCore = await getWagmiCore();
++  wagmiConfigCache = (0, wagmiCore.createConfig)({
++    chains: [exports.viemChainConfig],
++    transports: {
++      [exports.viemChainConfig.id]: (0, viem_1.http)(),
++    },
++  });
++  return wagmiConfigCache;
++}
+ exports.CHAIN_ID = 175188;
+-exports.CHAIN_NAME = 'Chronicle Yellowstone';
+-exports.CHAIN_SYMBOL = 'tstLPX';
+-exports.RPC_URL = 'https://yellowstone-rpc.litprotocol.com/';
+-exports.EXPLORER_URL = 'https://yellowstone-explorer.litprotocol.com/';
+-exports.EXPLORER_NAME = 'Yellowstone Explorer'; // Added for viem compatibility
++exports.CHAIN_NAME = "Chronicle Yellowstone";
++exports.CHAIN_SYMBOL = "tstLPX";
++exports.RPC_URL = "https://yellowstone-rpc.litprotocol.com/";
++exports.EXPLORER_URL = "https://yellowstone-explorer.litprotocol.com/";
++exports.EXPLORER_NAME = "Yellowstone Explorer"; // Added for viem compatibility
+ /**
+  * Configuration for the Chronicle Yellowstone network.
+  */
+ exports.viemChainConfig = Object.freeze({
+-    id: exports.CHAIN_ID,
++  id: exports.CHAIN_ID,
++  name: exports.CHAIN_NAME,
++  nativeCurrency: {
+     name: exports.CHAIN_NAME,
+-    nativeCurrency: {
+-        name: exports.CHAIN_NAME,
+-        symbol: exports.CHAIN_SYMBOL,
+-        decimals: 18,
++    symbol: exports.CHAIN_SYMBOL,
++    decimals: 18,
++  },
++  rpcUrls: {
++    default: {
++      http: [exports.RPC_URL],
+     },
+-    rpcUrls: {
+-        default: {
+-            http: [exports.RPC_URL],
+-        },
+-        public: {
+-            http: [exports.RPC_URL],
+-        },
++    public: {
++      http: [exports.RPC_URL],
+     },
+-    blockExplorers: {
+-        default: {
+-            name: exports.EXPLORER_NAME,
+-            url: exports.EXPLORER_URL,
+-        },
++  },
++  blockExplorers: {
++    default: {
++      name: exports.EXPLORER_NAME,
++      url: exports.EXPLORER_URL,
+     },
++  },
+ });
+-exports.WagmiConfig = (0, core_1.createConfig)({
+-    chains: [exports.viemChainConfig],
+-    transports: {
+-        [exports.viemChainConfig.id]: (0, viem_1.http)(),
+-    },
++// Export WagmiConfig as a getter that lazily loads using dynamic import
++Object.defineProperty(exports, "WagmiConfig", {
++  get: function () {
++    return getWagmiConfig();
++  },
++  enumerable: true,
++  configurable: true,
+ });
+ /**
+  * Resolve the effective RPC URL from an optional override.
+  */
+ function resolveRpcUrl(overrideRpc) {
+-    return overrideRpc ?? exports.RPC_URL;
++  return overrideRpc ?? exports.RPC_URL;
+ }
+ /**
+  * Build a Chain config using the base Chronicle Yellowstone config,
+  * applying an optional RPC override to both default and public http URLs.
+  */
+ function buildViemChainConfig(overrideRpc) {
+-    const rpc = resolveRpcUrl(overrideRpc);
+-    const base = exports.viemChainConfig;
+-    return {
+-        ...base,
+-        rpcUrls: {
+-            ...base.rpcUrls,
+-            default: { ...base.rpcUrls.default, http: [rpc] },
+-            public: { ...base.rpcUrls['public'], http: [rpc] },
+-        },
+-    };
++  const rpc = resolveRpcUrl(overrideRpc);
++  const base = exports.viemChainConfig;
++  return {
++    ...base,
++    rpcUrls: {
++      ...base.rpcUrls,
++      default: { ...base.rpcUrls.default, http: [rpc] },
++      public: { ...base.rpcUrls["public"], http: [rpc] },
++    },
++  };
+ }
+ //# sourceMappingURL=ChronicleYellowstone.js.map

@@ -1,0 +1,116 @@
+{
+	"abi": [
+		{
+			"type": "function",
+			"name": "verify",
+			"inputs": [
+				{ "name": "proof", "type": "bytes", "internalType": "bytes" },
+				{
+					"name": "publicInputs",
+					"type": "bytes32[]",
+					"internalType": "bytes32[]"
+				}
+			],
+			"outputs": [
+				{ "name": "verified", "type": "bool", "internalType": "bool" }
+			],
+			"stateMutability": "view"
+		},
+		{ "type": "error", "name": "ConsistencyCheckFailed", "inputs": [] },
+		{ "type": "error", "name": "GeminiChallengeInSubgroup", "inputs": [] },
+		{ "type": "error", "name": "ProofLengthWrong", "inputs": [] },
+		{
+			"type": "error",
+			"name": "ProofLengthWrongWithLogN",
+			"inputs": [
+				{ "name": "logN", "type": "uint256", "internalType": "uint256" },
+				{
+					"name": "actualLength",
+					"type": "uint256",
+					"internalType": "uint256"
+				},
+				{
+					"name": "expectedLength",
+					"type": "uint256",
+					"internalType": "uint256"
+				}
+			]
+		},
+		{ "type": "error", "name": "PublicInputsLengthWrong", "inputs": [] },
+		{ "type": "error", "name": "ShpleminiFailed", "inputs": [] },
+		{ "type": "error", "name": "SumcheckFailed", "inputs": [] }
+	],
+	"bytecode": { "object": "0x", "sourceMap": "", "linkReferences": {} },
+	"deployedBytecode": { "object": "0x", "sourceMap": "", "linkReferences": {} },
+	"methodIdentifiers": { "verify(bytes,bytes32[])": "ea50d0e4" },
+	"rawMetadata": "{\"compiler\":{\"version\":\"0.8.30+commit.73712a01\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[],\"name\":\"ConsistencyCheckFailed\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"GeminiChallengeInSubgroup\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"ProofLengthWrong\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"logN\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"actualLength\",\"type\":\"uint256\"},{\"internalType\":\"uint256\",\"name\":\"expectedLength\",\"type\":\"uint256\"}],\"name\":\"ProofLengthWrongWithLogN\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"PublicInputsLengthWrong\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"ShpleminiFailed\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"SumcheckFailed\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"bytes\",\"name\":\"proof\",\"type\":\"bytes\"},{\"internalType\":\"bytes32[]\",\"name\":\"publicInputs\",\"type\":\"bytes32[]\"}],\"name\":\"verify\",\"outputs\":[{\"internalType\":\"bool\",\"name\":\"verified\",\"type\":\"bool\"}],\"stateMutability\":\"view\",\"type\":\"function\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"PreimageVerifier.sol\":\"BaseZKHonkVerifier\"},\"evmVersion\":\"prague\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":true,\"runs\":1},\"remappings\":[\":@openzeppelin/=node_modules/@openzeppelin/\"]},\"sources\":{\"PreimageVerifier.sol\":{\"keccak256\":\"0x2109a209be1580f23a4280ddcfb6803ea3dae3464bc4353db7d73bc19a7246b7\",\"license\":\"Apache-2.0\",\"urls\":[\"bzz-raw://c36db2b4bc7e384dc5c9f95b1af168eeaa1cca4b7289da612f3b6aa936268e6d\",\"dweb:/ipfs/QmYcvZLWLisqWnwRN4HRwLQtAm8puhnX1Kdd73ZdLBXxJp\"]}},\"version\":1}",
+	"metadata": {
+		"compiler": { "version": "0.8.30+commit.73712a01" },
+		"language": "Solidity",
+		"output": {
+			"abi": [
+				{ "inputs": [], "type": "error", "name": "ConsistencyCheckFailed" },
+				{ "inputs": [], "type": "error", "name": "GeminiChallengeInSubgroup" },
+				{ "inputs": [], "type": "error", "name": "ProofLengthWrong" },
+				{
+					"inputs": [
+						{ "internalType": "uint256", "name": "logN", "type": "uint256" },
+						{
+							"internalType": "uint256",
+							"name": "actualLength",
+							"type": "uint256"
+						},
+						{
+							"internalType": "uint256",
+							"name": "expectedLength",
+							"type": "uint256"
+						}
+					],
+					"type": "error",
+					"name": "ProofLengthWrongWithLogN"
+				},
+				{ "inputs": [], "type": "error", "name": "PublicInputsLengthWrong" },
+				{ "inputs": [], "type": "error", "name": "ShpleminiFailed" },
+				{ "inputs": [], "type": "error", "name": "SumcheckFailed" },
+				{
+					"inputs": [
+						{ "internalType": "bytes", "name": "proof", "type": "bytes" },
+						{
+							"internalType": "bytes32[]",
+							"name": "publicInputs",
+							"type": "bytes32[]"
+						}
+					],
+					"stateMutability": "view",
+					"type": "function",
+					"name": "verify",
+					"outputs": [
+						{ "internalType": "bool", "name": "verified", "type": "bool" }
+					]
+				}
+			],
+			"devdoc": { "kind": "dev", "methods": {}, "version": 1 },
+			"userdoc": { "kind": "user", "methods": {}, "version": 1 }
+		},
+		"settings": {
+			"remappings": ["@openzeppelin/=node_modules/@openzeppelin/"],
+			"optimizer": { "enabled": true, "runs": 1 },
+			"metadata": { "bytecodeHash": "ipfs" },
+			"compilationTarget": { "PreimageVerifier.sol": "BaseZKHonkVerifier" },
+			"evmVersion": "prague",
+			"libraries": {}
+		},
+		"sources": {
+			"PreimageVerifier.sol": {
+				"keccak256": "0x2109a209be1580f23a4280ddcfb6803ea3dae3464bc4353db7d73bc19a7246b7",
+				"urls": [
+					"bzz-raw://c36db2b4bc7e384dc5c9f95b1af168eeaa1cca4b7289da612f3b6aa936268e6d",
+					"dweb:/ipfs/QmYcvZLWLisqWnwRN4HRwLQtAm8puhnX1Kdd73ZdLBXxJp"
+				],
+				"license": "Apache-2.0"
+			}
+		},
+		"version": 1
+	},
+	"id": 0
+}

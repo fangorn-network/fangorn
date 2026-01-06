@@ -1,0 +1,84 @@
+{
+	"name": "fangorn",
+	"version": "0.0.0",
+	"description": "Naga Lit Action decryption example with a zk verifier solidity contract using noir",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/driemworks/zk-lit-example.git"
+	},
+	"license": "MIT",
+	"type": "module",
+	"main": "lib/index.js",
+	"files": [
+		"lib/"
+	],
+	"scripts": {
+		"build": "tsdown",
+		"format": "prettier . --write",
+		"lint": "eslint . --max-warnings 0",
+		"prepare": "husky",
+		"test": "dotenvx run -f .env -- vitest run",
+		"tsc": "tsc"
+	},
+	"lint-staged": {
+		"*": "prettier --ignore-unknown --write"
+	},
+	"devDependencies": {
+		"@dotenvx/dotenvx": "^1.51.1",
+		"@eslint/js": "9.39.1",
+		"@release-it/conventional-changelog": "10.0.2",
+		"@types/node": "24.10.1",
+		"@vitest/coverage-v8": "4.0.15",
+		"@vitest/eslint-plugin": "1.5.1",
+		"blake3-js": "^0.0.5",
+		"eslint": "9.39.1",
+		"husky": "9.1.7",
+		"lint-staged": "16.2.7",
+		"patch-package": "^8.0.1",
+		"postinstall-postinstall": "^2.1.0",
+		"prettier": "3.7.3",
+		"release-it": "19.0.6",
+		"tsdown": "0.16.8",
+		"typescript": "5.9.3",
+		"typescript-eslint": "8.48.1",
+		"vitest": "4.0.15",
+		"write-file-atomic": "5.0.1"
+	},
+	"packageManager": "pnpm@10.4.0",
+	"engines": {
+		"node": ">=20.19.0"
+	},
+	"publishConfig": {
+		"provenance": true
+	},
+	"dependencies": {
+		"@aztec/bb.js": "3.0.0-rc.2",
+		"@lit-protocol/access-control-conditions": "^8.0.2",
+		"@lit-protocol/auth": "^8.1.2",
+		"@lit-protocol/lit-client": "^8.2.3",
+		"@lit-protocol/networks": "^8.3.2",
+		"@noble/hashes": "^2.0.1",
+		"@noir-lang/acvm_js": "1.0.0-beta.16",
+		"@noir-lang/backend_barretenberg": "^0.36.0",
+		"@noir-lang/noir_js": "1.0.0-beta.15",
+		"@noir-lang/noir_wasm": "1.0.0-beta.16",
+		"@noir-lang/noirc_abi": "1.0.0-beta.16",
+		"@openzeppelin/contracts": "^5.0.0",
+		"@zkpassport/poseidon2": "^0.6.2",
+		"buffer": "^6.0.3",
+		"pinata": "^2.5.2",
+		"poseidon-lite": "^0.3.0",
+		"solc": "^0.8.28",
+		"viem": "^2.41.2",
+		"vite": "^7.2.7",
+		"vite-plugin-node-polyfills": "0.17.0"
+	},
+	"pnpm": {
+		"overrides": {
+			"write-file-atomic": "7.0.0"
+		},
+		"patchedDependencies": {
+			"@lit-protocol/networks@8.3.2": "patches/@lit-protocol__networks@8.3.2.patch"
+		}
+	}
+}
