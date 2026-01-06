@@ -1,8 +1,70 @@
-# Privacy-Preserving Lit Action Decryption Example
+# Fangorn
 
-This example demonstrates how to use the Naga Lit Action to decrypt data where the Access Control Conditions is a Lit Action that checks if the user has a valid zero-knowledge proof (on the Base Sepolia testnet).
+Programmable Privacy
+
+## Usage
+
+### Encryption 
+
+``` js
+// initialize a new fangorn client
+const fangorn = await Fangorn.init(
+  delegatorAccount,
+  rpcUrl,
+  zkGateAddress as Address,
+  jwt,
+  gateway,
+);
+
+// create a new vault bound to a password
+const password = "test";
+const vaultId = await fangorn.createVault(password);
+
+// add multiple files
+const taxTag = "tax-2025";
+const secretTaxData = "Secret Tax Data";
+await fangorn.addFile(vaultId, taxTag, secretTaxData, ipfsCid);
+await fangorn.addFile(vaultId, "passport", "passport scan", ipfsCid);
+await fangorn.addFile(vaultId, "medical", "medical records", ipfsCid);
+
+// commit all at once (one Merkle tree, one manifest, one tx)
+await fangorn.commitVault(vaultId);
+
+// Later, add another file (commitVault is called internally)
+await fangorn.addFileToExistingVault(
+  vaultId,
+  "new-doc",
+  "new content",
+  ipfsCid,
+);
+```
+
+### Decryption 
+
+``` js
+// The tag associated with the data we want to decrypt
+const taxTag = "tax-2025";
+
+const fangornDelegatee = await Fangorn.init(
+  delegateeAccount,
+  rpcUrl,
+  zkGateAddress as Address,
+  jwt,
+  gateway,
+);
+
+const plaintext = await fangornDelegatee.decryptFile(
+  vaultId,
+  taxTag,
+  password,
+  circuit,
+);
+console.log("we got the plaintext " + plaintext);
+```
 
 ## Setup
+
+Testnet tokens (ETH on Base Sepolia) can be obtained from Coinbase's official faucet https://portal.cdp.coinbase.com/
 
 1. `cp .env.example .env`
 2. Fill in the ENVs:
@@ -10,10 +72,19 @@ This example demonstrates how to use the Naga Lit Action to decrypt data where t
      - Needs to have a balance of test CAMP to send transactions
    - `DELEGATEE_ETH_PRIVATE_KEY`: The private key of the delegatee account
      - Doesn't need to have a balance of test CAMP, used to sign the Lit Auth Sig for the decryption request
-   - `ERC20_CHAIN_RPC_URL`: The RPC URL of the ERC20 chain
-     - Expected to be Camp testnet: https://rpc.basecamp.t.raas.gelato.cloud
+   - `CHAIN_RPC_URL`: The RPC URL of the ERC20 chain
+     - Expected to be Base sepolia testnet: https://base-sepolia-public.nodies.app
    - `PINATA_JWT`: The JWT for Pinata
      - Can be obtained from: https://app.pinata.cloud/developers/api-keys
+     - # Get this from https://app.pinata.cloud/developers/api-keys
+  - `PINATA_GATEWAY`: The gateway for Pinata
+    -  Can use your own gateway or the default 'https://gateway.pinata.cloud'
+  - `LIT_ACTION_CID`: The CID of the lit action for access control checks
+    - Can be deployed by the test script, else use "QmcDkeo7YnJbuyYnXfxcnB65UCkjFhLDG5qa3hknMmrDmQ"
+  - `VERIFIER_CONTRACT_ADDR`: The Barretenberg verifier contract address 
+    - Can be deployed by the test script, else use "0xb88e05a06bb2a2a424c1740515b5a46c0d181639"
+  - `ZK_GATE_ADDR`: The ZkGate.sol contract address
+    - Can be deployed by the test script, else use "0xec2b41e50ca1b9fc3262b9fd6ad9744c64f135a6"
 3. `pnpm i`
 
 ## Running the tests
@@ -22,21 +93,11 @@ This example demonstrates how to use the Naga Lit Action to decrypt data where t
 
 The tests will:
 
-1. Build and deploy the solidity verifier to base sepolia
-2. Upload the Lit Action to IPFS
+1. Build and deploy the solidity verifier to base sepolia (if isDeploy = true in test file)
+2. Upload the Lit Action to IPFS (if isDeploy = true in test file)
 3. Run the tests:
    - Should fail to decrypt when delegatee provides invalid proof data
    - Should succeed to decrypt when delegatee has a valid proof
-
-### TODOs
-
-- For an initial version, we have one lit action per [zkGateContract, verifierContract] combination. That means we need: one lit action per verifier and one verifier per ciphertext. Verifiers can be reused when verifying the same circuits and zkgate contracts can be reused (that is: we only need one zkgate contract for now).
-  - the reasoning is pragmnatic: simply calling decrypt doesn't let us pass jsParams, we need to call executeJs instead. However, when calling executeJs we would then decrypt within the LIT action. But there's the problem: the acc we specified requires jsParams.... So we actually need a new acc.
-  - We could probably instead encrypt the message under an ACC that expects some specific sig by a specific PKP. In the first LIT action the sig is produced when proofs are valid, then in the second phase decrypt occurs.
-
-- for the verifier/zkgate contracts, do we want to add nullifiers or anythingn?
-  - e.g. we can enforce "no double-spending" for proofs (can't reuse them).
-  - This is critical in a real scenario imo.
 
 ## How it works
 

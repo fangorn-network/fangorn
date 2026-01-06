@@ -114,35 +114,30 @@ describe("ZK-gated decryption", () => {
 		console.log(`Lit Action CID: ${ipfsCid}`);
 		console.log(`Verifier: ${verifierContractAddress}`);
 		console.log(`ZKGate: ${zkGateAddress}`);
-	}, 120000); // 2 minute timeout for deployment
+	}, 30000); // 30s timeout for deployment
 
-	// it("should generate prover.toml vals", async () => {
-	// 	generateInputs();
-	// });
+	it("should fail to decrypt when the proof is invalid (bad password)", async () => {
+		let didFail = false;
 
-	// it("should fail to decrypt when the proof is invalid", async () => {
-	//     // using a dummy circuit for now, you just have to prove that you
-	//     // know two numbers that are different, so it fails by supplying two same numbers
-	//     let didFail = false;
+		try {
+			await runZkExample({
+				delegatorAccount,
+				delegateeAccount,
+				zkGateAddress,
+				ipfsCid,
+				rpcUrl,
+				jwt,
+				gateway,
+				delegatorPassword: "ok",
+				delegateePassword: "NOT ok"
+			});
+		} catch (error) {
+			didFail = true;
+			console.log("Decryption failed  as expected:", error);
+		}
 
-	//     try {
-	//         // invalid proof data
-	//         let proofHex = "61" // 'a'
-
-	//         await runZkExample({
-	//             delegatorAccount,
-	//             delegateeAccount,
-	//             verifierContractAddress,
-	//             proofHex,
-	//             ipfsCid,
-	//         });
-	//     } catch (error) {
-	//         didFail = true;
-	//         console.log("Decryption failed  as expected:", error);
-	//     }
-
-	//     expect(didFail).toBe(true);
-	// }, 120000);
+		expect(didFail).toBe(true);
+	}, 120_000);
 
 	it("should succeed to decrypt when the proof is valid", async () => {
 		console.log("\n=== Testing via Lit Action ===");
@@ -155,8 +150,10 @@ describe("ZK-gated decryption", () => {
 			rpcUrl,
 			jwt,
 			gateway,
+			delegatorPassword: "ok-valid-test",
+			delegateePassword: "ok-valid-test"
 		});
 
 		console.log("Decryption succeeded!");
-	}, 700_000);
+	}, 120_000);
 });

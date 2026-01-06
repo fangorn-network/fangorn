@@ -38,6 +38,8 @@ export const runZkExample = async ({
 	rpcUrl,
 	jwt,
 	gateway,
+	delegatorPassword,
+	delegateePassword,
 }: {
 	delegatorAccount: Account;
 	delegateeAccount: Account;
@@ -46,6 +48,8 @@ export const runZkExample = async ({
 	rpcUrl: string;
 	jwt: string;
 	gateway: string;
+	delegatorPassword: string;
+	delegateePassword: string;
 }) => {
 	// create fangorn client for the delegator
 	const fangorn = await Fangorn.init(
@@ -57,8 +61,7 @@ export const runZkExample = async ({
 	);
 
 	// create a new vault
-	const password = "test3";
-	const vaultId = await fangorn.createVault(password);
+	const vaultId = await fangorn.createVault(delegatorPassword);
 
 	// add multiple files
 	const taxTag = "tax-2025";
@@ -90,7 +93,7 @@ export const runZkExample = async ({
 	const plaintext = await fangornDelegatee.decryptFile(
 		vaultId,
 		taxTag,
-		password,
+		delegateePassword,
 		circuit,
 	);
 	console.log("we got the plaintext " + plaintext);
