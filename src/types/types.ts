@@ -4,7 +4,6 @@ export interface VaultEntry {
 	cid: string;
 	index: number;
 	leaf: string;
-	// poseidon1 hash
 	commitment: string;
 }
 

@@ -38,34 +38,3 @@ export async function uploadToPinata(
 	const resData = await response.json();
 	return resData.IpfsHash;
 }
-
-/**
- * Downloads and parses content from IPFS via Pinata
- */
-export async function downloadFromPinata(
-	cid: string,
-	pinataJwt?: string,
-	gatewayUrl: string = "https://gateway.pinata.cloud",
-): Promise<any> {
-	const jwt = pinataJwt || process.env.PINATA_JWT;
-	const url = `${gatewayUrl.replace(/\/$/, "")}/ipfs/${cid}`;
-
-	const response = await fetch(url, {
-		method: "GET",
-		headers: jwt ? { Authorization: `Bearer ${jwt}` } : {},
-	});
-
-	if (!response.ok) {
-		throw new Error(`Download failed: ${response.statusText}`);
-	}
-
-	const contentType = response.headers.get("content-type");
-
-	// If it's JSON (like your encryption payload), parse it automatically
-	if (contentType?.includes("application/json")) {
-		return await response.json();
-	}
-
-	// Otherwise return as text (useful for Lit Action code)
-	return await response.text();
-}

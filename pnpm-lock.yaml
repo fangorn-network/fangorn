@@ -58,6 +58,15 @@ importers:
       buffer:
         specifier: ^6.0.3
         version: 6.0.3
+      imurmurhash:
+        specifier: ^0.1.4
+        version: 0.1.4
+      multiformats:
+        specifier: ^13.4.2
+        version: 13.4.2
+      node-localstorage:
+        specifier: ^3.0.5
+        version: 3.0.5
       pinata:
         specifier: ^2.5.2
         version: 2.5.2
@@ -3438,6 +3447,9 @@ packages:
   multiformats@11.0.2:
     resolution: {integrity: sha512-b5mYMkOkARIuVZCpvijFj9a6m5wMVLC7cf/jIPd5D/ARDOfLC5+IFkbgDXQgcU2goIsTD/O9NY4DI/Mt4OGvlg==}
     engines: {node: '>=16.0.0', npm: '>=7.0.0'}
+
+  multiformats@13.4.2:
+    resolution: {integrity: sha512-eh6eHCrRi1+POZ3dA+Dq1C6jhP1GNtr9CRINMb67OKzqW9I5DUuZM/3jLPlzhgpGeiNUlEGEbkCYChXMCc/8DQ==}
 
   multiformats@9.9.0:
     resolution: {integrity: sha512-HoMUjhH9T8DDBNT+6xzkrd9ga/XiBI4xLr58LJACwK6G3HTOPeMz4nB4KJs33L2BelrIJa7P0VuNaVF3hMYfjg==}
@@ -8942,6 +8954,8 @@ snapshots:
       varint: 6.0.0
 
   multiformats@11.0.2: {}
+
+  multiformats@13.4.2: {}
 
   multiformats@9.9.0: {}
 

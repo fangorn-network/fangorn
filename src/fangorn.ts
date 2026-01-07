@@ -12,14 +12,14 @@ import {
 } from "viem";
 import { baseSepolia } from "viem/chains";
 import { ZKGate } from "./interface/zkGate.js";
-import { hashPassword } from "./interface/utils.js";
-import { buildCircuitInputs, computeTagCommitment } from "./interface/proof.js";
+import { hashPassword } from "./utils/index.js";
+import { buildCircuitInputs, computeTagCommitment } from "./crypto/proof.js";
 import {
 	buildTreeFromLeaves,
 	fieldToHex,
 	hexToField,
-} from "./interface/merkle.js";
-import { VaultEntry, VaultManifest } from "./interface/types.js";
+} from "./crypto/merkle.js";
+import { VaultEntry, VaultManifest } from "./types/types.js";
 import { PinataSDK } from "pinata";
 import { Barretenberg, UltraHonkBackend } from "@aztec/bb.js";
 import { CompiledCircuit, Noir } from "@noir-lang/noir_js";
@@ -314,6 +314,7 @@ export class Fangorn {
 			userAddress,
 		);
 
+		// we don't need to request access if we already have it
 		if (!hasAccess) {
 			await this.proveAccess(vaultId, password, entry, manifest, circuit);
 		}
@@ -322,7 +323,7 @@ export class Fangorn {
 		const response = await this.pinata.gateways.public.get(entry.cid);
 		const { encryptedData, acc } = response.data as any;
 
-		// request decrypt ion
+		// request decryption
 		const decrypted = await this.litClient.decrypt({
 			ciphertext: encryptedData.ciphertext,
 			dataToEncryptHash: encryptedData.dataToEncryptHash,

@@ -1,4 +1,4 @@
-import { poseidon2Hash } from "./utils.js";
+import { poseidon2Hash } from "../utils/index.js";
 
 const TREE_DEPTH = 8;
 

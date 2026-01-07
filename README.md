@@ -6,6 +6,8 @@ Programmable Privacy
 
 ### Encryption 
 
+Fangorn allows encrypted data to be added to a 'vault' protected by a user-defined password. First, a user creates a vault
+
 ``` js
 // initialize a new fangorn client
 const fangorn = await Fangorn.init(
@@ -21,9 +23,7 @@ const password = "test";
 const vaultId = await fangorn.createVault(password);
 
 // add multiple files
-const taxTag = "tax-2025";
-const secretTaxData = "Secret Tax Data";
-await fangorn.addFile(vaultId, taxTag, secretTaxData, ipfsCid);
+await fangorn.addFile(vaultId, "tax-2025", "Secret Tax Data", ipfsCid);
 await fangorn.addFile(vaultId, "passport", "passport scan", ipfsCid);
 await fangorn.addFile(vaultId, "medical", "medical records", ipfsCid);
 
@@ -40,6 +40,8 @@ await fangorn.addFileToExistingVault(
 ```
 
 ### Decryption 
+
+Decryption works by providing a vault id, tag, and the valid password to unlock the data. Proof generation is handled by the Fangorn SDK. 
 
 ``` js
 // The tag associated with the data we want to decrypt
@@ -59,6 +61,7 @@ const plaintext = await fangornDelegatee.decryptFile(
   password,
   circuit,
 );
+
 console.log("we got the plaintext " + plaintext);
 ```
 
@@ -76,7 +79,6 @@ Testnet tokens (ETH on Base Sepolia) can be obtained from Coinbase's official fa
      - Expected to be Base sepolia testnet: https://base-sepolia-public.nodies.app
    - `PINATA_JWT`: The JWT for Pinata
      - Can be obtained from: https://app.pinata.cloud/developers/api-keys
-     - # Get this from https://app.pinata.cloud/developers/api-keys
   - `PINATA_GATEWAY`: The gateway for Pinata
     -  Can use your own gateway or the default 'https://gateway.pinata.cloud'
   - `LIT_ACTION_CID`: The CID of the lit action for access control checks

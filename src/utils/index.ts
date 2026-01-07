@@ -64,7 +64,7 @@ const MODULUS =
 
 export async function poseidon1Hash(input: bigint): Promise<bigint> {
 	const noir = new Noir(poseidon1Circuit);
-	// Ensure input is < MODULUS
+	// ensure input is < MODULUS
 	const safeInput = input < MODULUS ? input : input % MODULUS;
 
 	const { returnValue } = await noir.execute({
@@ -79,7 +79,7 @@ export async function poseidon2Hash(
 	right: bigint,
 ): Promise<bigint> {
 	const noir = new Noir(poseidon2Circuit);
-	// Ensure both inputs are < MODULUS
+	// ensure both inputs are < MODULUS
 	const safeLeft = left < MODULUS ? left : left % MODULUS;
 	const safeRight = right < MODULUS ? right : right % MODULUS;
 
