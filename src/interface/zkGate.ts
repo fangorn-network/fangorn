@@ -112,6 +112,13 @@ const ZKGATE_ABI = [
 		inputs: [],
 		outputs: [{ type: "uint256" }],
 	},
+	{
+		name: "getOwnedVault",
+		type: "function",
+		stateMutability: "view",
+		inputs: [{ name: "owner", type: "address" }],
+		outputs: [{ type: "bytes32[]" }],
+	},
 	// Events
 	{
 		name: "VaultCreated",
