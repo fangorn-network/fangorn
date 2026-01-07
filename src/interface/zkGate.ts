@@ -224,6 +224,17 @@ export class ZKGate {
 		return vault.owner !== "0x0000000000000000000000000000000000000000";
 	}
 
+	async getOwnedVault(address: Address): Promise<readonly `0x${string}`[]> {
+		const vaults = await this.publicClient.readContract({
+			address: this.contractAddress,
+			abi: ZKGATE_ABI,
+			functionName: "getOwnedVault",
+			args: [address],
+		});
+
+		return vaults;
+	}
+
 	// --- Write Functions ---
 
 	async createVault(
