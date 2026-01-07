@@ -1,6 +1,6 @@
 // src/utils.ts
 import { blake3 } from "@noble/hashes/blake3.js";
-import { Noir } from "@noir-lang/noir_js";
+import { CompiledCircuit, Noir } from "@noir-lang/noir_js";
 import {
 	keccak256,
 	toBytes,
@@ -63,7 +63,8 @@ const MODULUS =
 	21888242871839275222246405745257275088548364400416034343698204186575808495617n;
 
 export async function poseidon1Hash(input: bigint): Promise<bigint> {
-	const noir = new Noir(poseidon1Circuit);
+	const poseidonCircuit1 = poseidon1Circuit as CompiledCircuit;
+	const noir = new Noir(poseidonCircuit1);
 	// ensure input is < MODULUS
 	const safeInput = input < MODULUS ? input : input % MODULUS;
 
@@ -78,7 +79,8 @@ export async function poseidon2Hash(
 	left: bigint,
 	right: bigint,
 ): Promise<bigint> {
-	const noir = new Noir(poseidon2Circuit);
+	const poseidonCircuit2 = poseidon2Circuit as CompiledCircuit;
+	const noir = new Noir(poseidonCircuit2);
 	// ensure both inputs are < MODULUS
 	const safeLeft = left < MODULUS ? left : left % MODULUS;
 	const safeRight = right < MODULUS ? right : right % MODULUS;
