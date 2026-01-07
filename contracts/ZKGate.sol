@@ -14,6 +14,8 @@ contract ZKGate {
         address owner;
     }
     
+    
+    mapping(address => bytes32[]) public ownedVaults;
     mapping(bytes32 => Vault) public vaults;
     mapping(bytes32 => bool) public spentNullifiers;
     // vaultId => cidCommitment => user => hasAccess
@@ -34,8 +36,10 @@ contract ZKGate {
     }
     
     function createVault(bytes32 passwordHash) external payable returns (bytes32 vaultId) {
+        // TODO: where should this be deposited?
         require(msg.value >= vaultCreationFee, "Insufficient fee");
         
+        // all vault ids must be unique
         vaultId = keccak256(abi.encode(passwordHash, msg.sender));
         require(vaults[vaultId].owner == address(0), "Vault exists");
         
@@ -46,6 +50,7 @@ contract ZKGate {
             owner: msg.sender
         });
         
+        ownedVaults[msg.sender].push(vaultId);
         emit VaultCreated(vaultId, msg.sender);
     }
     
@@ -158,5 +163,9 @@ contract ZKGate {
     ) {
         Vault memory v = vaults[vaultId];
         return (v.passwordHash, v.poseidonRoot, v.manifestCid, v.owner);
+    }
+
+    function getOwnedVault(address owner) external view returns(bytes32[] vaultIds) {
+        return ownedVaults[owner]
     }
 }

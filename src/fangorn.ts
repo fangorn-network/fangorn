@@ -219,7 +219,7 @@ export class Fangorn {
 	/**
 	 * Loads existing manifest, adds new files, and recommits.
 	 */
-	async addFileToExistingVault(
+	async addFileToExistingManifest(
 		vaultId: Hex,
 		tag: string,
 		plaintext: string,
