@@ -11,10 +11,10 @@ import {
 	Hex,
 } from "viem";
 
-import { createRequire } from "module";
-const require = createRequire(import.meta.url);
-const poseidon1Circuit = require("../../circuits/poseiden1_hash/target/poseiden1_hash.json");
-const poseidon2Circuit = require("../../circuits/poseiden2_hash/target/poseiden2_hash.json");
+// import { createRequire } from "module";
+// const require = createRequire(import.meta.url);
+import poseidon1Circuit from "../../circuits/poseiden1_hash/target/poseiden1_hash.json";
+import poseidon2Circuit from "../../circuits/poseiden2_hash/target/poseiden2_hash.json";
 
 export function hashPassword(password: string): Hex {
 	const padded = password.padEnd(32, "\0");
