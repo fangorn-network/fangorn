@@ -34,6 +34,12 @@ interface PendingEntry {
 	acc: any;
 }
 
+// TODO add to types.ts
+export interface Filedata {
+	tag: string;
+	data: string;
+}
+
 /**
  *
  */
@@ -108,6 +114,40 @@ export class Fangorn {
 		);
 		await this.zkGate.waitForTransaction(createHash);
 		return vaultId;
+	}
+
+	async upload(
+		vaultId: Hex,
+		filedata: Filedata[],
+		litActionCid: string,
+		overwrite?: boolean,
+	) {
+		// check if manifest exists or not
+		// load existing manifest
+		const vault = await this.zkGate.getVault(vaultId);
+		// if manifestCid DNE or overwrite specified
+		if (!vault.manifestCid || overwrite) {
+			// add files
+			for (let file of filedata) {
+				await this.addFile(vaultId, file.tag, file.data, litActionCid);
+			}
+			// commit
+		} else {
+			const oldManifest = await this.fetchManifest(vault.manifestCid);
+			await this.loadManifest(oldManifest);
+			// try to unpin old manifest
+			try {
+				await this.pinata.files.public.delete([vault.manifestCid]);
+			} catch (e) {
+				console.warn("Failed to unpin old manifest:", e);
+			}
+		}
+
+		// add files
+		for (let file of filedata) {
+			await this.addFile(vaultId, file.tag, file.data, litActionCid);
+		}
+		return await this.commitVault(vaultId);
 	}
 
 	/**
@@ -219,22 +259,7 @@ export class Fangorn {
 	/**
 	 * Loads existing manifest, adds new files, and recommits.
 	 */
-	async addFileToExistingManifest(
-		vaultId: Hex,
-		tag: string,
-		plaintext: string,
-		litActionCid: string,
-	): Promise<{ manifestCid: string; root: Hex }> {
-		// load existing manifest
-		const vault = await this.zkGate.getVault(vaultId);
-		if (!vault.manifestCid) {
-			throw new Error(
-				"Vault has no manifest - use addFile + commitVault instead",
-			);
-		}
-
-		const oldManifest = await this.fetchManifest(vault.manifestCid);
-
+	async loadManifest(oldManifest: any) {
 		// load existing entries into pending
 		for (const entry of oldManifest.entries) {
 			this.pendingEntries.set(entry.tag, {
@@ -245,21 +270,6 @@ export class Fangorn {
 				acc: null, // Don't have ACC for existing entries
 			});
 		}
-
-		// add new file
-		await this.addFile(vaultId, tag, plaintext, litActionCid);
-
-		// ommit (rebuilds the tree with all entries)
-		const result = await this.commitVault(vaultId);
-
-		// try to unpin old manifest
-		try {
-			await this.pinata.files.public.delete([vault.manifestCid]);
-		} catch (e) {
-			console.warn("Failed to unpin old manifest:", e);
-		}
-
-		return result;
 	}
 
 	async decryptFile(

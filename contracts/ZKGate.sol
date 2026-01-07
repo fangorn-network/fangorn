@@ -165,7 +165,7 @@ contract ZKGate {
         return (v.passwordHash, v.poseidonRoot, v.manifestCid, v.owner);
     }
 
-    function getOwnedVault(address owner) external view returns(bytes32[] vaultIds) {
-        return ownedVaults[owner]
+    function getOwnedVault(address owner) external view returns(bytes32[] memory) {
+        return ownedVaults[owner];
     }
 }
