@@ -1,7 +1,7 @@
 {
 	"name": "fangorn",
 	"version": "0.0.0",
-	"description": "Naga Lit Action decryption example with a zk verifier solidity contract using noir",
+	"description": "a zero-knowledge conditional access control framework",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/driemworks/zk-lit-example.git"
@@ -63,14 +63,12 @@
 		"@noir-lang/noir_js": "1.0.0-beta.15",
 		"@noir-lang/noir_wasm": "1.0.0-beta.16",
 		"@noir-lang/noirc_abi": "1.0.0-beta.16",
-		"@openzeppelin/contracts": "^5.0.0",
-		"@zkpassport/poseidon2": "^0.6.2",
+		"@rolldown/binding-linux-x64-gnu": "1.0.0-beta.59",
 		"buffer": "^6.0.3",
 		"imurmurhash": "^0.1.4",
 		"multiformats": "^13.4.2",
 		"node-localstorage": "^3.0.5",
 		"pinata": "^2.5.2",
-		"poseidon-lite": "^0.3.0",
 		"solc": "^0.8.28",
 		"viem": "^2.41.2",
 		"vite": "^7.2.7",

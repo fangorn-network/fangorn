@@ -1,50 +1,45 @@
 import { beforeAll, describe, it, expect } from "vitest";
-import {
-	Account,
-	Hex,
-	type Address,
-} from "viem";
+import { Account, Hex, type Address } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { readFileSync } from "fs";
-import { fileURLToPath } from "url";
-import { dirname, join } from "path";
+// import { fileURLToPath } from "url";
+import { join } from "path";
 import { deployContracts } from "./deployContract.js";
 import { TestBed } from "./test/testbed.js";
 import { createRequire } from "module";
 
-// Import everything to see what's available
-import * as acvm from "@noir-lang/acvm_js";
-import * as noirc from "@noir-lang/noirc_abi";
-import { PinataSDK, uploadCid } from "pinata";
-import { CID } from 'multiformats/cid';
+// // Import everything to see what's available
+// import * as acvm from "@noir-lang/acvm_js";
+// import * as noirc from "@noir-lang/noirc_abi";
+import { PinataSDK } from "pinata";
 import { uploadToPinata } from "./test/index.js";
-const require = createRequire(import.meta.url);
+// const require = createRequire(import.meta.url);
 
-// Load WASM as bytes
-const acvmWasm = readFileSync(
-	require.resolve("@noir-lang/acvm_js/web/acvm_js_bg.wasm"),
-);
-const noircWasm = readFileSync(
-	require.resolve("@noir-lang/noirc_abi/web/noirc_abi_wasm_bg.wasm"),
-);
+// // Load WASM as bytes
+// const acvmWasm = readFileSync(
+// 	require.resolve("@noir-lang/acvm_js/web/acvm_js_bg.wasm"),
+// );
+// const noircWasm = readFileSync(
+// 	require.resolve("@noir-lang/noirc_abi/web/noirc_abi_wasm_bg.wasm"),
+// );
 
-// wasm-bindgen generated code often uses __wbg_init or initSync
-const initAcvm =
-	(acvm as any).__wbg_init || (acvm as any).initSync || (acvm as any).default;
-const initNoirc =
-	(noirc as any).__wbg_init ||
-	(noirc as any).initSync ||
-	(noirc as any).default;
+// // wasm-bindgen generated code often uses __wbg_init or initSync
+// const initAcvm =
+// 	(acvm as any).__wbg_init || (acvm as any).initSync || (acvm as any).default;
+// const initNoirc =
+// 	(noirc as any).__wbg_init ||
+// 	(noirc as any).initSync ||
+// 	(noirc as any).default;
 
-if (typeof initAcvm === "function") {
-	await initAcvm(acvmWasm);
-}
-if (typeof initNoirc === "function") {
-	await initNoirc(noircWasm);
-}
+// if (typeof initAcvm === "function") {
+// 	await initAcvm(acvmWasm);
+// }
+// if (typeof initNoirc === "function") {
+// 	await initNoirc(noircWasm);
+// }
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+// const __filename = fileURLToPath(import.meta.url);
+// const __dirname = dirname(__filename);
 
 const getEnv = (key: string) => {
 	const value = process.env[key];
@@ -118,9 +113,13 @@ describe("ZK-gated decryption", () => {
 		console.log(`ZKGate: ${zkGateAddress}`);
 
 		testbed = await TestBed.init(
-			delegatorAccount, delegateeAccount, zkGateAddress, rpcUrl, jwt, gateway
+			delegatorAccount,
+			delegateeAccount,
+			zkGateAddress,
+			rpcUrl,
+			jwt,
+			gateway,
 		);
-
 	}, 30_000);
 
 	// afterall => cleanup (unpin files)
@@ -134,8 +133,8 @@ describe("ZK-gated decryption", () => {
 		const manifest = [
 			{ tag: "test0", data: "content0" },
 			{ tag: "test1", data: "content1" },
-			{ tag: "test2", data: "content2" }
-		]
+			{ tag: "test2", data: "content2" },
+		];
 		await testbed.fileUpload(vaultId, manifest, ipfsCid);
 		// try to get the data associated with the (vault, tag) combo
 		const tag = manifest[0].tag;
@@ -152,9 +151,7 @@ describe("ZK-gated decryption", () => {
 		const badPassword = "not-ok";
 		const vaultId = await testbed.setupVault(password);
 
-		const manifest = [
-			{ tag: "test3", data: "content3" }
-		]
+		const manifest = [{ tag: "test3", data: "content3" }];
 		await testbed.fileUpload(vaultId, manifest, ipfsCid);
 		// try to get the data associated with the (vault, tag) combo
 

@@ -1,16 +1,11 @@
-import {
-	Account,
-	Address,
-	Hex,
-} from "viem";
+import { Account, Address, Hex } from "viem";
 import { createRequire } from "module";
 import { Fangorn } from "../fangorn.js";
 
 const require = createRequire(import.meta.url);
-const circuit = require("../circuits/preimage/target/preimage.json");
+const circuit = require("../../circuits/preimage/target/preimage.json");
 
 export class TestBed {
-
 	private delegatorFangorn: Fangorn;
 	private delegateeFangorn: Fangorn;
 
@@ -49,22 +44,28 @@ export class TestBed {
 		return new TestBed(fangorn, delegateeFangorn);
 	}
 
-	async setupVault(
-		password: string
-	) {
+	async setupVault(password: string) {
 		if (!this.vaultIds.get(password)) {
 			const vaultId = await this.delegatorFangorn.createVault(password);
 			this.vaultIds.set(password, vaultId);
 		}
 
 		return this.vaultIds.get(password)!;
-
 	}
 
-	async fileUpload(vaultId: Hex, filedata: { tag: string, data: string }[], ipfsCid: string) {
+	async fileUpload(
+		vaultId: Hex,
+		filedata: { tag: string; data: string }[],
+		ipfsCid: string,
+	) {
 		for (let entry of filedata) {
-			await this.delegatorFangorn.addFile(vaultId, entry.tag, entry.data, ipfsCid);
-		};
+			await this.delegatorFangorn.addFile(
+				vaultId,
+				entry.tag,
+				entry.data,
+				ipfsCid,
+			);
+		}
 
 		await this.delegatorFangorn.commitVault(vaultId);
 	}

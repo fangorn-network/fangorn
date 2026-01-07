@@ -4,11 +4,11 @@ Programmable Privacy
 
 ## Usage
 
-### Encryption 
+### Encryption
 
 Fangorn allows encrypted data to be added to a 'vault' protected by a user-defined password. First, a user creates a vault
 
-``` js
+```js
 // initialize a new fangorn client
 const fangorn = await Fangorn.init(
   delegatorAccount,
@@ -19,14 +19,6 @@ const fangorn = await Fangorn.init(
 );
 
 // create a new vault bound to a password
-const password = "test";
-const vaultId = await fangorn.createVault(password);
-
-// add multiple files
-await fangorn.addFile(vaultId, "tax-2025", "Secret Tax Data", ipfsCid);
-await fangorn.addFile(vaultId, "passport", "passport scan", ipfsCid);
-await fangorn.addFile(vaultId, "medical", "medical records", ipfsCid);
-
 // commit all at once (one Merkle tree, one manifest, one tx)
 await fangorn.commitVault(vaultId);
 
@@ -39,13 +31,14 @@ await fangorn.addFileToExistingVault(
 );
 ```
 
-### Decryption 
+### Decryption
 
-Decryption works by providing a vault id, tag, and the valid password to unlock the data. Proof generation is handled by the Fangorn SDK. 
+Decryption works by providing a vault id, tag, and the valid password to unlock the data. Proof generation is handled by the Fangorn SDK.
 
-``` js
+```js
 // The tag associated with the data we want to decrypt
 const taxTag = "tax-2025";
+const password = "test";
 
 const fangornDelegatee = await Fangorn.init(
   delegateeAccount,
@@ -72,21 +65,23 @@ Testnet tokens (ETH on Base Sepolia) can be obtained from Coinbase's official fa
 1. `cp .env.example .env`
 2. Fill in the ENVs:
    - `DELEGATOR_ETH_PRIVATE_KEY`: The private key of the delegator account
-     - Needs to have a balance of test CAMP to send transactions
+     - Needs to have a balance of test ETH to send transactions
    - `DELEGATEE_ETH_PRIVATE_KEY`: The private key of the delegatee account
-     - Doesn't need to have a balance of test CAMP, used to sign the Lit Auth Sig for the decryption request
+     - Doesn't need to have a balance of test ETH, used to sign the Lit Auth Sig for the decryption request
    - `CHAIN_RPC_URL`: The RPC URL of the ERC20 chain
      - Expected to be Base sepolia testnet: https://base-sepolia-public.nodies.app
    - `PINATA_JWT`: The JWT for Pinata
      - Can be obtained from: https://app.pinata.cloud/developers/api-keys
-  - `PINATA_GATEWAY`: The gateway for Pinata
-    -  Can use your own gateway or the default 'https://gateway.pinata.cloud'
-  - `LIT_ACTION_CID`: The CID of the lit action for access control checks
-    - Can be deployed by the test script, else use "QmcDkeo7YnJbuyYnXfxcnB65UCkjFhLDG5qa3hknMmrDmQ"
-  - `VERIFIER_CONTRACT_ADDR`: The Barretenberg verifier contract address 
-    - Can be deployed by the test script, else use "0xb88e05a06bb2a2a424c1740515b5a46c0d181639"
-  - `ZK_GATE_ADDR`: The ZkGate.sol contract address
-    - Can be deployed by the test script, else use "0xec2b41e50ca1b9fc3262b9fd6ad9744c64f135a6"
+
+- `PINATA_GATEWAY`: The gateway for Pinata
+  - Can use your own gateway or the default 'https://gateway.pinata.cloud'
+- `LIT_ACTION_CID`: The CID of the lit action for access control checks
+  - Can be deployed by the test script, else use "QmcDkeo7YnJbuyYnXfxcnB65UCkjFhLDG5qa3hknMmrDmQ"
+- `VERIFIER_CONTRACT_ADDR`: The Barretenberg verifier contract address
+  - Can be deployed by the test script, else use "0xb88e05a06bb2a2a424c1740515b5a46c0d181639"
+- `ZK_GATE_ADDR`: The ZkGate.sol contract address
+  - Can be deployed by the test script, else use "0xec2b41e50ca1b9fc3262b9fd6ad9744c64f135a6"
+
 3. `pnpm i`
 
 ## Running the tests
@@ -95,16 +90,5 @@ Testnet tokens (ETH on Base Sepolia) can be obtained from Coinbase's official fa
 
 The tests will:
 
-1. Build and deploy the solidity verifier to base sepolia (if isDeploy = true in test file)
-2. Upload the Lit Action to IPFS (if isDeploy = true in test file)
-3. Run the tests:
-   - Should fail to decrypt when delegatee provides invalid proof data
-   - Should succeed to decrypt when delegatee has a valid proof
-
-## How it works
-
-### Vault Creation
-
-### Encryption and Vault Updates
-
-### Decryption
+1. Build and deploy the solidity verifier to base sepolia (unless it is defined in .env)
+2. Upload the Lit Action to IPFS (unless it is defined in .env)

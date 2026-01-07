@@ -1,6 +1,5 @@
 import { poseidon2Hash } from "../utils/index.js";
-
-const TREE_DEPTH = 8;
+import { TREE_DEPTH } from "./constants.js";
 
 export function hashCidToField(cid: string): bigint {
 	// Convert CID to field element

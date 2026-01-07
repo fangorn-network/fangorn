@@ -3,16 +3,12 @@ import { blake3 } from "@noble/hashes/blake3.js";
 import { CompiledCircuit, Noir } from "@noir-lang/noir_js";
 import {
 	keccak256,
-	toBytes,
 	encodeAbiParameters,
 	parseAbiParameters,
 	type Address,
-	bytesToHex,
 	Hex,
 } from "viem";
 
-// import { createRequire } from "module";
-// const require = createRequire(import.meta.url);
 import poseidon1Circuit from "../../circuits/poseiden1_hash/target/poseiden1_hash.json";
 import poseidon2Circuit from "../../circuits/poseiden2_hash/target/poseiden2_hash.json";
 

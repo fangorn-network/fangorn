@@ -4,9 +4,7 @@ import { blake3 } from "@noble/hashes/blake3.js";
 
 import { poseidon2Hash } from "../utils/index.js";
 import { fieldToHex, getProof, hexToField } from "./merkle.js";
-
-// Q: how do we make sure this is the same value used in the circuit?
-const TREE_DEPTH = 8;
+import { TREE_DEPTH } from "./constants.js";
 
 export async function buildCircuitInputs(
 	password: string,
