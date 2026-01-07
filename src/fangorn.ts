@@ -125,14 +125,8 @@ export class Fangorn {
 		// check if manifest exists or not
 		// load existing manifest
 		const vault = await this.zkGate.getVault(vaultId);
-		// if manifestCid DNE or overwrite specified
-		if (!vault.manifestCid || overwrite) {
-			// add files
-			for (let file of filedata) {
-				await this.addFile(vaultId, file.tag, file.data, litActionCid);
-			}
-			// commit
-		} else {
+		// if the manifest exists and we don't want to overwrite
+		if (vault.manifestCid && !overwrite) {
 			const oldManifest = await this.fetchManifest(vault.manifestCid);
 			await this.loadManifest(oldManifest);
 			// try to unpin old manifest
@@ -257,7 +251,7 @@ export class Fangorn {
 	}
 
 	/**
-	 * Loads existing manifest, adds new files, and recommits.
+	 * Loads existing manifest
 	 */
 	async loadManifest(oldManifest: any) {
 		// load existing entries into pending
@@ -267,7 +261,7 @@ export class Fangorn {
 				cid: entry.cid,
 				leaf: hexToField(entry.leaf),
 				commitment: entry.commitment as Hex,
-				acc: null, // Don't have ACC for existing entries
+				acc: null,
 			});
 		}
 	}

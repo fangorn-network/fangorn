@@ -19,16 +19,29 @@ const fangorn = await Fangorn.init(
 );
 
 // create a new vault bound to a password
-// commit all at once (one Merkle tree, one manifest, one tx)
-await fangorn.commitVault(vaultId);
+const password = "test";
+const vaultId = await fangorn.createVault(password);
 
-// Later, add another file (commitVault is called internally)
-await fangorn.addFileToExistingVault(
-  vaultId,
-  "new-doc",
-  "new content",
-  ipfsCid,
-);
+// upload files to the vault
+let filedata = [
+  { tag: "test-tag-0", data "test-data-0" },
+  { tag: "test-tag-1", data "test-data-1" }
+];
+await fangorn.upload(vaultId, filedata, ipfsCid);
+
+// easily add more file to the vault
+let filedata = [
+  { tag: "test-tag-3", data "test-data-3" }
+];
+await fangorn.upload(filedata);
+
+// overwrite a vault
+// upload files to the vault
+let filedata = [
+  { tag: "new-tag", data "new-data" }
+];
+await fangorn.upload(filedata);
+
 ```
 
 ### Decryption
