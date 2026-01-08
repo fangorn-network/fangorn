@@ -19,8 +19,9 @@ const fangorn = await Fangorn.init(
 );
 
 // create a new vault bound to a password
+const vaultName = "myvault-001";
 const password = "test";
-const vaultId = await fangorn.createVault(password);
+const vaultId = await fangorn.createVault(vaultName, password);
 
 // upload files to the vault
 let filedata = [

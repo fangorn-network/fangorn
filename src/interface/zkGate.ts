@@ -23,7 +23,10 @@ const ZKGATE_ABI = [
 		name: "createVault",
 		type: "function",
 		stateMutability: "payable",
-		inputs: [{ name: "passwordHash", type: "bytes32" }],
+		inputs: [
+			{ name: "name", type: "string" },
+			{ name: "passwordHash", type: "bytes32" },
+		],
 		outputs: [{ name: "vaultId", type: "bytes32" }],
 	},
 	// Vault update
@@ -238,6 +241,7 @@ export class ZKGate {
 	// --- Write Functions ---
 
 	async createVault(
+		name: string,
 		passwordHash: `0x${string}`,
 		fee: bigint,
 	): Promise<{ hash: Hash; vaultId: `0x${string}` }> {
@@ -247,7 +251,7 @@ export class ZKGate {
 			address: this.contractAddress,
 			abi: ZKGATE_ABI,
 			functionName: "createVault",
-			args: [passwordHash],
+			args: [name, passwordHash],
 			value: fee,
 			chain,
 			account,

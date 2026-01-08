@@ -120,10 +120,11 @@ export class Fangorn {
 	}
 
 	// TODO: how to ensure password is zeroized?
-	async createVault(password: string): Promise<Hex> {
+	async createVault(name: string, password: string): Promise<Hex> {
 		let passwordHash = hashPassword(password);
 		const fee = await this.zkGate.getVaultCreationFee();
 		const { hash: createHash, vaultId } = await this.zkGate.createVault(
+			name,
 			passwordHash,
 			fee,
 		);

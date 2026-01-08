@@ -44,9 +44,9 @@ export class TestBed {
 		return new TestBed(fangorn, delegateeFangorn);
 	}
 
-	async setupVault(password: string) {
+	async setupVault(name: string, password: string) {
 		if (!this.vaultIds.get(password)) {
-			const vaultId = await this.delegatorFangorn.createVault(password);
+			const vaultId = await this.delegatorFangorn.createVault(name, password);
 			this.vaultIds.set(password, vaultId);
 		}
 

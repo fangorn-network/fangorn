@@ -123,13 +123,12 @@ describe("ZK-gated decryption", () => {
 	}, 30_000);
 
 	// afterall => cleanup (unpin files)
-	it("should succeed to decrypt when the proof is valid", async () => {
+	it("should create a vault with data and succeed to decrypt when the proof is valid", async () => {
 		// setup vault
 		const password = "ok";
-
-		const vaultId = await testbed.setupVault(password);
-		// uploads 3 test files
-		// tag = "tax-2025"
+		const vaultName = "myVault_0001";
+		const vaultId = await testbed.setupVault(vaultName, password);
+		// upload test files
 		const manifest = [
 			{
 				tag: "test0",
@@ -137,6 +136,17 @@ describe("ZK-gated decryption", () => {
 				extension: ".txt",
 				fileType: "text/plain",
 			},
+		];
+		await testbed.fileUpload(vaultId, manifest, ipfsCid);
+		// try to get the data associated with the (vault, tag) combo
+		const tag = manifest[0].tag;
+		const expectedPlaintext = manifest[0].data;
+		const output = await testbed.tryDecrypt(vaultId, tag, password);
+		expect(output).toBe(expectedPlaintext);
+		console.log("Decryption succeeded!");
+
+		// add more data to the vault
+		const nextFiles = [
 			{
 				tag: "test1",
 				data: "content1",
@@ -150,21 +160,22 @@ describe("ZK-gated decryption", () => {
 				fileType: "video/mp4",
 			},
 		];
-		await testbed.fileUpload(vaultId, manifest, ipfsCid);
-		// try to get the data associated with the (vault, tag) combo
-		const tag = manifest[0].tag;
-		const expectedPlainted = manifest[0].data;
+		await testbed.fileUpload(vaultId, nextFiles, ipfsCid);
 
-		const output = await testbed.tryDecrypt(vaultId, tag, password);
-		expect(output).toBe(expectedPlainted);
+		// try to access the new files with the same passwodr
+		const newTag = nextFiles[0].tag;
+		const newExpectedPlaintext = nextFiles[0].data;
+		const actualOutput = await testbed.tryDecrypt(vaultId, newTag, password);
+		expect(actualOutput).toBe(newExpectedPlaintext);
 		console.log("Decryption succeeded!");
 	}, 120_000);
 
 	it("should fail to decrypt when the password is incorrect", async () => {
-		// setup vault
+		// setup vault (will skip vault creation since we already have one with this name)
+		const vaultName = "myVault_0001";
 		const password = "ok";
 		const badPassword = "not-ok";
-		const vaultId = await testbed.setupVault(password);
+		const vaultId = await testbed.setupVault(vaultName, password);
 
 		const manifest = [
 			{
@@ -189,8 +200,9 @@ describe("ZK-gated decryption", () => {
 
 	it("should fail to decrypt when the tag does not exist", async () => {
 		// setup vault
+		const vaultName = "myVault_0001";
 		const password = "ok";
-		const vaultId = await testbed.setupVault(password);
+		const vaultId = await testbed.setupVault(vaultName, password);
 		// try to get the data associated with the wrong (vault, tag) combo
 		let didFail = false;
 		try {

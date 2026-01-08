@@ -17,7 +17,6 @@ import { baseSepolia } from "viem/chains";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-// const circuit = require("../circuits/sum3-circuit/target/circuit.json");
 const circuit = require("../circuits/preimage/target/preimage.json");
 
 const currentChain = baseSepolia;
@@ -78,7 +77,7 @@ async function compileVerifier(): Promise<
  * Compiles ZKGate
  */
 function compileZKGate(): { abi: any; bytecode: string } {
-	const zkGatePath = join(__dirname, "..", "./contracts", "ZKGate.sol");
+	const zkGatePath = join(__dirname, "..", "./contracts/src", "ZKGate.sol");
 	const zkGateSource = readFileSync(zkGatePath, "utf-8");
 
 	const input = {

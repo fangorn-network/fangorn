@@ -18,29 +18,29 @@ export function hashPassword(password: string): Hex {
 	return keccak256(bytes);
 }
 
-export function computeNullifier(
-	password: string,
-	userAddress: Address,
-	vaultId: `0x${string}`,
-): `0x${string}` {
-	// Must match circuit: blake3(password || user_address || vault_id)
-	const passwordBytes = new TextEncoder()
-		.encode(password.padEnd(32, "\0"))
-		.slice(0, 32);
-	const addressBytes = Buffer.from(
-		userAddress.slice(2).padStart(64, "0"),
-		"hex",
-	);
-	const vaultBytes = Buffer.from(vaultId.slice(2), "hex");
+// export function computeNullifier(
+// 	password: string,
+// 	userAddress: Address,
+// 	vaultId: `0x${string}`,
+// ): `0x${string}` {
+// 	// Must match circuit: blake3(password || user_address || vault_id)
+// 	const passwordBytes = new TextEncoder()
+// 		.encode(password.padEnd(32, "\0"))
+// 		.slice(0, 32);
+// 	const addressBytes = Buffer.from(
+// 		userAddress.slice(2).padStart(64, "0"),
+// 		"hex",
+// 	);
+// 	const vaultBytes = Buffer.from(vaultId.slice(2), "hex");
 
-	const combined = new Uint8Array(96);
-	combined.set(passwordBytes, 0);
-	combined.set(addressBytes, 32);
-	combined.set(vaultBytes, 64);
+// 	const combined = new Uint8Array(96);
+// 	combined.set(passwordBytes, 0);
+// 	combined.set(addressBytes, 32);
+// 	combined.set(vaultBytes, 64);
 
-	const hash = blake3(combined);
-	return `0x${Buffer.from(hash).toString("hex")}` as `0x${string}`;
-}
+// 	const hash = blake3(combined);
+// 	return `0x${Buffer.from(hash).toString("hex")}` as `0x${string}`;
+// }
 
 export function deriveVaultId(
 	passwordHash: `0x${string}`,
