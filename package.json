@@ -66,6 +66,7 @@
 		"@rolldown/binding-linux-x64-gnu": "1.0.0-beta.59",
 		"buffer": "^6.0.3",
 		"imurmurhash": "^0.1.4",
+		"js-crypto-hkdf": "^1.0.7",
 		"multiformats": "^13.4.2",
 		"node-localstorage": "^3.0.5",
 		"pinata": "^2.5.2",

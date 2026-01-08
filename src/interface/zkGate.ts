@@ -4,7 +4,6 @@ import {
 	type WalletClient,
 	type Address,
 	type Hash,
-	type Hex,
 	keccak256,
 	encodeAbiParameters,
 	parseAbiParameters,

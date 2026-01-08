@@ -30,6 +30,7 @@ import { PinataSDK } from "pinata";
 import { Barretenberg, UltraHonkBackend } from "@aztec/bb.js";
 import { CompiledCircuit, Noir } from "@noir-lang/noir_js";
 import { createAuthManager, storagePlugins } from "@lit-protocol/auth";
+import { decryptData, encryptData } from "./crypto/aes.js";
 
 /**
  * Fangorn class
@@ -165,6 +166,9 @@ export class Fangorn {
 		const leaf = await computeTagCommitment(vaultId, tag);
 		const commitmentHex = fieldToHex(leaf);
 
+		// encrypt the actual file contents using AES-GCM locally
+		const { encryptedData, keyMaterial } = await encryptData(file.data);
+
 		// build ACC
 		const acc = createAccBuilder()
 			.requireLitAction(
@@ -175,16 +179,16 @@ export class Fangorn {
 			)
 			.build();
 
-		// encrypt
-		const encryptedData = await this.litClient.encrypt({
-			dataToEncrypt: file.data,
+		// encrypt THE KEY with LIT protocol
+		const keyEncryptedData = await this.litClient.encrypt({
+			dataToEncrypt: keyMaterial,
 			unifiedAccessControlConditions: acc,
-			chain: "baseSepolia", // TODO: this should probably be dynamic
+			chain: "baseSepolia",
 		});
 
 		// upload ciphertext (pin)
 		const upload = await this.pinata.upload.public.json(
-			{ encryptedData, acc },
+			{ encryptedData, keyEncryptedData, acc },
 			{ metadata: { name: tag } },
 		);
 
@@ -284,7 +288,7 @@ export class Fangorn {
 		tag: string,
 		password: string,
 		circuit: any,
-	): Promise<string> {
+	): Promise<Uint8Array<ArrayBufferLike>> {
 		// load the auth context
 		const authManager = createAuthManager({
 			storage: storagePlugins.localStorageNode({
@@ -338,18 +342,23 @@ export class Fangorn {
 
 		// fetch ciphertext
 		const response = await this.pinata.gateways.public.get(entry.cid);
-		const { encryptedData, acc } = response.data as any;
+		const { encryptedData, keyEncryptedData, acc } = response.data as any;
 
 		// request decryption
-		const decrypted = await this.litClient.decrypt({
-			ciphertext: encryptedData.ciphertext,
-			dataToEncryptHash: encryptedData.dataToEncryptHash,
+		const decryptedKey = await this.litClient.decrypt({
+			ciphertext: keyEncryptedData.ciphertext,
+			dataToEncryptHash: keyEncryptedData.dataToEncryptHash,
 			unifiedAccessControlConditions: acc,
 			authContext,
 			chain: "baseSepolia",
 		});
 
-		return new TextDecoder().decode(decrypted.decryptedData);
+		// recover the symmetric key
+		const key = decryptedKey.decryptedData;
+		// actually decrypt the data with the recovered key
+		const decryptedFile = await decryptData(encryptedData, key);
+
+		return decryptedFile;
 	}
 
 	// proof gen

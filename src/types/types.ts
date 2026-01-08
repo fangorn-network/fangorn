@@ -40,10 +40,16 @@ export interface PendingEntry {
 	fileType: string;
 }
 
-// TODO add to types.ts
 export interface Filedata {
 	tag: string;
 	data: string;
 	extension: string;
 	fileType: string;
+}
+
+export interface EncryptedData {
+	ciphertext: Uint8Array<ArrayBuffer>;
+	iv: Uint8Array<ArrayBuffer>;
+	authTag: Uint8Array<ArrayBuffer>;
+	salt: Uint8Array<ArrayBuffer>;
 }
