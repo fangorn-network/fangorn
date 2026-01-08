@@ -7,6 +7,7 @@ import {
 	createPublicClient,
 	createWalletClient,
 	custom,
+	getAddress,
 	Hex,
 	http,
 	toHex,
@@ -29,7 +30,11 @@ import {
 import { PinataSDK } from "pinata";
 import { Barretenberg, UltraHonkBackend } from "@aztec/bb.js";
 import { CompiledCircuit, Noir } from "@noir-lang/noir_js";
-import { createAuthManager, storagePlugins } from "@lit-protocol/auth";
+import {
+	createAuthManager,
+	storagePlugins,
+	WalletClientAuthenticator,
+} from "@lit-protocol/auth";
 
 /**
  * Fangorn class
@@ -71,12 +76,6 @@ export class Fangorn {
 		gateway: string,
 		litActionCid: string,
 	) {
-		// client to interact with LIT proto
-		const litClient = await createLitClient({
-			// @ts-expect-error - TODO: fix this
-			network: nagaDev,
-		});
-
 		const publicClient = createPublicClient({ transport: http(rpcUrl) });
 		let walletClient;
 
@@ -87,12 +86,20 @@ export class Fangorn {
 				chain: baseSepolia,
 			});
 		} else {
+			console.log("using window.ethereum");
 			walletClient = createWalletClient({
-				account,
+				account: getAddress(account),
 				transport: custom(window.ethereum),
 				chain: baseSepolia,
 			});
 		}
+
+		await WalletClientAuthenticator.authenticate(walletClient);
+		// client to interact with LIT proto
+		const litClient = await createLitClient({
+			// @ts-expect-error - TODO: fix this
+			network: nagaDev,
+		});
 
 		// interacts with the zk-gate contract
 		let zkGateClient = new ZKGate(
@@ -285,20 +292,30 @@ export class Fangorn {
 		password: string,
 		circuit: any,
 	): Promise<string> {
+		let authManager;
 		// load the auth context
-		const authManager = createAuthManager({
-			storage: storagePlugins.localStorageNode({
-				appName: "fangorn",
-				networkName: nagaDev.getNetworkName(),
-				storagePath: "./lit-auth-storage",
-			}),
-		});
+		if (typeof window === "undefined") {
+			authManager = createAuthManager({
+				storage: storagePlugins.localStorageNode({
+					appName: "fangorn",
+					networkName: nagaDev.getNetworkName(),
+					storagePath: "./lit-auth-storage",
+				}),
+			});
+		} else {
+			authManager = createAuthManager({
+				storage: storagePlugins.localStorage({
+					appName: "fangorn",
+					networkName: nagaDev.getNetworkName(),
+				}),
+			});
+		}
 
 		const litClient = this.litClient;
 		const authContext = await authManager.createEoaAuthContext({
 			litClient,
 			config: {
-				account: this.walletClient.account,
+				account: this.walletClient,
 			},
 			authConfig: {
 				domain: "localhost", // TODO: do we need to update this?
