@@ -131,9 +131,24 @@ describe("ZK-gated decryption", () => {
 		// uploads 3 test files
 		// tag = "tax-2025"
 		const manifest = [
-			{ tag: "test0", data: "content0" },
-			{ tag: "test1", data: "content1" },
-			{ tag: "test2", data: "content2" },
+			{
+				tag: "test0",
+				data: "content0",
+				extension: ".txt",
+				fileType: "text/plain",
+			},
+			{
+				tag: "test1",
+				data: "content1",
+				extension: ".png",
+				fileType: "image/png",
+			},
+			{
+				tag: "test2",
+				data: "content2",
+				extension: ".mp4",
+				fileType: "video/mp4",
+			},
 		];
 		await testbed.fileUpload(vaultId, manifest, ipfsCid);
 		// try to get the data associated with the (vault, tag) combo
@@ -151,7 +166,14 @@ describe("ZK-gated decryption", () => {
 		const badPassword = "not-ok";
 		const vaultId = await testbed.setupVault(password);
 
-		const manifest = [{ tag: "test3", data: "content3" }];
+		const manifest = [
+			{
+				tag: "test3",
+				data: "content3",
+				extension: ".txt",
+				fileType: "text/plain",
+			},
+		];
 		await testbed.fileUpload(vaultId, manifest, ipfsCid);
 		// try to get the data associated with the (vault, tag) combo
 
