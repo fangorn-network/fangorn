@@ -12,7 +12,7 @@ import {
 	toHex,
 } from "viem";
 import { baseSepolia } from "viem/chains";
-import { ZKGate } from "./interface/zkGate.js";
+import { Vault, ZKGate } from "./interface/zkGate.js";
 import { hashPassword } from "./utils/index.js";
 import { buildCircuitInputs, computeTagCommitment } from "./crypto/proof.js";
 import {
@@ -388,14 +388,19 @@ export class Fangorn {
 		await this.zkGate.waitForTransaction(hash);
 	}
 
-	public async getUserVaults() {
+	public async getUserVaults(): Promise<string[]> {
 		const address: Address = this.walletClient.account.address;
-		const vaults = await this.zkGate.getOwnedVault(address);
+		const vaults = await this.zkGate.getOwnedVaults(address);
 
 		return vaults;
 	}
 
-	private async fetchManifest(cid: string): Promise<VaultManifest> {
+	public async getVault(vaultId: Hex): Promise<Vault> {
+		const vault: Vault = await this.zkGate.getVault(vaultId);
+		return vault;
+	}
+
+	public async fetchManifest(cid: string): Promise<VaultManifest> {
 		const response = await this.pinata.gateways.public.get(cid);
 		return response.data as unknown as VaultManifest;
 	}
