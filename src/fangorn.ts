@@ -6,6 +6,7 @@ import {
 	Address,
 	createPublicClient,
 	createWalletClient,
+	custom,
 	Hex,
 	http,
 	toHex,
@@ -82,11 +83,21 @@ export class Fangorn {
 		});
 
 		const publicClient = createPublicClient({ transport: http(rpcUrl) });
-		const walletClient = createWalletClient({
-			account,
-			transport: http(rpcUrl),
-			chain: baseSepolia,
-		});
+		let walletClient;
+
+		if (!window.ethereum) {
+			walletClient = createWalletClient({
+				account,
+				transport: http(rpcUrl),
+				chain: baseSepolia,
+			});
+		} else {
+			walletClient = createWalletClient({
+				account,
+				transport: custom(window.ethereum),
+				chain: baseSepolia,
+			});
+		}
 
 		// interacts with the zk-gate contract
 		let zkGateClient = new ZKGate(
@@ -375,6 +386,13 @@ export class Fangorn {
 			proofHex,
 		);
 		await this.zkGate.waitForTransaction(hash);
+	}
+
+	public async getUserVaults() {
+		const address: Address = this.walletClient.account.address;
+		const vaults = await this.zkGate.getOwnedVault(address);
+
+		return vaults;
 	}
 
 	private async fetchManifest(cid: string): Promise<VaultManifest> {
