@@ -24,21 +24,41 @@ const vaultId = await fangorn.createVault(password);
 
 // upload files to the vault
 let filedata = [
-  { tag: "test-tag-0", data "test-data-0" },
-  { tag: "test-tag-1", data "test-data-1" }
+  {
+				tag: "test0",
+				data: "content0",
+				extension: ".txt",
+				fileType: "text/plain",
+			},
+			{
+				tag: "test1",
+				data: "content1",
+				extension: ".png",
+				fileType: "image/png",
+			},
 ];
 await fangorn.upload(vaultId, filedata, ipfsCid);
 
 // easily add more file to the vault
 let filedata = [
-  { tag: "test-tag-3", data "test-data-3" }
+  			{
+				tag: "test2",
+				data: "content2",
+				extension: ".mp4",
+				fileType: "video/mp4",
+			},
 ];
 await fangorn.upload(filedata);
 
 // overwrite a vault
 // upload files to the vault
 let filedata = [
-  { tag: "new-tag", data "new-data" }
+  			{
+				tag: "test3",
+				data: "content3",
+				extension: ".js",
+				fileType: "text/javascript",
+			},
 ];
 await fangorn.upload(filedata);
 

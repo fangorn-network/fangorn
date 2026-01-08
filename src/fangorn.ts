@@ -33,12 +33,16 @@ interface PendingEntry {
 	leaf: bigint;
 	commitment: Hex;
 	acc: any;
+	extension: string;
+	fileType: string;
 }
 
 // TODO add to types.ts
 export interface Filedata {
 	tag: string;
 	data: string;
+	extension: string;
+	fileType: string;
 }
 
 /**
@@ -85,7 +89,7 @@ export class Fangorn {
 		const publicClient = createPublicClient({ transport: http(rpcUrl) });
 		let walletClient;
 
-		if (!window.ethereum) {
+		if (typeof window === "undefined") {
 			walletClient = createWalletClient({
 				account,
 				transport: http(rpcUrl),
@@ -163,6 +167,8 @@ export class Fangorn {
 		vaultId: Hex,
 		file: Filedata,
 		litActionCid: string,
+		// extension: string,
+		// fileType: string,
 	): Promise<{ cid: string; commitment: Hex }> {
 		// compute commitment to (vaultId, tag)
 		const tag = file.tag;
@@ -199,6 +205,8 @@ export class Fangorn {
 			leaf,
 			commitment: commitmentHex,
 			acc,
+			extension: file.extension,
+			fileType: file.fileType,
 		});
 
 		return { cid: upload.cid, commitment: commitmentHex };
@@ -238,6 +246,8 @@ export class Fangorn {
 				index: i,
 				leaf: fieldToHex(e.leaf),
 				commitment: e.commitment,
+				extension: e.extension,
+				fileType: e.fileType,
 			})),
 			tree: layers.map((layer) => layer.map(fieldToHex)),
 		};
@@ -273,6 +283,8 @@ export class Fangorn {
 				leaf: hexToField(entry.leaf),
 				commitment: entry.commitment as Hex,
 				acc: null,
+				extension: entry.extension,
+				fileType: entry.fileType,
 			});
 		}
 	}

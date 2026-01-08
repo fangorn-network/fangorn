@@ -5,6 +5,8 @@ export interface VaultEntry {
 	index: number;
 	leaf: string;
 	commitment: string;
+	extension: string;
+	fileType: string;
 }
 
 export interface VaultManifest {
@@ -21,4 +23,6 @@ export interface VaultEntryRaw {
 	index: number;
 	leaf: bigint;
 	commitment: string;
+	extension: string;
+	fileType: string;
 }
