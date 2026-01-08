@@ -153,7 +153,7 @@ describe("ZK-gated decryption", () => {
 				fileType: "text/plain",
 			},
 		];
-		await testbed.fileUpload(vaultId, manifest, ipfsCid);
+		await testbed.fileUpload(vaultId, manifest);
 		// try to get the data associated with the (vault, tag) combo
 
 		let didFail = false;
