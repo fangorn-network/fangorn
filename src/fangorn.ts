@@ -89,7 +89,7 @@ export class Fangorn {
 		} else {
 			console.log("using window.ethereum");
 			walletClient = createWalletClient({
-				account: getAddress(account),
+				account: getAddress(account.address),
 				transport: custom(window.ethereum),
 				chain: baseSepolia,
 			});
@@ -297,6 +297,7 @@ export class Fangorn {
 		circuit: any,
 	): Promise<Uint8Array<ArrayBufferLike>> {
 		// load the auth context
+		let authManager;
 		if (typeof window === "undefined") {
 			authManager = createAuthManager({
 				storage: storagePlugins.localStorageNode({
