@@ -2,44 +2,11 @@ import { beforeAll, describe, it, expect } from "vitest";
 import { Account, Hex, type Address } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { readFileSync } from "fs";
-// import { fileURLToPath } from "url";
 import { join } from "path";
 import { deployContracts } from "./deployContract.js";
 import { TestBed } from "./test/testbed.js";
-import { createRequire } from "module";
-
-// // Import everything to see what's available
-// import * as acvm from "@noir-lang/acvm_js";
-// import * as noirc from "@noir-lang/noirc_abi";
 import { PinataSDK } from "pinata";
 import { uploadToPinata } from "./test/index.js";
-// const require = createRequire(import.meta.url);
-
-// // Load WASM as bytes
-// const acvmWasm = readFileSync(
-// 	require.resolve("@noir-lang/acvm_js/web/acvm_js_bg.wasm"),
-// );
-// const noircWasm = readFileSync(
-// 	require.resolve("@noir-lang/noirc_abi/web/noirc_abi_wasm_bg.wasm"),
-// );
-
-// // wasm-bindgen generated code often uses __wbg_init or initSync
-// const initAcvm =
-// 	(acvm as any).__wbg_init || (acvm as any).initSync || (acvm as any).default;
-// const initNoirc =
-// 	(noirc as any).__wbg_init ||
-// 	(noirc as any).initSync ||
-// 	(noirc as any).default;
-
-// if (typeof initAcvm === "function") {
-// 	await initAcvm(acvmWasm);
-// }
-// if (typeof initNoirc === "function") {
-// 	await initNoirc(noircWasm);
-// }
-
-// const __filename = fileURLToPath(import.meta.url);
-// const __dirname = dirname(__filename);
 
 const getEnv = (key: string) => {
 	const value = process.env[key];
@@ -119,6 +86,7 @@ describe("ZK-gated decryption", () => {
 			rpcUrl,
 			jwt,
 			gateway,
+			ipfsCid,
 		);
 	}, 30_000);
 
@@ -137,7 +105,7 @@ describe("ZK-gated decryption", () => {
 				fileType: "text/plain",
 			},
 		];
-		await testbed.fileUpload(vaultId, manifest, ipfsCid);
+		await testbed.fileUpload(vaultId, manifest);
 		// try to get the data associated with the (vault, tag) combo
 		const tag = manifest[0].tag;
 		const expectedPlaintext = manifest[0].data;
@@ -160,7 +128,7 @@ describe("ZK-gated decryption", () => {
 				fileType: "video/mp4",
 			},
 		];
-		await testbed.fileUpload(vaultId, nextFiles, ipfsCid);
+		await testbed.fileUpload(vaultId, nextFiles);
 
 		// try to access the new files with the same passwodr
 		const newTag = nextFiles[0].tag;

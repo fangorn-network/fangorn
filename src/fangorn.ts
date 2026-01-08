@@ -20,36 +20,23 @@ import {
 	fieldToHex,
 	hexToField,
 } from "./crypto/merkle.js";
-import { VaultEntry, VaultManifest } from "./types/types.js";
+import {
+	Filedata,
+	PendingEntry,
+	VaultEntry,
+	VaultManifest,
+} from "./types/types.js";
 import { PinataSDK } from "pinata";
 import { Barretenberg, UltraHonkBackend } from "@aztec/bb.js";
 import { CompiledCircuit, Noir } from "@noir-lang/noir_js";
 import { createAuthManager, storagePlugins } from "@lit-protocol/auth";
 
-// intermediate entry struct
-interface PendingEntry {
-	tag: string;
-	cid: string;
-	leaf: bigint;
-	commitment: Hex;
-	acc: any;
-	extension: string;
-	fileType: string;
-}
-
-// TODO add to types.ts
-export interface Filedata {
-	tag: string;
-	data: string;
-	extension: string;
-	fileType: string;
-}
-
 /**
- *
+ * Fangorn class
  */
 export class Fangorn {
 	private litClient: any;
+	private litActionCid: string;
 	private zkGate: any;
 
 	private walletClient: any;
@@ -60,6 +47,7 @@ export class Fangorn {
 	private pendingEntries: Map<string, PendingEntry> = new Map();
 
 	constructor(
+		litActionCid: string,
 		litClient: any,
 		zkGate: any,
 		walletClient: any,
@@ -71,6 +59,8 @@ export class Fangorn {
 		this.walletClient = walletClient;
 
 		this.pinata = pinata;
+
+		this.litActionCid = litActionCid;
 	}
 
 	public static async init(
@@ -79,6 +69,7 @@ export class Fangorn {
 		zkGateContractAddress: Address,
 		jwt: string,
 		gateway: string,
+		litActionCid: string,
 	) {
 		// client to interact with LIT proto
 		const litClient = await createLitClient({
@@ -116,7 +107,13 @@ export class Fangorn {
 			pinataGateway: gateway,
 		});
 
-		return new Fangorn(litClient, zkGateClient, walletClient, pinata);
+		return new Fangorn(
+			litActionCid,
+			litClient,
+			zkGateClient,
+			walletClient,
+			pinata,
+		);
 	}
 
 	// TODO: how to ensure password is zeroized?
@@ -132,12 +129,7 @@ export class Fangorn {
 		return vaultId;
 	}
 
-	async upload(
-		vaultId: Hex,
-		filedata: Filedata[],
-		litActionCid: string,
-		overwrite?: boolean,
-	) {
+	async upload(vaultId: Hex, filedata: Filedata[], overwrite?: boolean) {
 		// check if manifest exists or not
 		// load existing manifest
 		const vault = await this.zkGate.getVault(vaultId);
@@ -155,7 +147,7 @@ export class Fangorn {
 
 		// add files
 		for (let file of filedata) {
-			await this.addFile(vaultId, file, litActionCid);
+			await this.addFile(vaultId, file);
 		}
 		return await this.commitVault(vaultId);
 	}
@@ -167,9 +159,6 @@ export class Fangorn {
 	async addFile(
 		vaultId: Hex,
 		file: Filedata,
-		litActionCid: string,
-		// extension: string,
-		// fileType: string,
 	): Promise<{ cid: string; commitment: Hex }> {
 		// compute commitment to (vaultId, tag)
 		const tag = file.tag;
@@ -179,7 +168,7 @@ export class Fangorn {
 		// build ACC
 		const acc = createAccBuilder()
 			.requireLitAction(
-				litActionCid,
+				this.litActionCid,
 				"go",
 				[this.zkGate.getContractAddress(), vaultId, commitmentHex],
 				"true",

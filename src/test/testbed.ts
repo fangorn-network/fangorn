@@ -1,6 +1,7 @@
 import { Account, Address, Hex } from "viem";
 import { createRequire } from "module";
-import { Fangorn, Filedata } from "../fangorn.js";
+import { Fangorn } from "../fangorn.js";
+import { Filedata } from "../types/types.js";
 
 const require = createRequire(import.meta.url);
 const circuit = require("../../circuits/preimage/target/preimage.json");
@@ -24,6 +25,7 @@ export class TestBed {
 		rpcUrl: string,
 		jwt: string,
 		gateway: string,
+		ipfsCid: string,
 	) {
 		const fangorn = await Fangorn.init(
 			delegatorAccount,
@@ -31,6 +33,7 @@ export class TestBed {
 			zkGateAddress as Address,
 			jwt,
 			gateway,
+			ipfsCid,
 		);
 
 		const delegateeFangorn = await Fangorn.init(
@@ -39,6 +42,7 @@ export class TestBed {
 			zkGateAddress as Address,
 			jwt,
 			gateway,
+			ipfsCid,
 		);
 
 		return new TestBed(fangorn, delegateeFangorn);
@@ -53,8 +57,8 @@ export class TestBed {
 		return this.vaultIds.get(password)!;
 	}
 
-	async fileUpload(vaultId: Hex, filedata: Filedata[], ipfsCid: string) {
-		await this.delegatorFangorn.upload(vaultId, filedata, ipfsCid);
+	async fileUpload(vaultId: Hex, filedata: Filedata[]) {
+		await this.delegatorFangorn.upload(vaultId, filedata);
 	}
 
 	async tryDecrypt(vaultId: Hex, tag: string, password: string) {

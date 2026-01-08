@@ -4,6 +4,8 @@ Programmable Privacy
 
 ## Usage
 
+Fangorn requires the expected [lit action](./src/lit-actions/litAction.js) is pinned to IPFS (e.g. using Pinata) and must be provided when initializing the Fangorn client.
+
 ### Encryption
 
 Fangorn allows encrypted data to be added to a 'vault' protected by a user-defined password. First, a user creates a vault
@@ -16,6 +18,7 @@ const fangorn = await Fangorn.init(
   zkGateAddress as Address,
   jwt,
   gateway,
+  litActionCid,
 );
 
 // create a new vault bound to a password
@@ -38,7 +41,7 @@ let filedata = [
 				fileType: "image/png",
 			},
 ];
-await fangorn.upload(vaultId, filedata, ipfsCid);
+await fangorn.upload(vaultId, filedata);
 
 // easily add more file to the vault
 let filedata = [
@@ -80,6 +83,7 @@ const fangornDelegatee = await Fangorn.init(
   zkGateAddress as Address,
   jwt,
   gateway,
+  litActionCid,
 );
 
 const plaintext = await fangornDelegatee.decryptFile(

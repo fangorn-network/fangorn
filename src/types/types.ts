@@ -1,3 +1,5 @@
+import { Hex } from "viem";
+
 // src/types.ts
 export interface VaultEntry {
 	tag: string;
@@ -23,6 +25,25 @@ export interface VaultEntryRaw {
 	index: number;
 	leaf: bigint;
 	commitment: string;
+	extension: string;
+	fileType: string;
+}
+
+// intermediate entry struct
+export interface PendingEntry {
+	tag: string;
+	cid: string;
+	leaf: bigint;
+	commitment: Hex;
+	acc: any;
+	extension: string;
+	fileType: string;
+}
+
+// TODO add to types.ts
+export interface Filedata {
+	tag: string;
+	data: string;
 	extension: string;
 	fileType: string;
 }
