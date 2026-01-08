@@ -11,7 +11,7 @@ import {
 	http,
 	toHex,
 } from "viem";
-import { baseSepolia } from "viem/chains";
+import { baseSepolia, filecoin } from "viem/chains";
 import { Vault, ZKGate } from "./interface/zkGate.js";
 import { hashPassword } from "./utils/index.js";
 import { buildCircuitInputs, computeTagCommitment } from "./crypto/proof.js";
@@ -150,7 +150,7 @@ export class Fangorn {
 
 		// add files
 		for (let file of filedata) {
-			await this.addFile(vaultId, file.tag, file.data, litActionCid);
+			await this.addFile(vaultId, file, litActionCid);
 		}
 		return await this.commitVault(vaultId);
 	}
@@ -161,11 +161,11 @@ export class Fangorn {
 	 */
 	async addFile(
 		vaultId: Hex,
-		tag: string,
-		plaintext: string,
+		file: Filedata,
 		litActionCid: string,
 	): Promise<{ cid: string; commitment: Hex }> {
 		// compute commitment to (vaultId, tag)
+		const tag = file.tag;
 		const leaf = await computeTagCommitment(vaultId, tag);
 		const commitmentHex = fieldToHex(leaf);
 
@@ -181,7 +181,7 @@ export class Fangorn {
 
 		// encrypt
 		const encryptedData = await this.litClient.encrypt({
-			dataToEncrypt: plaintext,
+			dataToEncrypt: file.data,
 			unifiedAccessControlConditions: acc,
 			chain: "baseSepolia", // TODO: this should probably be dynamic
 		});
