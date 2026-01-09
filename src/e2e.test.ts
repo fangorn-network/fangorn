@@ -82,7 +82,7 @@ describe("ZK-gated decryption", () => {
 			gateway,
 			ipfsCid,
 		);
-	}, 30_000);
+	}, 120_000); // 2 minute timeout
 
 	// afterall => cleanup (unpin files)
 	it("should create a vault with data and succeed to decrypt when the proof is valid", async () => {
@@ -108,30 +108,32 @@ describe("ZK-gated decryption", () => {
 		expect(outputAsString).toBe(expectedPlaintext);
 		console.log("Decryption succeeded!");
 
-		// // add more data to the vault
-		// const nextFiles = [
-		// 	{
-		// 		tag: "test1",
-		// 		data: "content1",
-		// 		extension: ".png",
-		// 		fileType: "image/png",
-		// 	},
-		// 	{
-		// 		tag: "test2",
-		// 		data: "content2",
-		// 		extension: ".mp4",
-		// 		fileType: "video/mp4",
-		// 	},
-		// ];
-		// await testbed.fileUpload(vaultId, nextFiles);
+		// sleep to avoid any pinata rate limiting
+		await new Promise((f) => setTimeout(f, 2000));
+		// add more data to the vault
+		const nextFiles = [
+			{
+				tag: "test1",
+				data: "content1",
+				extension: ".png",
+				fileType: "image/png",
+			},
+			{
+				tag: "test2",
+				data: "content2",
+				extension: ".mp4",
+				fileType: "video/mp4",
+			},
+		];
+		await testbed.fileUpload(vaultId, nextFiles);
 
-		// // try to access the new files with the same password
-		// const newTag = nextFiles[0].tag;
-		// const newExpectedPlaintext = nextFiles[0].data;
-		// const actualOutput = await testbed.tryDecrypt(vaultId, newTag, password);
-		// const actualOutputAsString = new TextDecoder().decode(actualOutput);
-		// expect(actualOutputAsString).toBe(newExpectedPlaintext);
-		// console.log("Decryption succeeded again!!");
+		// try to access the new files with the same password
+		const newTag = nextFiles[0].tag;
+		const newExpectedPlaintext = nextFiles[0].data;
+		const actualOutput = await testbed.tryDecrypt(vaultId, newTag, password);
+		const actualOutputAsString = new TextDecoder().decode(actualOutput);
+		expect(actualOutputAsString).toBe(newExpectedPlaintext);
+		console.log("Decryption succeeded again!!");
 	}, 120_000);
 
 	it("should fail to decrypt when the password is incorrect", async () => {

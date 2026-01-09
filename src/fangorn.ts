@@ -81,6 +81,7 @@ export class Fangorn {
 		let walletClient;
 
 		if (typeof window === "undefined") {
+			console.log("not using window.ethereum");
 			walletClient = createWalletClient({
 				account,
 				transport: http(rpcUrl),
@@ -319,7 +320,7 @@ export class Fangorn {
 		const authContext = await authManager.createEoaAuthContext({
 			litClient,
 			config: {
-				account: this.walletClient,
+				account: this.walletClient.account,
 			},
 			authConfig: {
 				domain: "localhost", // TODO: do we need to update this?
