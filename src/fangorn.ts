@@ -320,7 +320,7 @@ export class Fangorn {
 		const authContext = await authManager.createEoaAuthContext({
 			litClient,
 			config: {
-				account: this.walletClient.account,
+				account: this.walletClient,
 			},
 			authConfig: {
 				domain: "localhost", // TODO: do we need to update this?
