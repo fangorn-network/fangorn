@@ -70,7 +70,7 @@ export class Fangorn {
 	}
 
 	public static async init(
-		account: Account,
+		account: Account | Address,
 		rpcUrl: string,
 		zkGateContractAddress: Address,
 		jwt: string,
@@ -90,7 +90,7 @@ export class Fangorn {
 		} else {
 			console.log("using window.ethereum");
 			walletClient = createWalletClient({
-				account: getAddress(account.address),
+				account: getAddress(account as Address),
 				transport: custom(window.ethereum),
 				chain: baseSepolia,
 			});

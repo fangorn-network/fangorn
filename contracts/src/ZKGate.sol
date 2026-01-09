@@ -177,11 +177,12 @@ contract ZKGate {
 			bytes32 passwordHash,
 			bytes32 poseidonRoot,
 			string memory manifestCid,
-			address owner
+			address owner,
+			string memory name
 		)
 	{
 		Vault memory v = vaults[vaultId];
-		return (v.passwordHash, v.poseidonRoot, v.manifestCid, v.owner);
+		return (v.passwordHash, v.poseidonRoot, v.manifestCid, v.owner, v.name);
 	}
 
 	function getOwnedVault(
