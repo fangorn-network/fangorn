@@ -3,37 +3,7 @@ import { EncryptedData } from "../types/types";
 import { getRandomValues } from "crypto";
 import { getSubtleCrypto } from "./rand";
 
-// async function deriveKey(
-//     password: string,
-//     salt: Uint8Array<ArrayBuffer>
-// ): Promise<CryptoKey> {
-//     const subtle = getSubtleCrypto();
-//     const encodedPassword = new TextEncoder().encode(password);
-//     const baseKey = await subtle.importKey(
-//         "raw",
-//         encodedPassword,
-//         { name: "PBKDF2" },
-//         false,
-//         ["deriveKey"],
-//     );
-//     const derivedKey = await subtle.deriveKey(
-//         {
-//             name: "PBKDF2",
-//             salt,
-//             iterations: 600000,
-//             hash: "SHA-256",
-//         },
-//         baseKey,
-//         { name: "AES-GCM", length: 256 },
-//         true,
-//         ["encrypt", "decrypt"],
-//     );
-//     return derivedKey;
-// }
-
-export async function encryptData(
-	data: string | Uint8Array,
-): Promise<{
+export async function encryptData(data: string | Uint8Array): Promise<{
 	encryptedData: EncryptedData;
 	keyMaterial: Uint8Array<ArrayBuffer>;
 }> {

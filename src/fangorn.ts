@@ -30,7 +30,7 @@ import {
 import { PinataSDK } from "pinata";
 import { Barretenberg, UltraHonkBackend } from "@aztec/bb.js";
 import { CompiledCircuit, Noir } from "@noir-lang/noir_js";
-import { decryptData, encryptData } from "./crypto/aes.js";
+import { decryptData, encryptData } from "./crypto/encryption.js";
 import {
 	createAuthManager,
 	storagePlugins,
