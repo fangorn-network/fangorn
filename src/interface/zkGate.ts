@@ -14,6 +14,7 @@ export interface Vault {
 	poseidonRoot: `0x${string}`;
 	manifestCid: string;
 	owner: Address;
+	name: string;
 }
 
 const ZKGATE_ABI = [
@@ -75,6 +76,7 @@ const ZKGATE_ABI = [
 			{ name: "poseidonRoot", type: "bytes32" },
 			{ name: "manifestCid", type: "string" },
 			{ name: "owner", type: "address" },
+			{ name: "name", type: "string" },
 		],
 	},
 	{
@@ -189,14 +191,14 @@ export class ZKGate {
 	}
 
 	async getVault(vaultId: `0x${string}`): Promise<Vault> {
-		const [passwordHash, poseidonRoot, manifestCid, owner] =
+		const [passwordHash, poseidonRoot, manifestCid, owner, name] =
 			await this.publicClient.readContract({
 				address: this.contractAddress,
 				abi: ZKGATE_ABI,
 				functionName: "getVault",
 				args: [vaultId],
 			});
-		return { passwordHash, poseidonRoot, manifestCid, owner };
+		return { passwordHash, poseidonRoot, manifestCid, owner, name };
 	}
 
 	async checkCIDAccess(

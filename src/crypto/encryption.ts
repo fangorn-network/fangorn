@@ -1,7 +1,5 @@
-import { bytesToHex } from "@noble/hashes/utils.js";
 import { EncryptedData } from "../types/types";
-import { getRandomValues } from "crypto";
-import { getSubtleCrypto } from "./rand";
+import { getSubtleCrypto, getRandomValues } from "./rand";
 
 export async function encryptData(data: string | Uint8Array): Promise<{
 	encryptedData: EncryptedData;
