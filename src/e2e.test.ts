@@ -77,6 +77,7 @@ describe("ZK-gated decryption", () => {
 		}
 
 		console.log(`Lit Action CID: ${ipfsCid}`);
+		console.log(`Compiled Circuit CID: ${circuitIpfsCid}`);
 		console.log(`Verifier: ${verifierContractAddress}`);
 		console.log(`ZKGate: ${zkGateAddress}`);
 

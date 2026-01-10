@@ -4,6 +4,7 @@ import { nagaDev } from "@lit-protocol/networks";
 import {
 	Account,
 	Address,
+	Chain,
 	createPublicClient,
 	createWalletClient,
 	custom,
@@ -44,15 +45,22 @@ export interface AppConfig {
 	circuitJsonCid: string;
 	// The deployed zkGate contract address
 	zkGateContractAddress: Hex;
+	//  The chain we are deploying to
+	chain: Chain;
+	// The name of the chain for LIT action execution (does not always match what is defined by viem)
+	chainName: string;
 	// The public rpc address of the chain we are connecting to
 	rpcUrl: string;
 }
 
 export namespace FangornConfig {
+	// A testnet config for cotnracts deployed on Base Sepolia
 	export const Testnet: AppConfig = {
-		litActionCid: "",
-		circuitJsonCid: "",
-		zkGateContractAddress: "0x0",
+		litActionCid: "QmcDkeo7YnJbuyYnXfxcnB65UCkjFhLDG5qa3hknMmrDmQ",
+		circuitJsonCid: "QmXw1rWUC2Kw52Qi55sfW3bCR7jheCDfSUgVRwvsP8ZZPE",
+		zkGateContractAddress: "0x062da4924251c7ed392afc01f57d7ea2c255dc81",
+		chain: baseSepolia,
+		chainName: "baseSepolia",
 		rpcUrl: "https://base-sepolia-public.nodies.app",
 	};
 }
@@ -61,27 +69,25 @@ export namespace FangornConfig {
  * Fangorn class
  */
 export class Fangorn {
+	// The name (for LIT) of the chain we are using
+	private chainName: string;
 	// The LIT client for interacting with the LIT network
 	private litClient: any;
-
+	// The CID of the lit action in storage
 	private litActionCid: string;
-
 	// The complied noir circuit (e.g. circuit.json)
 	private circuit: CompiledCircuit;
-
 	// The ZKGate Contract instance
 	private zkGate: any;
-
 	// The wallet client for signing txs
 	private walletClient: any;
-
 	// The storage layer (todo: make this into a genericc storage adapter)
 	private pinata: PinataSDK;
-
 	// in-mem state for building manifests
 	private pendingEntries: Map<string, PendingEntry> = new Map();
 
 	constructor(
+		chainName: string,
 		litActionCid: string,
 		circuit: CompiledCircuit,
 		litClient: any,
@@ -110,23 +116,23 @@ export class Fangorn {
 	) {
 		const resolvedConfig = config || FangornConfig.Testnet;
 		const rpcUrl = resolvedConfig.rpcUrl;
+		const chain = resolvedConfig.chain;
+		const chainName = resolvedConfig.chainName;
 
 		const publicClient = createPublicClient({ transport: http(rpcUrl) });
 		let walletClient;
 
 		if (typeof window === "undefined") {
-			console.log("not using window.ethereum");
 			walletClient = createWalletClient({
 				account,
 				transport: http(rpcUrl),
-				chain: baseSepolia,
+				chain,
 			});
 		} else {
-			console.log("using window.ethereum");
 			walletClient = createWalletClient({
 				account: getAddress(account as Address),
 				transport: custom(window.ethereum),
-				chain: baseSepolia,
+				chain,
 			});
 		}
 
@@ -150,8 +156,6 @@ export class Fangorn {
 			pinataGateway: gateway,
 		});
 
-		// TODO: should we check if it is retrievable?
-		const litActionCid = resolvedConfig.litActionCid;
 		// read the circuit from ipfs
 		// TODO: assumes the circuit exists, no error handling here
 		const circuitResponse = await pinata.gateways.public.get(
@@ -159,9 +163,8 @@ export class Fangorn {
 		);
 		const compiledCircuit = circuitResponse.data as unknown as CompiledCircuit;
 
-		console.log("got the compiled circuit " + compiledCircuit);
-
 		return new Fangorn(
+			chainName,
 			resolvedConfig.litActionCid,
 			compiledCircuit,
 			litClient,
@@ -184,6 +187,13 @@ export class Fangorn {
 		return vaultId;
 	}
 
+	/**
+	 * Upload data to an existing vault
+	 * @param vaultId The id of the vault being modified
+	 * @param filedata The file data to insert
+	 * @param overwrite If true, then overwrite the existing vault with new files
+	 * @returns The new manifest CID and Merkle root
+	 */
 	async upload(vaultId: Hex, filedata: Filedata[], overwrite?: boolean) {
 		// check if manifest exists or not
 		// load existing manifest
@@ -237,7 +247,7 @@ export class Fangorn {
 		const keyEncryptedData = await this.litClient.encrypt({
 			dataToEncrypt: keyMaterial,
 			unifiedAccessControlConditions: acc,
-			chain: "baseSepolia",
+			chain: this.chainName,
 		});
 
 		// upload ciphertext (pin)
@@ -337,6 +347,13 @@ export class Fangorn {
 		}
 	}
 
+	/**
+	 * Attempt to decrypt data identified with a given tag within the given vault
+	 * @param vaultId
+	 * @param tag
+	 * @param password
+	 * @returns
+	 */
 	async decryptFile(
 		vaultId: Hex,
 		tag: string,
@@ -414,7 +431,7 @@ export class Fangorn {
 			dataToEncryptHash: keyEncryptedData.dataToEncryptHash,
 			unifiedAccessControlConditions: acc,
 			authContext,
-			chain: "baseSepolia",
+			chain: this.chainName,
 		});
 
 		// recover the symmetric key

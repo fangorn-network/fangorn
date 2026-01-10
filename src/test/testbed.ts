@@ -1,7 +1,7 @@
-import { Account, Address, Hex } from "viem";
-import { createRequire } from "module";
+import { Account, Hex } from "viem";
 import { AppConfig, Fangorn } from "../fangorn.js";
 import { Filedata } from "../types/types.js";
+import { baseSepolia } from "viem/chains";
 
 export class TestBed {
 	private delegatorFangorn: Fangorn;
@@ -29,11 +29,12 @@ export class TestBed {
 			litActionCid: litActionCid,
 			circuitJsonCid: circuitJsonCid,
 			zkGateContractAddress: zkGateContractAddress,
+			chain: baseSepolia,
+			chainName: "baseSepolia",
 			rpcUrl: rpcUrl,
 		};
 
 		const fangorn = await Fangorn.init(delegatorAccount, jwt, gateway, config);
-
 		const delegateeFangorn = await Fangorn.init(
 			delegateeAcount,
 			jwt,
