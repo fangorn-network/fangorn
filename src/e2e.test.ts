@@ -5,8 +5,11 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { deployContracts } from "./deployContract.js";
 import { TestBed } from "./test/testbed.js";
-import { PinataSDK } from "pinata";
 import { uploadToPinata } from "./test/index.js";
+import { createRequire } from "module";
+
+const require = createRequire(import.meta.url);
+const circuit = require("../circuits/preimage/target/preimage.json");
 
 const getEnv = (key: string) => {
 	const value = process.env[key];
@@ -26,6 +29,7 @@ describe("ZK-gated decryption", () => {
 	let verifierContractAddress: Address;
 	let zkGateAddress: Address;
 	let ipfsCid: string;
+	let circuitIpfsCid: string;
 
 	let testbed: TestBed;
 
@@ -67,6 +71,9 @@ describe("ZK-gated decryption", () => {
 			const deployment = await deployContracts({ account: delegatorAccount });
 			verifierContractAddress = deployment.verifierAddress;
 			zkGateAddress = deployment.zkGateAddress;
+
+			console.log("Uploading circuit.json to Pinata");
+			circuitIpfsCid = await uploadToPinata("preimage.json", circuit);
 		}
 
 		console.log(`Lit Action CID: ${ipfsCid}`);
@@ -76,11 +83,12 @@ describe("ZK-gated decryption", () => {
 		testbed = await TestBed.init(
 			delegatorAccount,
 			delegateeAccount,
-			zkGateAddress,
-			rpcUrl,
 			jwt,
 			gateway,
 			ipfsCid,
+			circuitIpfsCid,
+			zkGateAddress,
+			rpcUrl,
 		);
 	}, 120_000); // 2 minute timeout
 
@@ -109,7 +117,7 @@ describe("ZK-gated decryption", () => {
 		console.log("Decryption succeeded!");
 
 		// sleep to avoid any pinata rate limiting
-		await new Promise((f) => setTimeout(f, 2000));
+		await new Promise((f) => setTimeout(f, 4000));
 		// add more data to the vault
 		const nextFiles = [
 			{

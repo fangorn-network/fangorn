@@ -1,10 +1,7 @@
 import { Account, Address, Hex } from "viem";
 import { createRequire } from "module";
-import { Fangorn } from "../fangorn.js";
+import { AppConfig, Fangorn } from "../fangorn.js";
 import { Filedata } from "../types/types.js";
-
-const require = createRequire(import.meta.url);
-const circuit = require("../../circuits/preimage/target/preimage.json");
 
 export class TestBed {
 	private delegatorFangorn: Fangorn;
@@ -21,28 +18,27 @@ export class TestBed {
 	public static async init(
 		delegatorAccount: Account,
 		delegateeAcount: Account,
-		zkGateAddress: string,
-		rpcUrl: string,
 		jwt: string,
 		gateway: string,
-		ipfsCid: string,
+		litActionCid: string,
+		circuitJsonCid: string,
+		zkGateContractAddress: Hex,
+		rpcUrl: string,
 	) {
-		const fangorn = await Fangorn.init(
-			delegatorAccount,
-			rpcUrl,
-			zkGateAddress as Address,
-			jwt,
-			gateway,
-			ipfsCid,
-		);
+		const config: AppConfig = {
+			litActionCid: litActionCid,
+			circuitJsonCid: circuitJsonCid,
+			zkGateContractAddress: zkGateContractAddress,
+			rpcUrl: rpcUrl,
+		};
+
+		const fangorn = await Fangorn.init(delegatorAccount, jwt, gateway, config);
 
 		const delegateeFangorn = await Fangorn.init(
 			delegateeAcount,
-			rpcUrl,
-			zkGateAddress as Address,
 			jwt,
 			gateway,
-			ipfsCid,
+			config,
 		);
 
 		return new TestBed(fangorn, delegateeFangorn);
@@ -62,11 +58,6 @@ export class TestBed {
 	}
 
 	async tryDecrypt(vaultId: Hex, tag: string, password: string) {
-		return await this.delegateeFangorn.decryptFile(
-			vaultId,
-			tag,
-			password,
-			circuit,
-		);
+		return await this.delegateeFangorn.decryptFile(vaultId, tag, password);
 	}
 }

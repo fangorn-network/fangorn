@@ -37,16 +37,45 @@ import {
 	WalletClientAuthenticator,
 } from "@lit-protocol/auth";
 
+export interface AppConfig {
+	// The CID pointing to the expected LIT action
+	litActionCid: string;
+	// The CID pointing to the compiled circuit json
+	circuitJsonCid: string;
+	// The deployed zkGate contract address
+	zkGateContractAddress: Hex;
+	// The public rpc address of the chain we are connecting to
+	rpcUrl: string;
+}
+
+export namespace FangornConfig {
+	export const Testnet: AppConfig = {
+		litActionCid: "",
+		circuitJsonCid: "",
+		zkGateContractAddress: "0x0",
+		rpcUrl: "https://base-sepolia-public.nodies.app",
+	};
+}
+
 /**
  * Fangorn class
  */
 export class Fangorn {
+	// The LIT client for interacting with the LIT network
 	private litClient: any;
+
 	private litActionCid: string;
+
+	// The complied noir circuit (e.g. circuit.json)
+	private circuit: CompiledCircuit;
+
+	// The ZKGate Contract instance
 	private zkGate: any;
 
+	// The wallet client for signing txs
 	private walletClient: any;
 
+	// The storage layer (todo: make this into a genericc storage adapter)
 	private pinata: PinataSDK;
 
 	// in-mem state for building manifests
@@ -54,12 +83,14 @@ export class Fangorn {
 
 	constructor(
 		litActionCid: string,
+		circuit: CompiledCircuit,
 		litClient: any,
 		zkGate: any,
 		walletClient: any,
 		pinata: PinataSDK,
 	) {
 		this.litClient = litClient;
+
 		this.zkGate = zkGate;
 
 		this.walletClient = walletClient;
@@ -67,16 +98,19 @@ export class Fangorn {
 		this.pinata = pinata;
 
 		this.litActionCid = litActionCid;
+
+		this.circuit = circuit;
 	}
 
 	public static async init(
 		account: Account | Address,
-		rpcUrl: string,
-		zkGateContractAddress: Address,
 		jwt: string,
 		gateway: string,
-		litActionCid: string,
+		config?: AppConfig | undefined,
 	) {
+		const resolvedConfig = config || FangornConfig.Testnet;
+		const rpcUrl = resolvedConfig.rpcUrl;
+
 		const publicClient = createPublicClient({ transport: http(rpcUrl) });
 		let walletClient;
 
@@ -105,7 +139,7 @@ export class Fangorn {
 
 		// interacts with the zk-gate contract
 		let zkGateClient = new ZKGate(
-			zkGateContractAddress,
+			resolvedConfig.zkGateContractAddress,
 			publicClient,
 			walletClient,
 		);
@@ -116,8 +150,20 @@ export class Fangorn {
 			pinataGateway: gateway,
 		});
 
+		// TODO: should we check if it is retrievable?
+		const litActionCid = resolvedConfig.litActionCid;
+		// read the circuit from ipfs
+		// TODO: assumes the circuit exists, no error handling here
+		const circuitResponse = await pinata.gateways.public.get(
+			resolvedConfig.circuitJsonCid,
+		);
+		const compiledCircuit = circuitResponse.data as unknown as CompiledCircuit;
+
+		console.log("got the compiled circuit " + compiledCircuit);
+
 		return new Fangorn(
-			litActionCid,
+			resolvedConfig.litActionCid,
+			compiledCircuit,
 			litClient,
 			zkGateClient,
 			walletClient,
@@ -295,7 +341,6 @@ export class Fangorn {
 		vaultId: Hex,
 		tag: string,
 		password: string,
-		circuit: any,
 	): Promise<Uint8Array<ArrayBufferLike>> {
 		// load the auth context
 		let authManager;
@@ -317,10 +362,11 @@ export class Fangorn {
 		}
 
 		const litClient = this.litClient;
+
 		const authContext = await authManager.createEoaAuthContext({
 			litClient,
 			config: {
-				account: this.walletClient,
+				account: this.walletClient.account,
 			},
 			authConfig: {
 				domain: "localhost", // TODO: do we need to update this?
@@ -355,7 +401,7 @@ export class Fangorn {
 
 		// we don't need to request access if we already have it
 		if (!hasAccess) {
-			await this.proveAccess(vaultId, password, entry, manifest, circuit);
+			await this.proveAccess(vaultId, password, entry, manifest);
 		}
 
 		// fetch ciphertext
@@ -385,7 +431,6 @@ export class Fangorn {
 		password: string,
 		entry: VaultEntry,
 		manifest: VaultManifest,
-		circuit: CompiledCircuit,
 	): Promise<void> {
 		const userAddress = this.walletClient.account.address;
 
@@ -399,8 +444,8 @@ export class Fangorn {
 		);
 
 		const api = await Barretenberg.new({ threads: 1 });
-		const backend = new UltraHonkBackend(circuit.bytecode, api);
-		const noir = new Noir(circuit);
+		const backend = new UltraHonkBackend(this.circuit.bytecode, api);
+		const noir = new Noir(this.circuit);
 		const { witness } = await noir.execute(inputs);
 		const proofResult = await backend.generateProof(witness, {
 			verifierTarget: "evm",
