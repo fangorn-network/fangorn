@@ -106,6 +106,8 @@ export class Fangorn {
 		this.litActionCid = litActionCid;
 
 		this.circuit = circuit;
+
+		this.chainName = chainName;
 	}
 
 	public static async init(
@@ -126,13 +128,13 @@ export class Fangorn {
 			walletClient = createWalletClient({
 				account,
 				transport: http(rpcUrl),
-				chain,
+				chain: chain,
 			});
 		} else {
 			walletClient = createWalletClient({
 				account: getAddress(account as Address),
 				transport: custom(window.ethereum),
-				chain,
+				chain: chain,
 			});
 		}
 

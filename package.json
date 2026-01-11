@@ -1,10 +1,10 @@
 {
-	"name": "fangorn",
+	"name": "fangorn-sdk",
 	"version": "0.0.0",
-	"description": "a zero-knowledge conditional access control framework",
+	"description": "A zero-knowledge conditional access control framework",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/driemworks/zk-lit-example.git"
+		"url": "git+https://github.com/fangorn-network/fangorn.git"
 	},
 	"license": "MIT",
 	"type": "module",
@@ -48,9 +48,6 @@
 	"engines": {
 		"node": ">=20.19.0"
 	},
-	"publishConfig": {
-		"provenance": true
-	},
 	"dependencies": {
 		"@aztec/bb.js": "3.0.0-rc.2",
 		"@lit-protocol/access-control-conditions": "^8.0.2",
@@ -66,7 +63,6 @@
 		"@rolldown/binding-linux-x64-gnu": "1.0.0-beta.59",
 		"buffer": "^6.0.3",
 		"imurmurhash": "^0.1.4",
-		"js-crypto-hkdf": "^1.0.7",
 		"multiformats": "^13.4.2",
 		"node-localstorage": "^3.0.5",
 		"pinata": "^2.5.2",
