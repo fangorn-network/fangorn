@@ -96,17 +96,11 @@ export class Fangorn {
 		pinata: PinataSDK,
 	) {
 		this.litClient = litClient;
-
 		this.zkGate = zkGate;
-
 		this.walletClient = walletClient;
-
 		this.pinata = pinata;
-
 		this.litActionCid = litActionCid;
-
 		this.circuit = circuit;
-
 		this.chainName = chainName;
 	}
 
@@ -361,35 +355,35 @@ export class Fangorn {
 		tag: string,
 		password: string,
 	): Promise<Uint8Array<ArrayBufferLike>> {
+		const isWindowUndefined = typeof window === "undefined";
+		const account = isWindowUndefined
+			? this.walletClient.account
+			: this.walletClient;
 		// load the auth context
-		let authManager;
-		if (typeof window === "undefined") {
-			authManager = createAuthManager({
-				storage: storagePlugins.localStorageNode({
-					appName: "fangorn",
-					networkName: nagaDev.getNetworkName(),
-					storagePath: "./lit-auth-storage",
-				}),
-			});
-		} else {
-			authManager = createAuthManager({
-				storage: storagePlugins.localStorage({
-					appName: "fangorn",
-					networkName: nagaDev.getNetworkName(),
-				}),
-			});
-		}
+		const authManager = isWindowUndefined
+			? // node.js support
+				createAuthManager({
+					storage: storagePlugins.localStorageNode({
+						appName: "fangorn",
+						networkName: nagaDev.getNetworkName(),
+						storagePath: "./lit-auth-storage",
+					}),
+				})
+			: // browser support
+				createAuthManager({
+					storage: storagePlugins.localStorage({
+						appName: "fangorn",
+						networkName: nagaDev.getNetworkName(),
+					}),
+				});
 
 		const litClient = this.litClient;
-
 		const authContext = await authManager.createEoaAuthContext({
 			litClient,
-			config: {
-				account: this.walletClient.account,
-			},
+			config: { account: account },
 			authConfig: {
 				domain: "localhost", // TODO: do we need to update this?
-				statement: "Decrypt test data", // Do we need this?
+				statement: "Decrypt test data",
 				// is this the right duration for expiry?
 				expiration: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
 				// Are resources too open?
