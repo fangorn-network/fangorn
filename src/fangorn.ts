@@ -52,8 +52,6 @@ export interface AppConfig {
 	chainName: string;
 	// The public rpc address of the chain we are connecting to
 	rpcUrl: string;
-	// The domain of the website that will be requesting for SWE
-	domain: string;
 }
 
 export namespace FangornConfig {
@@ -65,11 +63,6 @@ export namespace FangornConfig {
 		chain: baseSepolia,
 		chainName: "baseSepolia",
 		rpcUrl: "https://base-sepolia-public.nodies.app",
-		domain:
-			process.env.NEXT_PUBLIC_URL ||
-			(process.env.VERCEL_PROJECT_PRODUCTION_URL
-				? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-				: "http://localhost:3000"),
 	};
 }
 
@@ -93,8 +86,6 @@ export class Fangorn {
 	private pinata: PinataSDK;
 	// in-mem state for building manifests
 	private pendingEntries: Map<string, PendingEntry> = new Map();
-	// App config
-	private config: AppConfig;
 
 	constructor(
 		chainName: string,
@@ -113,7 +104,6 @@ export class Fangorn {
 		this.litActionCid = litActionCid;
 		this.circuit = circuit;
 		this.chainName = chainName;
-		this.config = config;
 	}
 
 	public static async init(
@@ -145,7 +135,7 @@ export class Fangorn {
 		}
 
 		const siweMessageOverrides: WalletClientAuthenticateOverrides = {
-			domain: resolvedConfig.domain,
+			domain: "https://vault-demo.fangorn.network",
 		};
 		const messageToSign = "Please sign in to enable LIT functionality.";
 
@@ -404,7 +394,7 @@ export class Fangorn {
 			litClient,
 			config: { account: account },
 			authConfig: {
-				domain: this.config.domain, // TODO: do we need to update this?
+				domain: "https://vault-demo.fangorn.network",
 				statement: "Please re-authenticate to enable LIT functionality. ",
 				// is this the right duration for expiry?
 				expiration: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
