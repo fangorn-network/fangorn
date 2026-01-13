@@ -37,6 +37,7 @@ import {
 	storagePlugins,
 	WalletClientAuthenticator,
 } from "@lit-protocol/auth";
+import { WalletClientAuthenticateOverrides } from "@lit-protocol/auth/src/lib/authenticators/WalletClientAuthenticator.js";
 
 export interface AppConfig {
 	// The CID pointing to the expected LIT action
@@ -51,6 +52,8 @@ export interface AppConfig {
 	chainName: string;
 	// The public rpc address of the chain we are connecting to
 	rpcUrl: string;
+	// The domain of the website that will be requesting for SWE
+	domain: string;
 }
 
 export namespace FangornConfig {
@@ -62,6 +65,11 @@ export namespace FangornConfig {
 		chain: baseSepolia,
 		chainName: "baseSepolia",
 		rpcUrl: "https://base-sepolia-public.nodies.app",
+		domain:
+			process.env.NEXT_PUBLIC_URL ||
+			(process.env.VERCEL_PROJECT_PRODUCTION_URL
+				? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+				: "http://localhost:3000"),
 	};
 }
 
@@ -85,6 +93,8 @@ export class Fangorn {
 	private pinata: PinataSDK;
 	// in-mem state for building manifests
 	private pendingEntries: Map<string, PendingEntry> = new Map();
+	// App config
+	private config: AppConfig;
 
 	constructor(
 		chainName: string,
@@ -94,6 +104,7 @@ export class Fangorn {
 		zkGate: any,
 		walletClient: any,
 		pinata: PinataSDK,
+		config: AppConfig,
 	) {
 		this.litClient = litClient;
 		this.zkGate = zkGate;
@@ -102,6 +113,7 @@ export class Fangorn {
 		this.litActionCid = litActionCid;
 		this.circuit = circuit;
 		this.chainName = chainName;
+		this.config = config;
 	}
 
 	public static async init(
@@ -132,7 +144,16 @@ export class Fangorn {
 			});
 		}
 
-		await WalletClientAuthenticator.authenticate(walletClient);
+		const siweMessageOverrides: WalletClientAuthenticateOverrides = {
+			domain: resolvedConfig.domain,
+		};
+		const messageToSign = "Please sign in to enable LIT functionality.";
+
+		await WalletClientAuthenticator.authenticate(
+			walletClient,
+			messageToSign,
+			siweMessageOverrides,
+		);
 		// client to interact with LIT proto
 		const litClient = await createLitClient({
 			// @ts-expect-error - TODO: fix this
@@ -167,6 +188,7 @@ export class Fangorn {
 			zkGateClient,
 			walletClient,
 			pinata,
+			resolvedConfig,
 		);
 	}
 
@@ -382,8 +404,8 @@ export class Fangorn {
 			litClient,
 			config: { account: account },
 			authConfig: {
-				domain: "localhost", // TODO: do we need to update this?
-				statement: "Decrypt test data",
+				domain: this.config.domain, // TODO: do we need to update this?
+				statement: "Please re-authenticate to enable LIT functionality. ",
 				// is this the right duration for expiry?
 				expiration: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
 				// Are resources too open?
