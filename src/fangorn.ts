@@ -62,9 +62,11 @@ export namespace FangornConfig {
 		zkGateContractAddress: "0x062da4924251c7ed392afc01f57d7ea2c255dc81",
 		chain: baseSepolia,
 		chainName: "baseSepolia",
-		rpcUrl: "https://base-sepolia-public.nodies.app",
+		rpcUrl: "https://sepolia.base.org",
 	};
 }
+
+const DOMAIN = "https://vault-demo.fangorn.network";
 
 /**
  * Fangorn class
@@ -135,7 +137,8 @@ export class Fangorn {
 		}
 
 		const siweMessageOverrides: WalletClientAuthenticateOverrides = {
-			domain: "https://vault-demo.fangorn.network",
+			domain: DOMAIN,
+			statement: "This is the statement",
 		};
 		const messageToSign = "Please sign in to enable LIT functionality.";
 
@@ -394,7 +397,7 @@ export class Fangorn {
 			litClient,
 			config: { account: account },
 			authConfig: {
-				domain: "https://vault-demo.fangorn.network",
+				domain: DOMAIN,
 				statement: "Please re-authenticate to enable LIT functionality. ",
 				// is this the right duration for expiry?
 				expiration: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
