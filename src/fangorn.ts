@@ -2,18 +2,14 @@ import { createLitClient } from "@lit-protocol/lit-client";
 import { createAccBuilder } from "@lit-protocol/access-control-conditions";
 import { nagaDev } from "@lit-protocol/networks";
 import {
-	Account,
 	Address,
 	Chain,
 	createPublicClient,
-	createWalletClient,
-	custom,
-	getAddress,
 	Hex,
 	http,
 	toHex,
+	WalletClient,
 } from "viem";
-import { baseSepolia, filecoin } from "viem/chains";
 import { Vault, ZKGate } from "./interface/zkGate.js";
 import { hashPassword } from "./utils/index.js";
 import { buildCircuitInputs, computeTagCommitment } from "./crypto/proof.js";
@@ -32,12 +28,7 @@ import { PinataSDK } from "pinata";
 import { Barretenberg, UltraHonkBackend } from "@aztec/bb.js";
 import { CompiledCircuit, Noir } from "@noir-lang/noir_js";
 import { decryptData, encryptData } from "./crypto/encryption.js";
-import {
-	createAuthManager,
-	storagePlugins,
-	WalletClientAuthenticator,
-} from "@lit-protocol/auth";
-import { WalletClientAuthenticateOverrides } from "@lit-protocol/auth/src/lib/authenticators/WalletClientAuthenticator.js";
+import { createAuthManager, storagePlugins } from "@lit-protocol/auth";
 
 export interface AppConfig {
 	// The CID pointing to the expected LIT action
@@ -46,12 +37,12 @@ export interface AppConfig {
 	circuitJsonCid: string;
 	// The deployed zkGate contract address
 	zkGateContractAddress: Hex;
-	//  The chain we are deploying to
-	chain: Chain;
 	// The name of the chain for LIT action execution (does not always match what is defined by viem)
 	chainName: string;
 	// The public rpc address of the chain we are connecting to
 	rpcUrl: string;
+	// The domain that is using the Fangorn Client
+	domain: string;
 }
 
 export namespace FangornConfig {
@@ -60,13 +51,11 @@ export namespace FangornConfig {
 		litActionCid: "QmcDkeo7YnJbuyYnXfxcnB65UCkjFhLDG5qa3hknMmrDmQ",
 		circuitJsonCid: "QmXw1rWUC2Kw52Qi55sfW3bCR7jheCDfSUgVRwvsP8ZZPE",
 		zkGateContractAddress: "0x062da4924251c7ed392afc01f57d7ea2c255dc81",
-		chain: baseSepolia,
+		domain: "http://localhost:3000",
 		chainName: "baseSepolia",
 		rpcUrl: "https://sepolia.base.org",
 	};
 }
-
-const DOMAIN = "https://vault-demo.fangorn.network";
 
 /**
  * Fangorn class
@@ -89,6 +78,8 @@ export class Fangorn {
 	// in-mem state for building manifests
 	private pendingEntries: Map<string, PendingEntry> = new Map();
 
+	private config: AppConfig;
+
 	constructor(
 		chainName: string,
 		litActionCid: string,
@@ -106,47 +97,22 @@ export class Fangorn {
 		this.litActionCid = litActionCid;
 		this.circuit = circuit;
 		this.chainName = chainName;
+		this.config = config;
 	}
 
 	public static async init(
-		account: Account | Address,
 		jwt: string,
 		gateway: string,
+		walletClient: WalletClient,
 		config?: AppConfig | undefined,
 	) {
 		const resolvedConfig = config || FangornConfig.Testnet;
 		const rpcUrl = resolvedConfig.rpcUrl;
-		const chain = resolvedConfig.chain;
 		const chainName = resolvedConfig.chainName;
 
+		// TODO: should this be made outside of the client?
 		const publicClient = createPublicClient({ transport: http(rpcUrl) });
-		let walletClient;
 
-		if (typeof window === "undefined") {
-			walletClient = createWalletClient({
-				account,
-				transport: http(rpcUrl),
-				chain: chain,
-			});
-		} else {
-			walletClient = createWalletClient({
-				account: getAddress(account as Address),
-				transport: custom(window.ethereum),
-				chain: chain,
-			});
-		}
-
-		const siweMessageOverrides: WalletClientAuthenticateOverrides = {
-			domain: DOMAIN,
-			statement: "This is the statement",
-		};
-		const messageToSign = "Please sign in to enable LIT functionality.";
-
-		await WalletClientAuthenticator.authenticate(
-			walletClient,
-			messageToSign,
-			siweMessageOverrides,
-		);
 		// client to interact with LIT proto
 		const litClient = await createLitClient({
 			// @ts-expect-error - TODO: fix this
@@ -397,7 +363,7 @@ export class Fangorn {
 			litClient,
 			config: { account: account },
 			authConfig: {
-				domain: DOMAIN,
+				domain: this.config.domain,
 				statement: "Please re-authenticate to enable LIT functionality. ",
 				// is this the right duration for expiry?
 				expiration: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),

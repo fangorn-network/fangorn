@@ -1,5 +1,5 @@
 import { beforeAll, describe, it, expect } from "vitest";
-import { Account, Hex, type Address } from "viem";
+import { Account, createWalletClient, Hex, http, type Address } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { readFileSync } from "fs";
 import { join } from "path";
@@ -7,6 +7,7 @@ import { deployContracts } from "./deployContract.js";
 import { TestBed } from "./test/testbed.js";
 import { uploadToPinata } from "./test/index.js";
 import { createRequire } from "module";
+import { baseSepolia } from "viem/chains";
 
 const require = createRequire(import.meta.url);
 const circuit = require("../circuits/preimage/target/preimage.json");
@@ -47,9 +48,21 @@ describe("ZK-gated decryption", () => {
 			getEnv("DELEGATOR_ETH_PRIVATE_KEY") as Hex,
 		);
 
+		const delegatorWalletClient = createWalletClient({
+			account: delegatorAccount,
+			transport: http(rpcUrl),
+			chain: baseSepolia,
+		});
+
 		delegateeAccount = privateKeyToAccount(
 			getEnv("DELEGATEE_ETH_PRIVATE_KEY") as Hex,
 		);
+
+		const delegateeWalletClient = createWalletClient({
+			account: delegateeAccount,
+			transport: http(rpcUrl),
+			chain: baseSepolia,
+		});
 
 		// if the cid is not defined, add the lit action to ipfs
 		ipfsCid = process.env.LIT_ACTION_CID!;
@@ -82,8 +95,8 @@ describe("ZK-gated decryption", () => {
 		console.log(`ZKGate: ${zkGateAddress}`);
 
 		testbed = await TestBed.init(
-			delegatorAccount,
-			delegateeAccount,
+			delegatorWalletClient,
+			delegateeWalletClient,
 			jwt,
 			gateway,
 			ipfsCid,
