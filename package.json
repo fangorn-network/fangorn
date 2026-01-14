@@ -18,6 +18,7 @@
 		"lint": "eslint . --max-warnings 0",
 		"prepare": "husky",
 		"test": "dotenvx run -f .env -- vitest run",
+		"test:e2e": "dotenvx run -f .env -- vitest run --config vitest.e2e.config.ts",
 		"tsc": "tsc"
 	},
 	"lint-staged": {
