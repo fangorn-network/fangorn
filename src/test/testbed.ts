@@ -1,4 +1,4 @@
-import { Account, Hex } from "viem";
+import { Account, createWalletClient, Hex, http, WalletClient } from "viem";
 import { AppConfig, Fangorn } from "../fangorn.js";
 import { Filedata } from "../types/types.js";
 import { baseSepolia } from "viem/chains";
@@ -16,8 +16,8 @@ export class TestBed {
 	}
 
 	public static async init(
-		delegatorAccount: Account,
-		delegateeAcount: Account,
+		delegatorWalletClient: WalletClient,
+		delegateeWalletClient: WalletClient,
 		jwt: string,
 		gateway: string,
 		litActionCid: string,
@@ -25,20 +25,28 @@ export class TestBed {
 		zkGateContractAddress: Hex,
 		rpcUrl: string,
 	) {
+		if (!circuitJsonCid) {
+			circuitJsonCid = "QmXw1rWUC2Kw52Qi55sfW3bCR7jheCDfSUgVRwvsP8ZZPE";
+		}
 		const config: AppConfig = {
 			litActionCid: litActionCid,
 			circuitJsonCid: circuitJsonCid,
 			zkGateContractAddress: zkGateContractAddress,
-			chain: baseSepolia,
 			chainName: "baseSepolia",
+			domain: "localhost:3000",
 			rpcUrl: rpcUrl,
 		};
 
-		const fangorn = await Fangorn.init(delegatorAccount, jwt, gateway, config);
-		const delegateeFangorn = await Fangorn.init(
-			delegateeAcount,
+		const fangorn = await Fangorn.init(
 			jwt,
 			gateway,
+			delegatorWalletClient,
+			config,
+		);
+		const delegateeFangorn = await Fangorn.init(
+			jwt,
+			gateway,
+			delegateeWalletClient,
 			config,
 		);
 
