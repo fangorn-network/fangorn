@@ -7,7 +7,7 @@ export default defineConfig({
 			include: ["src"],
 			reporter: ["html", "lcov"],
 		},
-		exclude: ["lib", "node_modules"],
+		exclude: ["lib", "**/e2e.test.ts", "node_modules"],
 		environment: "node",
 		pool: "forks",
 		server: {
