@@ -1,0 +1,1 @@
+npm publish --//registry.npmjs.org/:_authToken=<token>
