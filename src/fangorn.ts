@@ -62,7 +62,7 @@ export namespace FangornConfig {
 		zkGateContractAddress: "0x062da4924251c7ed392afc01f57d7ea2c255dc81",
 		chain: baseSepolia,
 		chainName: "baseSepolia",
-		rpcUrl: "https://base-sepolia-public.nodies.app",
+		rpcUrl: "https://sepolia.base.org",
 	};
 }
 
