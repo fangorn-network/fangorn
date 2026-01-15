@@ -18,7 +18,9 @@ Fangorn allows encrypted data to be added to a 'vault' protected by a user-defin
 
 ```js
 // initialize a new fangorn client against the default testnet configuration (base sepolia)
-const fangorn = await Fangorn.init(delegatorAccount, jwt, gateway);
+// the domain/webserver where Fangorn is used
+const domain = "localhost:3000";
+const fangorn = await Fangorn.init(delegatorAccount, jwt, gateway, domain);
 
 // create a new vault bound to a password
 const vaultName = "myvault-001";
@@ -59,16 +61,27 @@ Decryption works by providing a vault id, tag, and the valid password to unlock 
 const taxTag = "tax-2025";
 const password = "test";
 
-const fangornDelegatee = await Fangorn.init(delegateeAccount, jwt, gateway);
+const domain = "localhost:3000";
+const fangorn = await Fangorn.init(delegateeAccount, jwt, gateway, domain);
 // try to recover plaintext
-const plaintext = await fangornDelegatee.decryptFile(vaultId, taxTag, password);
+const plaintext = await fangorn.decryptFile(vaultId, taxTag, password);
 
 console.log("we got the plaintext " + plaintext);
 ```
 
 ## Testing
 
-### Setup
+### Unit Tests
+
+Run the tests with
+
+```sh
+pnpm test
+```
+
+### E2E tests
+
+#### Setup
 
 The e2e test suite requires various environment variables that must be manually configured.
 
@@ -96,7 +109,7 @@ Testnet tokens (ETH on Base Sepolia) can be obtained from Coinbase's official fa
 
 ### Running the tests
 
-`pnpm test`
+`pnpm test:e2e`
 
 The tests will:
 
