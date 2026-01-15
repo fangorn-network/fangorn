@@ -41,8 +41,6 @@ export interface AppConfig {
 	chainName: string;
 	// The public rpc address of the chain we are connecting to
 	rpcUrl: string;
-	// The domain that is using the Fangorn Client
-	domain: string;
 }
 
 export namespace FangornConfig {
@@ -51,7 +49,6 @@ export namespace FangornConfig {
 		litActionCid: "QmcDkeo7YnJbuyYnXfxcnB65UCkjFhLDG5qa3hknMmrDmQ",
 		circuitJsonCid: "QmXw1rWUC2Kw52Qi55sfW3bCR7jheCDfSUgVRwvsP8ZZPE",
 		zkGateContractAddress: "0x062da4924251c7ed392afc01f57d7ea2c255dc81",
-		domain: "http://localhost:3000",
 		chainName: "baseSepolia",
 		rpcUrl: "https://sepolia.base.org",
 	};
@@ -77,8 +74,8 @@ export class Fangorn {
 	private pinata: PinataSDK;
 	// in-mem state for building manifests
 	private pendingEntries: Map<string, PendingEntry> = new Map();
-
-	private config: AppConfig;
+	// The domain (i.e. webserver address) that is using the Fangorn Client
+	private domain: string;
 
 	constructor(
 		chainName: string,
@@ -88,7 +85,7 @@ export class Fangorn {
 		zkGate: any,
 		walletClient: any,
 		pinata: PinataSDK,
-		config: AppConfig,
+		domain: string,
 	) {
 		this.litClient = litClient;
 		this.zkGate = zkGate;
@@ -97,13 +94,14 @@ export class Fangorn {
 		this.litActionCid = litActionCid;
 		this.circuit = circuit;
 		this.chainName = chainName;
-		this.config = config;
+		this.domain = domain;
 	}
 
 	public static async init(
 		jwt: string,
 		gateway: string,
 		walletClient: WalletClient,
+		domain: string,
 		config?: AppConfig | undefined,
 	) {
 		const resolvedConfig = config || FangornConfig.Testnet;
@@ -147,7 +145,7 @@ export class Fangorn {
 			zkGateClient,
 			walletClient,
 			pinata,
-			resolvedConfig,
+			domain,
 		);
 	}
 
@@ -363,7 +361,7 @@ export class Fangorn {
 			litClient,
 			config: { account: account },
 			authConfig: {
-				domain: this.config.domain,
+				domain: this.domain,
 				statement: "Please re-authenticate to enable LIT functionality. ",
 				// is this the right duration for expiry?
 				expiration: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),

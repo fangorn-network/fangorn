@@ -131,7 +131,7 @@ describe("ZK-gated decryption", () => {
 		console.log("Decryption succeeded!");
 
 		// sleep to avoid any pinata rate limiting
-		await new Promise((f) => setTimeout(f, 4000));
+		await new Promise((f) => setTimeout(f, 6000));
 		// add more data to the vault
 		const nextFiles = [
 			{

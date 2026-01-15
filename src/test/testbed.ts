@@ -1,7 +1,6 @@
-import { Account, createWalletClient, Hex, http, WalletClient } from "viem";
+import { Hex, WalletClient } from "viem";
 import { AppConfig, Fangorn } from "../fangorn.js";
 import { Filedata } from "../types/types.js";
-import { baseSepolia } from "viem/chains";
 
 export class TestBed {
 	private delegatorFangorn: Fangorn;
@@ -28,25 +27,29 @@ export class TestBed {
 		if (!circuitJsonCid) {
 			circuitJsonCid = "QmXw1rWUC2Kw52Qi55sfW3bCR7jheCDfSUgVRwvsP8ZZPE";
 		}
+
 		const config: AppConfig = {
 			litActionCid: litActionCid,
 			circuitJsonCid: circuitJsonCid,
 			zkGateContractAddress: zkGateContractAddress,
 			chainName: "baseSepolia",
-			domain: "localhost:3000",
 			rpcUrl: rpcUrl,
 		};
+
+		const domain = "localhost:3000";
 
 		const fangorn = await Fangorn.init(
 			jwt,
 			gateway,
 			delegatorWalletClient,
+			domain,
 			config,
 		);
 		const delegateeFangorn = await Fangorn.init(
 			jwt,
 			gateway,
 			delegateeWalletClient,
+			domain,
 			config,
 		);
 
