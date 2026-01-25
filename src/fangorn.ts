@@ -101,6 +101,7 @@ export class Fangorn {
 		jwt: string,
 		gateway: string,
 		walletClient: WalletClient,
+		litClient: any,
 		domain: string,
 		config?: AppConfig | undefined,
 	) {
@@ -110,12 +111,6 @@ export class Fangorn {
 
 		// TODO: should this be made outside of the client?
 		const publicClient = createPublicClient({ transport: http(rpcUrl) });
-
-		// client to interact with LIT proto
-		const litClient = await createLitClient({
-			// @ts-expect-error - TODO: fix this
-			network: nagaDev,
-		});
 
 		// interacts with the zk-gate contract
 		let zkGateClient = new ZKGate(
@@ -333,45 +328,39 @@ export class Fangorn {
 		vaultId: Hex,
 		tag: string,
 		password: string,
+		authContext?: any,
 	): Promise<Uint8Array<ArrayBufferLike>> {
-		const isWindowUndefined = typeof window === "undefined";
-		const account = isWindowUndefined
-			? this.walletClient.account
-			: this.walletClient;
-		// load the auth context
-		const authManager = isWindowUndefined
-			? // node.js support
-				createAuthManager({
-					storage: storagePlugins.localStorageNode({
-						appName: "fangorn",
-						networkName: nagaDev.getNetworkName(),
-						storagePath: "./lit-auth-storage",
-					}),
-				})
-			: // browser support
-				createAuthManager({
-					storage: storagePlugins.localStorage({
-						appName: "fangorn",
-						networkName: nagaDev.getNetworkName(),
-					}),
-				});
+		// load the auth context.
+		// this should be provided by the browser so
+		// if it's not present then assume this is
+		// running in a server env
+		if (!authContext) {
+			const account = this.walletClient.account;
+			const authManager = createAuthManager({
+				storage: storagePlugins.localStorageNode({
+					appName: "fangorn",
+					networkName: nagaDev.getNetworkName(),
+					storagePath: "./lit-auth-storage",
+				}),
+			});
 
-		const litClient = this.litClient;
-		const authContext = await authManager.createEoaAuthContext({
-			litClient,
-			config: { account: account },
-			authConfig: {
-				domain: this.domain,
-				statement: "Please re-authenticate to enable LIT functionality. ",
-				// is this the right duration for expiry?
-				expiration: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
-				// Are resources too open?
-				resources: [
-					["access-control-condition-decryption", "*"],
-					["lit-action-execution", "*"],
-				],
-			},
-		});
+			const litClient = this.litClient;
+			authContext = await authManager.createEoaAuthContext({
+				litClient,
+				config: { account: account },
+				authConfig: {
+					domain: this.domain,
+					statement: "Please re-authenticate to enable LIT functionality. ",
+					// is this the right duration for expiry?
+					expiration: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
+					// Are resources too open?
+					resources: [
+						["access-control-condition-decryption", "*"],
+						["lit-action-execution", "*"],
+					],
+				},
+			});
+		}
 
 		// fetch manifest from pinata
 		const vault = await this.zkGate.getVault(vaultId);
@@ -393,7 +382,7 @@ export class Fangorn {
 
 		// we don't need to request access if we already have it
 		if (!hasAccess) {
-			await this.proveAccess(vaultId, password, entry, manifest);
+			await this.proveAccess(vaultId, password, entry, manifest, userAddress);
 		}
 
 		// fetch ciphertext
@@ -423,9 +412,8 @@ export class Fangorn {
 		password: string,
 		entry: VaultEntry,
 		manifest: VaultManifest,
+		userAddress: any,
 	): Promise<void> {
-		const userAddress = this.walletClient.account.address;
-
 		// build circuit inputs
 		const { inputs, nullifier, cidCommitment } = await buildCircuitInputs(
 			password,

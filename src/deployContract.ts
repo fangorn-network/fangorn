@@ -14,10 +14,10 @@ import {
 import solc from "solc";
 import { Barretenberg, UltraHonkBackend } from "@aztec/bb.js";
 import { baseSepolia } from "viem/chains";
+import circuit from "../circuits/preimage/target/preimage.json" with { type: "json" };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const circuit = require("../circuits/preimage/target/preimage.json");
 
 const currentChain = baseSepolia;
 

@@ -19,7 +19,8 @@
 		"prepare": "husky",
 		"test": "dotenvx run -f .env -- vitest run",
 		"test:e2e": "dotenvx run -f .env -- vitest run --config vitest.e2e.config.ts",
-		"tsc": "tsc"
+		"tsc": "tsc",
+		"deploy": "dotenvx run -f .env -- tsx deploy.ts"
 	},
 	"lint-staged": {
 		"*": "prettier --ignore-unknown --write"
@@ -40,6 +41,7 @@
 		"prettier": "3.7.3",
 		"release-it": "19.0.6",
 		"tsdown": "0.16.8",
+		"tsx": "^4.21.0",
 		"typescript": "5.9.3",
 		"typescript-eslint": "8.48.1",
 		"vitest": "4.0.15",
@@ -52,9 +54,9 @@
 	"dependencies": {
 		"@aztec/bb.js": "3.0.0-rc.2",
 		"@lit-protocol/access-control-conditions": "^8.0.2",
-		"@lit-protocol/auth": "^8.1.2",
-		"@lit-protocol/lit-client": "^8.2.3",
-		"@lit-protocol/networks": "^8.3.2",
+		"@lit-protocol/auth": "^8.2.2",
+		"@lit-protocol/lit-client": "^8.3.0",
+		"@lit-protocol/networks": "^8.4.0",
 		"@noble/hashes": "^2.0.1",
 		"@noir-lang/acvm_js": "1.0.0-beta.16",
 		"@noir-lang/backend_barretenberg": "^0.36.0",
@@ -75,9 +77,6 @@
 	"pnpm": {
 		"overrides": {
 			"write-file-atomic": "7.0.0"
-		},
-		"patchedDependencies": {
-			"@lit-protocol/networks@8.3.2": "patches/@lit-protocol__networks@8.3.2.patch"
 		}
 	}
 }
