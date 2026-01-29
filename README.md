@@ -22,21 +22,39 @@ Fangorn allows encrypted data to be added to a 'vault' protected by a user-defin
 const domain = "localhost:3000";
 const fangorn = await Fangorn.init(delegatorAccount, jwt, gateway, domain);
 
-// create a new vault bound to a password
+// create a new named vault
 const vaultName = "myvault-001";
 const password = "test";
-const vaultId = await fangorn.createVault(vaultName, password);
+const vaultId = await fangorn.createVault(vaultName);
 
 // upload files to the vault
 let filedata = [
-	{ tag: "test0", data: "content0", extension: ".txt", fileType: "text/plain" },
-	{ tag: "test1", data: "content1", extension: ".png", fileType: "image/png" },
+	{
+		tag: "test0",
+		data: "content0",
+		extension: ".txt",
+		fileType: "text/plain",
+		price: "0.0001",
+	},
+	{
+		tag: "test1",
+		data: "content1",
+		extension: ".png",
+		fileType: "image/png",
+		price: "0.15",
+	},
 ];
 await fangorn.upload(vaultId, filedata);
 
 // easily add more files to the vault
 let filedata = [
-	{ tag: "test2", data: "content2", extension: ".mp4", fileType: "video/mp4" },
+	{
+		tag: "test2",
+		data: "content2",
+		extension: ".mp4",
+		fileType: "video/mp4",
+		price: "0.091",
+	},
 ];
 await fangorn.upload(vaultId, filedata);
 

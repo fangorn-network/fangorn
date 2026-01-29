@@ -1,6 +1,21 @@
-import { Hex, WalletClient } from "viem";
+import {
+	Address,
+	createPublicClient,
+	Hex,
+	hexToBytes,
+	http,
+	keccak256,
+	parseUnits,
+	toHex,
+	WalletClient,
+} from "viem";
 import { AppConfig, Fangorn } from "../fangorn.js";
 import { Filedata } from "../types/types.js";
+import { createLitClient } from "@lit-protocol/lit-client";
+import { nagaDev } from "@lit-protocol/networks";
+import { config } from "process";
+import { ExactEvmScheme } from "@x402/evm";
+import { PaymentRequirements } from "@x402/core/types";
 
 export class TestBed {
 	private delegatorFangorn: Fangorn;
@@ -8,10 +23,17 @@ export class TestBed {
 
 	private vaultIds: Map<string, Hex>;
 
-	constructor(delegatorFangorn: Fangorn, delegateeFangorn: Fangorn) {
+	private config: AppConfig;
+
+	constructor(
+		delegatorFangorn: Fangorn,
+		delegateeFangorn: Fangorn,
+		config: AppConfig,
+	) {
 		this.delegatorFangorn = delegatorFangorn;
 		this.delegateeFangorn = delegateeFangorn;
 		this.vaultIds = new Map();
+		this.config = config;
 	}
 
 	public static async init(
@@ -20,21 +42,35 @@ export class TestBed {
 		jwt: string,
 		gateway: string,
 		litActionCid: string,
-		circuitJsonCid: string,
-		zkGateContractAddress: Hex,
+		// circuitJsonCid: string,
+		contentRegistryContractAddress: Hex,
+		usdcContractAddress: Hex,
 		rpcUrl: string,
 	) {
-		if (!circuitJsonCid) {
-			circuitJsonCid = "QmXw1rWUC2Kw52Qi55sfW3bCR7jheCDfSUgVRwvsP8ZZPE";
-		}
+		// if (!circuitJsonCid) {
+		// 	circuitJsonCid = "QmXw1rWUC2Kw52Qi55sfW3bCR7jheCDfSUgVRwvsP8ZZPE";
+		// }
 
 		const config: AppConfig = {
 			litActionCid: litActionCid,
-			circuitJsonCid: circuitJsonCid,
-			zkGateContractAddress: zkGateContractAddress,
+			// circuitJsonCid: circuitJsonCid,
+			contentRegistryContractAddress: contentRegistryContractAddress,
+			usdcContractAddress,
 			chainName: "baseSepolia",
 			rpcUrl: rpcUrl,
 		};
+
+		// client to interact with LIT proto
+		const litClient = await createLitClient({
+			// @ts-expect-error - TODO: fix this
+			network: nagaDev,
+		});
+
+		// client to interact with LIT proto
+		const delegateeLitClient = await createLitClient({
+			// @ts-expect-error - TODO: fix this
+			network: nagaDev,
+		});
 
 		const domain = "localhost:3000";
 
@@ -42,34 +78,113 @@ export class TestBed {
 			jwt,
 			gateway,
 			delegatorWalletClient,
+			litClient,
 			domain,
 			config,
 		);
+
 		const delegateeFangorn = await Fangorn.init(
 			jwt,
 			gateway,
 			delegateeWalletClient,
+			delegateeLitClient,
 			domain,
 			config,
 		);
 
-		return new TestBed(fangorn, delegateeFangorn);
+		return new TestBed(fangorn, delegateeFangorn, config);
 	}
 
-	async setupVault(name: string, password: string) {
-		if (!this.vaultIds.get(password)) {
-			const vaultId = await this.delegatorFangorn.createVault(name, password);
-			this.vaultIds.set(password, vaultId);
+	async setupVault(name: string) {
+		if (!this.vaultIds.get(name)) {
+			const vaultId = await this.delegatorFangorn.createVault(name);
+			this.vaultIds.set(name, vaultId);
 		}
 
-		return this.vaultIds.get(password)!;
+		return this.vaultIds.get(name)!;
 	}
 
 	async fileUpload(vaultId: Hex, filedata: Filedata[]) {
 		await this.delegatorFangorn.upload(vaultId, filedata);
 	}
 
-	async tryDecrypt(vaultId: Hex, tag: string, password: string) {
-		return await this.delegateeFangorn.decryptFile(vaultId, tag, password);
+	async tryDecrypt(vaultId: Hex, tag: string) {
+		return await this.delegateeFangorn.decryptFile(vaultId, tag);
+	}
+
+	async buildUsdcAuthorization(
+		recipient: Address,
+		amount: string,
+		chainId: number,
+		usdcAddress: Address,
+	) {
+		const walletClient = this.delegateeFangorn["walletClient"];
+		const account = walletClient.account!;
+
+		const domain = {
+			name: "USDC",
+			version: "2",
+			chainId: chainId,
+			verifyingContract: usdcAddress,
+		} as const;
+
+		const types = {
+			TransferWithAuthorization: [
+				{ name: "from", type: "address" },
+				{ name: "to", type: "address" },
+				{ name: "value", type: "uint256" },
+				{ name: "validAfter", type: "uint256" },
+				{ name: "validBefore", type: "uint256" },
+				{ name: "nonce", type: "bytes32" },
+			],
+		} as const;
+
+		const value = parseUnits(amount, 6);
+
+		// random nonce
+		const nonce = keccak256(toHex(crypto.getRandomValues(new Uint8Array(32))));
+
+		const signature = await walletClient.signTypedData({
+			account,
+			domain,
+			types,
+			primaryType: "TransferWithAuthorization",
+			message: {
+				from: account.address,
+				to: recipient,
+				value,
+				validAfter: 0n,
+				// A very large number (effectively never expires)
+				validBefore: 281474976710655n,
+				nonce,
+			},
+		});
+
+		return {
+			from: account.address,
+			to: recipient,
+			amount: value,
+			validAfter: 0n,
+			validBefore: 281474976710655n,
+			nonce,
+			signature,
+		};
+	}
+
+	public async payForFile(
+		vaultId: Hex,
+		tag: string,
+		amount: string,
+		to: Address,
+	) {
+		const auth = await this.buildUsdcAuthorization(
+			to,
+			amount,
+			84532,
+			this.config.usdcContractAddress,
+		);
+
+		// delegatee = its own facilitator
+		await this.delegateeFangorn.pay(vaultId, tag, auth.to, auth);
 	}
 }
