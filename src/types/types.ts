@@ -5,8 +5,9 @@ export interface VaultEntry {
 	tag: string;
 	cid: string;
 	index: number;
-	leaf: string;
-	commitment: string;
+	price: string;
+	// leaf: string;
+	// commitment: string;
 	extension: string;
 	fileType: string;
 }
@@ -18,23 +19,25 @@ export interface VaultManifest {
 	tree?: string[][];
 }
 
-// For in-memory use before serialization
-export interface VaultEntryRaw {
-	tag: string;
-	cid: string;
-	index: number;
-	leaf: bigint;
-	commitment: string;
-	extension: string;
-	fileType: string;
-}
+// // For in-memory use before serialization
+// export interface VaultEntryRaw {
+// 	tag: string;
+// 	cid: string;
+// 	index: number;
+// 	price: string;
+// 	// leaf: bigint;
+// 	// commitment: string;
+// 	extension: string;
+// 	fileType: string;
+// }
 
 // intermediate entry struct
 export interface PendingEntry {
 	tag: string;
 	cid: string;
-	leaf: bigint;
-	commitment: Hex;
+	price: string;
+	// leaf: bigint;
+	// commitment: Hex;
 	acc: any;
 	extension: string;
 	fileType: string;
@@ -45,6 +48,7 @@ export interface Filedata {
 	data: string;
 	extension: string;
 	fileType: string;
+	price: string;
 }
 
 export interface EncryptedData {

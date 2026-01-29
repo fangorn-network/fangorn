@@ -160,13 +160,13 @@ contract ZKGate {
 
 	// READ FUNCS
 
-	function checkCIDAccess(
-		bytes32 vaultId,
-		bytes32 cidCommitment,
-		address user
-	) external view returns (bool) {
-		return cidAccess[vaultId][cidCommitment][user];
-	}
+	// function checkCIDAccess(
+	// 	bytes32 vaultId,
+	// 	bytes32 cidCommitment,
+	// 	address user
+	// ) external view returns (bool) {
+	// 	return cidAccess[vaultId][cidCommitment][user];
+	// }
 
 	function getVault(
 		bytes32 vaultId
