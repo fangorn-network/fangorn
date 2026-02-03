@@ -95,9 +95,8 @@ export class Fangorn {
 	}
 
 	public static async init(
-		jwt: string,
-		gateway: string,
 		walletClient: WalletClient,
+		pinata: PinataSDK,
 		litClient: any,
 		domain: string,
 		config?: AppConfig | undefined,
@@ -115,12 +114,6 @@ export class Fangorn {
 			publicClient as any,
 			walletClient,
 		);
-
-		// storage via Pinata
-		const pinata = new PinataSDK({
-			pinataJwt: jwt,
-			pinataGateway: gateway,
-		});
 
 		// // read the circuit from ipfs
 		// // TODO: assumes the circuit exists, no error handling here

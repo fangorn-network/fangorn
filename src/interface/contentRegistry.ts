@@ -171,13 +171,15 @@ export class ContentRegistry {
 	}
 
 	async getVault(vaultId: `0x${string}`): Promise<Vault> {
-		const result = await this.publicClient.readContract({
+		const result = await (this.publicClient.readContract as any)({
 			address: this.contractAddress,
 			abi: CONTENTREGISTRY_ABI,
 			functionName: "getVault",
 			args: [vaultId],
-		} as any);
-		return result as Vault;
+		});
+
+		const [poseidonRoot, manifestCid, owner, name] = result;
+		return { poseidonRoot, manifestCid, owner, name };
 	}
 
 	async vaultExists(vaultId: `0x${string}`): Promise<boolean> {

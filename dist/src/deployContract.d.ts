@@ -14,6 +14,3 @@ export declare function deployContract({
 	address: Address;
 	abi: any;
 }>;
-/**
- * Deploys both contracts
- */

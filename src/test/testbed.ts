@@ -1,21 +1,9 @@
-import {
-	Address,
-	createPublicClient,
-	Hex,
-	hexToBytes,
-	http,
-	keccak256,
-	parseUnits,
-	toHex,
-	WalletClient,
-} from "viem";
+import { Address, Hex, keccak256, parseUnits, toHex, WalletClient } from "viem";
 import { AppConfig, Fangorn } from "../fangorn.js";
 import { Filedata } from "../types/types.js";
 import { createLitClient } from "@lit-protocol/lit-client";
 import { nagaDev } from "@lit-protocol/networks";
-import { config } from "process";
-import { ExactEvmScheme } from "@x402/evm";
-import { PaymentRequirements } from "@x402/core/types";
+import { PinataSDK } from "pinata";
 
 export class TestBed {
 	private delegatorFangorn: Fangorn;
@@ -70,21 +58,24 @@ export class TestBed {
 			network: nagaDev,
 		});
 
+		// storage via Pinata
+		const pinata = new PinataSDK({
+			pinataJwt: jwt,
+			pinataGateway: gateway,
+		});
 		const domain = "localhost:3000";
 
 		const fangorn = await Fangorn.init(
-			jwt,
-			gateway,
 			delegatorWalletClient,
+			pinata,
 			litClient,
 			domain,
 			config,
 		);
 
 		const delegateeFangorn = await Fangorn.init(
-			jwt,
-			gateway,
 			delegateeWalletClient,
+			pinata,
 			delegateeLitClient,
 			domain,
 			config,

@@ -2,6 +2,7 @@ import { keccak256, parseUnits, toHex } from "viem";
 import { Fangorn } from "../fangorn.js";
 import { createLitClient } from "@lit-protocol/lit-client";
 import { nagaDev } from "@lit-protocol/networks";
+import { PinataSDK } from "pinata";
 export class TestBed {
 	delegatorFangorn;
 	delegateeFangorn;
@@ -43,19 +44,22 @@ export class TestBed {
 		const delegateeLitClient = await createLitClient({
 			network: nagaDev,
 		});
+		// storage via Pinata
+		const pinata = new PinataSDK({
+			pinataJwt: jwt,
+			pinataGateway: gateway,
+		});
 		const domain = "localhost:3000";
 		const fangorn = await Fangorn.init(
-			jwt,
-			gateway,
 			delegatorWalletClient,
+			pinata,
 			litClient,
 			domain,
 			config,
 		);
 		const delegateeFangorn = await Fangorn.init(
-			jwt,
-			gateway,
 			delegateeWalletClient,
+			pinata,
 			delegateeLitClient,
 			domain,
 			config,
