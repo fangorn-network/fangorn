@@ -8,7 +8,6 @@
 // 	encodeAbiParameters,
 // 	parseAbiParameters,
 // } from "viem";
-
 // export interface Vault {
 // 	passwordHash: `0x${string}`;
 // 	poseidonRoot: `0x${string}`;
@@ -16,7 +15,6 @@
 // 	owner: Address;
 // 	name: string;
 // }
-
 // const ZKGATE_ABI = [
 // 	// Vault creation
 // 	{
@@ -151,12 +149,10 @@
 // 		],
 // 	},
 // ] as const;
-
 // export class ZKGate {
 // 	private publicClient: PublicClient;
 // 	private walletClient: WalletClient;
 // 	private contractAddress: Address;
-
 // 	constructor(
 // 		contractAddress: Address,
 // 		publicClient: PublicClient,
@@ -166,7 +162,6 @@
 // 		this.contractAddress = contractAddress;
 // 		this.walletClient = walletClient;
 // 	}
-
 // 	private getWriteConfig() {
 // 		if (!this.walletClient.chain) throw new Error("Chain required");
 // 		if (!this.walletClient.account) throw new Error("Account required");
@@ -175,13 +170,10 @@
 // 			account: this.walletClient.account,
 // 		};
 // 	}
-
 // 	getContractAddress() {
 // 		return this.contractAddress;
 // 	}
-
 // 	// --- Read Functions ---
-
 // 	async getVaultCreationFee(): Promise<bigint> {
 // 		return this.publicClient.readContract({
 // 			address: this.contractAddress,
@@ -189,7 +181,6 @@
 // 			functionName: "vaultCreationFee",
 // 		});
 // 	}
-
 // 	async getVault(vaultId: `0x${string}`): Promise<Vault> {
 // 		const [passwordHash, poseidonRoot, manifestCid, owner, name] =
 // 			await this.publicClient.readContract({
@@ -200,7 +191,6 @@
 // 			});
 // 		return { passwordHash, poseidonRoot, manifestCid, owner, name };
 // 	}
-
 // 	async checkCIDAccess(
 // 		vaultId: `0x${string}`,
 // 		cidCommitment: `0x${string}`,
@@ -213,7 +203,6 @@
 // 			args: [vaultId, cidCommitment, user],
 // 		});
 // 	}
-
 // 	async isNullifierSpent(nullifier: `0x${string}`): Promise<boolean> {
 // 		return this.publicClient.readContract({
 // 			address: this.contractAddress,
@@ -222,12 +211,10 @@
 // 			args: [nullifier],
 // 		});
 // 	}
-
 // 	async vaultExists(vaultId: `0x${string}`): Promise<boolean> {
 // 		const vault = await this.getVault(vaultId);
 // 		return vault.owner !== "0x0000000000000000000000000000000000000000";
 // 	}
-
 // 	async getOwnedVaults(address: Address): Promise<readonly `0x${string}`[]> {
 // 		const vaults = await this.publicClient.readContract({
 // 			address: this.contractAddress,
@@ -235,19 +222,15 @@
 // 			functionName: "getOwnedVault",
 // 			args: [address],
 // 		});
-
 // 		return vaults;
 // 	}
-
 // 	// --- Write Functions ---
-
 // 	async createVault(
 // 		name: string,
 // 		passwordHash: `0x${string}`,
 // 		fee: bigint,
 // 	): Promise<{ hash: Hash; vaultId: `0x${string}` }> {
 // 		const { chain, account } = this.getWriteConfig();
-
 // 		const hash = await this.walletClient.writeContract({
 // 			address: this.contractAddress,
 // 			abi: ZKGATE_ABI,
@@ -257,24 +240,20 @@
 // 			chain,
 // 			account,
 // 		});
-
 // 		const vaultId = keccak256(
 // 			encodeAbiParameters(parseAbiParameters("bytes32, address"), [
 // 				passwordHash,
 // 				account.address,
 // 			]),
 // 		);
-
 // 		return { hash, vaultId };
 // 	}
-
 // 	async updateVault(
 // 		vaultId: `0x${string}`,
 // 		newRoot: `0x${string}`,
 // 		newManifestCid: string,
 // 	): Promise<Hash> {
 // 		const { chain, account } = this.getWriteConfig();
-
 // 		return this.walletClient.writeContract({
 // 			address: this.contractAddress,
 // 			abi: ZKGATE_ABI,
@@ -284,7 +263,6 @@
 // 			account,
 // 		});
 // 	}
-
 // 	async submitProof(
 // 		vaultId: `0x${string}`,
 // 		cidCommitment: `0x${string}`,
@@ -292,7 +270,6 @@
 // 		proof: `0x${string}`,
 // 	): Promise<Hash> {
 // 		const { chain, account } = this.getWriteConfig();
-
 // 		return this.walletClient.writeContract({
 // 			address: this.contractAddress,
 // 			abi: ZKGATE_ABI,
@@ -302,13 +279,10 @@
 // 			account,
 // 		});
 // 	}
-
 // 	// --- Helpers ---
-
 // 	async waitForTransaction(hash: Hash) {
 // 		return this.publicClient.waitForTransactionReceipt({ hash });
 // 	}
-
 // 	deriveVaultId(passwordHash: `0x${string}`, owner: Address): `0x${string}` {
 // 		return keccak256(
 // 			encodeAbiParameters(parseAbiParameters("bytes32, address"), [

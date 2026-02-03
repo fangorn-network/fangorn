@@ -1,5 +1,5 @@
 import { beforeAll, describe, it, expect } from "vitest";
-import { Account, createWalletClient, Hex, http, type Address } from "viem";
+import { createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { readFileSync } from "fs";
 import { join } from "path";
@@ -8,65 +8,46 @@ import { TestBed } from "./test/testbed.js";
 import { uploadToPinata } from "./test/index.js";
 import { createRequire } from "module";
 import { baseSepolia } from "viem/chains";
-import { computeTagCommitment } from "./crypto/proof.js";
-import { fieldToHex } from "./crypto/merkle.js";
-
 const require = createRequire(import.meta.url);
 const circuit = require("../circuits/preimage/target/preimage.json");
-
-const getEnv = (key: string) => {
+const getEnv = (key) => {
 	const value = process.env[key];
 	if (!value) {
 		throw new Error(`Environment variable ${key} is not set`);
 	}
 	return value;
 };
-
 describe("ZK-gated decryption", () => {
-	let rpcUrl: string;
-	let jwt: string;
-	let gateway: string;
-
-	let delegatorAccount: Account;
-	let delegateeAccount: Account;
-	let usdcContractAddress: Address;
-	let contentRegistryAddress: Address;
-	let ipfsCid: string;
-
-	let testbed: TestBed;
-
+	let rpcUrl;
+	let jwt;
+	let gateway;
+	let delegatorAccount;
+	let delegateeAccount;
+	let usdcContractAddress;
+	let contentRegistryAddress;
+	let ipfsCid;
+	let testbed;
 	beforeAll(async () => {
-		rpcUrl = process.env.CHAIN_RPC_URL!;
+		rpcUrl = process.env.CHAIN_RPC_URL;
 		if (!rpcUrl) throw new Error("CHAIN_RPC_URL required");
-
-		jwt = process.env.PINATA_JWT!;
+		jwt = process.env.PINATA_JWT;
 		if (!jwt) throw new Error("PINATA_JWT required");
-
-		gateway = process.env.PINATA_GATEWAY!;
+		gateway = process.env.PINATA_GATEWAY;
 		if (!gateway) throw new Error("PINATA_GATEWAY required");
-
-		delegatorAccount = privateKeyToAccount(
-			getEnv("DELEGATOR_ETH_PRIVATE_KEY") as Hex,
-		);
-
+		delegatorAccount = privateKeyToAccount(getEnv("DELEGATOR_ETH_PRIVATE_KEY"));
 		const delegatorWalletClient = createWalletClient({
 			account: delegatorAccount,
 			transport: http(rpcUrl),
 			chain: baseSepolia,
 		});
-
-		delegateeAccount = privateKeyToAccount(
-			getEnv("DELEGATEE_ETH_PRIVATE_KEY") as Hex,
-		);
-
+		delegateeAccount = privateKeyToAccount(getEnv("DELEGATEE_ETH_PRIVATE_KEY"));
 		const delegateeWalletClient = createWalletClient({
 			account: delegateeAccount,
 			transport: http(rpcUrl),
 			chain: baseSepolia,
 		});
-
 		// if the cid is not defined, add the lit action to ipfs
-		ipfsCid = process.env.LIT_ACTION_CID!;
+		ipfsCid = process.env.LIT_ACTION_CID;
 		if (!ipfsCid) {
 			console.log("Uploading Verifier Lit Action to Pinata");
 			// q: should it verify if it is the right lit action?
@@ -76,9 +57,8 @@ describe("ZK-gated decryption", () => {
 			);
 			ipfsCid = await uploadToPinata("lit-action.js", litActionCode);
 		}
-
-		usdcContractAddress = process.env.USDC_CONTRACT_ADDRESS! as Address;
-		contentRegistryAddress = process.env.CONTENT_REGISTRY_ADDR! as Address;
+		usdcContractAddress = process.env.USDC_CONTRACT_ADDRESS;
+		contentRegistryAddress = process.env.CONTENT_REGISTRY_ADDR;
 		// deploy valid contracts if either are undefined
 		if (!contentRegistryAddress) {
 			console.log("Deploying ContentRegistry Contract");
@@ -89,10 +69,8 @@ describe("ZK-gated decryption", () => {
 			});
 			contentRegistryAddress = deployment.address;
 		}
-
 		console.log(`Lit Action CID: ${ipfsCid}`);
 		console.log(`Content Registry Contract: ${contentRegistryAddress}`);
-
 		testbed = await TestBed.init(
 			delegatorWalletClient,
 			delegateeWalletClient,
@@ -104,15 +82,13 @@ describe("ZK-gated decryption", () => {
 			rpcUrl,
 		);
 	}, 120_000); // 2 minute timeout
-
 	// afterall => cleanup (unpin files)
 	it("should create a vault with data and succeed to decrypt when the payment is settled", async () => {
 		// create a vault
-		const vaultName = "myVault_" + getRandomIntInclusive(0, 101010101);
-		// const vaultName = "MyVault-0";
+		// const vaultName = "myVault_" + getRandomIntInclusive(0, 101010101);
+		const vaultName = "MyVault-0";
 		const vaultId = await testbed.setupVault(vaultName);
 		console.log(`Vault creation successful, using vaultId: ${vaultId}`);
-
 		const price = "0.000001";
 		// build manifest
 		const manifest = [
@@ -124,23 +100,18 @@ describe("ZK-gated decryption", () => {
 				price,
 			},
 		];
-
 		await testbed.fileUpload(vaultId, manifest);
-
 		const tag = manifest[0].tag;
 		// purchase data access
 		await testbed.payForFile(vaultId, tag, price, delegatorAccount.address);
-
 		// wait to make sure pinata is behaving
 		await new Promise((resolve) => setTimeout(resolve, 10_000));
-
 		// try to get the data associated with the (vault, tag) combo
 		const expectedPlaintext = manifest[0].data;
 		const output = await testbed.tryDecrypt(vaultId, tag);
 		const outputAsString = new TextDecoder().decode(output);
 		expect(outputAsString).toBe(expectedPlaintext);
 		console.log("Decryption succeeded!");
-
 		// // sleep to avoid any pinata rate limiting
 		// await new Promise((f) => setTimeout(f, 6000));
 		// // add more data to the vault
@@ -161,7 +132,6 @@ describe("ZK-gated decryption", () => {
 		// 	},
 		// ];
 		// await testbed.fileUpload(nextFiles);
-
 		// // try to access the new files with the same password
 		// const newTag = nextFiles[0].tag;
 		// const newExpectedPlaintext = nextFiles[0].data;
@@ -170,14 +140,12 @@ describe("ZK-gated decryption", () => {
 		// expect(actualOutputAsString).toBe(newExpectedPlaintext);
 		// console.log("Decryption succeeded again!!");
 	}, 120_000);
-
 	// it("should fail to decrypt when the password is incorrect", async () => {
 	// 	// setup vault (will skip vault creation since we already have one with this name)
 	// 	const vaultName = "myVault_0001";
 	// 	const password = "ok";
 	// 	const badPassword = "not-ok";
 	// 	const vaultId = await testbed.setupVault(vaultName, password);
-
 	// 	const manifest = [
 	// 		{
 	// 			tag: "test3",
@@ -188,17 +156,14 @@ describe("ZK-gated decryption", () => {
 	// 	];
 	// 	await testbed.fileUpload(vaultId, manifest);
 	// 	// try to get the data associated with the (vault, tag) combo
-
 	// 	let didFail = false;
 	// 	try {
 	// 		await testbed.tryDecrypt(vaultId, "test3", badPassword);
 	// 	} catch (error) {
 	// 		didFail = true;
 	// 	}
-
 	// 	expect(didFail).toBe(true);
 	// }, 120_000);
-
 	// it("should fail to decrypt when the tag does not exist", async () => {
 	// 	// setup vault
 	// 	const vaultName = "myVault_0001";
@@ -211,10 +176,8 @@ describe("ZK-gated decryption", () => {
 	// 	} catch (error) {
 	// 		didFail = true;
 	// 	}
-
 	// 	expect(didFail).toBe(true);
 	// }, 120_000);
-
 	// it("should fail to decrypt when the vault does not exist", async () => {
 	// 	let didFail = false;
 	// 	try {
@@ -222,12 +185,10 @@ describe("ZK-gated decryption", () => {
 	// 	} catch (error) {
 	// 		didFail = true;
 	// 	}
-
 	// 	expect(didFail).toBe(true);
 	// }, 120_000);
 });
-
-function getRandomIntInclusive(min: number, max: number) {
+function getRandomIntInclusive(min, max) {
 	min = Math.ceil(min);
 	max = Math.floor(max);
 	return Math.floor(Math.random() * (max - min + 1)) + min;

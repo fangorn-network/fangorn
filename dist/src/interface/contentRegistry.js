@@ -1,23 +1,4 @@
-import {
-	type PublicClient,
-	type WalletClient,
-	type Address,
-	type Hash,
-	keccak256,
-	encodeAbiParameters,
-	parseAbiParameters,
-	parseEventLogs,
-	Hex,
-	parseUnits,
-} from "viem";
-
-export interface Vault {
-	poseidonRoot: `0x${string}`;
-	manifestCid: string;
-	owner: Address;
-	name: string;
-}
-
+import { parseEventLogs } from "viem";
 export const CONTENTREGISTRY_ABI = [
 	// Vault creation
 	{
@@ -120,24 +101,17 @@ export const CONTENTREGISTRY_ABI = [
 			{ name: "newManifestCid", type: "string", indexed: false },
 		],
 	},
-] as const;
-
+];
 export class ContentRegistry {
-	private publicClient: PublicClient;
-	private walletClient: WalletClient;
-	private contractAddress: Address;
-
-	constructor(
-		contractAddress: Address,
-		publicClient: PublicClient,
-		walletClient: WalletClient,
-	) {
+	publicClient;
+	walletClient;
+	contractAddress;
+	constructor(contractAddress, publicClient, walletClient) {
 		this.publicClient = publicClient;
 		this.contractAddress = contractAddress;
 		this.walletClient = walletClient;
 	}
-
-	private getWriteConfig() {
+	getWriteConfig() {
 		if (!this.walletClient.chain) throw new Error("Chain required");
 		if (!this.walletClient.account) throw new Error("Account required");
 		return {
@@ -145,13 +119,10 @@ export class ContentRegistry {
 			account: this.walletClient.account,
 		};
 	}
-
 	getContractAddress() {
 		return this.contractAddress;
 	}
-
 	// --- Read Functions ---
-
 	// async getVaultCreationFee(): Promise<bigint> {
 	// 	return this.publicClient.readContract({
 	// 		address: this.contractAddress,
@@ -159,50 +130,40 @@ export class ContentRegistry {
 	// 		functionName: "vaultCreationFee",
 	// 	});
 	// }
-
-	async checkSettlement(commitment: Hex, user: Address): Promise<boolean> {
+	async checkSettlement(commitment, user) {
 		const result = await this.publicClient.readContract({
-			address: this.contractAddress as Hex,
+			address: this.contractAddress,
 			abi: CONTENTREGISTRY_ABI,
 			functionName: "checkSettlement",
 			args: [commitment, user],
-		} as any);
-		return result as boolean;
+		});
+		return result;
 	}
-
-	async getVault(vaultId: `0x${string}`): Promise<Vault> {
+	async getVault(vaultId) {
 		const result = await this.publicClient.readContract({
 			address: this.contractAddress,
 			abi: CONTENTREGISTRY_ABI,
 			functionName: "getVault",
 			args: [vaultId],
-		} as any);
-		return result as Vault;
+		});
+		return result;
 	}
-
-	async vaultExists(vaultId: `0x${string}`): Promise<boolean> {
+	async vaultExists(vaultId) {
 		const vault = await this.getVault(vaultId);
 		return vault.owner !== "0x0000000000000000000000000000000000000000";
 	}
-
-	async getOwnedVaults(address: Address): Promise<Hex[]> {
+	async getOwnedVaults(address) {
 		const result = await this.publicClient.readContract({
 			address: this.contractAddress,
 			abi: CONTENTREGISTRY_ABI,
 			functionName: "getOwnedVault",
 			args: [address],
-		} as any);
-
-		return result as Hex[];
+		});
+		return result;
 	}
-
 	// --- Write Functions ---
-
-	async createVault(
-		name: string,
-	): Promise<{ hash: Hash; vaultId: `0x${string}` }> {
+	async createVault(name) {
 		const { chain, account } = this.getWriteConfig();
-
 		const hash = await this.walletClient.writeContract({
 			address: this.contractAddress,
 			abi: CONTENTREGISTRY_ABI,
@@ -211,32 +172,22 @@ export class ContentRegistry {
 			chain,
 			account,
 		});
-
 		const receipt = await this.waitForTransaction(hash);
 		const logs = parseEventLogs({
 			abi: CONTENTREGISTRY_ABI,
 			logs: receipt.logs,
 		});
-
-		let vaultId = "0x" as Hex;
-
+		let vaultId = "0x";
 		for (const log of logs) {
 			if (log.eventName == "VaultCreated") {
 				// TODO: verify the owner too
-				vaultId = log.args.vaultId as Hex;
+				vaultId = log.args.vaultId;
 			}
 		}
-
 		return { hash, vaultId };
 	}
-
-	async updateVault(
-		vaultId: `0x${string}`,
-		newRoot: `0x${string}`,
-		newManifestCid: string,
-	): Promise<Hash> {
+	async updateVault(vaultId, newRoot, newManifestCid) {
 		const { chain, account } = this.getWriteConfig();
-
 		return this.walletClient.writeContract({
 			address: this.contractAddress,
 			abi: CONTENTREGISTRY_ABI,
@@ -246,25 +197,12 @@ export class ContentRegistry {
 			account,
 		});
 	}
-
 	/**
 	 * Settles the payment on-chain using the EIP-3009 authorization
 	 * This is usually called by the Facilitator.
 	 */
-	async pay(args: {
-		commitment: Hex;
-		from: Address;
-		to: Address;
-		value: bigint;
-		validAfter: bigint;
-		validBefore: bigint;
-		nonce: Hex;
-		v: number;
-		r: Hex;
-		s: Hex;
-	}): Promise<Hash> {
+	async pay(args) {
 		const { chain, account } = this.getWriteConfig();
-
 		return this.walletClient.writeContract({
 			address: this.contractAddress,
 			abi: CONTENTREGISTRY_ABI,
@@ -285,10 +223,8 @@ export class ContentRegistry {
 			account,
 		});
 	}
-
 	// --- Helpers ---
-
-	async waitForTransaction(hash: Hash) {
+	async waitForTransaction(hash) {
 		return this.publicClient.waitForTransactionReceipt({ hash });
 	}
 }

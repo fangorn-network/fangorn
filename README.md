@@ -133,3 +133,59 @@ The tests will:
 
 1. Build and deploy the solidity verifier to base sepolia (unless it is defined in .env)
 2. Upload the Lit Action to IPFS (unless it is defined in .env)
+
+## CLI
+
+To install locally:
+
+```sh
+chmod +x update_clci.sh
+./update_cli.sh
+```
+
+```
+fangorn - CLI for Fangorn - token-gated content management
+
+Usage: fangorn [command] [options]
+
+Commands:
+  create-vault <name>                    Create a new vault
+
+  upload <vaultId> <files...>            Upload file(s) to a vault
+    -p, --price <price>                    Price per file (default: "0")
+    --overwrite                            Overwrite existing vault contents
+
+  list <vaultId>                         List contents of a vault
+
+  info <vaultId>                         Get vault info from contract
+
+  decrypt <vaultId> <tag>                Decrypt a file from a vault
+    -o, --output <path>                    Output file path (default: stdout)
+
+  entry <vaultId> <tag>                  Get info about a specific vault entry
+
+Options:
+  -V, --version                          Output version number
+  -h, --help                             Display help
+
+Examples:
+  fangorn create-vault "weather-data"
+  fangorn upload vault-name ./data.json ./image.png --price 0.001
+  fangorn upload vault-name ./new-data.json --overwrite
+  fangorn list vault-name
+  fangorn info vault-name
+  fangorn decrypt 0xabc... data.json -o ./decrypted.json
+  fangorn entry 0xabc... data.json
+
+Environment Variables (required):
+  CHAIN_RPC_URL          RPC endpoint (e.g. https://sepolia.base.org)
+  PINATA_JWT             Pinata API JWT
+  PINATA_GATEWAY         Pinata gateway URL
+  ETH_PRIVATE_KEY        Wallet private key (0x...)
+
+Environment Variables (optional):
+  LIT_ACTION_CID         Override default Lit Action CID
+  CONTENT_REGISTRY_ADDR  Override default ContentRegistry address
+  USDC_CONTRACT_ADDRESS  Override default USDC address
+  DOMAIN                 Domain for Lit auth (default: localhost:3000)
+```
