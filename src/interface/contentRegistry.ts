@@ -224,7 +224,7 @@ export class ContentRegistry {
 
 		for (const log of logs) {
 			if (log.eventName == "VaultCreated") {
-				// TODO: verify the owner too
+				// TODO: verify the owner too?
 				vaultId = log.args.vaultId as Hex;
 			}
 		}

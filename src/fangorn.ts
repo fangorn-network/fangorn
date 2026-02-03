@@ -7,6 +7,7 @@ import {
 	Hex,
 	http,
 	parseSignature,
+	ResourceNotFoundRpcError,
 	WalletClient,
 } from "viem";
 import { Vault, ContentRegistry } from "./interface/contentRegistry.js";
@@ -436,6 +437,10 @@ export class Fangorn {
 	public async getManifest(vaultId: Hex) {
 		// fetch manifest from pinata
 		const vault = await this.getVault(vaultId);
+
+		if (!vault.manifestCid || vault.manifestCid == "") {
+			return;
+		}
 		return await this.fetchManifest(vault.manifestCid);
 	}
 

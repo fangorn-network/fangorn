@@ -349,6 +349,9 @@ export class Fangorn {
 	async getManifest(vaultId) {
 		// fetch manifest from pinata
 		const vault = await this.getVault(vaultId);
+		if (!vault.manifestCid || vault.manifestCid == "") {
+			return;
+		}
 		return await this.fetchManifest(vault.manifestCid);
 	}
 	getAddress() {
@@ -366,7 +369,6 @@ export class Fangorn {
 		return vault;
 	}
 	async fetchManifest(cid) {
-		console.log("getting cid " + cid);
 		const response = await this.pinata.gateways.public.get(cid);
 		return response.data;
 	}

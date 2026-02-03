@@ -146,7 +146,8 @@ export class ContentRegistry {
 			functionName: "getVault",
 			args: [vaultId],
 		});
-		return result;
+		const [poseidonRoot, manifestCid, owner, name] = result;
+		return { poseidonRoot, manifestCid, owner, name };
 	}
 	async vaultExists(vaultId) {
 		const vault = await this.getVault(vaultId);
@@ -180,7 +181,7 @@ export class ContentRegistry {
 		let vaultId = "0x";
 		for (const log of logs) {
 			if (log.eventName == "VaultCreated") {
-				// TODO: verify the owner too
+				// TODO: verify the owner too?
 				vaultId = log.args.vaultId;
 			}
 		}

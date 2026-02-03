@@ -186,6 +186,13 @@ program
 			const fangorn = await getFangorn();
 			const manifest = await fangorn.getManifest(vaultId);
 
+			if (!manifest) {
+				console.log("The data source is empty. \n");
+				console.log(
+					"Upload data with `fangorn upload <vaultName> <file> --price <set-price>",
+				);
+				process.exit(0);
+			}
 			console.log(`Vault: ${name} (${vaultId})`);
 			console.log(`Entries (${manifest.entries.length}):`);
 			for (const entry of manifest.entries) {
@@ -212,7 +219,9 @@ program
 
 			console.log(`Vault: ${name} (${vaultId})`);
 			console.log(`Owner: ${vault.owner}`);
-			console.log(`Manifest CID: ${vault.manifestCid}`);
+			console.log(
+				`Manifest CID: ${vault.manifestCid == "" ? "Upload data with `fangorn upload <vaultName> <file> --price <set-price>`" : vault.manifestCid}`,
+			);
 			process.exit(0);
 		} catch (err) {
 			console.error("Failed to get vault info:", (err as Error).message);
