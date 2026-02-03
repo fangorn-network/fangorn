@@ -109,7 +109,7 @@ describe("ZK-gated decryption", () => {
 	it("should create a vault with data and succeed to decrypt when the payment is settled", async () => {
 		// create a vault
 		const vaultName = "myVault_" + getRandomIntInclusive(0, 101010101);
-		// const vaultName = "MyVault-0";
+		// const vaultName = "demo";
 		const vaultId = await testbed.setupVault(vaultName);
 		console.log(`Vault creation successful, using vaultId: ${vaultId}`);
 

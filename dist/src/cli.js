@@ -15,6 +15,7 @@ import { readFileSync, writeFileSync } from "fs";
 import { basename, extname } from "path";
 import { Fangorn, FangornConfig } from "./fangorn.js";
 import "dotenv/config";
+import { PinataSDK } from "pinata";
 let _config = null;
 let _account = null;
 let _fangorn = null;
@@ -74,10 +75,14 @@ async function getFangorn() {
 		}),
 	};
 	const domain = process.env.DOMAIN || "localhost:3000";
+	// storage via Pinata
+	const pinata = new PinataSDK({
+		pinataJwt: cfg.jwt,
+		pinataGateway: cfg.gateway,
+	});
 	_fangorn = await Fangorn.init(
-		cfg.jwt,
-		cfg.gateway,
 		walletClient,
+		pinata,
 		litClient,
 		domain,
 		appConfig,

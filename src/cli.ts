@@ -18,6 +18,7 @@ import { basename, extname } from "path";
 import { Fangorn, FangornConfig, AppConfig } from "./fangorn.js";
 import { Filedata } from "./types/types.js";
 import "dotenv/config";
+import { PinataSDK } from "pinata";
 
 interface Config {
 	rpcUrl: string;
@@ -99,14 +100,21 @@ async function getFangorn(): Promise<Fangorn> {
 	};
 
 	const domain = process.env.DOMAIN || "localhost:3000";
+
+	// storage via Pinata
+	const pinata = new PinataSDK({
+		pinataJwt: cfg.jwt,
+		pinataGateway: cfg.gateway,
+	});
+
 	_fangorn = await Fangorn.init(
-		cfg.jwt,
-		cfg.gateway,
 		walletClient,
+		pinata,
 		litClient,
 		domain,
 		appConfig,
 	);
+
 	return _fangorn;
 }
 

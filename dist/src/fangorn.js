@@ -7,7 +7,6 @@ import {
 	fieldToHex, // could be a util func instead
 } from "./crypto/merkle.js";
 import { buildManifest } from "./types/types.js";
-import { PinataSDK } from "pinata";
 import { decryptData, encryptData } from "./crypto/encryption.js";
 import { createAuthManager, storagePlugins } from "@lit-protocol/auth";
 export var FangornConfig;
@@ -64,7 +63,7 @@ export class Fangorn {
 		this.chainName = chainName;
 		this.domain = domain;
 	}
-	static async init(jwt, gateway, walletClient, litClient, domain, config) {
+	static async init(walletClient, pinata, litClient, domain, config) {
 		const resolvedConfig = config || FangornConfig.Testnet;
 		const rpcUrl = resolvedConfig.rpcUrl;
 		const chainName = resolvedConfig.chainName;
@@ -76,11 +75,6 @@ export class Fangorn {
 			publicClient,
 			walletClient,
 		);
-		// storage via Pinata
-		const pinata = new PinataSDK({
-			pinataJwt: jwt,
-			pinataGateway: gateway,
-		});
 		// // read the circuit from ipfs
 		// // TODO: assumes the circuit exists, no error handling here
 		// const circuitResponse = await pinata.gateways.public.get(
@@ -344,7 +338,6 @@ export class Fangorn {
 	async getVaultData(vaultId, tag) {
 		// fetch manifest from pinata
 		const vault = await this.getVault(vaultId);
-		console.log("got the vault " + JSON.stringify(vault));
 		const manifest = await this.fetchManifest(vault.manifestCid);
 		// try to find entry
 		const entry = manifest.entries.find((e) => e.tag === tag);
@@ -373,6 +366,7 @@ export class Fangorn {
 		return vault;
 	}
 	async fetchManifest(cid) {
+		console.log("getting cid " + cid);
 		const response = await this.pinata.gateways.public.get(cid);
 		return response.data;
 	}

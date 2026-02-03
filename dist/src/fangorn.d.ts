@@ -34,9 +34,8 @@ export declare class Fangorn {
 		domain: string,
 	);
 	static init(
-		jwt: string,
-		gateway: string,
 		walletClient: WalletClient,
+		pinata: PinataSDK,
 		litClient: any,
 		domain: string,
 		config?: AppConfig | undefined,
