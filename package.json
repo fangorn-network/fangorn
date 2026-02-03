@@ -20,7 +20,10 @@
 		"test": "dotenvx run -f .env -- vitest run",
 		"test:e2e": "dotenvx run -f .env -- vitest run --config vitest.e2e.config.ts",
 		"tsc": "tsc",
-		"deploy": "dotenvx run -f .env -- tsx deploy.ts"
+		"deploy": "dotenvx run -f .env -- tsx deploy.ts",
+		"build:cli": "tsc",
+		"prepare:cli": "npm run build",
+		"fangorn": "dotenvx run -f .env -- node dist/src/cli.js"
 	},
 	"lint-staged": {
 		"*": "prettier --ignore-unknown --write"
@@ -33,6 +36,7 @@
 		"@vitest/coverage-v8": "4.0.15",
 		"@vitest/eslint-plugin": "1.5.1",
 		"blake3-js": "^0.0.5",
+		"dotenv-cli": "^11.0.0",
 		"eslint": "9.39.1",
 		"husky": "9.1.7",
 		"lint-staged": "16.2.7",
@@ -67,6 +71,8 @@
 		"@x402/core": "^2.2.0",
 		"@x402/evm": "^2.2.0",
 		"buffer": "^6.0.3",
+		"commander": "^14.0.3",
+		"dotenv": "^17.2.3",
 		"ethers": "^6.16.0",
 		"imurmurhash": "^0.1.4",
 		"multiformats": "^13.4.2",
