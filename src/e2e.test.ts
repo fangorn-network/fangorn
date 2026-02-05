@@ -30,7 +30,7 @@ describe("ZK-gated decryption", () => {
 	let delegatorAccount: Account;
 	let delegateeAccount: Account;
 	let usdcContractAddress: Address;
-	let contentRegistryAddress: Address;
+	let dataSourceRegistryAddress: Address;
 	let ipfsCid: string;
 
 	let testbed: TestBed;
@@ -78,20 +78,20 @@ describe("ZK-gated decryption", () => {
 		}
 
 		usdcContractAddress = process.env.USDC_CONTRACT_ADDRESS! as Address;
-		contentRegistryAddress = process.env.CONTENT_REGISTRY_ADDR! as Address;
+		dataSourceRegistryAddress = process.env.DS_REGISTRY_ADDR! as Address;
 		// deploy valid contracts if either are undefined
-		if (!contentRegistryAddress) {
+		if (!dataSourceRegistryAddress) {
 			console.log("Deploying ContentRegistry Contract");
 			const deployment = await deployContract({
 				account: delegatorAccount,
 				contractName: "ContentRegistry",
 				constructorArgs: [usdcContractAddress],
 			});
-			contentRegistryAddress = deployment.address;
+			dataSourceRegistryAddress = deployment.address;
 		}
 
 		console.log(`Lit Action CID: ${ipfsCid}`);
-		console.log(`Content Registry Contract: ${contentRegistryAddress}`);
+		console.log(`Content Registry Contract: ${dataSourceRegistryAddress}`);
 
 		testbed = await TestBed.init(
 			delegatorWalletClient,
@@ -99,7 +99,7 @@ describe("ZK-gated decryption", () => {
 			jwt,
 			gateway,
 			ipfsCid,
-			contentRegistryAddress,
+			dataSourceRegistryAddress,
 			usdcContractAddress,
 			rpcUrl,
 		);

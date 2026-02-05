@@ -54,7 +54,7 @@ function loadConfig(): Config {
 		gateway,
 		privateKey,
 		litActionCid: process.env.LIT_ACTION_CID,
-		contentRegistryAddress: process.env.CONTENT_REGISTRY_ADDR as Address,
+		contentRegistryAddress: process.env.DS_REGISTRY_ADDR as Address,
 		usdcContractAddress: process.env.USDC_CONTRACT_ADDRESS as Address,
 	};
 	return _config;
@@ -133,7 +133,7 @@ program
 	.action(async (name: string) => {
 		try {
 			const fangorn = await getFangorn();
-			const vaultId = await fangorn.createVault(name);
+			const vaultId = await fangorn.registerDataSource(name);
 			console.log(`Vault created: ${vaultId}`);
 			process.exit(0);
 		} catch (err) {
