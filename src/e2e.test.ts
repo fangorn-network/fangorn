@@ -81,17 +81,17 @@ describe("ZK-gated decryption", () => {
 		dataSourceRegistryAddress = process.env.DS_REGISTRY_ADDR! as Address;
 		// deploy valid contracts if either are undefined
 		if (!dataSourceRegistryAddress) {
-			console.log("Deploying ContentRegistry Contract");
+			console.log("Deploying DSRegistry Contract");
 			const deployment = await deployContract({
 				account: delegatorAccount,
-				contractName: "ContentRegistry",
+				contractName: "DSRegistry",
 				constructorArgs: [usdcContractAddress],
 			});
 			dataSourceRegistryAddress = deployment.address;
 		}
 
 		console.log(`Lit Action CID: ${ipfsCid}`);
-		console.log(`Content Registry Contract: ${dataSourceRegistryAddress}`);
+		console.log(`Data Source Registry Contract: ${dataSourceRegistryAddress}`);
 
 		testbed = await TestBed.init(
 			delegatorWalletClient,
