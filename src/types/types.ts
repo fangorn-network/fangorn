@@ -82,58 +82,6 @@ export const buildManifest = (options: BuildManifestOptions): VaultManifest => {
 	};
 };
 
-// an agent card for data sources
-interface FangornDataSourceCard {
-	// === ERC-8004 REQUIRED ===
-	type: "https://eips.ethereum.org/EIPS/eip-8004#registration-v1";
-	name: string;
-	description: string;
-	image: string; // URL to icon/logo
-
-	// === ERC-8004 ENDPOINTS ===
-	endpoints: [
-		// Standard A2A discovery (even if minimal)
-		{
-			name: "A2A";
-			endpoint: string; // https://example.com/.well-known/agent-card.json
-			version: "0.3.0";
-		},
-		// Payment destination
-		{
-			name: "agentWallet";
-			endpoint: string; // eip155:8453:0x... (CAIP-10 format)
-		},
-		// Fangorn resource server (custom but discoverable)
-		{
-			name: "x402f"; // or "fangorn" - see note below
-			endpoint: string; // https://example.com/resource
-			version: "1.0.0";
-		},
-	];
-
-	// === ERC-8004 TRUST ===
-	supportedTrust: ("reputation" | "crypto-economic" | "tee-attestation")[];
-
-	// === FANGORN EXTENSIONS ===
-	extensions: {
-		fangorn: {
-			vaultId: string;
-			conditionTypes: string[]; // ["payment-settlement", "nft-ownership", ...]
-			litNetwork: string; // "datil" | "datil-dev" | etc
-		};
-		x402f?: {
-			pricingModel: "per-query" | "per-byte" | "subscription";
-			currency: string; // "USDC"
-			basePrice?: string; // optional hint, actual price from endpoint
-		};
-		dataSchema?: {
-			type: string; // "ohlcv" | "social" | "events" | etc
-			format: string; // "json" | "csv" | "parquet"
-			// ... domain-specific fields
-		};
-	};
-}
-
 // intermediate entry struct
 export interface PendingEntry {
 	tag: string;
