@@ -8,12 +8,8 @@ import { TestBed } from "./test/testbed.js";
 import { uploadToPinata } from "./test/index.js";
 import { createRequire } from "module";
 import { baseSepolia } from "viem/chains";
-import { computeTagCommitment } from "./crypto/proof.js";
-import { fieldToHex } from "./crypto/merkle.js";
 
 const require = createRequire(import.meta.url);
-const circuit = require("../circuits/preimage/target/preimage.json");
-
 const getEnv = (key: string) => {
 	const value = process.env[key];
 	if (!value) {
