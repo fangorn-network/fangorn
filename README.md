@@ -185,7 +185,7 @@ Environment Variables (required):
 
 Environment Variables (optional):
   LIT_ACTION_CID         Override default Lit Action CID
-  CONTENT_REGISTRY_ADDR  Override default ContentRegistry address
+  DS_REGISTRY_ADDR  Override default ContentRegistry address
   USDC_CONTRACT_ADDRESS  Override default USDC address
   DOMAIN                 Domain for Lit auth (default: localhost:3000)
 ```

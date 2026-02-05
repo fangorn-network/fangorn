@@ -86,7 +86,7 @@ export class TestBed {
 
 	async setupVault(name: string) {
 		if (!this.vaultIds.get(name)) {
-			const vaultId = await this.delegatorFangorn.createVault(name);
+			const vaultId = await this.delegatorFangorn.registerDataSource(name);
 			this.vaultIds.set(name, vaultId);
 		}
 

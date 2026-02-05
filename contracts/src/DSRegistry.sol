@@ -22,25 +22,30 @@ interface IUSDC {
 contract ContentRegistry {
 	IUSDC public immutable usdc;
 
-	struct Vault {
+	struct DataSource {
 		string name;
 		bytes32 poseidonRoot;
 		string manifestCid;
 		address owner;
 	}
 
-	mapping(address => bytes32[]) public ownedVaults;
-	mapping(bytes32 => Vault) public vaults;
+	mapping(address => bytes32[]) public owned;
+	mapping(bytes32 => DataSource) public dataSources;
 
 	// commitment -> user -> hasPaid
 	mapping(bytes32 => mapping(address => bool)) public settlementTracker;
 
-	event VaultCreated(bytes32 indexed vaultId, address indexed owner);
-	event VaultUpdated(
-		bytes32 indexed vaultId,
+	// a data source was created
+	event DataSourceCreated(bytes32 indexed id, address indexed owner);
+
+	// a data source was update d
+	event DataSourceUpdated(
+		bytes32 indexed id,
 		bytes32 newRoot,
 		string newManifestCid
 	);
+
+	// a payment was settled and recorded onchain
 	event SettlementRecorded(
 		bytes32 indexed commitment,
 		address indexed user,
@@ -63,7 +68,7 @@ contract ContentRegistry {
 		uint256 validAfter,
 		uint256 validBefore,
 		bytes32 nonce,
-		uint8 v,
+		uint8 v, 
 		bytes32 r,
 		bytes32 s
 	) external {
@@ -92,34 +97,34 @@ contract ContentRegistry {
 		return settlementTracker[commitment][user];
 	}
 
-	function createVault(
+	function registerDataSource(
 		string calldata name
-	) external returns (bytes32 vaultId) {
-		vaultId = keccak256(abi.encode(name, msg.sender));
-		require(vaults[vaultId].owner == address(0), "Vault exists");
-		vaults[vaultId] = Vault({
+	) external returns (bytes32 id) {
+		id = keccak256(abi.encode(name, msg.sender));
+		require(dataSources[id].owner == address(0), "The data source is already registered");
+		dataSources[id] = DataSource({
 			name: name,
 			poseidonRoot: bytes32(0),
 			manifestCid: "",
 			owner: msg.sender
-		});
-		ownedVaults[msg.sender].push(vaultId);
-		emit VaultCreated(vaultId, msg.sender);
+		});   
+		owned[msg.sender].push(id);
+		emit DataSourceCreated(id, msg.sender);
 	}
 
 	function updateVault(
-		bytes32 vaultId,
+		bytes32 id,
 		bytes32 newRoot,
 		string calldata newManifestCid
 	) external {
-		require(vaults[vaultId].owner == msg.sender, "Not owner");
-		vaults[vaultId].poseidonRoot = newRoot;
-		vaults[vaultId].manifestCid = newManifestCid;
-		emit VaultUpdated(vaultId, newRoot, newManifestCid);
+		require(dataSources[id].owner == msg.sender, "Not owner");
+		dataSources[id].poseidonRoot = newRoot;
+		dataSources[id].manifestCid = newManifestCid;
+		emit DataSourceUpdated(id, newRoot, newManifestCid);
 	}
 
 	function getVault(
-		bytes32 vaultId
+		bytes32 id
 	)
 		external
 		view
@@ -130,13 +135,13 @@ contract ContentRegistry {
 			string memory name
 		)
 	{
-		Vault memory v = vaults[vaultId];
+		DataSource memory v = dataSources[id];
 		return (v.poseidonRoot, v.manifestCid, v.owner, v.name);
 	}
 
-	function getOwnedVault(
+	function getOwnedDataSources(
 		address owner
 	) external view returns (bytes32[] memory) {
-		return ownedVaults[owner];
+		return owned[owner];
 	}
 }

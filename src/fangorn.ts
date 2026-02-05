@@ -135,7 +135,7 @@ export class Fangorn {
 		);
 	}
 
-	async createVault(name: string): Promise<Hex> {
+	async registerDataSource(name: string): Promise<Hex> {
 		// const fee = await this.contentRegistry.getVaultCreationFee();
 		const { hash: createHash, vaultId } =
 			await this.contentRegistry.createVault(name);
