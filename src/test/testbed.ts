@@ -4,6 +4,7 @@ import { Filedata } from "../types/types.js";
 import { createLitClient } from "@lit-protocol/lit-client";
 import { nagaDev } from "@lit-protocol/networks";
 import { PinataSDK } from "pinata";
+import { PinataStorage } from "../providers/storage/pinata/index.js";
 
 export class TestBed {
 	private delegatorFangorn: Fangorn;
@@ -63,11 +64,16 @@ export class TestBed {
 			pinataJwt: jwt,
 			pinataGateway: gateway,
 		});
+
+		const delegatorStorage = new PinataStorage(pinata);
+
+		const delegateeStorage = new PinataStorage(pinata);
+
 		const domain = "localhost:3000";
 
 		const fangorn = await Fangorn.init(
 			delegatorWalletClient,
-			pinata,
+			delegatorStorage,
 			litClient,
 			domain,
 			config,
@@ -75,7 +81,7 @@ export class TestBed {
 
 		const delegateeFangorn = await Fangorn.init(
 			delegateeWalletClient,
-			pinata,
+			delegateeStorage,
 			delegateeLitClient,
 			domain,
 			config,

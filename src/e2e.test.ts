@@ -156,7 +156,7 @@ describe("ZK-gated decryption", () => {
 		// 		price: "0",
 		// 	},
 		// ];
-		// await testbed.fileUpload(nextFiles);
+		// await testbed.fileUpload(vaultId, nextFiles);
 
 		// // try to access the new files with the same password
 		// const newTag = nextFiles[0].tag;

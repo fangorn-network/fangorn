@@ -21,11 +21,11 @@ export interface Vault {
 export const CONTENTREGISTRY_ABI = [
 	// Vault creation
 	{
-		name: "createVault",
+		name: "registerDataSource",
 		type: "function",
 		stateMutability: "payable",
 		inputs: [{ name: "name", type: "string" }],
-		outputs: [{ name: "vaultId", type: "bytes32" }],
+		outputs: [{ name: "id", type: "bytes32" }],
 	},
 	// Vault update
 	{
@@ -62,27 +62,12 @@ export const CONTENTREGISTRY_ABI = [
 		name: "getVault",
 		type: "function",
 		stateMutability: "view",
-		inputs: [{ name: "vaultId", type: "bytes32" }],
+		inputs: [{ name: "id", type: "bytes32" }],
 		outputs: [
 			{ name: "poseidonRoot", type: "bytes32" },
 			{ name: "manifestCid", type: "string" },
 			{ name: "owner", type: "address" },
 			{ name: "name", type: "string" },
-		],
-	},
-	{
-		name: "vaults",
-		type: "function",
-		stateMutability: "view",
-		inputs: [
-			{ name: "commitment", type: "bytes32" },
-			{ name: "user", type: "address" },
-		],
-		outputs: [
-			{ name: "passwordHash", type: "bytes32" },
-			{ name: "poseidonRoot", type: "bytes32" },
-			{ name: "manifestCid", type: "string" },
-			{ name: "owner", type: "address" },
 		],
 	},
 	{
@@ -96,7 +81,7 @@ export const CONTENTREGISTRY_ABI = [
 		outputs: [{ name: "hasAccess", type: "bool" }],
 	},
 	{
-		name: "getOwnedVault",
+		name: "getOwnedDataSources",
 		type: "function",
 		stateMutability: "view",
 		inputs: [{ name: "owner", type: "address" }],
@@ -104,18 +89,18 @@ export const CONTENTREGISTRY_ABI = [
 	},
 	// Events
 	{
-		name: "VaultCreated",
+		name: "DataSourceCreated",
 		type: "event",
 		inputs: [
-			{ name: "vaultId", type: "bytes32", indexed: true },
+			{ name: "id", type: "bytes32", indexed: true },
 			{ name: "owner", type: "address", indexed: true },
 		],
 	},
 	{
-		name: "VaultUpdated",
+		name: "DataSourceUpdated",
 		type: "event",
 		inputs: [
-			{ name: "vaultId", type: "bytes32", indexed: true },
+			{ name: "id", type: "bytes32", indexed: true },
 			{ name: "newRoot", type: "bytes32", indexed: false },
 			{ name: "newManifestCid", type: "string", indexed: false },
 		],
@@ -151,15 +136,6 @@ export class ContentRegistry {
 	}
 
 	// --- Read Functions ---
-
-	// async getVaultCreationFee(): Promise<bigint> {
-	// 	return this.publicClient.readContract({
-	// 		address: this.contractAddress,
-	// 		abi: CONTENTREGISTRY_ABI,
-	// 		functionName: "vaultCreationFee",
-	// 	});
-	// }
-
 	async checkSettlement(commitment: Hex, user: Address): Promise<boolean> {
 		const result = await this.publicClient.readContract({
 			address: this.contractAddress as Hex,
@@ -208,7 +184,7 @@ export class ContentRegistry {
 		const hash = await this.walletClient.writeContract({
 			address: this.contractAddress,
 			abi: CONTENTREGISTRY_ABI,
-			functionName: "createVault",
+			functionName: "registerDataSource",
 			args: [name],
 			chain,
 			account,
@@ -223,31 +199,45 @@ export class ContentRegistry {
 		let vaultId = "0x" as Hex;
 
 		for (const log of logs) {
-			if (log.eventName == "VaultCreated") {
+			if (log.eventName == "DataSourceCreated") {
 				// TODO: verify the owner too?
-				vaultId = log.args.vaultId as Hex;
+				vaultId = log.args.id as Hex;
 			}
+		}
+
+		if (vaultId == ("0x" as Hex)) {
+			console.error("no vault id!!!!");
 		}
 
 		return { hash, vaultId };
 	}
 
 	async updateVault(
-		vaultId: `0x${string}`,
+		id: `0x${string}`,
 		newRoot: `0x${string}`,
 		newManifestCid: string,
 	): Promise<Hash> {
 		const { chain, account } = this.getWriteConfig();
 
-		return this.walletClient.writeContract({
+		console.log(
+			"UPDATING VAULT****************** manifest CID is: " + newManifestCid,
+		);
+
+		const hash = await this.walletClient.writeContract({
 			address: this.contractAddress,
 			abi: CONTENTREGISTRY_ABI,
 			functionName: "updateVault",
-			args: [vaultId, newRoot, newManifestCid],
+			args: [id, newRoot, newManifestCid],
 			chain,
 			account,
 		});
+
+		await this.waitForTransaction(hash);
+
+		return hash;
 	}
+
+	// --- Helpers ---
 
 	/**
 	 * Settles the payment on-chain using the EIP-3009 authorization
@@ -287,8 +277,6 @@ export class ContentRegistry {
 			account,
 		});
 	}
-
-	// --- Helpers ---
 
 	async waitForTransaction(hash: Hash) {
 		return this.publicClient.waitForTransactionReceipt({ hash });

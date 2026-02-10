@@ -7,7 +7,6 @@ import {
 	Hex,
 	http,
 	parseSignature,
-	ResourceNotFoundRpcError,
 	WalletClient,
 } from "viem";
 import { Vault, ContentRegistry } from "./interface/contentRegistry.js";
@@ -15,15 +14,10 @@ import { computeTagCommitment } from "./crypto/proof.js";
 import {
 	fieldToHex, // could be a util func instead
 } from "./crypto/merkle.js";
-import {
-	buildManifest,
-	Filedata,
-	PendingEntry,
-	VaultManifest,
-} from "./types/types.js";
-import { PinataSDK } from "pinata";
+import { Filedata, PendingEntry, VaultManifest } from "./types/types.js";
 import { decryptData, encryptData } from "./crypto/encryption.js";
 import { createAuthManager, storagePlugins } from "@lit-protocol/auth";
+import StorageProvider from "./providers/storage/index.js";
 
 export interface AppConfig {
 	// The CID pointing to the expected LIT action
@@ -69,7 +63,8 @@ export class Fangorn {
 	// The wallet client for signing txs
 	private walletClient: WalletClient;
 	// The storage layer (todo: make this into a genericc storage adapter)
-	private pinata: PinataSDK;
+	private storage: StorageProvider<any>;
+	// private pinata: PinataSDK;
 	// in-mem state for building manifests
 	private pendingEntries: Map<string, PendingEntry> = new Map();
 	// The domain (i.e. webserver address) that is using the Fangorn Client
@@ -82,13 +77,13 @@ export class Fangorn {
 		litClient: any,
 		contentRegistry: any,
 		walletClient: WalletClient,
-		pinata: PinataSDK,
+		storage: StorageProvider<any>,
 		domain: string,
 	) {
 		this.litClient = litClient;
 		this.contentRegistry = contentRegistry;
 		this.walletClient = walletClient;
-		this.pinata = pinata;
+		this.storage = storage;
 		this.litActionCid = litActionCid;
 		// this.circuit = circuit;
 		this.chainName = chainName;
@@ -97,7 +92,7 @@ export class Fangorn {
 
 	public static async init(
 		walletClient: WalletClient,
-		pinata: PinataSDK,
+		storage: StorageProvider<any>,
 		litClient: any,
 		domain: string,
 		config?: AppConfig | undefined,
@@ -130,7 +125,7 @@ export class Fangorn {
 			litClient,
 			contentRegistryClient,
 			walletClient,
-			pinata,
+			storage,
 			domain,
 		);
 	}
@@ -159,7 +154,7 @@ export class Fangorn {
 			await this.loadManifest(oldManifest);
 			// try to unpin old manifest
 			try {
-				await this.pinata.files.public.delete([vault.manifestCid]);
+				await this.storage.delete(vault.manifestCid);
 			} catch (e) {
 				console.warn("Failed to unpin old manifest:", e);
 			}
@@ -177,19 +172,17 @@ export class Fangorn {
 	 * Does NOT update the vault!! You must call commitVault() after adding all files.
 	 */
 	async addFile(vaultId: Hex, file: Filedata): Promise<{ cid: string }> {
-		// compute commitment to (vaultId, tag)
-		const tag = file.tag;
-		const commitment = await computeTagCommitment(vaultId, tag);
-		const commitmentHex = fieldToHex(commitment);
-
-		// encrypt the actual file contents using AES-GCM locally
-		// with a random ephemeral secret key
-		const { encryptedData, keyMaterial } = await encryptData(file.data);
-
 		// get the payTo address, error if not defined
 		const account = this.walletClient.account;
 		if (!account?.address) throw new Error("Wallet not connected");
 
+		// compute commitment to (vaultId, tag)
+		const tag = file.tag;
+		const commitment = await computeTagCommitment(vaultId, tag);
+		const commitmentHex = fieldToHex(commitment);
+		// encrypt the actual file contents using AES-GCM locally
+		// with a random ephemeral secret key
+		const { encryptedData, keyMaterial } = await encryptData(file.data);
 		// build ACC
 		const acc = createAccBuilder()
 			.requireLitAction(
@@ -199,16 +192,14 @@ export class Fangorn {
 				"true",
 			)
 			.build();
-
-		// encrypt the KEY with LIT protocol
+		// encrypt the KEY with Lit
 		const keyEncryptedData = await this.litClient.encrypt({
 			dataToEncrypt: keyMaterial,
 			unifiedAccessControlConditions: acc,
 			chain: this.chainName,
 		});
-
-		// upload ciphertext (pin)
-		const upload = await this.pinata.upload.public.json(
+		// upload ciphertext to storage (i.e. pin to IPFS)
+		const upload = await this.storage.store(
 			{ encryptedData, keyEncryptedData, acc },
 			{ metadata: { name: tag } },
 		);
@@ -216,7 +207,7 @@ export class Fangorn {
 		// stage the entry (not committed yet)
 		this.pendingEntries.set(tag, {
 			tag,
-			cid: upload.cid,
+			cid: upload,
 			price: file.price,
 			// leaf,
 			// commitment: commitmentHex,
@@ -225,7 +216,7 @@ export class Fangorn {
 			fileType: file.fileType,
 		});
 
-		return { cid: upload.cid };
+		return { cid: upload };
 	}
 
 	/**
@@ -241,6 +232,10 @@ export class Fangorn {
 	 * Builds manifest from all staged files and updates the vault on-chain.
 	 * Call this *after* adding all files with addFile().
 	 */
+	/**
+	 * Builds manifest from all staged files and updates the vault on-chain.
+	 * Call this *after* adding all files with addFile().
+	 */
 	async commitVault(vaultId: Hex): Promise<{ manifestCid: string; root: Hex }> {
 		if (this.pendingEntries.size === 0) throw new Error("No files to commit");
 
@@ -250,47 +245,42 @@ export class Fangorn {
 		// this is here for future proofing... but maybe we just remove it for now?
 		const rootHex = ("0x" + "0".repeat(64)) as Hex;
 
-		const manifest = buildManifest({
-			root: rootHex,
-			entries: entries.map((e, i) => ({
-				tag: e.tag,
-				cid: e.cid,
-				price: e.price,
-				index: i,
-				extension: e.extension,
-				fileType: e.fileType,
-			})),
+		// Construct manifest
+		const manifest: VaultManifest = {
+			version: 1,
+			poseidon_root: rootHex,
+			entries: entries.map((e, i) => {
+				console.log("When committing the vault, we have the cid as: " + e.cid);
+				return {
+					tag: e.tag,
+					cid: e.cid,
+					price: e.price,
+					index: i,
+					extension: e.extension,
+					fileType: e.fileType,
+				};
+			}),
 			tree: [],
-			// mock values for now....
-			// these will need to be tethered to vault creation itself I think?
-			// idk, maybe this should be an entirely different struct and just tore manifest cid + erc8004 separately?
-			name: "Dallas Weather Terminal",
-			description:
-				"Real-time weather data from downtown Dallas, updated every 5 minutes",
-			vaultId,
-			metadata: {
-				location: { lat: 32.7767, lon: -96.797 },
-				tags: ["weather", "temperature", "humidity"],
-			},
-		});
+		};
 
 		// Pin manifest
-		const manifestUpload = await this.pinata.upload.public.json(manifest, {
+		const manifestUpload = await this.storage.store(manifest, {
 			metadata: { name: `manifest-${vaultId}` },
 		});
+
+		console.log("manifest upload results in " + JSON.stringify(manifestUpload));
 
 		// Update contract
 		const hash = await this.contentRegistry.updateVault(
 			vaultId,
 			rootHex,
-			manifestUpload.cid,
+			manifestUpload,
 		);
 		await this.contentRegistry.waitForTransaction(hash);
-
 		// Clear staging
 		this.pendingEntries.clear();
 
-		return { manifestCid: manifestUpload.cid, root: rootHex };
+		return { manifestCid: manifestUpload, root: rootHex };
 	}
 
 	/**
@@ -312,7 +302,8 @@ export class Fangorn {
 		}
 	}
 
-	// build and sign the transferwithauthorization call that we will pass to the facilitator
+	// build and sign the transferwithAuthorization call that we will pass to the facilitator
+	// TODO: Move this out of here, should be in x402f lib
 	public async pay(
 		vaultId: Hex,
 		tag: string,
@@ -354,13 +345,9 @@ export class Fangorn {
 	async decryptFile(
 		vaultId: Hex,
 		tag: string,
-		// receiptHash: Hex,
 		authContext?: any,
 	): Promise<Uint8Array<ArrayBufferLike>> {
-		// load the auth context.
-		// this should be provided by the browser so
-		// if it's not present then assume this is
-		// running in a server env
+		// load the auth context: if it's not present then assume this is running in a node env
 		if (!authContext) {
 			console.log("no auth context - building it now");
 			const account = this.walletClient.account!;
@@ -390,19 +377,18 @@ export class Fangorn {
 			});
 		}
 
-		// fetch manifest from pinata
+		// fetch manifest
 		const vault = await this.contentRegistry.getVault(vaultId);
-		const manifest = await this.fetchManifest(vault.manifestCid);
+		const manifest = await this.storage.retrieve(vault.manifestCid);
 
 		// try to find entry
 		const entry = manifest.entries.find((e) => e.tag === tag);
 		if (!entry) {
 			throw new Error(`Entry not found: ${tag}`);
 		}
-
 		// fetch ciphertext
-		const response = await this.pinata.gateways.public.get(entry.cid);
-		const { encryptedData, keyEncryptedData, acc } = response.data as any;
+		const response = await this.storage.retrieve(entry.cid);
+		const { encryptedData, keyEncryptedData, acc } = response as any;
 
 		// request decryption
 		const decryptedKey = await this.litClient.decrypt({
@@ -463,7 +449,10 @@ export class Fangorn {
 	}
 
 	public async fetchManifest(cid: string): Promise<VaultManifest> {
-		const response = await this.pinata.gateways.public.get(cid);
+		const response = await this.storage.retrieve(cid);
+		console.log(
+			"and the response in fangorn.ts is " + JSON.stringify(response),
+		);
 		return response.data as unknown as VaultManifest;
 	}
 }

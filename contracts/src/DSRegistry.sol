@@ -19,7 +19,7 @@ interface IUSDC {
 	) external;
 }
 
-contract ContentRegistry {
+contract DSRegistry {
 	IUSDC public immutable usdc;
 
 	struct DataSource {
@@ -68,7 +68,7 @@ contract ContentRegistry {
 		uint256 validAfter,
 		uint256 validBefore,
 		bytes32 nonce,
-		uint8 v, 
+		uint8 v,
 		bytes32 r,
 		bytes32 s
 	) external {
@@ -85,7 +85,7 @@ contract ContentRegistry {
 			r,
 			s
 		);
-		
+
 		settlementTracker[commitment][from] = true;
 		emit SettlementRecorded(commitment, from, value);
 	}
@@ -101,13 +101,16 @@ contract ContentRegistry {
 		string calldata name
 	) external returns (bytes32 id) {
 		id = keccak256(abi.encode(name, msg.sender));
-		require(dataSources[id].owner == address(0), "The data source is already registered");
+		require(
+			dataSources[id].owner == address(0),
+			"The data source is already registered"
+		);
 		dataSources[id] = DataSource({
 			name: name,
 			poseidonRoot: bytes32(0),
 			manifestCid: "",
 			owner: msg.sender
-		});   
+		});
 		owned[msg.sender].push(id);
 		emit DataSourceCreated(id, msg.sender);
 	}
