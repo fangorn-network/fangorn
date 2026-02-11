@@ -114,7 +114,7 @@ describe("ZK-gated decryption", () => {
 		const manifest = [
 			{
 				tag: "test0",
-				data: "content0",
+				data: "hello, fangorn",
 				extension: ".txt",
 				fileType: "text/plain",
 				price,

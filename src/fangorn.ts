@@ -1,3 +1,10 @@
+import { createSiweMessage, generateAuthSig } from "@lit-protocol/auth-helpers";
+import {
+	LitAccessControlConditionResource,
+	LitActionResource,
+	LitPKPResource,
+} from "@lit-protocol/auth-helpers";
+
 import { LitClient } from "@lit-protocol/lit-client";
 import { createAccBuilder } from "@lit-protocol/access-control-conditions";
 import { nagaDev } from "@lit-protocol/networks";
@@ -45,6 +52,42 @@ export namespace FangornConfig {
 		rpcUrl: "https://sepolia.base.org",
 	};
 }
+
+// now getting hit with this https://github.com/LIT-Protocol/Node/blob/bac10b850b7e905213bdb1f4418d2f70e4cec558/rust/lit-node/src/functions/action_client.rs#L808
+
+// Then, decrypt within your Lit Action
+const _litActionCode = async () => {
+	try {
+		// Decrypt the content using decryptAndCombine
+		const decryptedContent = await Lit.Actions.decryptAndCombine({
+			accessControlConditions: jsParams.accessControlConditions,
+			ciphertext: jsParams.ciphertext,
+			dataToEncryptHash: jsParams.dataToEncryptHash,
+			// The authenticated identity from the authContext used
+			// to make the decryption request is automatically used
+			// for the decryption request
+			// NO: that didnd't work
+			// instead I had to build my own sig
+			// otherwise kept getting blocked by https://github.com/LIT-Protocol/Node/blob/bac10b850b7e905213bdb1f4418d2f70e4cec558/rust/lit-node/src/auth/validators/wallet_sig.rs#L138
+			authSig: jsParams.authSig,
+			chain: "baseSepolia",
+		});
+
+		// Use the decrypted content for your logic
+		Lit.Actions.setResponse({
+			response: `Successfully decrypted: ${JSON.stringify(decryptedContent)}`,
+			// response: `Successfully decrypted`,
+			success: true,
+		});
+	} catch (error) {
+		Lit.Actions.setResponse({
+			response: `Decryption failed: ${error.message}`,
+			success: false,
+		});
+	}
+};
+
+const litActionCode = `(${_litActionCode.toString()})();`;
 
 /**
  * Fangorn class
@@ -183,19 +226,20 @@ export class Fangorn {
 		// encrypt the actual file contents using AES-GCM locally
 		// with a random ephemeral secret key
 		const { encryptedData, keyMaterial } = await encryptData(file.data);
+		const keyAsString = keyMaterial.toString();
+
 		// build ACC
 		const acc = createAccBuilder()
 			.requireLitAction(
 				this.litActionCid,
 				"go",
-				[],
-				// [this.contentRegistry.getContractAddress(), commitmentHex],
+				[this.contentRegistry.getContractAddress(), commitmentHex],
 				"true",
 			)
 			.build();
 		// encrypt the KEY with Lit
 		const keyEncryptedData = await this.litClient.encrypt({
-			dataToEncrypt: keyMaterial,
+			dataToEncrypt: keyAsString,
 			unifiedAccessControlConditions: acc,
 			chain: this.chainName,
 		});
@@ -229,10 +273,6 @@ export class Fangorn {
 		return this.pendingEntries.delete(tag);
 	}
 
-	/**
-	 * Builds manifest from all staged files and updates the vault on-chain.
-	 * Call this *after* adding all files with addFile().
-	 */
 	/**
 	 * Builds manifest from all staged files and updates the vault on-chain.
 	 * Call this *after* adding all files with addFile().
@@ -360,8 +400,8 @@ export class Fangorn {
 				litClient,
 				config: { account: account },
 				authConfig: {
-					domain: "localhost", // this.domain,
-					statement: "Recover keys.",
+					domain: this.domain,
+					statement: "Recover key.",
 					// is this the right duration for expiry?
 					expiration: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
 					// Are resources too open?
@@ -373,6 +413,47 @@ export class Fangorn {
 				},
 			});
 		}
+
+		const resources = [
+			{
+				resource: new LitAccessControlConditionResource("*"),
+				ability: "access-control-condition-decryption" as const,
+			},
+			{
+				resource: new LitActionResource("*"),
+				ability: "lit-action-execution" as const,
+			},
+			{
+				resource: new LitPKPResource("*"),
+				ability: "pkp-signing" as const,
+			},
+		];
+
+		const siweMessage = await createSiweMessage({
+			walletAddress: this.walletClient.account.address,
+			domain: "localhost",
+			statement: "Decrypt data",
+			uri: "https://localhost",
+			version: "1",
+			chainId: 1,
+			expiration: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
+			resources,
+			nonce: Date.now().toString(),
+		});
+
+		// Sign it directly with your wallet
+		const signature = await this.walletClient.signMessage({
+			message: siweMessage,
+			account: this.walletClient.account,
+		});
+
+		// Build the authSig object
+		const directAuthSig = {
+			sig: signature,
+			derivedVia: "web3.eth.personal.sign",
+			signedMessage: siweMessage,
+			address: this.walletClient.account.address,
+		};
 
 		// fetch manifest
 		const vault = await this.contentRegistry.getVault(vaultId);
@@ -388,22 +469,36 @@ export class Fangorn {
 		const response = await this.storage.retrieve(entry.cid);
 		const { encryptedData, keyEncryptedData, acc } = response as any;
 
-		console.log("the acc looks like " + JSON.stringify(acc));
-
-		// request decryption
-		const decryptedKey = await this.litClient.decrypt({
-			ciphertext: keyEncryptedData.ciphertext,
-			dataToEncryptHash: keyEncryptedData.dataToEncryptHash,
-			unifiedAccessControlConditions: acc,
+		const result = await this.litClient.executeJs({
+			code: litActionCode,
 			authContext,
-			chain: this.chainName,
+			jsParams: {
+				accessControlConditions: acc,
+				ciphertext: keyEncryptedData.ciphertext,
+				dataToEncryptHash: keyEncryptedData.dataToEncryptHash,
+				authSig: directAuthSig,
+			},
 		});
 
-		// recover the symmetric key
-		const key = decryptedKey.decryptedData as Uint8Array<ArrayBuffer>;
+		console.log(result.response as string);
+
+		const key = Uint8Array.from(
+			(result.response as string)
+				// 1. Strip any non-digits from the very start (BOM, [, ", etc.)
+				.replace(/^[^\d]+/, "")
+				.split(","),
+			(entry) => {
+				const val = parseInt(entry.trim(), 10);
+				// 2. Safety check for malformed segments
+				return isNaN(val) ? 0 : val;
+			},
+		);
 
 		// actually decrypt the data with the recovered key
-		const decryptedFile = await decryptData(encryptedData, key);
+		const decryptedFile = await decryptData(
+			encryptedData,
+			key as Uint8Array<ArrayBuffer>,
+		);
 
 		return decryptedFile;
 	}
@@ -417,7 +512,6 @@ export class Fangorn {
 		if (!entry) {
 			throw new Error(`Entry not found: ${tag}`);
 		}
-
 		//   return entry;
 		return new Uint8Array();
 	}
