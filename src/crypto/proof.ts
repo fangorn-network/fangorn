@@ -1,5 +1,5 @@
 import { Hex, keccak256, toBytes } from "viem";
-import { VaultEntry, VaultManifest } from "../types/types.js";
+import { VaultEntry, VaultManifest } from "../types/index.js";
 import { blake3 } from "@noble/hashes/blake3.js";
 
 import { poseidon2Hash } from "../utils/index.js";

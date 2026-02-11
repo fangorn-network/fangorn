@@ -16,7 +16,7 @@ import { nagaDev } from "@lit-protocol/networks";
 import { readFileSync, writeFileSync } from "fs";
 import { basename, extname } from "path";
 import { Fangorn, FangornConfig, AppConfig } from "./fangorn.js";
-import { Filedata } from "./types/types.js";
+import { Filedata } from "./types/index.js";
 import "dotenv/config";
 import { PinataSDK } from "pinata";
 

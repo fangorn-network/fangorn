@@ -14,7 +14,7 @@ import { computeTagCommitment } from "./crypto/proof.js";
 import {
 	fieldToHex, // could be a util func instead
 } from "./crypto/merkle.js";
-import { Filedata, PendingEntry, VaultManifest } from "./types/types.js";
+import { Filedata, PendingEntry, VaultManifest } from "./types/index.js";
 import { decryptData, encryptData } from "./crypto/encryption.js";
 import { createAuthManager, storagePlugins } from "@lit-protocol/auth";
 import StorageProvider from "./providers/storage/index.js";
@@ -133,7 +133,7 @@ export class Fangorn {
 	async registerDataSource(name: string): Promise<Hex> {
 		// const fee = await this.contentRegistry.getVaultCreationFee();
 		const { hash: createHash, vaultId } =
-			await this.contentRegistry.createVault(name);
+			await this.contentRegistry.registerDataSource(name);
 		return vaultId;
 	}
 
@@ -188,7 +188,8 @@ export class Fangorn {
 			.requireLitAction(
 				this.litActionCid,
 				"go",
-				[this.contentRegistry.getContractAddress(), commitmentHex],
+				[],
+				// [this.contentRegistry.getContractAddress(), commitmentHex],
 				"true",
 			)
 			.build();
@@ -249,17 +250,14 @@ export class Fangorn {
 		const manifest: VaultManifest = {
 			version: 1,
 			poseidon_root: rootHex,
-			entries: entries.map((e, i) => {
-				console.log("When committing the vault, we have the cid as: " + e.cid);
-				return {
-					tag: e.tag,
-					cid: e.cid,
-					price: e.price,
-					index: i,
-					extension: e.extension,
-					fileType: e.fileType,
-				};
-			}),
+			entries: entries.map((e, i) => ({
+				tag: e.tag,
+				cid: e.cid,
+				price: e.price,
+				index: i,
+				extension: e.extension,
+				fileType: e.fileType,
+			})),
 			tree: [],
 		};
 
@@ -267,8 +265,6 @@ export class Fangorn {
 		const manifestUpload = await this.storage.store(manifest, {
 			metadata: { name: `manifest-${vaultId}` },
 		});
-
-		console.log("manifest upload results in " + JSON.stringify(manifestUpload));
 
 		// Update contract
 		const hash = await this.contentRegistry.updateVault(
@@ -354,7 +350,7 @@ export class Fangorn {
 			const authManager = createAuthManager({
 				storage: storagePlugins.localStorageNode({
 					appName: "fangorn",
-					networkName: nagaDev.getNetworkName(),
+					networkName: "naga-dev",
 					storagePath: "./lit-auth-storage",
 				}),
 			});
@@ -364,14 +360,15 @@ export class Fangorn {
 				litClient,
 				config: { account: account },
 				authConfig: {
-					domain: this.domain,
-					statement: "Please re-authenticate to enable LIT functionality. ",
+					domain: "localhost", // this.domain,
+					statement: "Recover keys.",
 					// is this the right duration for expiry?
 					expiration: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
 					// Are resources too open?
 					resources: [
 						["access-control-condition-decryption", "*"],
 						["lit-action-execution", "*"],
+						["pkp-signing", "*"],
 					],
 				},
 			});
@@ -386,9 +383,12 @@ export class Fangorn {
 		if (!entry) {
 			throw new Error(`Entry not found: ${tag}`);
 		}
+
 		// fetch ciphertext
 		const response = await this.storage.retrieve(entry.cid);
 		const { encryptedData, keyEncryptedData, acc } = response as any;
+
+		console.log("the acc looks like " + JSON.stringify(acc));
 
 		// request decryption
 		const decryptedKey = await this.litClient.decrypt({
@@ -401,6 +401,7 @@ export class Fangorn {
 
 		// recover the symmetric key
 		const key = decryptedKey.decryptedData as Uint8Array<ArrayBuffer>;
+
 		// actually decrypt the data with the recovered key
 		const decryptedFile = await decryptData(encryptedData, key);
 
@@ -417,7 +418,8 @@ export class Fangorn {
 			throw new Error(`Entry not found: ${tag}`);
 		}
 
-		return entry;
+		//   return entry;
+		return new Uint8Array();
 	}
 
 	public async getManifest(vaultId: Hex) {
@@ -435,13 +437,6 @@ export class Fangorn {
 		if (!account?.address) throw new Error("Wallet not connected");
 		return account.address;
 	}
-
-	// public async getUserVaults(): Promise<`0x${string}`[]> {
-	// 	const address: Address = this.getAddress();
-	// 	const vaults = await this.contentRegistry.getOwnedVaults(address);
-
-	// 	return vaults;
-	// }
 
 	public async getVault(vaultId: Hex): Promise<Vault> {
 		const vault: Vault = await this.contentRegistry.getVault(vaultId);

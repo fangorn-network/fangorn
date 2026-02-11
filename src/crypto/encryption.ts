@@ -1,4 +1,4 @@
-import { EncryptedData } from "../types/types.js";
+import { EncryptedData } from "../types/index.js";
 import { getSubtleCrypto, getRandomValues } from "./rand.js";
 
 export async function encryptData(data: string | Uint8Array): Promise<{

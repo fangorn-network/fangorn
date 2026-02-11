@@ -176,7 +176,7 @@ export class ContentRegistry {
 
 	// --- Write Functions ---
 
-	async createVault(
+	async registerDataSource(
 		name: string,
 	): Promise<{ hash: Hash; vaultId: `0x${string}` }> {
 		const { chain, account } = this.getWriteConfig();
@@ -218,10 +218,6 @@ export class ContentRegistry {
 		newManifestCid: string,
 	): Promise<Hash> {
 		const { chain, account } = this.getWriteConfig();
-
-		console.log(
-			"UPDATING VAULT****************** manifest CID is: " + newManifestCid,
-		);
 
 		const hash = await this.walletClient.writeContract({
 			address: this.contractAddress,

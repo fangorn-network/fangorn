@@ -1,6 +1,6 @@
 import { Address, Hex, keccak256, parseUnits, toHex, WalletClient } from "viem";
 import { AppConfig, Fangorn } from "../fangorn.js";
-import { Filedata } from "../types/types.js";
+import { Filedata } from "../types/index.js";
 import { createLitClient } from "@lit-protocol/lit-client";
 import { nagaDev } from "@lit-protocol/networks";
 import { PinataSDK } from "pinata";
@@ -69,7 +69,7 @@ export class TestBed {
 
 		const delegateeStorage = new PinataStorage(pinata);
 
-		const domain = "localhost:3000";
+		const domain = "localhost";
 
 		const fangorn = await Fangorn.init(
 			delegatorWalletClient,

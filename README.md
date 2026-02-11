@@ -25,7 +25,7 @@ const fangorn = await Fangorn.init(delegatorAccount, jwt, gateway, domain);
 // create a new named vault
 const vaultName = "myvault-001";
 const password = "test";
-const vaultId = await fangorn.createVault(vaultName);
+const vaultId = await fangorn.registerDataSource(vaultName);
 
 // upload files to the vault
 let filedata = [
