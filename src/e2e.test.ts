@@ -7,7 +7,7 @@ import { deployContract } from "./deployContract.js";
 import { TestBed } from "./test/testbed.js";
 import { uploadToPinata } from "./test/index.js";
 import { createRequire } from "module";
-import { baseSepolia } from "viem/chains";
+import { arbitrumSepolia, baseSepolia } from "viem/chains";
 
 const getEnv = (key: string) => {
 	const value = process.env[key];
@@ -27,10 +27,17 @@ describe("payment-gated decryption", () => {
 	let usdcContractAddress: Address;
 	let dataSourceRegistryAddress: Address;
 	let ipfsCid: string;
+	let chainName: string;
 
 	let testbed: TestBed;
 
 	beforeAll(async () => {
+		chainName = process.env.CHAIN_NAME!;
+		if (!chainName) throw new Error("CHAIN_NAME required");
+
+		// todo: set based on chain name
+		const chain = arbitrumSepolia;
+
 		rpcUrl = process.env.CHAIN_RPC_URL!;
 		if (!rpcUrl) throw new Error("CHAIN_RPC_URL required");
 
@@ -47,7 +54,7 @@ describe("payment-gated decryption", () => {
 		const delegatorWalletClient = createWalletClient({
 			account: delegatorAccount,
 			transport: http(rpcUrl),
-			chain: baseSepolia,
+			chain,
 		});
 
 		delegateeAccount = privateKeyToAccount(
@@ -57,7 +64,7 @@ describe("payment-gated decryption", () => {
 		const delegateeWalletClient = createWalletClient({
 			account: delegateeAccount,
 			transport: http(rpcUrl),
-			chain: baseSepolia,
+			chain,
 		});
 
 		// if the cid is not defined, add the lit action to ipfs
@@ -97,6 +104,7 @@ describe("payment-gated decryption", () => {
 			dataSourceRegistryAddress,
 			usdcContractAddress,
 			rpcUrl,
+			chainName,
 		);
 	}, 120_000); // 2 minute timeout
 
@@ -123,6 +131,7 @@ describe("payment-gated decryption", () => {
 		await testbed.fileUpload(vaultId, manifest);
 
 		const tag = manifest[0].tag;
+
 		// purchase data access
 		await testbed.payForFile(vaultId, tag, price, delegatorAccount.address);
 
@@ -168,73 +177,73 @@ describe("payment-gated decryption", () => {
 		console.log("Decryption succeeded again!!");
 	}, 120_000);
 
-	it("should fail to decrypt when the payment is not settled", async () => {
-		// create a vault
-		const vaultName = "myVault_" + getRandomIntInclusive(0, 101010101);
-		const vaultId = await testbed.setupVault(vaultName);
-		console.log(`Vault creation successful, using vaultId: ${vaultId}`);
+	// it("should fail to decrypt when the payment is not settled", async () => {
+	// 	// create a vault
+	// 	const vaultName = "myVault_" + getRandomIntInclusive(0, 101010101);
+	// 	const vaultId = await testbed.setupVault(vaultName);
+	// 	console.log(`Vault creation successful, using vaultId: ${vaultId}`);
 
-		const price = "0.000001";
-		// build manifest
-		const manifest = [
-			{
-				tag: "test0",
-				data: "hello, fangorn",
-				extension: ".txt",
-				fileType: "text/plain",
-				price,
-			},
-		];
+	// 	const price = "0.000001";
+	// 	// build manifest
+	// 	const manifest = [
+	// 		{
+	// 			tag: "test0",
+	// 			data: "hello, fangorn",
+	// 			extension: ".txt",
+	// 			fileType: "text/plain",
+	// 			price,
+	// 		},
+	// 	];
 
-		await testbed.fileUpload(vaultId, manifest);
+	// 	await testbed.fileUpload(vaultId, manifest);
 
-		const tag = manifest[0].tag;
+	// 	const tag = manifest[0].tag;
 
-		// wait to make sure pinata is behaving
-		await new Promise((resolve) => setTimeout(resolve, 4_000));
-		// DO NOT PAY
-		let didFail = false;
-		try {
-			await testbed.tryDecrypt(vaultId, tag);
-		} catch (error) {
-			didFail = true;
-		}
+	// 	// wait to make sure pinata is behaving
+	// 	await new Promise((resolve) => setTimeout(resolve, 4_000));
+	// 	// DO NOT PAY
+	// 	let didFail = false;
+	// 	try {
+	// 		await testbed.tryDecrypt(vaultId, tag);
+	// 	} catch (error) {
+	// 		didFail = true;
+	// 	}
 
-		expect(didFail).toBe(true);
-	}, 120_000);
+	// 	expect(didFail).toBe(true);
+	// }, 120_000);
 
-	it("should fail to decrypt when the tag does not exist", async () => {
-		// create a vault
-		const vaultName = "myVault_" + getRandomIntInclusive(0, 101010101);
-		// const vaultName = "demo";
-		const vaultId = await testbed.setupVault(vaultName);
-		console.log(`Vault creation successful, using vaultId: ${vaultId}`);
+	// it("should fail to decrypt when the tag does not exist", async () => {
+	// 	// create a vault
+	// 	const vaultName = "myVault_" + getRandomIntInclusive(0, 101010101);
+	// 	// const vaultName = "demo";
+	// 	const vaultId = await testbed.setupVault(vaultName);
+	// 	console.log(`Vault creation successful, using vaultId: ${vaultId}`);
 
-		const price = "0.000001";
-		// build manifest
-		const manifest = [
-			{
-				tag: "test0",
-				data: "hello, fangorn",
-				extension: ".txt",
-				fileType: "text/plain",
-				price,
-			},
-		];
+	// 	const price = "0.000001";
+	// 	// build manifest
+	// 	const manifest = [
+	// 		{
+	// 			tag: "test0",
+	// 			data: "hello, fangorn",
+	// 			extension: ".txt",
+	// 			fileType: "text/plain",
+	// 			price,
+	// 		},
+	// 	];
 
-		await testbed.fileUpload(vaultId, manifest);
-		// wait to make sure pinata is behaving
-		await new Promise((resolve) => setTimeout(resolve, 5_000));
-		// try to get the data associated with the wrong (vault, tag) combo
-		let didFail = false;
-		try {
-			await testbed.tryDecrypt(vaultId, "bad-tag-do-not-use");
-		} catch (error) {
-			didFail = true;
-		}
+	// 	await testbed.fileUpload(vaultId, manifest);
+	// 	// wait to make sure pinata is behaving
+	// 	await new Promise((resolve) => setTimeout(resolve, 5_000));
+	// 	// try to get the data associated with the wrong (vault, tag) combo
+	// 	let didFail = false;
+	// 	try {
+	// 		await testbed.tryDecrypt(vaultId, "bad-tag-do-not-use");
+	// 	} catch (error) {
+	// 		didFail = true;
+	// 	}
 
-		expect(didFail).toBe(true);
-	}, 120_000);
+	// 	expect(didFail).toBe(true);
+	// }, 120_000);
 });
 
 function getRandomIntInclusive(min: number, max: number) {

@@ -13,14 +13,14 @@ import {
 } from "viem";
 import solc from "solc";
 import { Barretenberg, UltraHonkBackend } from "@aztec/bb.js";
-import { baseSepolia } from "viem/chains";
+import { arbitrumSepolia, baseSepolia } from "viem/chains";
 
 // import circuit from "../circuits/preimage/target/preimage.json" with { type: "json" };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const currentChain = baseSepolia;
+const currentChain = arbitrumSepolia;
 
 function compileContract(contractName: string): { abi: any; bytecode: string } {
 	const fileName = `${contractName}.sol`;
@@ -61,30 +61,30 @@ function compileContract(contractName: string): { abi: any; bytecode: string } {
 	};
 }
 
-/**
- * Links library addresses into bytecode
- */
-function linkBytecode(
-	bytecode: string,
-	libraries: Record<string, Address>,
-): Hex {
-	let linked = bytecode;
-	for (const [, libAddress] of Object.entries(libraries)) {
-		// This replaces ALL placeholders with the same address - is that correct?
-		// If you have multiple libraries, each needs its own address
-		linked = linked.replace(
-			/__\$[a-fA-F0-9]{34}\$__/g,
-			libAddress.slice(2).toLowerCase(),
-		);
-	}
+// /**
+//  * Links library addresses into bytecode
+//  */
+// function linkBytecode(
+// 	bytecode: string,
+// 	libraries: Record<string, Address>,
+// ): Hex {
+// 	let linked = bytecode;
+// 	for (const [, libAddress] of Object.entries(libraries)) {
+// 		// This replaces ALL placeholders with the same address - is that correct?
+// 		// If you have multiple libraries, each needs its own address
+// 		linked = linked.replace(
+// 			/__\$[a-fA-F0-9]{34}\$__/g,
+// 			libAddress.slice(2).toLowerCase(),
+// 		);
+// 	}
 
-	const remaining = linked.match(/__\$[a-fA-F0-9]{34}\$__/);
-	if (remaining) {
-		throw new Error(`Unlinked library: ${remaining[0]}`);
-	}
+// 	const remaining = linked.match(/__\$[a-fA-F0-9]{34}\$__/);
+// 	if (remaining) {
+// 		throw new Error(`Unlinked library: ${remaining[0]}`);
+// 	}
 
-	return `0x${linked}` as Hex;
-}
+// 	return `0x${linked}` as Hex;
+// }
 
 /**
  * Deploys any contract by name from the local contracts directory.
@@ -118,6 +118,7 @@ export async function deployContract({
 
 	// Estimate gas
 	const gasPrice = await publicClient.getGasPrice();
+	console.log("the gas price is " + gasPrice);
 	const gasEstimate = await publicClient.estimateGas({
 		data: deployData,
 		account: walletClient.account.address,
@@ -127,7 +128,7 @@ export async function deployContract({
 	const txHash = await walletClient.sendTransaction({
 		data: deployData,
 		gas: gasEstimate + gasEstimate / 10n, // 10% buffer
-		gasPrice,
+		// gasPrice,
 		chain: currentChain,
 	} as any);
 

@@ -35,6 +35,7 @@ export class TestBed {
 		contentRegistryContractAddress: Hex,
 		usdcContractAddress: Hex,
 		rpcUrl: string,
+		chain: string,
 	) {
 		// if (!circuitJsonCid) {
 		// 	circuitJsonCid = "QmXw1rWUC2Kw52Qi55sfW3bCR7jheCDfSUgVRwvsP8ZZPE";
@@ -45,7 +46,7 @@ export class TestBed {
 			// circuitJsonCid: circuitJsonCid,
 			contentRegistryContractAddress: contentRegistryContractAddress,
 			usdcContractAddress,
-			chainName: "baseSepolia",
+			chainName: chain,
 			rpcUrl: rpcUrl,
 		};
 
@@ -117,7 +118,7 @@ export class TestBed {
 		const account = walletClient.account!;
 
 		const domain = {
-			name: "USDC",
+			name: "USD Coin",
 			version: "2",
 			chainId: chainId,
 			verifyingContract: usdcAddress,
@@ -175,7 +176,7 @@ export class TestBed {
 		const auth = await this.buildUsdcAuthorization(
 			to,
 			amount,
-			84532,
+			421614, // TODO
 			this.config.usdcContractAddress,
 		);
 

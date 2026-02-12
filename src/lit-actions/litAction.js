@@ -1,15 +1,19 @@
-// const go = async () => {
-// 	Lit.Actions.setResponse({ response: "true" });
-// 	return "true";
-// };
+const arbitrumSepolia = "https://sepolia-rollup.arbitrum.io/rpc";
+const baseSepolia = "https://sepolia.base.org";
 
-// go();
+const go = async (supportedNetwork, paywallAddress, commitment) => {
+	let rpcUrl = "";
+	if (supportedNetwork == "arbitrumSepolia") rpcUrl = arbitrumSepolia;
+	else if (supportedNetwork == "baseSepolia") rpcUrl = baseSepolia;
+	else {
+		throw new Error(
+			`Unsupported network ${supportedNetwork}.\n
+			Choose a supported network in the list ["arbitrumSepolia", "baseSepolia"].`,
+		);
+	}
 
-const go = async (paywallAddress, commitment) => {
 	const callerAddress = Lit.Auth.authSigAddress;
-	const provider = new ethers.providers.JsonRpcProvider(
-		"https://sepolia.base.org",
-	);
+	const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
 
 	const paywallAbi = [
 		"function checkSettlement(bytes32 commitment, address buyer) view returns (bool)",

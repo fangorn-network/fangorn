@@ -10,7 +10,7 @@ import {
 	parseAbiParameters,
 } from "viem";
 import { privateKeyToAccount, PrivateKeyAccount } from "viem/accounts";
-import { baseSepolia } from "viem/chains";
+import { arbitrumSepolia, baseSepolia } from "viem/chains";
 import { createLitClient } from "@lit-protocol/lit-client";
 import { nagaDev } from "@lit-protocol/networks";
 import { readFileSync, writeFileSync } from "fs";
@@ -83,7 +83,7 @@ async function getFangorn(): Promise<Fangorn> {
 	const walletClient = createWalletClient({
 		account: getAccount(),
 		transport: http(cfg.rpcUrl),
-		chain: baseSepolia,
+		chain: arbitrumSepolia,
 	});
 
 	const litClient = await createLitClient({ network: nagaDev });

@@ -4,23 +4,62 @@ Intent-Bound Data.
 
 > This is currently a pragmatic initial version of our vision. Expect this repo to undergo radical changes over the coming months.
 
-## Usage
-
-Fangorn allows wallets to create private data "vaults" that are password protected. Data can be accessed by providing a zero-knowledge proof, limiting information published onchain about which data was accessed. While this initial version leaks the user address and the id of the vault, it hides the content identifier of actual data accessed.
-
-## Setup
+## Build
 
 To build this project, navigate to the root directory and run `pnpm i`.
 
+### Usage
+
+Fangorn is a zero-knowlege access control framework. It provides tools to register data sources that can be accessed based on owner-defined conditions, like payment.
+
+## Supported Networks
+
+- base sepolia
+- arbitrum sepolia
+
 ### Encryption
 
-Fangorn allows encrypted data to be added to a 'vault' protected by a user-defined password. First, a user creates a vault
+The library is modular and can support various key management systems. We recommend, and use by default, Lit protocol as the main KMS, or in this case, DKMS.
+
+Each datasource points to the content identifier (CID) of a "manifest" stored in IPFS. Each manifest stores a complete record of (encrypted) content, descriptions, and prices inserted by the data owner.
+
+#### Quickstart
+
+Coming soon ;)
 
 ```js
-// initialize a new fangorn client against the default testnet configuration (base sepolia)
+# TODO
+```
+
+#### Full Guide
+
+```js
+// initialize a new fangorn client
+
+const config: AppConfig = {
+  litActionCid: litActionCid,
+  contentRegistryContractAddress: contentRegistryContractAddress,
+  usdcContractAddress,
+  chainName: "arbitrum",
+  rpcUrl: rpcUrl,
+};
+
+// client to interact with LIT proto
+const litClient = await createLitClient({
+  network: nagaDev,
+});
+
 // the domain/webserver where Fangorn is used
 const domain = "localhost:3000";
-const fangorn = await Fangorn.init(delegatorAccount, jwt, gateway, domain);
+
+ jwt, gateway
+const fangorn = await Fangorn.init(
+  delegatorAccount,
+  storage,
+  client,
+  domain,
+  config,
+);
 
 // create a new named vault
 const vaultName = "myvault-001";

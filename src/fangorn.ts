@@ -19,7 +19,7 @@ import {
 import { Vault, ContentRegistry } from "./interface/contentRegistry.js";
 import { computeTagCommitment } from "./crypto/proof.js";
 import {
-	fieldToHex, // could be a util func instead
+	fieldToHex, // could be a util func instead?
 } from "./crypto/merkle.js";
 import { Filedata, PendingEntry, VaultManifest } from "./types/index.js";
 import { decryptData, encryptData } from "./crypto/encryption.js";
@@ -41,7 +41,7 @@ export interface AppConfig {
 }
 
 export namespace FangornConfig {
-	// A testnet config for cotnracts deployed on Base Sepolia
+	// Base Sepolia config
 	export const Testnet: AppConfig = {
 		litActionCid: "QmP77ECWeWZPe8dsBTBG1HmpxBzkKX5D9k3v8txeEm8uFx",
 		// circuitJsonCid: "QmXw1rWUC2Kw52Qi55sfW3bCR7jheCDfSUgVRwvsP8ZZPE",
@@ -51,8 +51,19 @@ export namespace FangornConfig {
 		chainName: "baseSepolia",
 		rpcUrl: "https://sepolia.base.org",
 	};
+
+	// Arbitrum Sepolia config
+	export const ArbitrumSepolia: AppConfig = {
+		litActionCid: "",
+		// circuitJsonCid: "QmXw1rWUC2Kw52Qi55sfW3bCR7jheCDfSUgVRwvsP8ZZPE",
+		usdcContractAddress: "0x0",
+		contentRegistryContractAddress: "0x0",
+		chainName: "arbitrumSepolia",
+		rpcUrl: "",
+	};
 }
 
+// Q: Do we need a 'builder' for this?
 // for decryption within a lit action
 /* eslint-disable */
 declare const Lit: any;
@@ -60,13 +71,14 @@ declare const jsParams: any;
 // @ts-nocheck
 const _litActionCode = async () => {
 	try {
-		// Decrypt the content using decryptAndCombine
+		// decrypt the content using decryptAndCombine
 		const decryptedContent = await Lit.Actions.decryptAndCombine({
 			accessControlConditions: jsParams.accessControlConditions,
 			ciphertext: jsParams.ciphertext,
 			dataToEncryptHash: jsParams.dataToEncryptHash,
 			authSig: jsParams.authSig,
-			chain: "baseSepolia",
+			// TODO: how to parametrize properly?
+			chain: "arbitrumSepolia",
 		});
 
 		// Use the decrypted content for your logic
@@ -188,9 +200,7 @@ export class Fangorn {
 		const vault = await this.contentRegistry.getVault(vaultId);
 		// if the manifest exists and we don't want to overwrite
 		if (vault.manifestCid && !overwrite) {
-			console.log("the vault manifest cid is " + vault.manifestCid);
 			const oldManifest = await this.fetchManifest(vault.manifestCid);
-			console.log("oldManifest " + JSON.stringify(oldManifest));
 			await this.loadManifest(oldManifest);
 			// try to unpin old manifest
 			try {
@@ -230,7 +240,11 @@ export class Fangorn {
 			.requireLitAction(
 				this.litActionCid,
 				"go",
-				[this.contentRegistry.getContractAddress(), commitmentHex],
+				[
+					this.chainName,
+					this.contentRegistry.getContractAddress(),
+					commitmentHex,
+				],
 				"true",
 			)
 			.build();
@@ -320,7 +334,6 @@ export class Fangorn {
 	 * Loads existing manifest
 	 */
 	async loadManifest(oldManifest: any) {
-		console.log("loading manifest " + JSON.stringify(oldManifest));
 		// load existing entries into pending
 		for (const entry of oldManifest.entries) {
 			this.pendingEntries.set(entry.tag, {
@@ -383,7 +396,6 @@ export class Fangorn {
 	): Promise<Uint8Array<ArrayBufferLike>> {
 		// load the auth context: if it's not present then assume this is running in a node env
 		if (!authContext) {
-			console.log("no auth context - building it now");
 			const account = this.walletClient.account!;
 			const authManager = createAuthManager({
 				storage: storagePlugins.localStorageNode({
@@ -439,7 +451,7 @@ export class Fangorn {
 			nonce: Date.now().toString(),
 		});
 
-		// Sign it directly with your wallet
+		// Sign it directly
 		const signature = await this.walletClient.signMessage({
 			message: siweMessage,
 			account: this.walletClient.account,
@@ -457,7 +469,6 @@ export class Fangorn {
 		const vault = await this.contentRegistry.getVault(vaultId);
 		const manifest = await this.storage.retrieve(vault.manifestCid);
 
-		console.log("trying to decrypt " + JSON.stringify(manifest));
 		// try to find entry
 		const entry = manifest.entries.find((e) => e.tag === tag);
 		if (!entry) {
@@ -467,8 +478,6 @@ export class Fangorn {
 		// fetch ciphertext
 		const response = await this.storage.retrieve(entry.cid);
 		const { encryptedData, keyEncryptedData, acc } = response as any;
-
-		console.log("got ciphertext, key ct, acc, attempting to decrypt");
 
 		const result = await this.litClient.executeJs({
 			code: litActionCode,
@@ -481,9 +490,8 @@ export class Fangorn {
 			},
 		});
 
-		console.log(result.response as string);
-
 		const key = Uint8Array.from(
+			// to make sure the first digit doesn't get ignored an coverted to a 0
 			(result.response as string)
 				// 1. Strip any non-digits from the very start (BOM, [, ", etc.)
 				.replace(/^[^\d]+/, "")
@@ -514,7 +522,6 @@ export class Fangorn {
 		// fetch manifest from pinata
 		const vault = await this.getVault(vaultId);
 		const manifest = await this.fetchManifest(vault.manifestCid);
-		console.log("In getVaultData, we got the manifest " + this.getVaultData);
 		// try to find entry
 		const entry = manifest.entries.find((e) => e.tag === tag);
 		if (!entry) {
