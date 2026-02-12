@@ -88,6 +88,7 @@ describe("payment-gated decryption", () => {
 				account: delegatorAccount,
 				contractName: "DSRegistry",
 				constructorArgs: [usdcContractAddress],
+				chain,
 			});
 			dataSourceRegistryAddress = deployment.address;
 		}

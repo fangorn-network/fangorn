@@ -25,43 +25,44 @@ import { Filedata, PendingEntry, VaultManifest } from "./types/index.js";
 import { decryptData, encryptData } from "./crypto/encryption.js";
 import { createAuthManager, storagePlugins } from "@lit-protocol/auth";
 import StorageProvider from "./providers/storage/index.js";
+import { AppConfig, FangornConfig } from "./config.js";
 
-export interface AppConfig {
-	// The CID pointing to the expected LIT action
-	litActionCid: string;
-	// The CID pointing to the compiled circuit json
-	// circuitJsonCid: string;
-	// The deployed contentRegistry contract address
-	contentRegistryContractAddress: Hex;
-	// The name of the chain for LIT action execution (does not always match what is defined by viem)
-	chainName: string;
-	// The public rpc address of the chain we are connecting to
-	rpcUrl: string;
-	usdcContractAddress: Hex;
-}
+// export interface AppConfig {
+// 	// The CID pointing to the expected LIT action
+// 	litActionCid: string;
+// 	// The CID pointing to the compiled circuit json
+// 	// circuitJsonCid: string;
+// 	// The deployed contentRegistry contract address
+// 	contentRegistryContractAddress: Hex;
+// 	// The name of the chain for LIT action execution (does not always match what is defined by viem)
+// 	chainName: string;
+// 	// The public rpc address of the chain we are connecting to
+// 	rpcUrl: string;
+// 	usdcContractAddress: Hex;
+// }
 
-export namespace FangornConfig {
-	// Base Sepolia config
-	export const Testnet: AppConfig = {
-		litActionCid: "QmP77ECWeWZPe8dsBTBG1HmpxBzkKX5D9k3v8txeEm8uFx",
-		// circuitJsonCid: "QmXw1rWUC2Kw52Qi55sfW3bCR7jheCDfSUgVRwvsP8ZZPE",
-		usdcContractAddress: "0x0",
-		contentRegistryContractAddress:
-			"0xc061f4e1422363a27f1b05bf65b644b29e3cec7c",
-		chainName: "baseSepolia",
-		rpcUrl: "https://sepolia.base.org",
-	};
+// export namespace FangornConfig {
+// 	// Base Sepolia config
+// 	export const Testnet: AppConfig = {
+// 		litActionCid: "QmP77ECWeWZPe8dsBTBG1HmpxBzkKX5D9k3v8txeEm8uFx",
+// 		// circuitJsonCid: "QmXw1rWUC2Kw52Qi55sfW3bCR7jheCDfSUgVRwvsP8ZZPE",
+// 		usdcContractAddress: "0x0",
+// 		contentRegistryContractAddress:
+// 			"0xc061f4e1422363a27f1b05bf65b644b29e3cec7c",
+// 		chainName: "baseSepolia",
+// 		rpcUrl: "https://sepolia.base.org",
+// 	};
 
-	// Arbitrum Sepolia config
-	export const ArbitrumSepolia: AppConfig = {
-		litActionCid: "",
-		// circuitJsonCid: "QmXw1rWUC2Kw52Qi55sfW3bCR7jheCDfSUgVRwvsP8ZZPE",
-		usdcContractAddress: "0x0",
-		contentRegistryContractAddress: "0x0",
-		chainName: "arbitrumSepolia",
-		rpcUrl: "",
-	};
-}
+// 	// Arbitrum Sepolia config
+// 	export const ArbitrumSepolia: AppConfig = {
+// 		litActionCid: "",
+// 		// circuitJsonCid: "QmXw1rWUC2Kw52Qi55sfW3bCR7jheCDfSUgVRwvsP8ZZPE",
+// 		usdcContractAddress: "0x0",
+// 		contentRegistryContractAddress: "0x0",
+// 		chainName: "arbitrumSepolia",
+// 		rpcUrl: "",
+// 	};
+// }
 
 // Q: Do we need a 'builder' for this?
 // for decryption within a lit action
@@ -147,7 +148,8 @@ export class Fangorn {
 		domain: string,
 		config?: AppConfig | undefined,
 	) {
-		const resolvedConfig = config || FangornConfig.Testnet;
+		// defaults to arbitrum sepolia
+		const resolvedConfig = config || FangornConfig.ArbitrumSepolia;
 		const rpcUrl = resolvedConfig.rpcUrl;
 		const chainName = resolvedConfig.chainName;
 

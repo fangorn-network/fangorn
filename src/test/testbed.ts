@@ -1,10 +1,11 @@
 import { Address, Hex, keccak256, parseUnits, toHex, WalletClient } from "viem";
-import { AppConfig, Fangorn } from "../fangorn.js";
+import { Fangorn } from "../fangorn.js";
 import { Filedata } from "../types/index.js";
 import { createLitClient } from "@lit-protocol/lit-client";
 import { nagaDev } from "@lit-protocol/networks";
 import { PinataSDK } from "pinata";
 import { PinataStorage } from "../providers/storage/pinata/index.js";
+import { AppConfig } from "../config.js";
 
 export class TestBed {
 	private delegatorFangorn: Fangorn;
@@ -118,6 +119,7 @@ export class TestBed {
 		const account = walletClient.account!;
 
 		const domain = {
+			// note: for arbitrum sepolia
 			name: "USD Coin",
 			version: "2",
 			chainId: chainId,
