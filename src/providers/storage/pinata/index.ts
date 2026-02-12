@@ -15,6 +15,6 @@ export class PinataStorage implements StorageProvider<any> {
 	}
 
 	async delete(cid: string): Promise<void> {
-		await this.pinata.files.public.delete(cid);
+		await this.pinata.files.public.delete([cid]);
 	}
 }

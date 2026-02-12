@@ -1,9 +1,6 @@
-import { EncryptedData } from "../types/types.js";
+import { EncryptedData } from "../types/index.js";
 export declare function encryptData(data: string | Uint8Array): Promise<{
-	encryptedData: EncryptedData;
-	keyMaterial: Uint8Array<ArrayBuffer>;
+    encryptedData: EncryptedData;
+    keyMaterial: Uint8Array<ArrayBuffer>;
 }>;
-export declare function decryptData(
-	encryptedData: EncryptedData,
-	keyMaterial: Uint8Array<ArrayBuffer>,
-): Promise<Uint8Array>;
+export declare function decryptData(encryptedData: EncryptedData, keyMaterial: Uint8Array<ArrayBuffer>): Promise<Uint8Array>;

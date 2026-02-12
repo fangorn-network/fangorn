@@ -79,13 +79,13 @@ import { poseidon2Hash } from "../utils/index.js";
 // }
 // create a commitment to the (vaultId, tag) combo using poseidon2
 export async function computeTagCommitment(vaultId, tag) {
-	const vaultIdBigInt = BigInt(vaultId);
-	// Convert tag to field
-	const tagBytes = new TextEncoder().encode(tag);
-	let tagField = 0n;
-	for (let i = 0; i < Math.min(tagBytes.length, 31); i++) {
-		tagField = (tagField << 8n) | BigInt(tagBytes[i]);
-	}
-	const hash = await poseidon2Hash(vaultIdBigInt, tagField);
-	return hash;
+    const vaultIdBigInt = BigInt(vaultId);
+    // Convert tag to field
+    const tagBytes = new TextEncoder().encode(tag);
+    let tagField = 0n;
+    for (let i = 0; i < Math.min(tagBytes.length, 31); i++) {
+        tagField = (tagField << 8n) | BigInt(tagBytes[i]);
+    }
+    const hash = await poseidon2Hash(vaultIdBigInt, tagField);
+    return hash;
 }

@@ -53,9 +53,11 @@ export namespace FangornConfig {
 	};
 }
 
-// now getting hit with this https://github.com/LIT-Protocol/Node/blob/bac10b850b7e905213bdb1f4418d2f70e4cec558/rust/lit-node/src/functions/action_client.rs#L808
-
-// Then, decrypt within your Lit Action
+// for decryption within a lit action
+/* eslint-disable */
+declare const Lit: any;
+declare const jsParams: any;
+// @ts-nocheck
 const _litActionCode = async () => {
 	try {
 		// Decrypt the content using decryptAndCombine
@@ -63,25 +65,18 @@ const _litActionCode = async () => {
 			accessControlConditions: jsParams.accessControlConditions,
 			ciphertext: jsParams.ciphertext,
 			dataToEncryptHash: jsParams.dataToEncryptHash,
-			// The authenticated identity from the authContext used
-			// to make the decryption request is automatically used
-			// for the decryption request
-			// NO: that didnd't work
-			// instead I had to build my own sig
-			// otherwise kept getting blocked by https://github.com/LIT-Protocol/Node/blob/bac10b850b7e905213bdb1f4418d2f70e4cec558/rust/lit-node/src/auth/validators/wallet_sig.rs#L138
 			authSig: jsParams.authSig,
 			chain: "baseSepolia",
 		});
 
 		// Use the decrypted content for your logic
 		Lit.Actions.setResponse({
-			response: `Successfully decrypted: ${JSON.stringify(decryptedContent)}`,
-			// response: `Successfully decrypted`,
+			response: decryptedContent,
 			success: true,
 		});
 	} catch (error) {
 		Lit.Actions.setResponse({
-			response: `Decryption failed: ${error.message}`,
+			response: error.message,
 			success: false,
 		});
 	}
@@ -193,7 +188,9 @@ export class Fangorn {
 		const vault = await this.contentRegistry.getVault(vaultId);
 		// if the manifest exists and we don't want to overwrite
 		if (vault.manifestCid && !overwrite) {
+			console.log("the vault manifest cid is " + vault.manifestCid);
 			const oldManifest = await this.fetchManifest(vault.manifestCid);
+			console.log("oldManifest " + JSON.stringify(oldManifest));
 			await this.loadManifest(oldManifest);
 			// try to unpin old manifest
 			try {
@@ -323,6 +320,7 @@ export class Fangorn {
 	 * Loads existing manifest
 	 */
 	async loadManifest(oldManifest: any) {
+		console.log("loading manifest " + JSON.stringify(oldManifest));
 		// load existing entries into pending
 		for (const entry of oldManifest.entries) {
 			this.pendingEntries.set(entry.tag, {
@@ -459,6 +457,7 @@ export class Fangorn {
 		const vault = await this.contentRegistry.getVault(vaultId);
 		const manifest = await this.storage.retrieve(vault.manifestCid);
 
+		console.log("trying to decrypt " + JSON.stringify(manifest));
 		// try to find entry
 		const entry = manifest.entries.find((e) => e.tag === tag);
 		if (!entry) {
@@ -468,6 +467,8 @@ export class Fangorn {
 		// fetch ciphertext
 		const response = await this.storage.retrieve(entry.cid);
 		const { encryptedData, keyEncryptedData, acc } = response as any;
+
+		console.log("got ciphertext, key ct, acc, attempting to decrypt");
 
 		const result = await this.litClient.executeJs({
 			code: litActionCode,
@@ -503,19 +504,29 @@ export class Fangorn {
 		return decryptedFile;
 	}
 
+	/**
+	 * Get vault data from the contract
+	 * @param vaultId
+	 * @param tag
+	 * @returns
+	 */
 	public async getVaultData(vaultId: Hex, tag: string) {
 		// fetch manifest from pinata
 		const vault = await this.getVault(vaultId);
 		const manifest = await this.fetchManifest(vault.manifestCid);
+		console.log("In getVaultData, we got the manifest " + this.getVaultData);
 		// try to find entry
 		const entry = manifest.entries.find((e) => e.tag === tag);
 		if (!entry) {
 			throw new Error(`Entry not found: ${tag}`);
 		}
 		//   return entry;
-		return new Uint8Array();
+		return entry;
 	}
 
+	/**
+	 * Get the manifest from the chain
+	 */
 	public async getManifest(vaultId: Hex) {
 		// fetch manifest from pinata
 		const vault = await this.getVault(vaultId);
@@ -526,22 +537,29 @@ export class Fangorn {
 		return await this.fetchManifest(vault.manifestCid);
 	}
 
+	/**
+	 * Get the contract address
+	 * @returns
+	 */
 	getAddress() {
 		const account = this.walletClient.account;
 		if (!account?.address) throw new Error("Wallet not connected");
 		return account.address;
 	}
 
+	// Read the data source metadata
 	public async getVault(vaultId: Hex): Promise<Vault> {
 		const vault: Vault = await this.contentRegistry.getVault(vaultId);
 		return vault;
 	}
 
+	/**
+	 * fetch raw manifest data from storage
+	 * @param cid
+	 * @returns
+	 */
 	public async fetchManifest(cid: string): Promise<VaultManifest> {
 		const response = await this.storage.retrieve(cid);
-		console.log(
-			"and the response in fangorn.ts is " + JSON.stringify(response),
-		);
-		return response.data as unknown as VaultManifest;
+		return response as unknown as VaultManifest;
 	}
 }

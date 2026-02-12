@@ -19,6 +19,7 @@ import { Fangorn, FangornConfig, AppConfig } from "./fangorn.js";
 import { Filedata } from "./types/index.js";
 import "dotenv/config";
 import { PinataSDK } from "pinata";
+import { PinataStorage } from "./providers/storage/index.js";
 
 interface Config {
 	rpcUrl: string;
@@ -107,9 +108,11 @@ async function getFangorn(): Promise<Fangorn> {
 		pinataGateway: cfg.gateway,
 	});
 
+	const storage = new PinataStorage(pinata);
+
 	_fangorn = await Fangorn.init(
 		walletClient,
-		pinata,
+		storage,
 		litClient,
 		domain,
 		appConfig,

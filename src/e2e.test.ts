@@ -9,7 +9,6 @@ import { uploadToPinata } from "./test/index.js";
 import { createRequire } from "module";
 import { baseSepolia } from "viem/chains";
 
-const require = createRequire(import.meta.url);
 const getEnv = (key: string) => {
 	const value = process.env[key];
 	if (!value) {
@@ -136,91 +135,106 @@ describe("ZK-gated decryption", () => {
 		const outputAsString = new TextDecoder().decode(output);
 		expect(outputAsString).toBe(expectedPlaintext);
 		console.log("Decryption succeeded!");
+		// sleep to avoid any pinata rate limiting
+		await new Promise((f) => setTimeout(f, 6_000));
+		// add more data to the vault
+		const nextFiles = [
+			{
+				tag: "test1",
+				data: "content1",
+				extension: ".png",
+				fileType: "image/png",
+				price: "0.001",
+			},
+			{
+				tag: "test2",
+				data: "content2",
+				extension: ".mp4",
+				fileType: "video/mp4",
+				price: "0",
+			},
+		];
+		await testbed.fileUpload(vaultId, nextFiles);
 
-		// // sleep to avoid any pinata rate limiting
-		// await new Promise((f) => setTimeout(f, 6000));
-		// // add more data to the vault
-		// const nextFiles = [
-		// 	{
-		// 		tag: "test1",
-		// 		data: "content1",
-		// 		extension: ".png",
-		// 		fileType: "image/png",
-		// 		price: "0.001",
-		// 	},
-		// 	{
-		// 		tag: "test2",
-		// 		data: "content2",
-		// 		extension: ".mp4",
-		// 		fileType: "video/mp4",
-		// 		price: "0",
-		// 	},
-		// ];
-		// await testbed.fileUpload(vaultId, nextFiles);
+		// purchase data access
+		await testbed.payForFile(vaultId, "test1", price, delegatorAccount.address);
 
-		// // try to access the new files with the same password
-		// const newTag = nextFiles[0].tag;
-		// const newExpectedPlaintext = nextFiles[0].data;
-		// const actualOutput = await testbed.tryDecrypt(vaultId, newTag);
-		// const actualOutputAsString = new TextDecoder().decode(actualOutput);
-		// expect(actualOutputAsString).toBe(newExpectedPlaintext);
-		// console.log("Decryption succeeded again!!");
+		// try to access the new files with the same password
+		const newTag = nextFiles[0].tag;
+		const newExpectedPlaintext = nextFiles[0].data;
+		const actualOutput = await testbed.tryDecrypt(vaultId, newTag);
+		const actualOutputAsString = new TextDecoder().decode(actualOutput);
+		expect(actualOutputAsString).toBe(newExpectedPlaintext);
+		console.log("Decryption succeeded again!!");
 	}, 120_000);
 
-	// it("should fail to decrypt when the password is incorrect", async () => {
-	// 	// setup vault (will skip vault creation since we already have one with this name)
-	// 	const vaultName = "myVault_0001";
-	// 	const password = "ok";
-	// 	const badPassword = "not-ok";
-	// 	const vaultId = await testbed.setupVault(vaultName, password);
+	it("should fail to decrypt when the payment is not settled", async () => {
+		// create a vault
+		const vaultName = "myVault_" + getRandomIntInclusive(0, 101010101);
+		const vaultId = await testbed.setupVault(vaultName);
+		console.log(`Vault creation successful, using vaultId: ${vaultId}`);
 
-	// 	const manifest = [
-	// 		{
-	// 			tag: "test3",
-	// 			data: "content3",
-	// 			extension: ".txt",
-	// 			fileType: "text/plain",
-	// 		},
-	// 	];
-	// 	await testbed.fileUpload(vaultId, manifest);
-	// 	// try to get the data associated with the (vault, tag) combo
+		const price = "0.000001";
+		// build manifest
+		const manifest = [
+			{
+				tag: "test0",
+				data: "hello, fangorn",
+				extension: ".txt",
+				fileType: "text/plain",
+				price,
+			},
+		];
 
-	// 	let didFail = false;
-	// 	try {
-	// 		await testbed.tryDecrypt(vaultId, "test3", badPassword);
-	// 	} catch (error) {
-	// 		didFail = true;
-	// 	}
+		await testbed.fileUpload(vaultId, manifest);
 
-	// 	expect(didFail).toBe(true);
-	// }, 120_000);
+		const tag = manifest[0].tag;
 
-	// it("should fail to decrypt when the tag does not exist", async () => {
-	// 	// setup vault
-	// 	const vaultName = "myVault_0001";
-	// 	const password = "ok";
-	// 	const vaultId = await testbed.setupVault(vaultName, password);
-	// 	// try to get the data associated with the wrong (vault, tag) combo
-	// 	let didFail = false;
-	// 	try {
-	// 		await testbed.tryDecrypt(vaultId, "bad-tag-do-not-use", password);
-	// 	} catch (error) {
-	// 		didFail = true;
-	// 	}
+		// wait to make sure pinata is behaving
+		await new Promise((resolve) => setTimeout(resolve, 4_000));
+		// DO NOT PAY
+		let didFail = false;
+		try {
+			await testbed.tryDecrypt(vaultId, tag);
+		} catch (error) {
+			didFail = true;
+		}
 
-	// 	expect(didFail).toBe(true);
-	// }, 120_000);
+		expect(didFail).toBe(true);
+	}, 120_000);
 
-	// it("should fail to decrypt when the vault does not exist", async () => {
-	// 	let didFail = false;
-	// 	try {
-	// 		await testbed.tryDecrypt("0x0", "", "");
-	// 	} catch (error) {
-	// 		didFail = true;
-	// 	}
+	it("should fail to decrypt when the tag does not exist", async () => {
+		// create a vault
+		const vaultName = "myVault_" + getRandomIntInclusive(0, 101010101);
+		// const vaultName = "demo";
+		const vaultId = await testbed.setupVault(vaultName);
+		console.log(`Vault creation successful, using vaultId: ${vaultId}`);
 
-	// 	expect(didFail).toBe(true);
-	// }, 120_000);
+		const price = "0.000001";
+		// build manifest
+		const manifest = [
+			{
+				tag: "test0",
+				data: "hello, fangorn",
+				extension: ".txt",
+				fileType: "text/plain",
+				price,
+			},
+		];
+
+		await testbed.fileUpload(vaultId, manifest);
+		// wait to make sure pinata is behaving
+		await new Promise((resolve) => setTimeout(resolve, 5_000));
+		// try to get the data associated with the wrong (vault, tag) combo
+		let didFail = false;
+		try {
+			await testbed.tryDecrypt(vaultId, "bad-tag-do-not-use");
+		} catch (error) {
+			didFail = true;
+		}
+
+		expect(didFail).toBe(true);
+	}, 120_000);
 });
 
 function getRandomIntInclusive(min: number, max: number) {

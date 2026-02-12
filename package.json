@@ -21,7 +21,6 @@
 		"test:e2e": "dotenvx run -f .env -- vitest run --config vitest.e2e.config.ts",
 		"tsc": "tsc",
 		"deploy": "dotenvx run -f .env -- tsx deploy.ts",
-		"build:cli": "tsc",
 		"prepare:cli": "npm run build",
 		"fangorn": "dotenvx run -f .env -- node dist/src/cli.js"
 	},

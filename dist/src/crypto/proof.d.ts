@@ -1,4 +1,1 @@
-export declare function computeTagCommitment(
-	vaultId: string,
-	tag: string,
-): Promise<bigint>;
+export declare function computeTagCommitment(vaultId: string, tag: string): Promise<bigint>;
