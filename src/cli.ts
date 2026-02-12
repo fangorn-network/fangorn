@@ -8,6 +8,7 @@ import {
 	keccak256,
 	encodeAbiParameters,
 	parseAbiParameters,
+	Chain,
 } from "viem";
 import { privateKeyToAccount, PrivateKeyAccount } from "viem/accounts";
 import { arbitrumSepolia, baseSepolia } from "viem/chains";
@@ -15,11 +16,16 @@ import { createLitClient } from "@lit-protocol/lit-client";
 import { nagaDev } from "@lit-protocol/networks";
 import { readFileSync, writeFileSync } from "fs";
 import { basename, extname } from "path";
-import { Fangorn, FangornConfig, AppConfig } from "./fangorn.js";
+import { Fangorn } from "./fangorn.js";
 import { Filedata } from "./types/index.js";
 import "dotenv/config";
 import { PinataSDK } from "pinata";
 import { PinataStorage } from "./providers/storage/index.js";
+import getNetwork, {
+	AppConfig,
+	FangornConfig,
+	SupportedNetworks,
+} from "./config.js";
 
 interface Config {
 	rpcUrl: string;
@@ -27,7 +33,7 @@ interface Config {
 	gateway: string;
 	privateKey: Hex;
 	litActionCid?: string;
-	contentRegistryAddress?: Address;
+	dataSourceRegistryAddress?: Address;
 	usdcContractAddress?: Address;
 }
 
@@ -55,7 +61,7 @@ function loadConfig(): Config {
 		gateway,
 		privateKey,
 		litActionCid: process.env.LIT_ACTION_CID,
-		contentRegistryAddress: process.env.DS_REGISTRY_ADDR as Address,
+		dataSourceRegistryAddress: process.env.DS_REGISTRY_ADDR as Address,
 		usdcContractAddress: process.env.USDC_CONTRACT_ADDRESS as Address,
 	};
 	return _config;
@@ -76,24 +82,25 @@ function deriveVaultId(name: string): Hex {
 	);
 }
 
-async function getFangorn(): Promise<Fangorn> {
+async function getFangorn(chain: Chain): Promise<Fangorn> {
 	if (_fangorn) return _fangorn;
 
 	const cfg = loadConfig();
 	const walletClient = createWalletClient({
 		account: getAccount(),
 		transport: http(cfg.rpcUrl),
-		chain: arbitrumSepolia,
+		chain,
 	});
 
 	const litClient = await createLitClient({ network: nagaDev });
 
+	// default to arbitrum sepolia
 	const appConfig: AppConfig = {
-		...FangornConfig.Testnet,
+		...FangornConfig.ArbitrumSepolia,
 		rpcUrl: cfg.rpcUrl,
 		...(cfg.litActionCid && { litActionCid: cfg.litActionCid }),
-		...(cfg.contentRegistryAddress && {
-			contentRegistryContractAddress: cfg.contentRegistryAddress,
+		...(cfg.dataSourceRegistryAddress && {
+			dataSourceRegistryContractAddress: cfg.dataSourceRegistryAddress,
 		}),
 		...(cfg.usdcContractAddress && {
 			usdcContractAddress: cfg.usdcContractAddress,
@@ -121,26 +128,32 @@ async function getFangorn(): Promise<Fangorn> {
 	return _fangorn;
 }
 
+const getChain = (chainStr: string) => {
+	return getNetwork(chainStr);
+};
+
 // CLI setup
 const program = new Command();
 
-program
-	.name("fangorn")
-	.description("CLI for Fangorn - token-gated content management")
-	.version("0.1.0");
+program.name("fangorn").description("CLI for Fangorn").version("0.1.0");
 
 program
-	.command("create-vault")
-	.description("Create a new vault")
-	.argument("<name>", "Name of the vault")
-	.action(async (name: string) => {
+	.command("register")
+	.description("Register a new data source")
+	.argument("<name>", "Name of the data source")
+	.option(
+		"-c, --chain <chain>",
+		"The chain to use as the backend (arbitrumSepolia or baseSepolia",
+	)
+	.action(async (name: string, options) => {
 		try {
-			const fangorn = await getFangorn();
+			const chain = getChain(options.chain);
+			const fangorn = await getFangorn(chain);
 			const vaultId = await fangorn.registerDataSource(name);
-			console.log(`Vault created: ${vaultId}`);
+			console.log(`Data source registered with id = ${vaultId}`);
 			process.exit(0);
 		} catch (err) {
-			console.error("Failed to create vault:", (err as Error).message);
+			console.error("Failed to register data source:", (err as Error).message);
 			process.exit(1);
 		}
 	});
@@ -150,12 +163,17 @@ program
 	.description("Upload file(s) to a vault")
 	.argument("<name>", "Vault name")
 	.argument("<files...>", "File path(s) to upload")
+	.option(
+		"-c, --chain <chain>",
+		"The chain to use as the backend (arbitrumSepolia or baseSepolia",
+	)
 	.option("-p, --price <price>", "Price per file (default: 0)", "0")
 	.option("--overwrite", "Overwrite existing vault contents")
 	.action(async (name: string, files: string[], options) => {
 		try {
 			const vaultId = deriveVaultId(name);
-			const fangorn = await getFangorn();
+			const chain = getChain(options.chain);
+			const fangorn = await getFangorn(chain);
 
 			const filedata: Filedata[] = files.map((filepath) => {
 				const data = readFileSync(filepath);
@@ -183,10 +201,15 @@ program
 	.command("list")
 	.description("List contents of a vault")
 	.argument("<name>", "Vault name")
-	.action(async (name: string) => {
+	.option(
+		"-c, --chain <chain>",
+		"The chain to use as the backend (arbitrumSepolia or baseSepolia",
+	)
+	.action(async (name: string, options) => {
 		try {
 			const vaultId = deriveVaultId(name);
-			const fangorn = await getFangorn();
+			const chain = getChain(options.chain);
+			const fangorn = await getFangorn(chain);
 			const manifest = await fangorn.getManifest(vaultId);
 
 			if (!manifest) {
@@ -214,11 +237,16 @@ program
 	.command("info")
 	.description("Get vault info from contract")
 	.argument("<name>", "Vault name")
-	.action(async (name: string) => {
+	.option(
+		"-c, --chain <chain>",
+		"The chain to use as the backend (arbitrumSepolia or baseSepolia",
+	)
+	.action(async (name: string, options) => {
 		try {
 			const vaultId = deriveVaultId(name);
-			const fangorn = await getFangorn();
-			const vault = await fangorn.getVault(vaultId);
+			const chain = getChain(options.chain);
+			const fangorn = await getFangorn(chain);
+			const vault = await fangorn.getDataSource(vaultId);
 
 			console.log(`Vault: ${name} (${vaultId})`);
 			console.log(`Owner: ${vault.owner}`);
@@ -237,11 +265,16 @@ program
 	.description("Decrypt a file from a vault")
 	.argument("<name>", "Vault name")
 	.argument("<tag>", "File tag")
+	.option(
+		"-c, --chain <chain>",
+		"The chain to use as the backend (arbitrumSepolia or baseSepolia",
+	)
 	.option("-o, --output <path>", "Output file path")
 	.action(async (name: string, tag: string, options) => {
 		try {
 			const vaultId = deriveVaultId(name);
-			const fangorn = await getFangorn();
+			const chain = getChain(options.chain);
+			const fangorn = await getFangorn(chain);
 			const decrypted = await fangorn.decryptFile(vaultId, tag);
 
 			if (options.output) {
@@ -262,11 +295,16 @@ program
 	.description("Get info about a specific vault entry")
 	.argument("<name>", "Vault name")
 	.argument("<tag>", "File tag")
-	.action(async (name: string, tag: string) => {
+	.option(
+		"-c, --chain <chain>",
+		"The chain to use as the backend (arbitrumSepolia or baseSepolia",
+	)
+	.action(async (name: string, tag: string, options) => {
 		try {
 			const vaultId = deriveVaultId(name);
-			const fangorn = await getFangorn();
-			const entry = await fangorn.getVaultData(vaultId, tag);
+			const chain = getChain(options.chain);
+			const fangorn = await getFangorn(chain);
+			const entry = await fangorn.getDataSourceData(vaultId, tag);
 
 			console.log(`Entry: ${tag}`);
 			console.log(`  CID: ${entry.cid}`);

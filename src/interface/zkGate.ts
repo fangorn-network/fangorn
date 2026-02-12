@@ -31,7 +31,7 @@
 // 	},
 // 	// Vault update
 // 	{
-// 		name: "updateVault",
+// 		name: "updateDataSource",
 // 		type: "function",
 // 		stateMutability: "nonpayable",
 // 		inputs: [
@@ -67,7 +67,7 @@
 // 		outputs: [{ type: "bool" }],
 // 	},
 // 	{
-// 		name: "getVault",
+// 		name: "getDataSource",
 // 		type: "function",
 // 		stateMutability: "view",
 // 		inputs: [{ name: "vaultId", type: "bytes32" }],
@@ -182,7 +182,7 @@
 
 // 	// --- Read Functions ---
 
-// 	async getVaultCreationFee(): Promise<bigint> {
+// 	async getDataSourceCreationFee(): Promise<bigint> {
 // 		return this.publicClient.readContract({
 // 			address: this.contractAddress,
 // 			abi: ZKGATE_ABI,
@@ -190,12 +190,12 @@
 // 		});
 // 	}
 
-// 	async getVault(vaultId: `0x${string}`): Promise<Vault> {
+// 	async getDataSource(vaultId: `0x${string}`): Promise<Vault> {
 // 		const [passwordHash, poseidonRoot, manifestCid, owner, name] =
 // 			await this.publicClient.readContract({
 // 				address: this.contractAddress,
 // 				abi: ZKGATE_ABI,
-// 				functionName: "getVault",
+// 				functionName: "getDataSource",
 // 				args: [vaultId],
 // 			});
 // 		return { passwordHash, poseidonRoot, manifestCid, owner, name };
@@ -223,12 +223,12 @@
 // 		});
 // 	}
 
-// 	async vaultExists(vaultId: `0x${string}`): Promise<boolean> {
-// 		const vault = await this.getVault(vaultId);
+// 	async dataSourceExists(vaultId: `0x${string}`): Promise<boolean> {
+// 		const vault = await this.getDataSource(vaultId);
 // 		return vault.owner !== "0x0000000000000000000000000000000000000000";
 // 	}
 
-// 	async getOwnedVaults(address: Address): Promise<readonly `0x${string}`[]> {
+// 	async getOwnedDataSources(address: Address): Promise<readonly `0x${string}`[]> {
 // 		const vaults = await this.publicClient.readContract({
 // 			address: this.contractAddress,
 // 			abi: ZKGATE_ABI,
@@ -268,7 +268,7 @@
 // 		return { hash, vaultId };
 // 	}
 
-// 	async updateVault(
+// 	async updateDataSource(
 // 		vaultId: `0x${string}`,
 // 		newRoot: `0x${string}`,
 // 		newManifestCid: string,
@@ -278,7 +278,7 @@
 // 		return this.walletClient.writeContract({
 // 			address: this.contractAddress,
 // 			abi: ZKGATE_ABI,
-// 			functionName: "updateVault",
+// 			functionName: "updateDataSource",
 // 			args: [vaultId, newRoot, newManifestCid],
 // 			chain,
 // 			account,

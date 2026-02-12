@@ -33,10 +33,11 @@ export class TestBed {
 		gateway: string,
 		litActionCid: string,
 		// circuitJsonCid: string,
-		contentRegistryContractAddress: Hex,
+		dataSourceRegistryContractAddress: Hex,
 		usdcContractAddress: Hex,
 		rpcUrl: string,
 		chain: string,
+		usdcDomainName: string,
 	) {
 		// if (!circuitJsonCid) {
 		// 	circuitJsonCid = "QmXw1rWUC2Kw52Qi55sfW3bCR7jheCDfSUgVRwvsP8ZZPE";
@@ -45,8 +46,9 @@ export class TestBed {
 		const config: AppConfig = {
 			litActionCid: litActionCid,
 			// circuitJsonCid: circuitJsonCid,
-			contentRegistryContractAddress: contentRegistryContractAddress,
+			dataSourceRegistryContractAddress: dataSourceRegistryContractAddress,
 			usdcContractAddress,
+			usdcDomainName,
 			chainName: chain,
 			rpcUrl: rpcUrl,
 		};
@@ -93,12 +95,14 @@ export class TestBed {
 	}
 
 	async setupVault(name: string) {
-		if (!this.vaultIds.get(name)) {
-			const vaultId = await this.delegatorFangorn.registerDataSource(name);
-			this.vaultIds.set(name, vaultId);
-		}
+		// if (!this.vaultIds.get(name)) {
+		const id = await this.delegatorFangorn.registerDataSource(name);
+		console.log("got the id " + id);
+		this.vaultIds.set(name, id);
+		return id;
+		// }
 
-		return this.vaultIds.get(name)!;
+		// return this.vaultIds.get(name)!;
 	}
 
 	async fileUpload(vaultId: Hex, filedata: Filedata[]) {

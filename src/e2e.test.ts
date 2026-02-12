@@ -28,12 +28,16 @@ describe("payment-gated decryption", () => {
 	let dataSourceRegistryAddress: Address;
 	let ipfsCid: string;
 	let chainName: string;
+	let usdcDomainName: string;
 
 	let testbed: TestBed;
 
 	beforeAll(async () => {
 		chainName = process.env.CHAIN_NAME!;
 		if (!chainName) throw new Error("CHAIN_NAME required");
+
+		usdcDomainName = process.env.USDC_DOMAIN_NAME!;
+		if (!usdcDomainName) throw new Error("USDC_DOMAIN_NAME required");
 
 		// todo: set based on chain name
 		const chain = arbitrumSepolia;
@@ -106,6 +110,7 @@ describe("payment-gated decryption", () => {
 			usdcContractAddress,
 			rpcUrl,
 			chainName,
+			usdcDomainName,
 		);
 	}, 120_000); // 2 minute timeout
 
@@ -113,7 +118,6 @@ describe("payment-gated decryption", () => {
 	it("should create a vault with data and succeed to decrypt when the payment is settled", async () => {
 		// create a vault
 		const vaultName = "myVault_" + getRandomIntInclusive(0, 101010101);
-		// const vaultName = "demo";
 		const vaultId = await testbed.setupVault(vaultName);
 		console.log(`Vault creation successful, using vaultId: ${vaultId}`);
 

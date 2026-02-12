@@ -18,8 +18,7 @@ export interface Vault {
 	name: string;
 }
 
-export const CONTENTREGISTRY_ABI = [
-	// Vault creation
+export const DS_REGISTRY_ABI = [
 	{
 		name: "registerDataSource",
 		type: "function",
@@ -27,9 +26,8 @@ export const CONTENTREGISTRY_ABI = [
 		inputs: [{ name: "name", type: "string" }],
 		outputs: [{ name: "id", type: "bytes32" }],
 	},
-	// Vault update
 	{
-		name: "updateVault",
+		name: "updateDataSource",
 		type: "function",
 		stateMutability: "nonpayable",
 		inputs: [
@@ -59,7 +57,7 @@ export const CONTENTREGISTRY_ABI = [
 	},
 	// Read functions
 	{
-		name: "getVault",
+		name: "getDataSource",
 		type: "function",
 		stateMutability: "view",
 		inputs: [{ name: "id", type: "bytes32" }],
@@ -94,6 +92,7 @@ export const CONTENTREGISTRY_ABI = [
 		inputs: [
 			{ name: "id", type: "bytes32", indexed: true },
 			{ name: "owner", type: "address", indexed: true },
+			{ name: "name", type: "string", indexed: false },
 		],
 	},
 	{
@@ -107,7 +106,7 @@ export const CONTENTREGISTRY_ABI = [
 	},
 ] as const;
 
-export class ContentRegistry {
+export class DataSourceRegistry {
 	private publicClient: PublicClient;
 	private walletClient: WalletClient;
 	private contractAddress: Address;
@@ -139,18 +138,18 @@ export class ContentRegistry {
 	async checkSettlement(commitment: Hex, user: Address): Promise<boolean> {
 		const result = await this.publicClient.readContract({
 			address: this.contractAddress as Hex,
-			abi: CONTENTREGISTRY_ABI,
+			abi: DS_REGISTRY_ABI,
 			functionName: "checkSettlement",
 			args: [commitment, user],
 		} as any);
 		return result as boolean;
 	}
 
-	async getVault(vaultId: `0x${string}`): Promise<Vault> {
+	async getDataSource(vaultId: `0x${string}`): Promise<Vault> {
 		const result = await (this.publicClient.readContract as any)({
 			address: this.contractAddress,
-			abi: CONTENTREGISTRY_ABI,
-			functionName: "getVault",
+			abi: DS_REGISTRY_ABI,
+			functionName: "getDataSource",
 			args: [vaultId],
 		});
 
@@ -158,16 +157,16 @@ export class ContentRegistry {
 		return { poseidonRoot, manifestCid, owner, name };
 	}
 
-	async vaultExists(vaultId: `0x${string}`): Promise<boolean> {
-		const vault = await this.getVault(vaultId);
+	async dataSourceExists(vaultId: `0x${string}`): Promise<boolean> {
+		const vault = await this.getDataSource(vaultId);
 		return vault.owner !== "0x0000000000000000000000000000000000000000";
 	}
 
-	async getOwnedVaults(address: Address): Promise<Hex[]> {
+	async getOwnedDataSources(address: Address): Promise<Hex[]> {
 		const result = await this.publicClient.readContract({
 			address: this.contractAddress,
-			abi: CONTENTREGISTRY_ABI,
-			functionName: "getOwnedVault",
+			abi: DS_REGISTRY_ABI,
+			functionName: "getOwnedDataSources",
 			args: [address],
 		} as any);
 
@@ -176,14 +175,12 @@ export class ContentRegistry {
 
 	// --- Write Functions ---
 
-	async registerDataSource(
-		name: string,
-	): Promise<{ hash: Hash; vaultId: `0x${string}` }> {
+	async registerDataSource(name: string): Promise<Hex> {
 		const { chain, account } = this.getWriteConfig();
 
 		const hash = await this.walletClient.writeContract({
 			address: this.contractAddress,
-			abi: CONTENTREGISTRY_ABI,
+			abi: DS_REGISTRY_ABI,
 			functionName: "registerDataSource",
 			args: [name],
 			chain,
@@ -192,27 +189,21 @@ export class ContentRegistry {
 
 		const receipt = await this.waitForTransaction(hash);
 		const logs = parseEventLogs({
-			abi: CONTENTREGISTRY_ABI,
+			abi: DS_REGISTRY_ABI,
 			logs: receipt.logs,
 		});
-
-		let vaultId = "0x" as Hex;
 
 		for (const log of logs) {
 			if (log.eventName == "DataSourceCreated") {
 				// TODO: verify the owner too?
-				vaultId = log.args.id as Hex;
+				return log.args.id as Hex;
 			}
 		}
 
-		if (vaultId == ("0x" as Hex)) {
-			console.error("no vault id!!!!");
-		}
-
-		return { hash, vaultId };
+		console.error("no id!");
 	}
 
-	async updateVault(
+	async updateDataSource(
 		id: `0x${string}`,
 		newRoot: `0x${string}`,
 		newManifestCid: string,
@@ -221,8 +212,8 @@ export class ContentRegistry {
 
 		const hash = await this.walletClient.writeContract({
 			address: this.contractAddress,
-			abi: CONTENTREGISTRY_ABI,
-			functionName: "updateVault",
+			abi: DS_REGISTRY_ABI,
+			functionName: "updateDataSource",
 			args: [id, newRoot, newManifestCid],
 			chain,
 			account,
@@ -255,7 +246,7 @@ export class ContentRegistry {
 
 		return this.walletClient.writeContract({
 			address: this.contractAddress,
-			abi: CONTENTREGISTRY_ABI,
+			abi: DS_REGISTRY_ABI,
 			functionName: "pay",
 			args: [
 				args.commitment,

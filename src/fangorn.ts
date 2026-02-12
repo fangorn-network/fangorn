@@ -16,7 +16,7 @@ import {
 	parseSignature,
 	WalletClient,
 } from "viem";
-import { Vault, ContentRegistry } from "./interface/contentRegistry.js";
+import { Vault, DataSourceRegistry } from "./interface/dataSourceRegistry.js";
 import { computeTagCommitment } from "./crypto/proof.js";
 import {
 	fieldToHex, // could be a util func instead?
@@ -27,75 +27,26 @@ import { createAuthManager, storagePlugins } from "@lit-protocol/auth";
 import StorageProvider from "./providers/storage/index.js";
 import { AppConfig, FangornConfig } from "./config.js";
 
-// export interface AppConfig {
-// 	// The CID pointing to the expected LIT action
-// 	litActionCid: string;
-// 	// The CID pointing to the compiled circuit json
-// 	// circuitJsonCid: string;
-// 	// The deployed contentRegistry contract address
-// 	contentRegistryContractAddress: Hex;
-// 	// The name of the chain for LIT action execution (does not always match what is defined by viem)
-// 	chainName: string;
-// 	// The public rpc address of the chain we are connecting to
-// 	rpcUrl: string;
-// 	usdcContractAddress: Hex;
-// }
-
-// export namespace FangornConfig {
-// 	// Base Sepolia config
-// 	export const Testnet: AppConfig = {
-// 		litActionCid: "QmP77ECWeWZPe8dsBTBG1HmpxBzkKX5D9k3v8txeEm8uFx",
-// 		// circuitJsonCid: "QmXw1rWUC2Kw52Qi55sfW3bCR7jheCDfSUgVRwvsP8ZZPE",
-// 		usdcContractAddress: "0x0",
-// 		contentRegistryContractAddress:
-// 			"0xc061f4e1422363a27f1b05bf65b644b29e3cec7c",
-// 		chainName: "baseSepolia",
-// 		rpcUrl: "https://sepolia.base.org",
-// 	};
-
-// 	// Arbitrum Sepolia config
-// 	export const ArbitrumSepolia: AppConfig = {
-// 		litActionCid: "",
-// 		// circuitJsonCid: "QmXw1rWUC2Kw52Qi55sfW3bCR7jheCDfSUgVRwvsP8ZZPE",
-// 		usdcContractAddress: "0x0",
-// 		contentRegistryContractAddress: "0x0",
-// 		chainName: "arbitrumSepolia",
-// 		rpcUrl: "",
-// 	};
-// }
-
-// Q: Do we need a 'builder' for this?
-// for decryption within a lit action
-/* eslint-disable */
-declare const Lit: any;
-declare const jsParams: any;
-// @ts-nocheck
-const _litActionCode = async () => {
-	try {
-		// decrypt the content using decryptAndCombine
-		const decryptedContent = await Lit.Actions.decryptAndCombine({
-			accessControlConditions: jsParams.accessControlConditions,
-			ciphertext: jsParams.ciphertext,
-			dataToEncryptHash: jsParams.dataToEncryptHash,
-			authSig: jsParams.authSig,
-			// TODO: how to parametrize properly?
-			chain: "arbitrumSepolia",
-		});
-
-		// Use the decrypted content for your logic
-		Lit.Actions.setResponse({
-			response: decryptedContent,
-			success: true,
-		});
-	} catch (error) {
-		Lit.Actions.setResponse({
-			response: error.message,
-			success: false,
-		});
-	}
-};
-
-const litActionCode = `(${_litActionCode.toString()})();`;
+const litActionCode = (chainName: string) => `(async () => {
+    try {
+        const decryptedContent = await Lit.Actions.decryptAndCombine({
+            accessControlConditions: jsParams.accessControlConditions,
+            ciphertext: jsParams.ciphertext,
+            dataToEncryptHash: jsParams.dataToEncryptHash,
+            authSig: jsParams.authSig,
+            chain: "${chainName}",
+        });
+        Lit.Actions.setResponse({
+            response: decryptedContent,
+            success: true,
+        });
+    } catch (error) {
+        Lit.Actions.setResponse({
+            response: error.message,
+            success: false,
+        });
+    }
+})();`;
 
 /**
  * Fangorn class
@@ -109,8 +60,8 @@ export class Fangorn {
 	private litActionCid: string;
 	// The complied noir circuit (e.g. circuit.json)
 	// private circuit: CompiledCircuit;
-	// The ContentRegistry Contract instance
-	private contentRegistry: ContentRegistry;
+	// The dataSourceRegistry Contract instance
+	private dataSourceRegistry: DataSourceRegistry;
 	// The wallet client for signing txs
 	private walletClient: WalletClient;
 	// The storage layer (todo: make this into a genericc storage adapter)
@@ -126,13 +77,13 @@ export class Fangorn {
 		litActionCid: string,
 		// circuit: CompiledCircuit,
 		litClient: any,
-		contentRegistry: any,
+		dataSourceRegistry: any,
 		walletClient: WalletClient,
 		storage: StorageProvider<any>,
 		domain: string,
 	) {
 		this.litClient = litClient;
-		this.contentRegistry = contentRegistry;
+		this.dataSourceRegistry = dataSourceRegistry;
 		this.walletClient = walletClient;
 		this.storage = storage;
 		this.litActionCid = litActionCid;
@@ -157,8 +108,8 @@ export class Fangorn {
 		const publicClient = createPublicClient({ transport: http(rpcUrl) });
 
 		// interacts with the zk-gate contract
-		let contentRegistryClient = new ContentRegistry(
-			resolvedConfig.contentRegistryContractAddress,
+		let dataSourceRegistryClient = new DataSourceRegistry(
+			resolvedConfig.dataSourceRegistryContractAddress,
 			publicClient as any,
 			walletClient,
 		);
@@ -175,7 +126,7 @@ export class Fangorn {
 			resolvedConfig.litActionCid,
 			// compiledCircuit,
 			litClient,
-			contentRegistryClient,
+			dataSourceRegistryClient,
 			walletClient,
 			storage,
 			domain,
@@ -183,10 +134,8 @@ export class Fangorn {
 	}
 
 	async registerDataSource(name: string): Promise<Hex> {
-		// const fee = await this.contentRegistry.getVaultCreationFee();
-		const { hash: createHash, vaultId } =
-			await this.contentRegistry.registerDataSource(name);
-		return vaultId;
+		const id = await this.dataSourceRegistry.registerDataSource(name);
+		return id;
 	}
 
 	/**
@@ -199,7 +148,7 @@ export class Fangorn {
 	async upload(vaultId: Hex, filedata: Filedata[], overwrite?: boolean) {
 		// check if manifest exists or not
 		// load existing manifest
-		const vault = await this.contentRegistry.getVault(vaultId);
+		const vault = await this.dataSourceRegistry.getDataSource(vaultId);
 		// if the manifest exists and we don't want to overwrite
 		if (vault.manifestCid && !overwrite) {
 			const oldManifest = await this.fetchManifest(vault.manifestCid);
@@ -244,7 +193,7 @@ export class Fangorn {
 				"go",
 				[
 					this.chainName,
-					this.contentRegistry.getContractAddress(),
+					this.dataSourceRegistry.getContractAddress(),
 					commitmentHex,
 				],
 				"true",
@@ -320,12 +269,12 @@ export class Fangorn {
 		});
 
 		// Update contract
-		const hash = await this.contentRegistry.updateVault(
+		const hash = await this.dataSourceRegistry.updateDataSource(
 			vaultId,
 			rootHex,
 			manifestUpload,
 		);
-		await this.contentRegistry.waitForTransaction(hash);
+		await this.dataSourceRegistry.waitForTransaction(hash);
 		// Clear staging
 		this.pendingEntries.clear();
 
@@ -370,7 +319,7 @@ export class Fangorn {
 		const commitmentHex = fieldToHex(commitment);
 		const { v, r, s } = parseSignature(auth.signature);
 
-		return await this.contentRegistry.pay({
+		return await this.dataSourceRegistry.pay({
 			commitment: commitmentHex,
 			from: auth.from,
 			to: to,
@@ -468,7 +417,7 @@ export class Fangorn {
 		};
 
 		// fetch manifest
-		const vault = await this.contentRegistry.getVault(vaultId);
+		const vault = await this.dataSourceRegistry.getDataSource(vaultId);
 		const manifest = await this.storage.retrieve(vault.manifestCid);
 
 		// try to find entry
@@ -482,7 +431,7 @@ export class Fangorn {
 		const { encryptedData, keyEncryptedData, acc } = response as any;
 
 		const result = await this.litClient.executeJs({
-			code: litActionCode,
+			code: litActionCode(this.chainName),
 			authContext,
 			jsParams: {
 				accessControlConditions: acc,
@@ -520,9 +469,9 @@ export class Fangorn {
 	 * @param tag
 	 * @returns
 	 */
-	public async getVaultData(vaultId: Hex, tag: string) {
+	public async getDataSourceData(vaultId: Hex, tag: string) {
 		// fetch manifest from pinata
-		const vault = await this.getVault(vaultId);
+		const vault = await this.getDataSource(vaultId);
 		const manifest = await this.fetchManifest(vault.manifestCid);
 		// try to find entry
 		const entry = manifest.entries.find((e) => e.tag === tag);
@@ -538,7 +487,7 @@ export class Fangorn {
 	 */
 	public async getManifest(vaultId: Hex) {
 		// fetch manifest from pinata
-		const vault = await this.getVault(vaultId);
+		const vault = await this.getDataSource(vaultId);
 
 		if (!vault.manifestCid || vault.manifestCid == "") {
 			return;
@@ -557,8 +506,8 @@ export class Fangorn {
 	}
 
 	// Read the data source metadata
-	public async getVault(vaultId: Hex): Promise<Vault> {
-		const vault: Vault = await this.contentRegistry.getVault(vaultId);
+	public async getDataSource(vaultId: Hex): Promise<Vault> {
+		const vault: Vault = await this.dataSourceRegistry.getDataSource(vaultId);
 		return vault;
 	}
 

@@ -38,7 +38,7 @@ Coming soon ;)
 
 const config: AppConfig = {
   litActionCid: litActionCid,
-  contentRegistryContractAddress: contentRegistryContractAddress,
+  dataSourceRegistryContractAddress: dataSourceRegistryContractAddress,
   usdcContractAddress,
   chainName: "arbitrum",
   rpcUrl: rpcUrl,
@@ -224,7 +224,7 @@ Environment Variables (required):
 
 Environment Variables (optional):
   LIT_ACTION_CID         Override default Lit Action CID
-  DS_REGISTRY_ADDR  Override default ContentRegistry address
+  DS_REGISTRY_ADDR  Override default dataSourceRegistry address
   USDC_CONTRACT_ADDRESS  Override default USDC address
   DOMAIN                 Domain for Lit auth (default: localhost:3000)
 ```
