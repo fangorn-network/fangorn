@@ -17,7 +17,7 @@ const getEnv = (key: string) => {
 	return value;
 };
 
-describe("ZK-gated decryption", () => {
+describe("payment-gated decryption", () => {
 	let rpcUrl: string;
 	let jwt: string;
 	let gateway: string;
