@@ -30,6 +30,8 @@ describe("payment-gated decryption", () => {
 	let chainName: string;
 	let usdcDomainName: string;
 
+	let caip2: number;
+
 	let testbed: TestBed;
 
 	beforeAll(async () => {
@@ -50,6 +52,9 @@ describe("payment-gated decryption", () => {
 
 		gateway = process.env.PINATA_GATEWAY!;
 		if (!gateway) throw new Error("PINATA_GATEWAY required");
+
+		caip2 = parseInt(process.env.CAIP2!);
+		// if (!caip2) throw new Error("CAIP2 required");
 
 		delegatorAccount = privateKeyToAccount(
 			getEnv("DELEGATOR_ETH_PRIVATE_KEY") as Hex,
@@ -111,6 +116,7 @@ describe("payment-gated decryption", () => {
 			rpcUrl,
 			chainName,
 			usdcDomainName,
+			caip2,
 		);
 	}, 120_000); // 2 minute timeout
 

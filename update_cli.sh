@@ -1,3 +1,4 @@
-pnpm run build:cli
-sudo ln -s $(pwd)/dist/src/cli.js /usr/local/bin/fangorn
-chmod +x $(pwd)/dist/src/cli.js
+pnpm run build
+sudo rm /usr/local/bin/fangorn
+sudo ln -s $(pwd)/lib/cli.js /usr/local/bin/fangorn
+chmod +x $(pwd)/lib/cli.js

@@ -1,4 +1,12 @@
-import { Address, Hex, keccak256, parseUnits, toHex, WalletClient } from "viem";
+import {
+	Address,
+	Chain,
+	Hex,
+	keccak256,
+	parseUnits,
+	toHex,
+	WalletClient,
+} from "viem";
 import { Fangorn } from "../fangorn.js";
 import { Filedata } from "../types/index.js";
 import { createLitClient } from "@lit-protocol/lit-client";
@@ -6,6 +14,7 @@ import { nagaDev } from "@lit-protocol/networks";
 import { PinataSDK } from "pinata";
 import { PinataStorage } from "../providers/storage/pinata/index.js";
 import { AppConfig } from "../config.js";
+import { arbitrumSepolia, baseSepolia } from "viem/chains";
 
 export class TestBed {
 	private delegatorFangorn: Fangorn;
@@ -38,19 +47,27 @@ export class TestBed {
 		rpcUrl: string,
 		chain: string,
 		usdcDomainName: string,
+		caip2: number,
 	) {
 		// if (!circuitJsonCid) {
 		// 	circuitJsonCid = "QmXw1rWUC2Kw52Qi55sfW3bCR7jheCDfSUgVRwvsP8ZZPE";
 		// }
 
+		// todo: should probably refactor these vars
+		let chainImpl: Chain = arbitrumSepolia;
+		if (chain === "baseSepolia") {
+			chainImpl = baseSepolia;
+		}
+
 		const config: AppConfig = {
 			litActionCid: litActionCid,
-			// circuitJsonCid: circuitJsonCid,
 			dataSourceRegistryContractAddress: dataSourceRegistryContractAddress,
 			usdcContractAddress,
 			usdcDomainName,
 			chainName: chain,
-			rpcUrl: rpcUrl,
+			chain: chainImpl,
+			rpcUrl,
+			caip2,
 		};
 
 		// client to interact with LIT proto
@@ -68,9 +85,7 @@ export class TestBed {
 			pinataJwt: jwt,
 			pinataGateway: gateway,
 		});
-
 		const delegatorStorage = new PinataStorage(pinata);
-
 		const delegateeStorage = new PinataStorage(pinata);
 
 		const domain = "localhost";
@@ -95,14 +110,14 @@ export class TestBed {
 	}
 
 	async setupVault(name: string) {
-		// if (!this.vaultIds.get(name)) {
-		const id = await this.delegatorFangorn.registerDataSource(name);
-		console.log("got the id " + id);
-		this.vaultIds.set(name, id);
-		return id;
-		// }
+		if (!this.vaultIds.get(name)) {
+			const id = await this.delegatorFangorn.registerDataSource(name);
+			// todo: refactor (vaultid dne)
+			this.vaultIds.set(name, id);
+			return id;
+		}
 
-		// return this.vaultIds.get(name)!;
+		return this.vaultIds.get(name)!;
 	}
 
 	async fileUpload(vaultId: Hex, filedata: Filedata[]) {
@@ -117,14 +132,14 @@ export class TestBed {
 		recipient: Address,
 		amount: string,
 		chainId: number,
+		usdcContractName: string,
 		usdcAddress: Address,
 	) {
 		const walletClient = this.delegateeFangorn["walletClient"];
 		const account = walletClient.account!;
 
 		const domain = {
-			// note: for arbitrum sepolia
-			name: "USD Coin",
+			name: usdcContractName,
 			version: "2",
 			chainId: chainId,
 			verifyingContract: usdcAddress,
@@ -182,7 +197,8 @@ export class TestBed {
 		const auth = await this.buildUsdcAuthorization(
 			to,
 			amount,
-			421614, // TODO
+			this.config.caip2,
+			this.config.usdcDomainName,
 			this.config.usdcContractAddress,
 		);
 

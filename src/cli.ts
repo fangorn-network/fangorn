@@ -21,11 +21,7 @@ import { Filedata } from "./types/index.js";
 import "dotenv/config";
 import { PinataSDK } from "pinata";
 import { PinataStorage } from "./providers/storage/index.js";
-import getNetwork, {
-	AppConfig,
-	FangornConfig,
-	SupportedNetworks,
-} from "./config.js";
+import getNetwork, { AppConfig, FangornConfig } from "./config.js";
 
 interface Config {
 	rpcUrl: string;
@@ -134,8 +130,7 @@ const getChain = (chainStr: string) => {
 
 // CLI setup
 const program = new Command();
-
-program.name("fangorn").description("CLI for Fangorn").version("0.1.0");
+program.name("Fangorn").description("CLI for Fangorn").version("9129129");
 
 program
 	.command("register")
@@ -143,7 +138,7 @@ program
 	.argument("<name>", "Name of the data source")
 	.option(
 		"-c, --chain <chain>",
-		"The chain to use as the backend (arbitrumSepolia or baseSepolia",
+		"The chain to use as the backend (arbitrumSepolia or baseSepolia)",
 	)
 	.action(async (name: string, options) => {
 		try {
@@ -160,15 +155,15 @@ program
 
 program
 	.command("upload")
-	.description("Upload file(s) to a vault")
-	.argument("<name>", "Vault name")
+	.description("Upload file(s) to a data source")
+	.argument("<name>", "Data source name")
 	.argument("<files...>", "File path(s) to upload")
 	.option(
 		"-c, --chain <chain>",
-		"The chain to use as the backend (arbitrumSepolia or baseSepolia",
+		"The chain to use as the backend (arbitrumSepolia or baseSepolia)",
 	)
-	.option("-p, --price <price>", "Price per file (default: 0)", "0")
-	.option("--overwrite", "Overwrite existing vault contents")
+	.option("-p, --price <price>", "Price to access the file (default: 0)", "0")
+	.option("--overwrite", "Overwrite existing data source contents")
 	.action(async (name: string, files: string[], options) => {
 		try {
 			const vaultId = deriveVaultId(name);
@@ -199,11 +194,11 @@ program
 
 program
 	.command("list")
-	.description("List contents of a vault")
-	.argument("<name>", "Vault name")
+	.description("List contents (index) of a data source")
+	.argument("<name>", "Data source name")
 	.option(
 		"-c, --chain <chain>",
-		"The chain to use as the backend (arbitrumSepolia or baseSepolia",
+		"The chain to use as the backend (arbitrumSepolia or baseSepolia)",
 	)
 	.action(async (name: string, options) => {
 		try {
@@ -215,7 +210,7 @@ program
 			if (!manifest) {
 				console.log("The data source is empty. \n");
 				console.log(
-					"Upload data with `fangorn upload <vaultName> <file> --price <set-price>",
+					"Upload data with `fangorn upload <dataSourceName> <file> --price <set-price>",
 				);
 				process.exit(0);
 			}
@@ -235,11 +230,11 @@ program
 
 program
 	.command("info")
-	.description("Get vault info from contract")
-	.argument("<name>", "Vault name")
+	.description("Get data source info from contract")
+	.argument("<name>", "Data source name")
 	.option(
 		"-c, --chain <chain>",
-		"The chain to use as the backend (arbitrumSepolia or baseSepolia",
+		"The chain to use as the backend (arbitrumSepolia or baseSepolia)",
 	)
 	.action(async (name: string, options) => {
 		try {

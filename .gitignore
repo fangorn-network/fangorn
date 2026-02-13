@@ -4,5 +4,5 @@
 .env
 lit-auth-storage
 ignore
-/dist
+**/dist
 **/out
