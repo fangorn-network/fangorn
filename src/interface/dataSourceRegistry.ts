@@ -104,6 +104,12 @@ export const DS_REGISTRY_ABI = [
 			{ name: "newManifestCid", type: "string", indexed: false },
 		],
 	},
+	// Errors
+	{
+		name: "AlreadyPaid",
+		type: "error",
+		inputs: [],
+	},
 ] as const;
 
 export class DataSourceRegistry {

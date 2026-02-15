@@ -48,7 +48,7 @@ export namespace FangornConfig {
 		// circuitJsonCid: "QmXw1rWUC2Kw52Qi55sfW3bCR7jheCDfSUgVRwvsP8ZZPE",
 		usdcContractAddress: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
 		dataSourceRegistryContractAddress:
-			"0x445ecf28cffb8dd062ff3fa5971130a44057158e",
+			"0x91ba3f7b649c6188bd8963d829c1ecfd2a2b4768",
 		chainName: "arbitrumSepolia",
 		chain: arbitrumSepolia,
 		rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
@@ -61,7 +61,7 @@ export namespace FangornConfig {
 		// circuitJsonCid: "QmXw1rWUC2Kw52Qi55sfW3bCR7jheCDfSUgVRwvsP8ZZPE",
 		usdcContractAddress: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
 		dataSourceRegistryContractAddress:
-			"0xc061f4e1422363a27f1b05bf65b644b29e3cec7c",
+			"0x4e7c79e79da6d98e3747b72147c0bfd9330c95a6",
 		chainName: "baseSepolia",
 		chain: baseSepolia,
 		rpcUrl: "https://sepolia.base.org",

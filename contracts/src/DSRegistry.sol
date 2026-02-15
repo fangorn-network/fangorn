@@ -99,7 +99,7 @@ contract DSRegistry {
         bytes32 r,
         bytes32 s
     ) external {
-        if (settlementTracker[commitment][from]) revert AlreadyPaid();
+    if (settlementTracker[commitment][from]) revert AlreadyPaid();
 
         // address to = dataSources[dataSourceId].owner;
 

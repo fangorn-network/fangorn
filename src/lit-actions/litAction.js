@@ -2,7 +2,7 @@ const arbitrumSepolia = "https://sepolia-rollup.arbitrum.io/rpc";
 const baseSepolia = "https://sepolia.base.org";
 
 const go = async (supportedNetwork, paywallAddress, commitment) => {
-	let rpcUrl = "";
+	let rpcUrl = baseSepolia;
 	if (supportedNetwork == "arbitrumSepolia") rpcUrl = arbitrumSepolia;
 	else if (supportedNetwork == "baseSepolia") rpcUrl = baseSepolia;
 	else {
@@ -22,6 +22,7 @@ const go = async (supportedNetwork, paywallAddress, commitment) => {
 	const paywall = new ethers.Contract(paywallAddress, paywallAbi, provider);
 
 	const ok = await paywall.checkSettlement(commitment, callerAddress);
+
 	if (!ok) {
 		Lit.Actions.setResponse({ success: false, response: "goodbye" });
 		throw new Error("x402: Payment Required");

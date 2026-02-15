@@ -430,37 +430,46 @@ export class Fangorn {
 		const response = await this.storage.retrieve(entry.cid);
 		const { encryptedData, keyEncryptedData, acc } = response as any;
 
-		const result = await this.litClient.executeJs({
-			code: litActionCode(this.chainName),
-			authContext,
-			jsParams: {
-				accessControlConditions: acc,
-				ciphertext: keyEncryptedData.ciphertext,
-				dataToEncryptHash: keyEncryptedData.dataToEncryptHash,
-				authSig: directAuthSig,
-			},
-		});
+		try {
+			const result = await this.litClient.executeJs({
+				code: litActionCode(this.chainName),
+				authContext,
+				jsParams: {
+					accessControlConditions: acc,
+					ciphertext: keyEncryptedData.ciphertext,
+					dataToEncryptHash: keyEncryptedData.dataToEncryptHash,
+					authSig: directAuthSig,
+				},
+			});
 
-		const key = Uint8Array.from(
-			// to make sure the first digit doesn't get ignored an coverted to a 0
-			(result.response as string)
-				// 1. Strip any non-digits from the very start (BOM, [, ", etc.)
-				.replace(/^[^\d]+/, "")
-				.split(","),
-			(entry) => {
-				const val = parseInt(entry.trim(), 10);
-				// 2. Safety check for malformed segments
-				return isNaN(val) ? 0 : val;
-			},
-		);
+			console.log("decryption of key is done " + JSON.stringify(result));
 
-		// actually decrypt the data with the recovered key
-		const decryptedFile = await decryptData(
-			encryptedData,
-			key as Uint8Array<ArrayBuffer>,
-		);
+			const key = Uint8Array.from(
+				// to make sure the first digit doesn't get ignored an coverted to a 0
+				(result.response as string)
+					// 1. Strip any non-digits from the very start (BOM, [, ", etc.)
+					.replace(/^[^\d]+/, "")
+					.split(","),
+				(entry) => {
+					const val = parseInt(entry.trim(), 10);
+					// 2. Safety check for malformed segments
+					return isNaN(val) ? 0 : val;
+				},
+			);
 
-		return decryptedFile;
+			console.log("we got the key " + key);
+			// actually decrypt the data with the recovered key
+			const decryptedFile = await decryptData(
+				encryptedData,
+				key as Uint8Array<ArrayBuffer>,
+			);
+
+			return decryptedFile;
+		} catch (error) {
+			console.error(error);
+		}
+
+		return new Uint8Array();
 	}
 
 	/**

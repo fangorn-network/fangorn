@@ -21,16 +21,21 @@ import { Filedata } from "./types/index.js";
 import "dotenv/config";
 import { PinataSDK } from "pinata";
 import { PinataStorage } from "./providers/storage/index.js";
-import getNetwork, { AppConfig, FangornConfig } from "./config.js";
+import getNetwork, {
+	AppConfig,
+	FangornConfig,
+	SupportedNetworks,
+} from "./config.js";
 
 interface Config {
-	rpcUrl: string;
+	// rpcUrl: string;
 	jwt: string;
 	gateway: string;
 	privateKey: Hex;
-	litActionCid?: string;
-	dataSourceRegistryAddress?: Address;
-	usdcContractAddress?: Address;
+	// litActionCid?: string;
+	// dataSourceRegistryAddress?: Address;
+	// usdcContractAddress?: Address;
+	cfg: AppConfig;
 }
 
 let _config: Config | null = null;
@@ -40,25 +45,29 @@ let _fangorn: Fangorn | null = null;
 function loadConfig(): Config {
 	if (_config) return _config;
 
-	const rpcUrl = process.env.CHAIN_RPC_URL;
+	// const rpcUrl = process.env.CHAIN_RPC_URL;
 	const jwt = process.env.PINATA_JWT;
 	const gateway = process.env.PINATA_GATEWAY;
 	const privateKey = process.env.DELEGATOR_ETH_PRIVATE_KEY as Hex;
+	const chainName = process.env.CHAIN_NAME;
 
-	if (!rpcUrl || !jwt || !gateway || !privateKey) {
+	if (!chainName || !jwt || !gateway || !privateKey) {
 		throw new Error(
-			"Missing required env vars: CHAIN_RPC_URL, PINATA_JWT, PINATA_GATEWAY, DELEGATOR_ETH_PRIVATE_KEY",
+			"Missing required env vars: CHAIN_NAME, PINATA_JWT, PINATA_GATEWAY, DELEGATOR_ETH_PRIVATE_KEY",
 		);
 	}
 
+	let config = FangornConfig.BaseSepolia;
+	if (chainName === SupportedNetworks.ArbitrumSepolia.name) {
+		console.log("using arbitrum sepolia");
+		config = FangornConfig.ArbitrumSepolia;
+	}
+
 	_config = {
-		rpcUrl,
 		jwt,
 		gateway,
 		privateKey,
-		litActionCid: process.env.LIT_ACTION_CID,
-		dataSourceRegistryAddress: process.env.DS_REGISTRY_ADDR as Address,
-		usdcContractAddress: process.env.USDC_CONTRACT_ADDRESS as Address,
+		cfg: config,
 	};
 	return _config;
 }
@@ -84,24 +93,14 @@ async function getFangorn(chain: Chain): Promise<Fangorn> {
 	const cfg = loadConfig();
 	const walletClient = createWalletClient({
 		account: getAccount(),
-		transport: http(cfg.rpcUrl),
+		transport: http(cfg.cfg.rpcUrl),
 		chain,
 	});
 
 	const litClient = await createLitClient({ network: nagaDev });
 
 	// default to arbitrum sepolia
-	const appConfig: AppConfig = {
-		...FangornConfig.ArbitrumSepolia,
-		rpcUrl: cfg.rpcUrl,
-		...(cfg.litActionCid && { litActionCid: cfg.litActionCid }),
-		...(cfg.dataSourceRegistryAddress && {
-			dataSourceRegistryContractAddress: cfg.dataSourceRegistryAddress,
-		}),
-		...(cfg.usdcContractAddress && {
-			usdcContractAddress: cfg.usdcContractAddress,
-		}),
-	};
+	const appConfig: AppConfig = cfg.cfg;
 
 	const domain = process.env.DOMAIN || "localhost:3000";
 
@@ -110,7 +109,6 @@ async function getFangorn(chain: Chain): Promise<Fangorn> {
 		pinataJwt: cfg.jwt,
 		pinataGateway: cfg.gateway,
 	});
-
 	const storage = new PinataStorage(pinata);
 
 	_fangorn = await Fangorn.init(
@@ -125,6 +123,7 @@ async function getFangorn(chain: Chain): Promise<Fangorn> {
 }
 
 const getChain = (chainStr: string) => {
+	console.log("getting chain for string " + chainStr);
 	return getNetwork(chainStr);
 };
 
