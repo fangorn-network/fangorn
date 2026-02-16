@@ -81,9 +81,11 @@
 		"pinata": "^2.5.2",
 		"solc": "^0.8.28",
 		"types": "link:@x402/core/types",
-		"viem": "^2.41.2",
 		"vite": "^7.2.7",
 		"vite-plugin-node-polyfills": "0.17.0"
+	},
+	"peerDependencies": {
+		"viem": "^2.41.2"
 	},
 	"pnpm": {
 		"overrides": {
