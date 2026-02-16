@@ -1,8 +1,6 @@
 # Fangorn
 
-Intent-Bound Data.
-
-> This is currently a pragmatic initial version of our vision. Expect this repo to undergo radical changes over the coming months.
+Fangorn is access-control middleware.
 
 ## Build
 
@@ -14,8 +12,8 @@ Fangorn is a zero-knowlege access control framework. It provides tools to regist
 
 ## Supported Networks
 
-- base sepolia
 - arbitrum sepolia
+- base sepolia
 
 ### Encryption
 
@@ -36,6 +34,7 @@ Coming soon ;)
 ```js
 // initialize a new fangorn client
 
+// setup config
 const config: AppConfig = {
   litActionCid: litActionCid,
   dataSourceRegistryContractAddress: dataSourceRegistryContractAddress,
@@ -44,15 +43,24 @@ const config: AppConfig = {
   rpcUrl: rpcUrl,
 };
 
+// setup the Lit client
 // client to interact with LIT proto
 const litClient = await createLitClient({
   network: nagaDev,
 });
 
+// setup the storage client (jwt and gateway must be provided)
+// storage via Pinata
+const pinata = new PinataSDK({
+  pinataJwt: jwt,
+  pinataGateway: gateway,
+});
+// we only support pinata right now, more to come
+const storage = new PinataStorage(pinata);
+
 // the domain/webserver where Fangorn is used
 const domain = "localhost:3000";
 
- jwt, gateway
 const fangorn = await Fangorn.init(
   delegatorAccount,
   storage,
@@ -63,10 +71,9 @@ const fangorn = await Fangorn.init(
 
 // create a new named vault
 const vaultName = "myvault-001";
-const password = "test";
 const vaultId = await fangorn.registerDataSource(vaultName);
 
-// upload files to the vault
+// upload files to the vault, specifying price
 let filedata = [
 	{
 		tag: "test0",
@@ -183,48 +190,20 @@ chmod +x update_clci.sh
 ```
 
 ```
-fangorn - CLI for Fangorn - token-gated content management
+Usage: Fangorn [options] [command]
 
-Usage: fangorn [command] [options]
-
-Commands:
-  create-vault <name>                    Create a new vault
-
-  upload <vaultId> <files...>            Upload file(s) to a vault
-    -p, --price <price>                    Price per file (default: "0")
-    --overwrite                            Overwrite existing vault contents
-
-  list <vaultId>                         List contents of a vault
-
-  info <vaultId>                         Get vault info from contract
-
-  decrypt <vaultId> <tag>                Decrypt a file from a vault
-    -o, --output <path>                    Output file path (default: stdout)
-
-  entry <vaultId> <tag>                  Get info about a specific vault entry
+CLI for Fangorn
 
 Options:
-  -V, --version                          Output version number
-  -h, --help                             Display help
+  -V, --version                       output the version number
+  -h, --help                          display help for command
 
-Examples:
-  fangorn create-vault "weather-data"
-  fangorn upload vault-name ./data.json ./image.png --price 0.001
-  fangorn upload vault-name ./new-data.json --overwrite
-  fangorn list vault-name
-  fangorn info vault-name
-  fangorn decrypt 0xabc... data.json -o ./decrypted.json
-  fangorn entry 0xabc... data.json
-
-Environment Variables (required):
-  CHAIN_RPC_URL          RPC endpoint (e.g. https://sepolia.base.org)
-  PINATA_JWT             Pinata API JWT
-  PINATA_GATEWAY         Pinata gateway URL
-  ETH_PRIVATE_KEY        Wallet private key (0x...)
-
-Environment Variables (optional):
-  LIT_ACTION_CID         Override default Lit Action CID
-  DS_REGISTRY_ADDR  Override default dataSourceRegistry address
-  USDC_CONTRACT_ADDRESS  Override default USDC address
-  DOMAIN                 Domain for Lit auth (default: localhost:3000)
+Commands:
+  register [options] <name>           Register a new data source
+  upload [options] <name> <files...>  Upload file(s) to a data source
+  list [options] <name>               List contents (index) of a data source
+  info [options] <name>               Get data source info from contract
+  decrypt [options] <name> <tag>      Decrypt a file from a vault
+  entry [options] <name> <tag>        Get info about a specific vault entry
+  help [command]                      display help for command
 ```

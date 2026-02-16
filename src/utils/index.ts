@@ -12,36 +12,6 @@ import {
 import poseidon1Circuit from "../../circuits/poseiden1_hash/target/poseiden1_hash.json" with { type: "json" };
 import poseidon2Circuit from "../../circuits/poseiden2_hash/target/poseiden2_hash.json" with { type: "json" };
 
-export function hashPassword(password: string): Hex {
-	const padded = password.padEnd(32, "\0");
-	const bytes = new TextEncoder().encode(padded).slice(0, 32);
-	return keccak256(bytes);
-}
-
-// export function computeNullifier(
-// 	password: string,
-// 	userAddress: Address,
-// 	vaultId: `0x${string}`,
-// ): `0x${string}` {
-// 	// Must match circuit: blake3(password || user_address || vault_id)
-// 	const passwordBytes = new TextEncoder()
-// 		.encode(password.padEnd(32, "\0"))
-// 		.slice(0, 32);
-// 	const addressBytes = Buffer.from(
-// 		userAddress.slice(2).padStart(64, "0"),
-// 		"hex",
-// 	);
-// 	const vaultBytes = Buffer.from(vaultId.slice(2), "hex");
-
-// 	const combined = new Uint8Array(96);
-// 	combined.set(passwordBytes, 0);
-// 	combined.set(addressBytes, 32);
-// 	combined.set(vaultBytes, 64);
-
-// 	const hash = blake3(combined);
-// 	return `0x${Buffer.from(hash).toString("hex")}` as `0x${string}`;
-// }
-
 export function deriveVaultId(
 	passwordHash: `0x${string}`,
 	owner: Address,
@@ -108,4 +78,31 @@ export function addressToBytes32Array(address: Address): number[] {
 	const bytes20 = Array.from(Buffer.from(clean, "hex"));
 	const padding = new Array(12).fill(0);
 	return [...padding, ...bytes20];
+}
+
+export function fieldToHex(field: bigint): `0x${string}` {
+	return `0x${field.toString(16).padStart(64, "0")}` as `0x${string}`;
+}
+
+export function hexToField(hex: string): bigint {
+	const cleanHex = hex.startsWith("0x") ? hex : `0x${hex}`;
+	return BigInt(cleanHex);
+}
+
+// create a commitment to the (vaultId, tag) combo using poseidon2
+export async function computeTagCommitment(
+	vaultId: string,
+	tag: string,
+): Promise<bigint> {
+	const vaultIdBigInt = BigInt(vaultId);
+
+	// Convert tag to field
+	const tagBytes = new TextEncoder().encode(tag);
+	let tagField = 0n;
+	for (let i = 0; i < Math.min(tagBytes.length, 31); i++) {
+		tagField = (tagField << 8n) | BigInt(tagBytes[i]);
+	}
+
+	const hash = await poseidon2Hash(vaultIdBigInt, tagField);
+	return hash;
 }

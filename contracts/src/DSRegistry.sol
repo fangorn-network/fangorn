@@ -140,7 +140,7 @@ contract DSRegistry {
     function registerDataSource(
         string calldata name
     ) external returns (bytes32 id) {
-        id = keccak256(abi.encode(name, msg.sender));
+    id = keccak256(abi.encode(name, msg.sender));
         require(
 			dataSources[id].owner == address(0),
 			"The data source is already registered"

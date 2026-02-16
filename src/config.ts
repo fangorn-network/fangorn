@@ -1,6 +1,9 @@
 import { Chain, Hex } from "viem";
 import { arbitrumSepolia, baseSepolia } from "viem/chains";
 
+/**
+ * The networks supproted by Fangorn currently
+ */
 export const SupportedNetworks = {
 	ArbitrumSepolia: {
 		name: "arbitrumSepolia",
@@ -12,6 +15,11 @@ export const SupportedNetworks = {
 	},
 };
 
+/**
+ * Get the network based on the string name
+ * @param name "arbitrumSepolia" or "baseSepolia"
+ * @returns The corresponding network if it is supported, otherwise an error
+ */
 export default function getNetwork(name: string) {
 	if (name === SupportedNetworks.ArbitrumSepolia.name) return arbitrumSepolia;
 	else if (name === SupportedNetworks.BaseSepolia.name) return baseSepolia;
@@ -45,7 +53,6 @@ export namespace FangornConfig {
 	// Arbitrum Sepolia config
 	export const ArbitrumSepolia: AppConfig = {
 		litActionCid: "QmT5J75W4STgVjEbAUi8i11m9cyKUiZDoPinYf5uTeRfhP",
-		// circuitJsonCid: "QmXw1rWUC2Kw52Qi55sfW3bCR7jheCDfSUgVRwvsP8ZZPE",
 		usdcContractAddress: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
 		dataSourceRegistryContractAddress:
 			"0x91ba3f7b649c6188bd8963d829c1ecfd2a2b4768",
@@ -58,7 +65,6 @@ export namespace FangornConfig {
 	// Base Sepolia config
 	export const BaseSepolia: AppConfig = {
 		litActionCid: "QmT5J75W4STgVjEbAUi8i11m9cyKUiZDoPinYf5uTeRfhP",
-		// circuitJsonCid: "QmXw1rWUC2Kw52Qi55sfW3bCR7jheCDfSUgVRwvsP8ZZPE",
 		usdcContractAddress: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
 		dataSourceRegistryContractAddress:
 			"0x4e7c79e79da6d98e3747b72147c0bfd9330c95a6",

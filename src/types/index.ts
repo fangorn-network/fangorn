@@ -51,6 +51,7 @@ export interface Filedata {
 	extension: string;
 	fileType: string;
 	price: string;
+	// predicates?: Predicate[],
 }
 
 export interface EncryptedData {
@@ -58,4 +59,9 @@ export interface EncryptedData {
 	iv: Uint8Array<ArrayBuffer>;
 	authTag: Uint8Array<ArrayBuffer>;
 	salt: Uint8Array<ArrayBuffer>;
+}
+
+export interface Predicate {
+	name: string;
+	litActionCid: string;
 }

@@ -17,15 +17,12 @@ import {
 	WalletClient,
 } from "viem";
 import { Vault, DataSourceRegistry } from "./interface/dataSourceRegistry.js";
-import { computeTagCommitment } from "./crypto/proof.js";
-import {
-	fieldToHex, // could be a util func instead?
-} from "./crypto/merkle.js";
 import { Filedata, PendingEntry, VaultManifest } from "./types/index.js";
 import { decryptData, encryptData } from "./crypto/encryption.js";
 import { createAuthManager, storagePlugins } from "@lit-protocol/auth";
 import StorageProvider from "./providers/storage/index.js";
 import { AppConfig, FangornConfig } from "./config.js";
+import { computeTagCommitment, fieldToHex } from "./utils/index.js";
 
 const litActionCode = (chainName: string) => `(async () => {
     try {
@@ -75,7 +72,6 @@ export class Fangorn {
 	constructor(
 		chainName: string,
 		litActionCid: string,
-		// circuit: CompiledCircuit,
 		litClient: any,
 		dataSourceRegistry: any,
 		walletClient: WalletClient,
@@ -87,7 +83,6 @@ export class Fangorn {
 		this.walletClient = walletClient;
 		this.storage = storage;
 		this.litActionCid = litActionCid;
-		// this.circuit = circuit;
 		this.chainName = chainName;
 		this.domain = domain;
 	}
@@ -114,17 +109,9 @@ export class Fangorn {
 			walletClient,
 		);
 
-		// // read the circuit from ipfs
-		// // TODO: assumes the circuit exists, no error handling here
-		// const circuitResponse = await pinata.gateways.public.get(
-		// 	resolvedConfig.circuitJsonCid,
-		// );
-		// const compiledCircuit = circuitResponse.data as unknown as CompiledCircuit;
-
 		return new Fangorn(
 			chainName,
 			resolvedConfig.litActionCid,
-			// compiledCircuit,
 			litClient,
 			dataSourceRegistryClient,
 			walletClient,
@@ -133,6 +120,12 @@ export class Fangorn {
 		);
 	}
 
+	/**
+	 * Register a new named data source owned by the current wallet provider.
+	 * Data source names must be unique.
+	 * @param name The datasource name
+	 * @returns The datasource id
+	 */
 	async registerDataSource(name: string): Promise<Hex> {
 		const id = await this.dataSourceRegistry.registerDataSource(name);
 		return id;
@@ -140,7 +133,7 @@ export class Fangorn {
 
 	/**
 	 * Upload data to an existing vault
-	 * @param vaultId The id of the vault being modified
+	 * @param id The id of the datasource being modified
 	 * @param filedata The file data to insert
 	 * @param overwrite If true, then overwrite the existing vault with new files
 	 * @returns The new manifest CID and Merkle root
@@ -216,8 +209,6 @@ export class Fangorn {
 			tag,
 			cid: upload,
 			price: file.price,
-			// leaf,
-			// commitment: commitmentHex,
 			acc,
 			extension: file.extension,
 			fileType: file.fileType,
@@ -442,8 +433,6 @@ export class Fangorn {
 				},
 			});
 
-			console.log("decryption of key is done " + JSON.stringify(result));
-
 			const key = Uint8Array.from(
 				// to make sure the first digit doesn't get ignored an coverted to a 0
 				(result.response as string)
@@ -457,7 +446,6 @@ export class Fangorn {
 				},
 			);
 
-			console.log("we got the key " + key);
 			// actually decrypt the data with the recovered key
 			const decryptedFile = await decryptData(
 				encryptedData,
