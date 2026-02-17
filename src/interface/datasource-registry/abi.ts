@@ -3,7 +3,7 @@ export const DS_REGISTRY_ABI = [
 	{
 		name: "registerDataSource",
 		type: "function",
-		stateMutability: "payable",
+		stateMutability: "nonpayable", // for now...
 		inputs: [{ name: "name", type: "string" }],
 		outputs: [{ name: "id", type: "bytes32" }],
 	},
@@ -12,52 +12,20 @@ export const DS_REGISTRY_ABI = [
 		type: "function",
 		stateMutability: "nonpayable",
 		inputs: [
-			{ name: "vaultId", type: "bytes32" },
-			{ name: "newRoot", type: "bytes32" },
+			{ name: "name", type: "string" },
 			{ name: "newManifestCid", type: "string" },
 		],
 		outputs: [],
 	},
 	{
-		name: "pay",
-		type: "function",
-		stateMutability: "nonpayable",
-		inputs: [
-			{ name: "commitment", type: "bytes32" },
-			{ name: "from", type: "address" },
-			{ name: "to", type: "address" },
-			{ name: "value", type: "uint256" },
-			{ name: "validAfter", type: "uint256" },
-			{ name: "validBefore", type: "uint256" },
-			{ name: "nonce", type: "bytes32" },
-			{ name: "v", type: "uint8" },
-			{ name: "r", type: "bytes32" },
-			{ name: "s", type: "bytes32" },
-		],
-		outputs: [],
-	},
-	// Read functions
-	{
 		name: "getDataSource",
 		type: "function",
 		stateMutability: "view",
-		inputs: [{ name: "id", type: "bytes32" }],
-		outputs: [
-			{ name: "poseidonRoot", type: "bytes32" },
-			{ name: "manifestCid", type: "string" },
+		inputs: [
 			{ name: "owner", type: "address" },
 			{ name: "name", type: "string" },
 		],
-	},
-	{
-		name: "checkSettlement",
-		type: "function",
-		stateMutability: "view",
-		inputs: [
-			{ name: "commitment", type: "bytes32" },
-			{ name: "user", type: "address" },
-		],
-		outputs: [{ name: "hasAccess", type: "bool" }],
+		outputs: [{ name: "manifestCid", type: "string" }],
 	},
 	{
 		name: "getOwnedDataSources",
@@ -81,13 +49,23 @@ export const DS_REGISTRY_ABI = [
 		type: "event",
 		inputs: [
 			{ name: "id", type: "bytes32", indexed: true },
-			{ name: "newRoot", type: "bytes32", indexed: false },
 			{ name: "newManifestCid", type: "string", indexed: false },
 		],
 	},
+
 	// Errors
 	{
-		name: "AlreadyPaid",
+		name: "NotOwner",
+		type: "error",
+		inputs: [],
+	},
+	{
+		name: "DataSourceNotFound",
+		type: "error",
+		inputs: [],
+	},
+	{
+		name: "DataSourceAlreadyExists",
 		type: "error",
 		inputs: [],
 	},

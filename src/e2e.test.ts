@@ -38,8 +38,8 @@ describe("payment-gated decryption", () => {
 		chainName = process.env.CHAIN_NAME!;
 		if (!chainName) throw new Error("CHAIN_NAME required");
 
-		usdcDomainName = process.env.USDC_DOMAIN_NAME!;
-		if (!usdcDomainName) throw new Error("USDC_DOMAIN_NAME required");
+		// usdcDomainName = process.env.USDC_DOMAIN_NAME!;
+		// if (!usdcDomainName) throw new Error("USDC_DOMAIN_NAME required");
 
 		// todo: set based on chain name
 		const chain = arbitrumSepolia;
@@ -54,7 +54,7 @@ describe("payment-gated decryption", () => {
 		if (!gateway) throw new Error("PINATA_GATEWAY required");
 
 		caip2 = parseInt(process.env.CAIP2!);
-		// if (!caip2) throw new Error("CAIP2 required");
+		if (!caip2) throw new Error("CAIP2 required");
 
 		delegatorAccount = privateKeyToAccount(
 			getEnv("DELEGATOR_ETH_PRIVATE_KEY") as Hex,
@@ -96,7 +96,7 @@ describe("payment-gated decryption", () => {
 			const deployment = await deployContract({
 				account: delegatorAccount,
 				contractName: "DSRegistry",
-				constructorArgs: [usdcContractAddress],
+				constructorArgs: [],
 				chain,
 			});
 			dataSourceRegistryAddress = deployment.address;
@@ -110,82 +110,113 @@ describe("payment-gated decryption", () => {
 			delegateeWalletClient,
 			jwt,
 			gateway,
-			ipfsCid,
 			dataSourceRegistryAddress,
 			usdcContractAddress,
 			rpcUrl,
 			chainName,
-			usdcDomainName,
+			"arbitrumSepolia",
 			caip2,
 		);
 	}, 120_000); // 2 minute timeout
 
 	// afterall => cleanup (unpin files)
-	it("should create a vault with data and succeed to decrypt when the payment is settled", async () => {
+	it("should create a datasource, add files, and succeed to decrypt when predicates are satisfied", async () => {
 		// create a vault
-		const vaultName = "myVault_" + getRandomIntInclusive(0, 101010101);
-		const vaultId = await testbed.setupVault(vaultName);
-		console.log(`Vault creation successful, using vaultId: ${vaultId}`);
+		const datasourceName =
+			"test_datasource_" + getRandomIntInclusive(0, 101010101);
+		const id = await testbed.registerDatasource(datasourceName);
 
-		const price = "0.000001";
-		// build manifest
+		// verify existence
+		expect(
+			await testbed.checkDatasourceRegistryExistence(
+				delegatorAccount.address,
+				datasourceName,
+			),
+		).toBe(true);
+
+		console.log(`Datasource registration successful, with id: ${id}`);
+		// you can only read these if you have zero balance
+		const tag = "test";
 		const manifest = [
 			{
-				tag: "test0",
-				data: "hello, fangorn",
+				tag,
+				data: "Hello, Fangorn!",
 				extension: ".txt",
 				fileType: "text/plain",
-				price,
 			},
 		];
 
-		await testbed.fileUpload(vaultId, manifest);
+		await testbed.fileUploadEmptyWallet(datasourceName, manifest);
+		// the manifest should have been updated in the contract
+		await testbed.checkDataExistence(
+			delegatorAccount.address,
+			datasourceName,
+			tag,
+		);
 
-		const tag = manifest[0].tag;
-
-		// purchase data access
-		await testbed.payForFile(vaultId, tag, price, delegatorAccount.address);
-
+		console.log("encrypted data under empty wallet condition");
 		// wait to make sure pinata is behaving
-		await new Promise((resolve) => setTimeout(resolve, 10_000));
+		await new Promise((resolve) => setTimeout(resolve, 4_000));
 
-		// try to get the data associated with the (vault, tag) combo
+		// try to get the data associated with the (owner, name, tag) combo
 		const expectedPlaintext = manifest[0].data;
-		const output = await testbed.tryDecrypt(vaultId, tag);
+		const output = await testbed.tryDecrypt(
+			delegatorAccount.address,
+			datasourceName,
+			tag,
+		);
 		const outputAsString = new TextDecoder().decode(output);
 		expect(outputAsString).toBe(expectedPlaintext);
 		console.log("Decryption succeeded!");
-		// sleep to avoid any pinata rate limiting
-		await new Promise((f) => setTimeout(f, 6_000));
-		// add more data to the vault
-		const nextFiles = [
-			{
-				tag: "test1",
-				data: "content1",
-				extension: ".png",
-				fileType: "image/png",
-				price: "0.001",
-			},
-			{
-				tag: "test2",
-				data: "content2",
-				extension: ".mp4",
-				fileType: "video/mp4",
-				price: "0",
-			},
-		];
-		await testbed.fileUpload(vaultId, nextFiles);
 
-		// purchase data access
-		await testbed.payForFile(vaultId, "test1", price, delegatorAccount.address);
+		// decryption should fail if the account has a positive balance of ETH (the delegator)
+		let didFail = false;
+		try {
+			await testbed.tryDecryptDelegator(
+				delegatorAccount.address,
+				datasourceName,
+				tag,
+			);
+			const outputAsString = new TextDecoder().decode(output);
+			console.log("outputAsString " + outputAsString);
+			expect(outputAsString).toBe(expectedPlaintext);
+		} catch (error) {
+			didFail = true;
+		}
 
-		// try to access the new files with the same password
-		const newTag = nextFiles[0].tag;
-		const newExpectedPlaintext = nextFiles[0].data;
-		const actualOutput = await testbed.tryDecrypt(vaultId, newTag);
-		const actualOutputAsString = new TextDecoder().decode(actualOutput);
-		expect(actualOutputAsString).toBe(newExpectedPlaintext);
-		console.log("Decryption succeeded again!!");
+		expect(didFail).toBe(true);
+
+		// // sleep to avoid any pinata rate limiting
+		// await new Promise((f) => setTimeout(f, 6_000));
+		// // add more data to the vault
+		// const nextFiles = [
+		// 	{
+		// 		tag: "test1",
+		// 		data: "content1",
+		// 		extension: ".png",
+		// 		fileType: "image/png",
+		// 		price: "0.001",
+		// 	},
+		// 	{
+		// 		tag: "test2",
+		// 		data: "content2",
+		// 		extension: ".mp4",
+		// 		fileType: "video/mp4",
+		// 		price: "0",
+		// 	},
+		// ];
+		// await testbed.fileUpload(vaultId, nextFiles);
+
+		// // purchase data access
+		// await testbed.payForFile(vaultId, "test1", price, delegatorAccount.address);
+
+		// // try to access the new files with the same password
+		// const newTag = nextFiles[0].tag;
+		// const newExpectedPlaintext = nextFiles[0].data;
+		// const actualOutput = await testbed.tryDecrypt(vaultId, newTag);
+		// const actualOutputAsString = new TextDecoder().decode(actualOutput);
+		// expect(actualOutputAsString).toBe(newExpectedPlaintext);
+		// console.log("Decryption succeeded again!!");
 	}, 120_000);
 
 	// it("should fail to decrypt when the payment is not settled", async () => {

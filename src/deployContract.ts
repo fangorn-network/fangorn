@@ -1,3 +1,4 @@
+import { ethers } from "ethers";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";

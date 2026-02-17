@@ -1,8 +1,10 @@
 /coverage
-/lib
-/node_modules
+**/lib
+**/node_modules
 .env
 lit-auth-storage
 ignore
 **/dist
 **/out
+**/nitro-testnode
+**/target

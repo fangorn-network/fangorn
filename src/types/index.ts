@@ -1,17 +1,16 @@
+import { Predicate, PredicateDescriptor } from "../modules/predicates/types";
+
 export interface VaultEntry {
 	tag: string;
 	cid: string;
 	index: number;
-	price: string;
-	// leaf: string;
-	// commitment: string;
+	predicateDescriptor: PredicateDescriptor;
 	extension: string;
 	fileType: string;
 }
 
 export interface VaultManifest {
 	version: number;
-	poseidon_root: string;
 	entries: VaultEntry[];
 	tree?: string[][];
 }
@@ -27,7 +26,6 @@ export const buildManifest = (options: BuildManifestOptions): VaultManifest => {
 
 	return {
 		version: 1,
-		poseidon_root: root,
 		entries,
 		...(tree && { tree }),
 	};
@@ -37,10 +35,7 @@ export const buildManifest = (options: BuildManifestOptions): VaultManifest => {
 export interface PendingEntry {
 	tag: string;
 	cid: string;
-	price: string;
-	// leaf: bigint;
-	// commitment: Hex;
-	acc: any;
+	predicateDescriptor: PredicateDescriptor;
 	extension: string;
 	fileType: string;
 }
@@ -50,7 +45,7 @@ export interface Filedata {
 	data: string;
 	extension: string;
 	fileType: string;
-	price: string;
+	// price: string;
 	// predicates?: Predicate[],
 }
 
@@ -59,9 +54,4 @@ export interface EncryptedData {
 	iv: Uint8Array<ArrayBuffer>;
 	authTag: Uint8Array<ArrayBuffer>;
 	salt: Uint8Array<ArrayBuffer>;
-}
-
-export interface Predicate {
-	name: string;
-	litActionCid: string;
 }

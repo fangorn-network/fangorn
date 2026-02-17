@@ -1,7 +1,6 @@
-// encryption.test.ts
-import { describe, it, expect } from "vitest"; // or jest
-import { encryptData, decryptData } from "./encryption";
-import { getSubtleCrypto } from "./rand";
+import { describe, it, expect } from "vitest";
+import { encryptData, decryptData } from "./aes.js";
+import { getSubtleCrypto } from "./rand.js";
 
 describe("encryptData / decryptData", () => {
 	it("round-trips string data", async () => {

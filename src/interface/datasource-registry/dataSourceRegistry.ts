@@ -6,10 +6,9 @@ import {
 	parseEventLogs,
 	Hex,
 } from "viem";
-import { DS_REGISTRY_ABI } from "./abi";
+import { DS_REGISTRY_ABI } from "./abi.js";
 
 export interface Vault {
-	poseidonRoot: `0x${string}`;
 	manifestCid: string;
 	owner: Address;
 	name: string;
@@ -43,32 +42,16 @@ export class DataSourceRegistry {
 		return this.contractAddress;
 	}
 
-	// --- Read Functions ---
-	async checkSettlement(commitment: Hex, user: Address): Promise<boolean> {
-		const result = await this.publicClient.readContract({
-			address: this.contractAddress as Hex,
-			abi: DS_REGISTRY_ABI,
-			functionName: "checkSettlement",
-			args: [commitment, user],
-		} as any);
-		return result as boolean;
-	}
-
-	async getDataSource(vaultId: `0x${string}`): Promise<Vault> {
+	async getDataSource(owner: Address, name: string): Promise<Vault> {
 		const result = await (this.publicClient.readContract as any)({
 			address: this.contractAddress,
 			abi: DS_REGISTRY_ABI,
 			functionName: "getDataSource",
-			args: [vaultId],
+			args: [owner, name],
 		});
 
-		const [poseidonRoot, manifestCid, owner, name] = result;
-		return { poseidonRoot, manifestCid, owner, name };
-	}
-
-	async dataSourceExists(vaultId: `0x${string}`): Promise<boolean> {
-		const vault = await this.getDataSource(vaultId);
-		return vault.owner !== "0x0000000000000000000000000000000000000000";
+		const manifestCid = result;
+		return { manifestCid, owner, name };
 	}
 
 	async getOwnedDataSources(address: Address): Promise<Hex[]> {
@@ -81,8 +64,6 @@ export class DataSourceRegistry {
 
 		return result as Hex[];
 	}
-
-	// --- Write Functions ---
 
 	async registerDataSource(name: string): Promise<Hex> {
 		const { chain, account } = this.getWriteConfig();
@@ -109,21 +90,17 @@ export class DataSourceRegistry {
 			}
 		}
 
-		console.error("no id!");
+		console.error("Something went wrong: no id created!");
 	}
 
-	async updateDataSource(
-		id: `0x${string}`,
-		newRoot: `0x${string}`,
-		newManifestCid: string,
-	): Promise<Hash> {
+	async updateDataSource(name: string, newManifestCid: string): Promise<Hash> {
 		const { chain, account } = this.getWriteConfig();
 
 		const hash = await this.walletClient.writeContract({
 			address: this.contractAddress,
 			abi: DS_REGISTRY_ABI,
 			functionName: "updateDataSource",
-			args: [id, newRoot, newManifestCid],
+			args: [name, newManifestCid],
 			chain,
 			account,
 		});
@@ -131,47 +108,6 @@ export class DataSourceRegistry {
 		await this.waitForTransaction(hash);
 
 		return hash;
-	}
-
-	// --- Helpers ---
-
-	/**
-	 * Settles the payment on-chain using the EIP-3009 authorization
-	 * This is usually called by the Facilitator.
-	 */
-	async pay(args: {
-		commitment: Hex;
-		from: Address;
-		to: Address;
-		value: bigint;
-		validAfter: bigint;
-		validBefore: bigint;
-		nonce: Hex;
-		v: number;
-		r: Hex;
-		s: Hex;
-	}): Promise<Hash> {
-		const { chain, account } = this.getWriteConfig();
-
-		return this.walletClient.writeContract({
-			address: this.contractAddress,
-			abi: DS_REGISTRY_ABI,
-			functionName: "pay",
-			args: [
-				args.commitment,
-				args.from,
-				args.to,
-				args.value,
-				args.validAfter,
-				args.validBefore,
-				args.nonce,
-				args.v,
-				args.r,
-				args.s,
-			],
-			chain,
-			account,
-		});
 	}
 
 	async waitForTransaction(hash: Hash) {

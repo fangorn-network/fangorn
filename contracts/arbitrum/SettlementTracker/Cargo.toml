@@ -1,0 +1,30 @@
+[package]
+name = "SettlementTracker"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+alloy-primitives = "^1.0.1"
+alloy-sol-types = "^1.0.1"
+mini-alloc = "1.0.0"
+stylus-sdk = { version = "0.10.0", features = ["debug"] }
+hex = "0.4.3"
+sha3 = "0.10.8"
+
+[dev-dependencies]
+tokio = { version = "1.49.0", features = ["full"] }
+ethers = "2.0.14"
+eyre = "0.6.12"
+
+[features]
+export-abi = ["stylus-sdk/export-abi"]
+
+[lib]
+crate-type = ["lib", "cdylib"]
+
+[profile.release]
+codegen-units = 1
+strip = true
+lto = true
+panic = "abort"
+opt-level = "z"

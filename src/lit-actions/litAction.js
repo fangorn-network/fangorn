@@ -7,8 +7,7 @@ const go = async (supportedNetwork, paywallAddress, commitment) => {
 	else if (supportedNetwork == "baseSepolia") rpcUrl = baseSepolia;
 	else {
 		throw new Error(
-			`Unsupported network ${supportedNetwork}.\n
-			Choose a supported network in the list ["arbitrumSepolia", "baseSepolia"].`,
+			'Unsupported network.Choose a supported network in the list ["arbitrumSepolia", "baseSepolia"].',
 		);
 	}
 
