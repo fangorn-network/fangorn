@@ -26,6 +26,8 @@ import getNetwork, {
 	SupportedNetworks,
 } from "./config.js";
 import { LitEncryptionService } from "./modules/encryption/lit.js";
+import { computeTagCommitment, fieldToHex } from "./utils/index.js";
+import { PaymentPredicate } from "./modules/predicates/payment.js";
 
 interface Config {
 	jwt: string;
@@ -74,14 +76,14 @@ function getAccount(): PrivateKeyAccount {
 	return _account;
 }
 
-function deriveVaultId(name: string): Hex {
-	return keccak256(
-		encodeAbiParameters(parseAbiParameters("string, address"), [
-			name,
-			getAccount().address,
-		]),
-	);
-}
+// function deriveVaultId(name: string): Hex {
+// 	return keccak256(
+// 		encodeAbiParameters(parseAbiParameters("string, address"), [
+// 			name,
+// 			getAccount().address,
+// 		]),
+// 	);
+// }
 
 async function getFangorn(chain: Chain): Promise<Fangorn> {
 	if (_fangorn) return _fangorn;
@@ -165,7 +167,8 @@ program
 	.option("--overwrite", "Overwrite existing data source contents")
 	.action(async (name: string, files: string[], options) => {
 		try {
-			const vaultId = deriveVaultId(name);
+			// const vaultId = deriveVaultId(name);
+			const owner = getAccount().address;
 			const chain = getChain(options.chain);
 			const fangorn = await getFangorn(chain);
 
@@ -182,7 +185,28 @@ program
 				};
 			});
 
-			const cid = await fangorn.upload(vaultId, filedata, options.overwrite);
+			const cid = await fangorn.upload(
+				name,
+				filedata,
+				async (file) => {
+					const commitment = await computeTagCommitment(
+						owner,
+						name,
+						file.tag,
+						options.price,
+					);
+
+					console.log("using commitment " + fieldToHex(commitment));
+					return new PaymentPredicate({
+						commitment: fieldToHex(commitment),
+						chainName: "arbitrumSepolia",
+						settlementTrackerContractAddress:
+							"0xb32ed201896ba765e6aa118a5c18c263f559474e" as Address,
+						usdcPrice: options.price,
+					});
+				},
+				options.overwrite,
+			);
 			console.log(`Upload complete! Manifest CID: ${cid}`);
 			process.exit(0);
 		} catch (err) {

@@ -3,6 +3,8 @@ import { Filedata } from "../../types";
 import { Predicate } from "../predicates";
 import { EncryptedPayload, DecryptedPayload } from "./types.js";
 
+export * from "./lit.js";
+
 export interface EncryptionService {
 	encrypt(file: Filedata, predicate: Predicate): Promise<EncryptedPayload>;
 	decrypt(

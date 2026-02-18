@@ -59,6 +59,7 @@ contract DSRegistry {
         });
 
         owned[msg.sender].push(id);
+        
         emit DataSourceCreated(id, msg.sender, name);
         return id;
     }

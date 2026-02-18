@@ -52,10 +52,10 @@ export interface AppConfig {
 export namespace FangornConfig {
 	// Arbitrum Sepolia config
 	export const ArbitrumSepolia: AppConfig = {
-		// litActionCid: "QmT5J75W4STgVjEbAUi8i11m9cyKUiZDoPinYf5uTeRfhP",
 		usdcContractAddress: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
+		// an arbitrum stylus contract
 		dataSourceRegistryContractAddress:
-			"0x5e1c55e8fb0012418ce9bbe7b766385f9637a406",
+			"0x4bd96b4d274bdc845dccd06bb886ecdc0d708bdb",
 		chainName: "arbitrumSepolia",
 		chain: arbitrumSepolia,
 		rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",

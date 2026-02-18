@@ -94,8 +94,6 @@ export class LitEncryptionService implements EncryptionService {
 			},
 		});
 
-		console.log("decrypt result " + JSON.stringify(result));
-
 		// TODO: error handling
 		// parse key from response
 		const key = this.parseKeyResponse(

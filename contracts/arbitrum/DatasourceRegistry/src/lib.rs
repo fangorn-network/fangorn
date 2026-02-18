@@ -1,4 +1,3 @@
-// ref: https://github.com/OffchainLabs/stylus-sdk-rs/blob/main/examples/call/src/lib.rs
 #![cfg_attr(not(any(test, feature = "export-abi")), no_main)]
 #![cfg_attr(feature = "contract-client-gen", allow(unused_imports))]
 
@@ -7,7 +6,8 @@ extern crate alloc;
 use alloy_sol_types::sol;
 use stylus_sdk::{
     alloy_primitives::{Address, FixedBytes, keccak256},
-    prelude::*, 
+    abi::AbiType,
+    prelude::*,
     storage::*,
 };
 
@@ -30,12 +30,17 @@ sol! {
 
 #[derive(SolidityError)]
 pub enum DatasourceRegistryError {
-    // The caller is not the owner
     NotOwner(NotOwner),
-    // The datasource does not exist
     DataSourceNotFound(DataSourceNotFound),
-    // The datasource already exists
     DataSourceAlreadyExists(DataSourceAlreadyExists),
+}
+
+// Mirrors the Solidity DataSource struct in storage
+#[storage]
+pub struct StorageDataSource {
+    pub name: StorageString,
+    pub manifest_cid: StorageString,
+    pub owner: StorageAddress,
 }
 
 #[storage]
@@ -43,43 +48,41 @@ pub enum DatasourceRegistryError {
 pub struct DatasourceRegistry {
     // owner => datasource ids
     owned: StorageMap<Address, StorageVec<StorageFixedBytes<32>>>,
-    // A map of data source name to owner
-    data_source_owners: StorageMap<Vec<u8>, StorageAddress>,
-    // A map of data source ID to CID, where ID = sha256(name || owner)
-    data_source_manifests: StorageMap<Vec<u8>, StorageString>,
+    // id => DataSource struct
+    data_sources: StorageMap<FixedBytes<32>, StorageDataSource>,
 }
 
 #[public]
 impl DatasourceRegistry {
 
-    /// Register a new named data source
-    ///
-    /// * `name`: The name of the data source
-    ///
     pub fn register_data_source(
         &mut self,
         name: String,
-        // agent_id: ... future
     ) -> Result<FixedBytes<32>, DatasourceRegistryError> {
-        // get sender and compute datasource id
         let sender = self.vm().msg_sender();
-        let id = hash_concat(name.as_bytes(), sender.as_slice());
-        // if we already registered the named datasource then reject the call
-        let existing_owner = self.data_source_owners.get(id.to_vec());
-        if existing_owner != Address::ZERO {
+        let id = abi_encode_id(name.clone(), sender);
+
+        // reject if already registered
+        if self.data_sources.getter(id).owner.get() != Address::ZERO {
             return Err(DatasourceRegistryError::DataSourceAlreadyExists(
                 DataSourceAlreadyExists {},
             ));
         }
-        // TODO: erc-8004 identity registry here (later)
-        // update storage
-        self.data_source_manifests.setter(id.to_vec()).set_str("");
+
+        // store struct fields
+        let mut ds = self.data_sources.setter(id);
+        ds.name.set_str(&name);
+        ds.manifest_cid.set_str("");
+        ds.owner.set(sender);
+
         self.owned.setter(sender).push(id);
+
         self.vm().log(DataSourceCreated {
             id,
             owner: sender,
             name,
         });
+
         Ok(id)
     }
 
@@ -89,33 +92,38 @@ impl DatasourceRegistry {
         new_manifest_cid: String,
     ) -> Result<(), DatasourceRegistryError> {
         let sender = self.vm().msg_sender();
-        let id = hash_concat(name.as_bytes(), sender.as_slice());
-        let owner = self.data_source_owners.get(id.to_vec());
-        // reject if caller does not own the datasource
+        let id = abi_encode_id(name.clone(), sender);
+
+        let owner = self.data_sources.getter(id).owner.get();
         if owner == Address::ZERO {
             return Err(DatasourceRegistryError::DataSourceNotFound(DataSourceNotFound {}));
         }
-        if owner != self.vm().msg_sender() {
+        if owner != sender {
             return Err(DatasourceRegistryError::NotOwner(NotOwner {}));
         }
-        self.data_source_manifests.setter(id.to_vec()).set_str(&new_manifest_cid);
+
+        self.data_sources.setter(id).manifest_cid.set_str(&new_manifest_cid);
+
         self.vm().log(DataSourceUpdated {
             id,
             newManifestCid: new_manifest_cid,
         });
+
         Ok(())
     }
 
     pub fn get_data_source(
-        &self, 
-        owner: Address, 
-        name: String
-    ) -> Result<(FixedBytes<32>, String), DatasourceRegistryError> {
-        let id = hash_concat(name.as_bytes(), owner.as_ref());
-        if self.data_source_owners.get(id.to_vec()) == Address::ZERO {
+        &self,
+        owner: Address,
+        name: String,
+    ) -> Result<String, DatasourceRegistryError> {
+        let id = abi_encode_id(name.clone(), owner);
+
+        if self.data_sources.getter(id).owner.get() == Address::ZERO {
             return Err(DatasourceRegistryError::DataSourceNotFound(DataSourceNotFound {}));
         }
-        Ok((id, self.data_source_manifests.getter(id.to_vec()).get_string()))
+
+        Ok(self.data_sources.getter(id).manifest_cid.get_string())
     }
 
     pub fn get_owned_data_sources(&self, owner: Address) -> Vec<FixedBytes<32>> {
@@ -124,10 +132,44 @@ impl DatasourceRegistry {
     }
 }
 
-// helper funcs
-fn hash_concat(a: &[u8], b: &[u8]) -> FixedBytes<32> {
-    let mut data = Vec::with_capacity(a.len() + b.len());
-    data.extend_from_slice(a);
-    data.extend_from_slice(b);
-    keccak256(&data)
+fn abi_encode_id(name: String, owner: Address) -> FixedBytes<32> {
+    use alloy_sol_types::{SolValue};
+    let encoded = (name, owner).abi_encode();
+    keccak256(&encoded)
 }
+
+// fn abi_encode_id(name: &[u8], owner: Address) -> FixedBytes<32> {
+//     // Replicates keccak256(abi.encode(name, msg.sender))
+//     // abi.encode(string, address) layout:
+//     //   [0..32]  offset to string data = 0x40 (64)
+//     //   [32..64] address, right-padded to 32 bytes
+//     //   [64..96] string length
+//     //   [96..]   string bytes, padded to 32-byte boundary
+    
+//     let mut buf = Vec::new();
+
+//     // offset for the string (points past the two head slots = 64)
+//     let mut offset = [0u8; 32];
+//     offset[31] = 64;
+//     buf.extend_from_slice(&offset);
+
+//     // address padded to 32 bytes (left-padded with zeros)
+//     let mut addr_padded = [0u8; 32];
+//     addr_padded[12..].copy_from_slice(owner.as_slice());
+//     buf.extend_from_slice(&addr_padded);
+
+//     // string length as uint256
+//     let mut len_padded = [0u8; 32];
+//     let name_len = name.len();
+//     len_padded[24..].copy_from_slice(&(name_len as u64).to_be_bytes());
+//     buf.extend_from_slice(&len_padded);
+
+//     // string bytes padded to 32-byte boundary
+//     buf.extend_from_slice(name);
+//     let remainder = name_len % 32;
+//     if remainder != 0 {
+//         buf.extend(core::iter::repeat(0u8).take(32 - remainder));
+//     }
+
+//     keccak256(&buf)
+// }

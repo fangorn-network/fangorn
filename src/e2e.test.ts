@@ -141,78 +141,12 @@ describe("Fangorn basic encryption works", () => {
 
 	// TODO: afterall => cleanup (unpin files)
 
-	// it("should create a datasource, add files, and succeed to decrypt when predicates are satisfied for basic acc", async () => {
-	// 	// create a vault
-	// 	const datasourceName =
-	// 		"test_datasource_" + getRandomIntInclusive(0, 101010101);
-	// 	const id = await testbed.registerDatasource(datasourceName);
-
-	// 	// verify existence
-	// 	expect(
-	// 		await testbed.checkDatasourceRegistryExistence(
-	// 			delegatorAccount.address,
-	// 			datasourceName,
-	// 		),
-	// 	).toBe(true);
-
-	// 	console.log(`Datasource registration successful, with id: ${id}`);
-	// 	// you can only read these if you have zero balance
-	// 	const tag = "test";
-	// 	const manifest = [
-	// 		{
-	// 			tag,
-	// 			data: "Hello, Fangorn!",
-	// 			extension: ".txt",
-	// 			fileType: "text/plain",
-	// 		},
-	// 	];
-
-	// 	await testbed.fileUploadEmptyWallet(datasourceName, manifest);
-	// 	// the manifest should have been updated in the contract
-	// 	await testbed.checkDataExistence(
-	// 		delegatorAccount.address,
-	// 		datasourceName,
-	// 		tag,
-	// 	);
-
-	// 	console.log("encrypted data under empty wallet condition");
-	// 	// wait to make sure pinata is behaving
-	// 	await new Promise((resolve) => setTimeout(resolve, 4_000));
-
-	// 	// try to get the data associated with the (owner, name, tag) combo
-	// 	const expectedPlaintext = manifest[0].data;
-	// 	const output = await testbed.tryDecrypt(
-	// 		delegatorAccount.address,
-	// 		datasourceName,
-	// 		tag,
-	// 	);
-	// 	const outputAsString = new TextDecoder().decode(output);
-	// 	expect(outputAsString).toBe(expectedPlaintext);
-	// 	console.log("Decryption succeeded!");
-
-	// 	// decryption should fail if the account has a positive balance of ETH (the delegator)
-	// 	let didFail = false;
-	// 	try {
-	// 		await testbed.tryDecryptDelegator(
-	// 			delegatorAccount.address,
-	// 			datasourceName,
-	// 			tag,
-	// 		);
-	// 		const outputAsString = new TextDecoder().decode(output);
-	// 		console.log("outputAsString " + outputAsString);
-	// 		expect(outputAsString).toBe(expectedPlaintext);
-	// 	} catch (error) {
-	// 		didFail = true;
-	// 	}
-
-	// 	expect(didFail).toBe(true);
-	// }, 120_000);
-
-	it("should create a datasource, add files, and succeed to decrypt when predicates are satisfied against on-chain state (payment settled)", async () => {
-		// delegator creates a vault
+	it("should create a datasource, add files, and succeed to decrypt when predicates are satisfied for basic acc", async () => {
+		// create a vault
 		const datasourceName =
-			"test_datasource_" + getRandomIntInclusive(101010101, 111111111);
+			"test_datasource_" + getRandomIntInclusive(0, 101010101);
 		const id = await testbed.registerDatasource(datasourceName);
+
 		// verify existence
 		expect(
 			await testbed.checkDatasourceRegistryExistence(
@@ -220,52 +154,34 @@ describe("Fangorn basic encryption works", () => {
 				datasourceName,
 			),
 		).toBe(true);
+
 		console.log(`Datasource registration successful, with id: ${id}`);
-
+		// you can only read these if you have zero balance
 		const tag = "test";
-		const filedata = {
-			tag,
-			data: "Hello, Fangorn!",
-			extension: ".txt",
-			fileType: "text/plain",
-		};
+		const manifest = [
+			{
+				tag,
+				data: "Hello, Fangorn!",
+				extension: ".txt",
+				fileType: "text/plain",
+			},
+		];
 
-		// delegator uploads data encrypted for a payment of '0'
-		const price = "0";
-		await testbed.fileUploadPaymentPredicate(
-			datasourceName,
-			filedata,
-			price,
-			settlementTrackerAddress,
-		);
+		await testbed.fileUploadEmptyWallet(datasourceName, manifest);
 		// the manifest should have been updated in the contract
 		await testbed.checkDataExistence(
 			delegatorAccount.address,
 			datasourceName,
 			tag,
 		);
-		console.log("encrypted data under payment settlement condition");
 
+		console.log("encrypted data under empty wallet condition");
 		// wait to make sure pinata is behaving
 		await new Promise((resolve) => setTimeout(resolve, 4_000));
 
-		console.log("submitting payment");
-		// pay for file (delegatee has zero funds, so the delegator buys its own file)
-		await testbed.payForFile(
-			delegatorAccount.address,
-			datasourceName,
-			tag,
-			price,
-			usdcDomainName,
-			settlementTrackerAddress,
-			delegatorWalletClient,
-			rpcUrl,
-		);
-		// listen for settlement recordded evt?
-
 		// try to get the data associated with the (owner, name, tag) combo
-		const expectedPlaintext = filedata.data;
-		const output = await testbed.tryDecryptDelegator(
+		const expectedPlaintext = manifest[0].data;
+		const output = await testbed.tryDecrypt(
 			delegatorAccount.address,
 			datasourceName,
 			tag,
@@ -274,90 +190,99 @@ describe("Fangorn basic encryption works", () => {
 		expect(outputAsString).toBe(expectedPlaintext);
 		console.log("Decryption succeeded!");
 
-		// // decryption should fail if the account has a positive balance of ETH (the delegator)
-		// let didFail = false;
-		// try {
-		// 	await testbed.tryDecryptDelegator(
-		// 		delegatorAccount.address,
-		// 		datasourceName,
-		// 		tag,
-		// 	);
-		// 	const outputAsString = new TextDecoder().decode(output);
-		// 	console.log("outputAsString " + outputAsString);
-		// 	expect(outputAsString).toBe(expectedPlaintext);
-		// } catch (error) {
-		// 	didFail = true;
-		// }
+		// decryption should fail if the account has a positive balance of ETH (the delegator)
+		let didFail = false;
+		try {
+			await testbed.tryDecryptDelegator(
+				delegatorAccount.address,
+				datasourceName,
+				tag,
+			);
+		} catch (error) {
+			didFail = true;
+		}
 
-		// expect(didFail).toBe(true);
+		expect(didFail).toBe(true);
 	}, 120_000);
 
-	// it("should fail to decrypt when the payment is not settled", async () => {
-	// 	// create a vault
-	// 	const vaultName = "myVault_" + getRandomIntInclusive(0, 101010101);
-	// 	const vaultId = await testbed.setupVault(vaultName);
-	// 	console.log(`Vault creation successful, using vaultId: ${vaultId}`);
+	// it("should create a datasource, add files, and succeed to decrypt when predicates are satisfied against on-chain state (payment settled)", async () => {
+	// 	// delegator creates a vault
+	// 	const datasourceName =
+	// 		"test_datasource_" + getRandomIntInclusive(101010101, 111111111);
+	// 	const id = await testbed.registerDatasource(datasourceName);
+	// 	console.log('called register datasource');
+	// 	// verify existence
+	// 	expect(
+	// 		await testbed.checkDatasourceRegistryExistence(
+	// 			delegatorAccount.address,
+	// 			datasourceName,
+	// 		),
+	// 	).toBe(true);
+	// 	console.log(`Datasource registration successful, with id: ${id}`);
 
+	// 	const tag = "test";
+	// 	const filedata = {
+	// 		tag,
+	// 		data: "Hello, Fangorn!",
+	// 		extension: ".txt",
+	// 		fileType: "text/plain",
+	// 	};
+
+	// 	// delegator uploads data encrypted for a payment of '0'
 	// 	const price = "0.000001";
-	// 	// build manifest
-	// 	const manifest = [
-	// 		{
-	// 			tag: "test0",
-	// 			data: "hello, fangorn",
-	// 			extension: ".txt",
-	// 			fileType: "text/plain",
-	// 			price,
-	// 		},
-	// 	];
-
-	// 	await testbed.fileUpload(vaultId, manifest);
-
-	// 	const tag = manifest[0].tag;
+	// 	await testbed.fileUploadPaymentPredicate(
+	// 		datasourceName,
+	// 		filedata,
+	// 		price,
+	// 		settlementTrackerAddress,
+	// 	);
+	// 	// the manifest should have been updated in the contract
+	// 	await testbed.checkDataExistence(
+	// 		delegatorAccount.address,
+	// 		datasourceName,
+	// 		tag,
+	// 	);
+	// 	console.log("encrypted data under payment settlement condition");
 
 	// 	// wait to make sure pinata is behaving
 	// 	await new Promise((resolve) => setTimeout(resolve, 4_000));
-	// 	// DO NOT PAY
+
+	// 	console.log("submitting payment");
+	// 	// pay for file (delegatee has zero funds, so the delegator buys its own file)
+	// 	await testbed.payForFile(
+	// 		delegatorAccount.address,
+	// 		datasourceName,
+	// 		tag,
+	// 		price,
+	// 		usdcDomainName,
+	// 		settlementTrackerAddress,
+	// 		delegatorWalletClient,
+	// 		rpcUrl,
+	// 	);
+
+	// 	const expectedPlaintext = filedata.data;
+	// 	const output = await testbed.tryDecryptDelegator(
+	// 		delegatorAccount.address,
+	// 		datasourceName,
+	// 		tag,
+	// 	);
+	// 	const outputAsString = new TextDecoder().decode(output);
+	// 	expect(outputAsString).toBe(expectedPlaintext);
+	// 	console.log("Decryption succeeded!");
+
+	// 	// decryption should fail if the account has NOT paid
 	// 	let didFail = false;
 	// 	try {
-	// 		await testbed.tryDecrypt(vaultId, tag);
+	// 		await testbed.tryDecrypt(
+	// 			delegatorAccount.address,
+	// 			datasourceName,
+	// 			tag,
+	// 		);
 	// 	} catch (error) {
 	// 		didFail = true;
 	// 	}
-
 	// 	expect(didFail).toBe(true);
-	// }, 120_000);
 
-	// it("should fail to decrypt when the tag does not exist", async () => {
-	// 	// create a vault
-	// 	const vaultName = "myVault_" + getRandomIntInclusive(0, 101010101);
-	// 	// const vaultName = "demo";
-	// 	const vaultId = await testbed.setupVault(vaultName);
-	// 	console.log(`Vault creation successful, using vaultId: ${vaultId}`);
-
-	// 	const price = "0.000001";
-	// 	// build manifest
-	// 	const manifest = [
-	// 		{
-	// 			tag: "test0",
-	// 			data: "hello, fangorn",
-	// 			extension: ".txt",
-	// 			fileType: "text/plain",
-	// 			price,
-	// 		},
-	// 	];
-
-	// 	await testbed.fileUpload(vaultId, manifest);
-	// 	// wait to make sure pinata is behaving
-	// 	await new Promise((resolve) => setTimeout(resolve, 5_000));
-	// 	// try to get the data associated with the wrong (vault, tag) combo
-	// 	let didFail = false;
-	// 	try {
-	// 		await testbed.tryDecrypt(vaultId, "bad-tag-do-not-use");
-	// 	} catch (error) {
-	// 		didFail = true;
-	// 	}
-
-	// 	expect(didFail).toBe(true);
 	// }, 120_000);
 });
 

@@ -1,10 +1,8 @@
 import { createAccBuilder } from "@lit-protocol/access-control-conditions";
 import { Address, Hex } from "viem";
 import { Predicate, PredicateDescriptor } from "./types";
-import StorageProvider from "../../providers/storage";
-import { CID } from "multiformats/cid";
 
-// hash this all into a transcript => that's the commitment
+// hash this all into a transcript => that's the commitment?
 export interface PaymentPredicateParams {
 	// the usdc price
 	usdcPrice: string;
@@ -18,10 +16,7 @@ export class PaymentPredicate implements Predicate {
 
 	private litActionCid: string | null = null;
 
-	constructor(
-		private params: PaymentPredicateParams,
-		private storage?: StorageProvider<any>,
-	) {}
+	constructor(private params: PaymentPredicateParams) {}
 
 	// supports both arbitrum and base (sepolia)
 	// todo: alternatively we can just pass the rpcurl as a param (set in the interface)
@@ -44,7 +39,7 @@ export class PaymentPredicate implements Predicate {
 			const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
 
 			const paywallAbi = [
-				"function checkSettlement(bytes32 commitment, address buyer) view returns (bool)",
+				"function checkSettlement(bytes32 commitment, address user) external view returns (uint256)",
 			];
 
 			const paywall = new ethers.Contract(paywallAddress, paywallAbi, provider);
@@ -53,7 +48,7 @@ export class PaymentPredicate implements Predicate {
 
 			if (paidAmount < price) {
 				Lit.Actions.setResponse({ success: false, response: "goodbye" });
-				throw new Error("x402: Payment Required");
+				throw new Error("x402: Payment Required. " + paidAmount + " < " + price + " with commitment " + commitment );
 			}
 
 			Lit.Actions.setResponse({ response: true.toString() });
@@ -72,6 +67,7 @@ export class PaymentPredicate implements Predicate {
 					this.params.chainName,
 					this.params.settlementTrackerContractAddress,
 					this.params.commitment,
+					this.params.usdcPrice,
 				],
 				"true",
 			)

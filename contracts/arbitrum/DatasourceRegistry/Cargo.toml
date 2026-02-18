@@ -9,7 +9,7 @@ keywords = ["arbitrum", "ethereum", "fangorn", "stylus", "alloy"]
 alloy-primitives = "^1.0.1"
 alloy-sol-types = "^1.0.1"
 mini-alloc = "1.0.0"
-stylus-sdk = { version = "0.10.0", features = ["debug"] }
+stylus-sdk = { version = "0.10.0" }
 hex = "0.4.3"
 sha3 = "0.10.8"
 

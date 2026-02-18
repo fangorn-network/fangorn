@@ -8,7 +8,6 @@ import {
 	parseUnits,
 	toHex,
 	WalletClient,
-	PublicClient,
 	createPublicClient,
 	http,
 } from "viem";
@@ -175,15 +174,12 @@ export class TestBed {
 					file.tag,
 					usdcPrice,
 				);
-				return new PaymentPredicate(
-					{
-						commitment: fieldToHex(commitment),
-						chainName: this.config.chainName,
-						settlementTrackerContractAddress,
-						usdcPrice,
-					},
-					this.storage,
-				);
+				return new PaymentPredicate({
+					commitment: fieldToHex(commitment),
+					chainName: this.config.chainName,
+					settlementTrackerContractAddress,
+					usdcPrice,
+				});
 			},
 		);
 	}
@@ -216,8 +212,6 @@ export class TestBed {
 		// if there's no error then we're good
 		await this.delegatorFangorn.getDataSourceData(who, name, tag);
 	}
-
-	// --- Payment helpers ---
 
 	async buildUsdcAuthorization(
 		recipient: Address,
@@ -306,7 +300,6 @@ export class TestBed {
 			walletClient,
 		);
 
-		// Use settlement tracker directly
 		await settlementTracker.pay({
 			commitment: commitmentHex,
 			from: auth.from,
@@ -320,7 +313,6 @@ export class TestBed {
 	}
 
 	private parseSignature(signature: Hex): { v: number; r: Hex; s: Hex } {
-		// viem's parseSignature or manual extraction
 		const r = `0x${signature.slice(2, 66)}` as Hex;
 		const s = `0x${signature.slice(66, 130)}` as Hex;
 		const v = parseInt(signature.slice(130, 132), 16);

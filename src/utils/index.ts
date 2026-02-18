@@ -1,5 +1,3 @@
-// src/utils.ts
-import { blake3 } from "@noble/hashes/blake3.js";
 import { CompiledCircuit, Noir } from "@noir-lang/noir_js";
 import {
 	keccak256,
