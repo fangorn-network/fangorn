@@ -279,6 +279,7 @@ program
 			}
 
 			intro(`Agent Registration for ${chain.name}`);
+			let cfg = loadConfig();
 
 			createAgentCard = options.skipCard ? false : true;
 
@@ -313,6 +314,7 @@ program
 						"You have chosen to register using the IPFS route. It is assumed that your Pinata JWT and Pinata Gateway are stored in your .env file.",
 						"INFO",
 					);
+
 					agent0Sdk = new SDK({
 						chainId: 421614,
 						rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
@@ -320,6 +322,9 @@ program
 							"https://api.studio.thegraph.com/query/1742225/erc-8004-arbitrum-sepolia/version/latest",
 						registryOverrides,
 						subgraphOverrides,
+						ipfs: "pinata",
+						pinataJwt: cfg.jwt,
+						privateKey: cfg.privateKey,
 					});
 				} else {
 					agent0Sdk = new SDK({
@@ -329,6 +334,7 @@ program
 							"https://api.studio.thegraph.com/query/1742225/erc-8004-arbitrum-sepolia/version/latest",
 						registryOverrides,
 						subgraphOverrides,
+						privateKey: cfg.privateKey,
 					});
 				}
 			} else {
@@ -340,11 +346,15 @@ program
 					agent0Sdk = new SDK({
 						chainId: chain.id,
 						rpcUrl: chain.rpcUrls.default.http[0],
+						ipfs: "pinata",
+						pinataJwt: cfg.jwt,
+						privateKey: cfg.privateKey,
 					});
 				} else {
 					agent0Sdk = new SDK({
 						chainId: chain.id,
 						rpcUrl: chain.rpcUrls.default.http[0],
+						privateKey: cfg.privateKey,
 					});
 				}
 			}
