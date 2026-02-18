@@ -246,7 +246,6 @@ program
 
 			outro(`Selected chain ${chain.name}`);
 
-			const uploadToIpfs = options.ipfs ? true : false;
 			let createAgentCard = options.skipCard ? false : true;
 
 			let description = "";
