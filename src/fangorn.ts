@@ -221,6 +221,7 @@ export class Fangorn {
 			encrypted,
 			resolvedAuthContext,
 		);
+
 		return decrypted.data;
 	}
 

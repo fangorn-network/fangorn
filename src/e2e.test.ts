@@ -209,7 +209,7 @@ describe("Fangorn basic encryption works", () => {
 	// }, 120_000);
 
 	it("should create a datasource, add files, and succeed to decrypt when predicates are satisfied against on-chain state (payment settled)", async () => {
-		// create a vault
+		// delegator creates a vault
 		const datasourceName =
 			"test_datasource_" + getRandomIntInclusive(101010101, 111111111);
 		const id = await testbed.registerDatasource(datasourceName);
@@ -230,7 +230,8 @@ describe("Fangorn basic encryption works", () => {
 			fileType: "text/plain",
 		};
 
-		const price = "0.000001";
+		// delegator uploads data encrypted for a payment of '0'
+		const price = "0";
 		await testbed.fileUploadPaymentPredicate(
 			datasourceName,
 			filedata,
@@ -248,7 +249,8 @@ describe("Fangorn basic encryption works", () => {
 		// wait to make sure pinata is behaving
 		await new Promise((resolve) => setTimeout(resolve, 4_000));
 
-		// pay for file (delegator is buying from self)
+		console.log("submitting payment");
+		// pay for file (delegatee has zero funds, so the delegator buys its own file)
 		await testbed.payForFile(
 			delegatorAccount.address,
 			datasourceName,
@@ -259,6 +261,7 @@ describe("Fangorn basic encryption works", () => {
 			delegatorWalletClient,
 			rpcUrl,
 		);
+		// listen for settlement recordded evt?
 
 		// try to get the data associated with the (owner, name, tag) combo
 		const expectedPlaintext = filedata.data;

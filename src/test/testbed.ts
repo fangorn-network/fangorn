@@ -226,7 +226,7 @@ export class TestBed {
 		usdcContractName: string,
 		usdcAddress: Address,
 	) {
-		const walletClient = this.delegatorFangorn["walletClient"];
+		const walletClient = this.delegateeFangorn["walletClient"];
 		const account = walletClient.account!;
 		const domain = {
 			name: usdcContractName,

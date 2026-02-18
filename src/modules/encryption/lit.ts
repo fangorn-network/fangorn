@@ -94,10 +94,14 @@ export class LitEncryptionService implements EncryptionService {
 			},
 		});
 
+		console.log("decrypt result " + JSON.stringify(result));
+
+		// TODO: error handling
 		// parse key from response
 		const key = this.parseKeyResponse(
 			result.response as string,
 		) as Uint8Array<ArrayBuffer>;
+
 		// local AES decryption
 		const data = await decryptData(payload.data, key);
 

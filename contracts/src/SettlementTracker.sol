@@ -34,7 +34,7 @@ contract SettlementTracker {
         bytes32 commitment,
         address from,
         address to,
-        uint256 amount,
+        uint256 value,
         uint256 validAfter,
         uint256 validBefore,
         bytes32 nonce,
@@ -45,10 +45,10 @@ contract SettlementTracker {
         bytes32 hash = hashConcat(commitment, from);
 
         try IUSDC(usdcAddress).transferWithAuthorization(
-            from, to, amount, validAfter, validBefore, nonce, v, r, s
+            from, to, value, validAfter, validBefore, nonce, v, r, s
         ) {
-            // settlementTracker[hash] += amount;
-            // emit SettlementRecorded(hash, amount);
+            settlementTracker[hash] += value;
+            emit SettlementRecorded(hash, value);
         } catch {
             revert TransferFailed();
         }

@@ -72,6 +72,7 @@
 		"@x402/core": "^2.2.0",
 		"@x402/evm": "^2.2.0",
 		"buffer": "^6.0.3",
+		"cid": "github:multiformats/cid",
 		"commander": "^14.0.3",
 		"dotenv": "^17.2.3",
 		"ethers": "^6.16.0",
