@@ -1,5 +1,18 @@
 #!/usr/bin/env node
-import { Command } from "commander";
+import { Command, Option } from "commander";
+import {
+	intro,
+	outro,
+	text,
+	confirm,
+	select,
+	note,
+	spinner,
+	isCancel,
+	log,
+	groupMultiselect,
+	multiselect,
+} from "@clack/prompts";
 import {
 	createWalletClient,
 	Hex,
@@ -28,6 +41,13 @@ import getNetwork, {
 import { LitEncryptionService } from "./modules/encryption/lit.js";
 import { computeTagCommitment, fieldToHex } from "./utils/index.js";
 import { PaymentPredicate } from "./modules/predicates/payment.js";
+import { createInterface } from "readline";
+import {
+	agentCardBuilder,
+	AgentCardBuilder,
+} from "./builders/a2aCardBuilder.js";
+import { SDK } from "agent0-sdk";
+import { setTimeout } from "timers";
 
 interface Config {
 	jwt: string;
@@ -76,15 +96,6 @@ function getAccount(): PrivateKeyAccount {
 	return _account;
 }
 
-// function deriveVaultId(name: string): Hex {
-// 	return keccak256(
-// 		encodeAbiParameters(parseAbiParameters("string, address"), [
-// 			name,
-// 			getAccount().address,
-// 		]),
-// 	);
-// }
-
 async function getFangorn(chain: Chain): Promise<Fangorn> {
 	if (_fangorn) return _fangorn;
 
@@ -125,8 +136,26 @@ async function getFangorn(chain: Chain): Promise<Fangorn> {
 }
 
 const getChain = (chainStr: string) => {
-	console.log("getting chain for string " + chainStr);
+	// console.log("getting chain for string " + chainStr);
 	return getNetwork(chainStr);
+};
+
+const handleCancel = (value: unknown) => {
+	if (isCancel(value)) {
+		process.exit(0);
+	}
+};
+
+const selectChain = async () => {
+	const chainChoice = await select({
+		message: "Pick your chain.",
+		options: [
+			{ value: "arbitrumSepolia", label: "Arbitrum Sepolia" },
+			{ value: "baseSepolia", label: "Base Sepolia" },
+		],
+	});
+	handleCancel(chainChoice);
+	return getNetwork(chainChoice.toString());
 };
 
 // CLI setup
@@ -135,21 +164,362 @@ program.name("Fangorn").description("CLI for Fangorn").version("9129129");
 
 program
 	.command("register")
-	.description("Register a new data source")
-	.argument("<name>", "Name of the data source")
+	.description("Register a new datasource as an agent.")
+	.argument("<name>", "Name of the datasource")
 	.option(
-		"-c, --chain <chain>",
-		"The chain to use as the backend (arbitrumSepolia or baseSepolia)",
+		"-s, --skip-card",
+		"Set this flag to skip agent card creation and only register with the ERC-8004 registries.",
 	)
 	.action(async (name: string, options) => {
 		try {
-			const chain = getChain(options.chain);
+			console.clear();
+			intro("Chain selection");
+
+			const chain = await selectChain();
+
+			outro(`Selected chain ${chain.name}`);
+
+			let createAgentCard = options.skipCard ? false : true;
+
+			let description = "";
+
+			const s = spinner();
+
+			if (createAgentCard) {
+				intro(`Agent Card Creation for ${chain.name}`);
+
+				while (createAgentCard) {
+					let builder: AgentCardBuilder = agentCardBuilder();
+
+					builder.name(name);
+
+					description = (await text({
+						message: "Description of the Datasource:",
+					})) as string;
+					handleCancel(description);
+					builder.description(description as string);
+
+					const version = await text({
+						message: "Agent Version:",
+						placeholder: "1.0.0",
+					});
+					handleCancel(version);
+					builder.version(version as string);
+
+					const url = await text({
+						message: "URL for receiving data from the datasource agent:",
+						placeholder: "https://example.com/resources",
+					});
+					handleCancel(url);
+					builder.url(url as string);
+
+					const provider = await text({ message: "Organization name:" });
+					handleCancel(provider);
+
+					const providerUrl = await text({ message: "Provider URL:" });
+					handleCancel(providerUrl);
+					builder.provider(provider as string, providerUrl as string);
+
+					let addSkill = true;
+
+					while (addSkill) {
+						const id = await text({
+							message: "ID of the skill (this must be unique):",
+						});
+						handleCancel(id);
+
+						const skillName = await text({ message: "Name of the skill:" });
+						handleCancel(skillName);
+
+						const skillDescription = await text({
+							message: "Skill description:",
+						});
+						handleCancel(skillDescription);
+
+						const tagsString = await text({
+							message: "Skill Tags (comma separated - spaces will be removed):",
+						});
+						handleCancel(tagsString);
+						const tagsArray = (tagsString as string)
+							.replaceAll(" ", "")
+							.split(",");
+
+						builder.addSkill(
+							id as string,
+							skillName as string,
+							skillDescription as string,
+							tagsArray,
+						);
+
+						addSkill = (await confirm({
+							message: "Would you like to add another skill?",
+						})) as boolean;
+						handleCancel(addSkill);
+					}
+
+					const agentCard = builder.build();
+
+					note(JSON.stringify(agentCard, null, 2), "Your agent card:");
+
+					const continueRegistration = (await confirm({
+						message:
+							"Does everything look correct? If not, agent card creation will start over.",
+					})) as boolean;
+					handleCancel(continueRegistration);
+					createAgentCard = !continueRegistration;
+				}
+				outro("Agent Card Creation is Complete.");
+			} else {
+				note(
+					"You are choosing to skip agent card creation. For ERC-8004 registration, we recommend you have an agent card either avaialbe\n" +
+						"at a url like: https://this.example.com/.well-known/agent-card.json\n" +
+						"This allows for the automatic population of the agent's skills and indexes their capabilities for search.\n" +
+						"Similarly, if your agent will have tools available via an MCP endpoint we recommend that you have the server running to allow for population of tools, prompts, and resources.",
+				);
+			}
+
+			intro(`Agent Registration for ${chain.name}`);
+
+			createAgentCard = options.skipCard ? false : true;
+
+			let erc8004Registration = true;
+
+			let agent0Sdk: SDK;
+
+			const ipfsOrHttp = (await select({
+				message: "Choose your registration flow",
+				options: [
+					{ value: "ipfs", label: "IPFS (Pinata)" },
+					{ value: "http", label: "HTTP" },
+				],
+			})) as string;
+			handleCancel(ipfsOrHttp);
+
+			if (chain.id === 421614) {
+				const registryOverrides = {
+					421614: {
+						IDENTITY: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+						REPUTATION: "0x8004B663056A597Dffe9eCcC1965A193B7388713",
+					},
+				};
+
+				const subgraphOverrides = {
+					421614:
+						"https://api.studio.thegraph.com/query/1742225/erc-8004-arbitrum-sepolia/version/latest",
+				};
+
+				if (ipfsOrHttp === "ipfs") {
+					note(
+						"You have chosen to register using the IPFS route. It is assumed that your Pinata JWT and Pinata Gateway are stored in your .env file.",
+						"INFO",
+					);
+					agent0Sdk = new SDK({
+						chainId: 421614,
+						rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
+						subgraphUrl:
+							"https://api.studio.thegraph.com/query/1742225/erc-8004-arbitrum-sepolia/version/latest",
+						registryOverrides,
+						subgraphOverrides,
+					});
+				} else {
+					agent0Sdk = new SDK({
+						chainId: 421614,
+						rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
+						subgraphUrl:
+							"https://api.studio.thegraph.com/query/1742225/erc-8004-arbitrum-sepolia/version/latest",
+						registryOverrides,
+						subgraphOverrides,
+					});
+				}
+			} else {
+				if (ipfsOrHttp === "ipfs") {
+					note(
+						"You have chosen to register using the IPFS route. It is assumed that your Pinata JWT and Pinata Gateway are stored in your .env file.",
+						"INFO",
+					);
+					agent0Sdk = new SDK({
+						chainId: chain.id,
+						rpcUrl: chain.rpcUrls.default.http[0],
+					});
+				} else {
+					agent0Sdk = new SDK({
+						chainId: chain.id,
+						rpcUrl: chain.rpcUrls.default.http[0],
+					});
+				}
+			}
+
+			let agent;
+			while (erc8004Registration) {
+				if (description) {
+					const reuseDescription = (await confirm({
+						message:
+							"Would you like to re-use the description you submitted for your agent card?",
+					})) as boolean;
+					handleCancel(reuseDescription);
+					if (!reuseDescription) {
+						description = (await text({
+							message: "Description of the Datasource:",
+						})) as string;
+						handleCancel(description);
+					}
+				} else {
+					description = (await text({
+						message: "Description of the Datasource:",
+					})) as string;
+					handleCancel(description);
+				}
+
+				agent = agent0Sdk.createAgent(name, description);
+
+				const agentCardAvailable = (await confirm({
+					message: createAgentCard
+						? "Did you upload your agent card already?"
+						: "Does your agent have an agent card?",
+				})) as boolean;
+				handleCancel(agentCardAvailable);
+				if (agentCardAvailable) {
+					const agentCardLocation = (await text({
+						message: "Location of agent card:",
+						placeholder: "https://example.com/.well-known/agentcard.json",
+					})) as string;
+					handleCancel(agentCardLocation);
+					s.start("Calling A2A endpoint to retrieve skills and capabilities");
+					await agent.setA2A(agentCardLocation);
+					s.stop("A2A fetch complete");
+				}
+
+				const mcpAvailable = (await confirm({
+					message: "Does your agent have an MCP endpoint?",
+				})) as boolean;
+				handleCancel(mcpAvailable);
+
+				if (mcpAvailable) {
+					const mcpEndpoint = (await text({
+						message: "Location of MCP endpoint:",
+						placeholder: "https://example.com/mcp",
+					})) as string;
+					handleCancel(mcpEndpoint);
+
+					s.start("Retrieving tools, prompts, and resources");
+					await agent.setMCP(mcpEndpoint);
+					s.stop("MCP fetch complete");
+				}
+
+				const ensAvailable = (await confirm({
+					message: "Does your agent have an ENS?",
+				})) as boolean;
+				handleCancel(ensAvailable);
+
+				if (ensAvailable) {
+					const ens = (await text({
+						message: "Agent's ENS:",
+						placeholder: "myagent.eth",
+					})) as string;
+					handleCancel(ens);
+					agent.setENS(ens);
+				}
+
+				let selectTrustModels = true;
+
+				while (selectTrustModels) {
+					const trustModels = (await multiselect({
+						message:
+							"(Optional) Select trust models (use Space for selection and Enter for submission):",
+						options: [
+							{ value: "reputation", label: "Reputation" },
+							{ value: "cryptoEconomic", label: "Crypto Economic" },
+							{ value: "teeAttestation", label: "TEE Attestation" },
+						],
+						required: false,
+					})) as string[];
+					handleCancel(trustModels);
+
+					if (!(trustModels.length > 0)) {
+						selectTrustModels = !((await confirm({
+							message: "You have chosen no trust models. Is this correct?",
+						})) as boolean);
+						handleCancel(selectTrustModels);
+						if (!selectTrustModels) {
+							agent.setTrust(
+								trustModels.includes("reputation"),
+								trustModels.includes("cryptoEconomic"),
+								trustModels.includes("teeAttestation"),
+							);
+						}
+					} else {
+						selectTrustModels = false;
+						agent.setTrust(
+							trustModels.includes("reputation"),
+							trustModels.includes("cryptoEconomic"),
+							trustModels.includes("teeAttestation"),
+						);
+					}
+				}
+
+				let setMetadata = (await confirm({
+					message: "Would you like to set metadata?",
+				})) as boolean;
+				handleCancel(setMetadata);
+
+				if (setMetadata) {
+					const metadata: Record<string, unknown> = {};
+					while (setMetadata) {
+						const key = (await text({
+							message: "Key:",
+							placeholder: "examples: version/category/etc.",
+						})) as string;
+						handleCancel(key);
+						const value = (await text({
+							message: "Value:",
+							placeholder: "examples: 1.0.0/datasource/etc.",
+						})) as string;
+						handleCancel(value);
+						metadata[key] = value;
+						setMetadata = (await confirm({
+							message: "Would you like to add more metadata?",
+						})) as boolean;
+					}
+					agent.setMetadata(metadata);
+				}
+
+				agent.setActive(true);
+				agent.setX402Support(true);
+
+				note(
+					JSON.stringify(agent.getRegistrationFile(), null, 2),
+					"Your ERC-8004 registration:",
+				);
+
+				const completeRegistration = (await confirm({
+					message:
+						"Does everything look correct? If not, ERC registration will start over.",
+				})) as boolean;
+				handleCancel(completeRegistration);
+
+				if (completeRegistration) {
+					erc8004Registration = false;
+					if (ipfsOrHttp === "http") {
+						note(
+							'You have chosen to use http to host your registration file. It is recommended to use https://example.com/.well-known/agent-registration.json for verifiers to treat you endpoint domain as "Verified"',
+							"INFO",
+						);
+						note(
+							JSON.stringify(agent.getRegistrationFile()),
+							"Your Registration File",
+						);
+					}
+				}
+			}
+			outro(`Agent Registration is Complete for ${chain.name}`);
+
 			const fangorn = await getFangorn(chain);
-			const vaultId = await fangorn.registerDataSource(name);
-			console.log(`Data source registered with id = ${vaultId}`);
+			const id = await fangorn.registerDataSource(name);
+			console.log(`Data source registered with id = ${id}`);
+
 			process.exit(0);
 		} catch (err) {
-			console.error("Failed to register data source:", (err as Error).message);
+			console.error("Failed to register:", (err as Error).message);
 			process.exit(1);
 		}
 	});
