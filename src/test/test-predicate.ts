@@ -38,13 +38,3 @@ export function emptyWallet(chain: EvmChain): AccPredicate {
 		"Caller must have zero ETH balance",
 	);
 }
-
-// export function walletOwner(address: string, chain: string): AccPredicate {
-//   return new AccPredicate(
-//     createAccBuilder()
-//       .requireWalletAddress(address)
-//       .on(chain)
-//       .build(),
-//     `Only wallet ${address} can access`,
-//   );
-// }

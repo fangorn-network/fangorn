@@ -11,7 +11,6 @@ import {
 	Chain,
 } from "viem";
 import { privateKeyToAccount, PrivateKeyAccount } from "viem/accounts";
-import { arbitrumSepolia, baseSepolia } from "viem/chains";
 import { createLitClient } from "@lit-protocol/lit-client";
 import { nagaDev } from "@lit-protocol/networks";
 import { readFileSync, writeFileSync } from "fs";
@@ -26,15 +25,12 @@ import getNetwork, {
 	FangornConfig,
 	SupportedNetworks,
 } from "./config.js";
+import { LitEncryptionService } from "./modules/encryption/lit.js";
 
 interface Config {
-	// rpcUrl: string;
 	jwt: string;
 	gateway: string;
 	privateKey: Hex;
-	// litActionCid?: string;
-	// dataSourceRegistryAddress?: Address;
-	// usdcContractAddress?: Address;
 	cfg: AppConfig;
 }
 
@@ -110,11 +106,15 @@ async function getFangorn(chain: Chain): Promise<Fangorn> {
 		pinataGateway: cfg.gateway,
 	});
 	const storage = new PinataStorage(pinata);
+	const chainName = process.env.CHAIN_NAME;
+	const encryptionService = new LitEncryptionService(litClient, {
+		chainName,
+	});
 
 	_fangorn = await Fangorn.init(
 		walletClient,
 		storage,
-		litClient,
+		encryptionService,
 		domain,
 		appConfig,
 	);
@@ -182,8 +182,8 @@ program
 				};
 			});
 
-			const result = await fangorn.upload(vaultId, filedata, options.overwrite);
-			console.log(`Upload complete! Manifest CID: ${result.manifestCid}`);
+			const cid = await fangorn.upload(vaultId, filedata, options.overwrite);
+			console.log(`Upload complete! Manifest CID: ${cid}`);
 			process.exit(0);
 		} catch (err) {
 			console.error("Failed to upload:", (err as Error).message);
@@ -191,85 +191,85 @@ program
 		}
 	});
 
-program
-	.command("list")
-	.description("List contents (index) of a data source")
-	.argument("<name>", "Data source name")
-	.option(
-		"-c, --chain <chain>",
-		"The chain to use as the backend (arbitrumSepolia or baseSepolia)",
-	)
-	.action(async (name: string, options) => {
-		try {
-			const vaultId = deriveVaultId(name);
-			const chain = getChain(options.chain);
-			const fangorn = await getFangorn(chain);
-			const manifest = await fangorn.getManifest(vaultId);
+// program
+// 	.command("list")
+// 	.description("List contents (index) of a data source")
+// 	.argument("<name>", "Data source name")
+// 	.option(
+// 		"-c, --chain <chain>",
+// 		"The chain to use as the backend (arbitrumSepolia or baseSepolia)",
+// 	)
+// 	.action(async (name: string, options) => {
+// 		try {
+// 			const vaultId = deriveVaultId(name);
+// 			const chain = getChain(options.chain);
+// 			const fangorn = await getFangorn(chain);
+// 			const manifest = await fangorn.getManifest(vaultId);
 
-			if (!manifest) {
-				console.log("The data source is empty. \n");
-				console.log(
-					"Upload data with `fangorn upload <dataSourceName> <file> --price <set-price>",
-				);
-				process.exit(0);
-			}
-			console.log(`Vault: ${name} (${vaultId})`);
-			console.log(`Entries (${manifest.entries.length}):`);
-			for (const entry of manifest.entries) {
-				console.log(
-					`  - ${entry.tag} | price: ${entry.price} | cid: ${entry.cid}`,
-				);
-			}
-			process.exit(0);
-		} catch (err) {
-			console.error("Failed to list vault:", (err as Error).message);
-			process.exit(1);
-		}
-	});
+// 			if (!manifest) {
+// 				console.log("The data source is empty. \n");
+// 				console.log(
+// 					"Upload data with `fangorn upload <dataSourceName> <file> --price <set-price>",
+// 				);
+// 				process.exit(0);
+// 			}
+// 			console.log(`Vault: ${name} (${vaultId})`);
+// 			console.log(`Entries (${manifest.entries.length}):`);
+// 			for (const entry of manifest.entries) {
+// 				console.log(
+// 					`  - ${entry.tag} | price: ${entry.price} | cid: ${entry.cid}`,
+// 				);
+// 			}
+// 			process.exit(0);
+// 		} catch (err) {
+// 			console.error("Failed to list vault:", (err as Error).message);
+// 			process.exit(1);
+// 		}
+// 	});
 
-program
-	.command("info")
-	.description("Get data source info from contract")
-	.argument("<name>", "Data source name")
-	.option(
-		"-c, --chain <chain>",
-		"The chain to use as the backend (arbitrumSepolia or baseSepolia)",
-	)
-	.action(async (name: string, options) => {
-		try {
-			const vaultId = deriveVaultId(name);
-			const chain = getChain(options.chain);
-			const fangorn = await getFangorn(chain);
-			const vault = await fangorn.getDataSource(vaultId);
+// program
+// 	.command("info")
+// 	.description("Get data source info from contract")
+// 	.argument("<name>", "Data source name")
+// 	.option(
+// 		"-c, --chain <chain>",
+// 		"The chain to use as the backend (arbitrumSepolia or baseSepolia)",
+// 	)
+// 	.action(async (name: string, options) => {
+// 		try {
+// 			const vaultId = deriveVaultId(name);
+// 			const chain = getChain(options.chain);
+// 			const fangorn = await getFangorn(chain);
+// 			const vault = await fangorn.getDataSource(vaultId);
 
-			console.log(`Vault: ${name} (${vaultId})`);
-			console.log(`Owner: ${vault.owner}`);
-			console.log(
-				`Manifest CID: ${vault.manifestCid == "" ? "Upload data with `fangorn upload <vaultName> <file> --price <set-price>`" : vault.manifestCid}`,
-			);
-			process.exit(0);
-		} catch (err) {
-			console.error("Failed to get vault info:", (err as Error).message);
-			process.exit(1);
-		}
-	});
+// 			console.log(`Vault: ${name} (${vaultId})`);
+// 			console.log(`Owner: ${vault.owner}`);
+// 			console.log(
+// 				`Manifest CID: ${vault.manifestCid == "" ? "Upload data with `fangorn upload <vaultName> <file> --price <set-price>`" : vault.manifestCid}`,
+// 			);
+// 			process.exit(0);
+// 		} catch (err) {
+// 			console.error("Failed to get vault info:", (err as Error).message);
+// 			process.exit(1);
+// 		}
+// 	});
 
 program
 	.command("decrypt")
 	.description("Decrypt a file from a vault")
-	.argument("<name>", "Vault name")
+	.argument("<owner>", "The owner of the datasource")
+	.argument("<name>", "The name of the datasource")
 	.argument("<tag>", "File tag")
 	.option(
 		"-c, --chain <chain>",
 		"The chain to use as the backend (arbitrumSepolia or baseSepolia",
 	)
 	.option("-o, --output <path>", "Output file path")
-	.action(async (name: string, tag: string, options) => {
+	.action(async (owner: Address, name: string, tag: string, options) => {
 		try {
-			const vaultId = deriveVaultId(name);
 			const chain = getChain(options.chain);
 			const fangorn = await getFangorn(chain);
-			const decrypted = await fangorn.decryptFile(vaultId, tag);
+			const decrypted = await fangorn.decryptFile(owner, name, tag);
 
 			if (options.output) {
 				writeFileSync(options.output, Buffer.from(decrypted));
@@ -284,31 +284,31 @@ program
 		}
 	});
 
-program
-	.command("entry")
-	.description("Get info about a specific vault entry")
-	.argument("<name>", "Vault name")
-	.argument("<tag>", "File tag")
-	.option(
-		"-c, --chain <chain>",
-		"The chain to use as the backend (arbitrumSepolia or baseSepolia",
-	)
-	.action(async (name: string, tag: string, options) => {
-		try {
-			const vaultId = deriveVaultId(name);
-			const chain = getChain(options.chain);
-			const fangorn = await getFangorn(chain);
-			const entry = await fangorn.getDataSourceData(vaultId, tag);
+// program
+// 	.command("entry")
+// 	.description("Get info about a specific vault entry")
+// 	.argument("<name>", "Vault name")
+// 	.argument("<tag>", "File tag")
+// 	.option(
+// 		"-c, --chain <chain>",
+// 		"The chain to use as the backend (arbitrumSepolia or baseSepolia",
+// 	)
+// 	.action(async (name: string, tag: string, options) => {
+// 		try {
+// 			const vaultId = deriveVaultId(name);
+// 			const chain = getChain(options.chain);
+// 			const fangorn = await getFangorn(chain);
+// 			const entry = await fangorn.getDataSourceData(vaultId, tag);
 
-			console.log(`Entry: ${tag}`);
-			console.log(`  CID: ${entry.cid}`);
-			console.log(`  Price: ${entry.price}`);
-			process.exit(0);
-		} catch (err) {
-			console.error("Failed to get entry:", (err as Error).message);
-			process.exit(1);
-		}
-	});
+// 			console.log(`Entry: ${tag}`);
+// 			console.log(`  CID: ${entry.cid}`);
+// 			console.log(`  Price: ${entry.price}`);
+// 			process.exit(0);
+// 		} catch (err) {
+// 			console.error("Failed to get entry:", (err as Error).message);
+// 			process.exit(1);
+// 		}
+// 	});
 
 function getMimeType(ext: string): string {
 	const types: Record<string, string> = {

@@ -20,6 +20,7 @@ import { AppConfig, FangornConfig } from "./config.js";
 import { EncryptionService } from "./modules/encryption/index.js";
 import { LitEncryptionService } from "./modules/encryption/lit.js";
 import { Predicate } from "./modules/predicates/types.js";
+import { deriveDatasourceId } from "./utils/index.js";
 
 /**
  * Fangorn - Encrypted vault management with pluggable access control
@@ -89,7 +90,7 @@ export class Fangorn {
 		overwrite?: boolean,
 	): Promise<string> {
 		const who = this.walletClient.account.address;
-		const id = deriveDatasourceId(name, who);
+		// const id = deriveDatasourceId(name, who);
 		const datasource = await this.dataSourceRegistry.getDataSource(who, name);
 
 		// Load existing manifest if appending
@@ -278,12 +279,6 @@ export class Fangorn {
 			});
 		}
 	}
-}
-
-export function deriveDatasourceId(name: string, owner: Address): Hex {
-	return keccak256(
-		encodeAbiParameters(parseAbiParameters("string, address"), [name, owner]),
-	);
 }
 
 // import { createSiweMessage } from "@lit-protocol/auth-helpers";

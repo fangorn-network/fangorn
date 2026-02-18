@@ -89,20 +89,39 @@ export function hexToField(hex: string): bigint {
 	return BigInt(cleanHex);
 }
 
+export function deriveDatasourceId(name: string, owner: Address): Hex {
+	return keccak256(
+		encodeAbiParameters(parseAbiParameters("string, address"), [name, owner]),
+	);
+}
+
 // create a commitment to the (vaultId, tag) combo using poseidon2
 export async function computeTagCommitment(
-	vaultId: string,
+	owner: Address,
+	name: string,
 	tag: string,
+	price: string,
 ): Promise<bigint> {
-	const vaultIdBigInt = BigInt(vaultId);
+	const id = deriveDatasourceId(name, owner);
+	const idBigInt = BigInt(id);
 
 	// Convert tag to field
 	const tagBytes = new TextEncoder().encode(tag);
-	let tagField = 0n;
+	const priceBytes = new TextEncoder().encode(price);
+
+	let field = 0n;
+
+	// this is probably easier with sha256
+	// the original idea is that we would be proving knowledge of the preimage with a zkp
+	// which is why poseidon2 was chosen as the hash function instead
 	for (let i = 0; i < Math.min(tagBytes.length, 31); i++) {
-		tagField = (tagField << 8n) | BigInt(tagBytes[i]);
+		field = (field << 8n) | BigInt(tagBytes[i]);
 	}
 
-	const hash = await poseidon2Hash(vaultIdBigInt, tagField);
+	for (let i = 0; i < priceBytes.length; i++) {
+		field = (field << 8n) | BigInt(priceBytes[i]);
+	}
+
+	const hash = await poseidon2Hash(idBigInt, field);
 	return hash;
 }

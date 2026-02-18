@@ -55,7 +55,7 @@ export namespace FangornConfig {
 		// litActionCid: "QmT5J75W4STgVjEbAUi8i11m9cyKUiZDoPinYf5uTeRfhP",
 		usdcContractAddress: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
 		dataSourceRegistryContractAddress:
-			"0x91ba3f7b649c6188bd8963d829c1ecfd2a2b4768",
+			"0x5e1c55e8fb0012418ce9bbe7b766385f9637a406",
 		chainName: "arbitrumSepolia",
 		chain: arbitrumSepolia,
 		rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",

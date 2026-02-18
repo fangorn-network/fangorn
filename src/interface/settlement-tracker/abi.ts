@@ -26,7 +26,7 @@ export const SETTLEMENT_TRACKER_ABI = [
 			{ name: "commitment", type: "bytes32" },
 			{ name: "user", type: "address" },
 		],
-		outputs: [{ name: "hasAccess", type: "bool" }],
+		outputs: [{ name: "amount", type: "uint256" }],
 	},
 	// events (cargo stylus isn't generating these, weird)
 	{
@@ -38,11 +38,6 @@ export const SETTLEMENT_TRACKER_ABI = [
 		],
 	},
 	// errors
-	{
-		name: "AlreadyPaid",
-		type: "error",
-		inputs: [],
-	},
 	{
 		name: "TransferFailed",
 		type: "error",

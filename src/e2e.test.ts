@@ -1,12 +1,18 @@
 import { beforeAll, describe, it, expect } from "vitest";
-import { Account, createWalletClient, Hex, http, type Address } from "viem";
+import {
+	Account,
+	createWalletClient,
+	Hex,
+	http,
+	WalletClient,
+	type Address,
+} from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { deployContract } from "./deployContract.js";
 import { TestBed } from "./test/testbed.js";
 import { uploadToPinata } from "./test/index.js";
-import { createRequire } from "module";
 import { arbitrumSepolia, baseSepolia } from "viem/chains";
 
 const getEnv = (key: string) => {
@@ -17,19 +23,29 @@ const getEnv = (key: string) => {
 	return value;
 };
 
-describe("payment-gated decryption", () => {
-	let rpcUrl: string;
+describe("Fangorn basic encryption works", () => {
+	// storage secrets
 	let jwt: string;
 	let gateway: string;
 
+	// accts
 	let delegatorAccount: Account;
 	let delegateeAccount: Account;
+
+	// wallet clients
+	let delegatorWalletClient: WalletClient;
+	let delegateeWalletClient: WalletClient;
+
+	// contracts
 	let usdcContractAddress: Address;
 	let dataSourceRegistryAddress: Address;
-	let ipfsCid: string;
+	let settlementTrackerAddress: Address;
+
+	// chain config
+	// let ipfsCid: string;
+	let rpcUrl: string;
 	let chainName: string;
 	let usdcDomainName: string;
-
 	let caip2: number;
 
 	let testbed: TestBed;
@@ -38,8 +54,8 @@ describe("payment-gated decryption", () => {
 		chainName = process.env.CHAIN_NAME!;
 		if (!chainName) throw new Error("CHAIN_NAME required");
 
-		// usdcDomainName = process.env.USDC_DOMAIN_NAME!;
-		// if (!usdcDomainName) throw new Error("USDC_DOMAIN_NAME required");
+		usdcDomainName = process.env.USDC_DOMAIN_NAME!;
+		if (!usdcDomainName) throw new Error("USDC_DOMAIN_NAME required");
 
 		// todo: set based on chain name
 		const chain = arbitrumSepolia;
@@ -60,7 +76,7 @@ describe("payment-gated decryption", () => {
 			getEnv("DELEGATOR_ETH_PRIVATE_KEY") as Hex,
 		);
 
-		const delegatorWalletClient = createWalletClient({
+		delegatorWalletClient = createWalletClient({
 			account: delegatorAccount,
 			transport: http(rpcUrl),
 			chain,
@@ -70,25 +86,14 @@ describe("payment-gated decryption", () => {
 			getEnv("DELEGATEE_ETH_PRIVATE_KEY") as Hex,
 		);
 
-		const delegateeWalletClient = createWalletClient({
+		delegateeWalletClient = createWalletClient({
 			account: delegateeAccount,
 			transport: http(rpcUrl),
 			chain,
 		});
 
-		// if the cid is not defined, add the lit action to ipfs
-		ipfsCid = process.env.LIT_ACTION_CID!;
-		if (!ipfsCid) {
-			console.log("Uploading Verifier Lit Action to Pinata");
-			// q: should it verify if it is the right lit action?
-			const litActionCode = readFileSync(
-				join(__dirname, "./lit-actions/litAction.js"),
-				"utf-8",
-			);
-			ipfsCid = await uploadToPinata("lit-action.js", litActionCode);
-		}
-
 		usdcContractAddress = process.env.USDC_CONTRACT_ADDRESS! as Address;
+
 		dataSourceRegistryAddress = process.env.DS_REGISTRY_ADDR! as Address;
 		// deploy valid contracts if either are undefined
 		if (!dataSourceRegistryAddress) {
@@ -102,8 +107,23 @@ describe("payment-gated decryption", () => {
 			dataSourceRegistryAddress = deployment.address;
 		}
 
-		console.log(`Lit Action CID: ${ipfsCid}`);
+		settlementTrackerAddress = process.env.SETTLEMENT_TRACKER_ADDR! as Address;
+		if (!settlementTrackerAddress) {
+			console.log("Deploying Settlement Tracker Contract");
+			const deployment = await deployContract({
+				account: delegatorAccount,
+				contractName: "SettlementTracker",
+				constructorArgs: [usdcContractAddress],
+				chain,
+			});
+
+			console.log("deployed settlement tracker contract");
+			settlementTrackerAddress = deployment.address;
+		}
+
+		// console.log(`Lit Action CID: ${ipfsCid}`);
 		console.log(`Data Source Registry Contract: ${dataSourceRegistryAddress}`);
+		console.log(`Settlement Tracker Contract: ${settlementTrackerAddress}`);
 
 		testbed = await TestBed.init(
 			delegatorWalletClient,
@@ -117,15 +137,82 @@ describe("payment-gated decryption", () => {
 			"arbitrumSepolia",
 			caip2,
 		);
-	}, 120_000); // 2 minute timeout
+	}, 120_000);
 
-	// afterall => cleanup (unpin files)
-	it("should create a datasource, add files, and succeed to decrypt when predicates are satisfied", async () => {
+	// TODO: afterall => cleanup (unpin files)
+
+	// it("should create a datasource, add files, and succeed to decrypt when predicates are satisfied for basic acc", async () => {
+	// 	// create a vault
+	// 	const datasourceName =
+	// 		"test_datasource_" + getRandomIntInclusive(0, 101010101);
+	// 	const id = await testbed.registerDatasource(datasourceName);
+
+	// 	// verify existence
+	// 	expect(
+	// 		await testbed.checkDatasourceRegistryExistence(
+	// 			delegatorAccount.address,
+	// 			datasourceName,
+	// 		),
+	// 	).toBe(true);
+
+	// 	console.log(`Datasource registration successful, with id: ${id}`);
+	// 	// you can only read these if you have zero balance
+	// 	const tag = "test";
+	// 	const manifest = [
+	// 		{
+	// 			tag,
+	// 			data: "Hello, Fangorn!",
+	// 			extension: ".txt",
+	// 			fileType: "text/plain",
+	// 		},
+	// 	];
+
+	// 	await testbed.fileUploadEmptyWallet(datasourceName, manifest);
+	// 	// the manifest should have been updated in the contract
+	// 	await testbed.checkDataExistence(
+	// 		delegatorAccount.address,
+	// 		datasourceName,
+	// 		tag,
+	// 	);
+
+	// 	console.log("encrypted data under empty wallet condition");
+	// 	// wait to make sure pinata is behaving
+	// 	await new Promise((resolve) => setTimeout(resolve, 4_000));
+
+	// 	// try to get the data associated with the (owner, name, tag) combo
+	// 	const expectedPlaintext = manifest[0].data;
+	// 	const output = await testbed.tryDecrypt(
+	// 		delegatorAccount.address,
+	// 		datasourceName,
+	// 		tag,
+	// 	);
+	// 	const outputAsString = new TextDecoder().decode(output);
+	// 	expect(outputAsString).toBe(expectedPlaintext);
+	// 	console.log("Decryption succeeded!");
+
+	// 	// decryption should fail if the account has a positive balance of ETH (the delegator)
+	// 	let didFail = false;
+	// 	try {
+	// 		await testbed.tryDecryptDelegator(
+	// 			delegatorAccount.address,
+	// 			datasourceName,
+	// 			tag,
+	// 		);
+	// 		const outputAsString = new TextDecoder().decode(output);
+	// 		console.log("outputAsString " + outputAsString);
+	// 		expect(outputAsString).toBe(expectedPlaintext);
+	// 	} catch (error) {
+	// 		didFail = true;
+	// 	}
+
+	// 	expect(didFail).toBe(true);
+	// }, 120_000);
+
+	it("should create a datasource, add files, and succeed to decrypt when predicates are satisfied against on-chain state (payment settled)", async () => {
 		// create a vault
 		const datasourceName =
-			"test_datasource_" + getRandomIntInclusive(0, 101010101);
+			"test_datasource_" + getRandomIntInclusive(101010101, 111111111);
 		const id = await testbed.registerDatasource(datasourceName);
-
 		// verify existence
 		expect(
 			await testbed.checkDatasourceRegistryExistence(
@@ -133,34 +220,49 @@ describe("payment-gated decryption", () => {
 				datasourceName,
 			),
 		).toBe(true);
-
 		console.log(`Datasource registration successful, with id: ${id}`);
-		// you can only read these if you have zero balance
-		const tag = "test";
-		const manifest = [
-			{
-				tag,
-				data: "Hello, Fangorn!",
-				extension: ".txt",
-				fileType: "text/plain",
-			},
-		];
 
-		await testbed.fileUploadEmptyWallet(datasourceName, manifest);
+		const tag = "test";
+		const filedata = {
+			tag,
+			data: "Hello, Fangorn!",
+			extension: ".txt",
+			fileType: "text/plain",
+		};
+
+		const price = "0.000001";
+		await testbed.fileUploadPaymentPredicate(
+			datasourceName,
+			filedata,
+			price,
+			settlementTrackerAddress,
+		);
 		// the manifest should have been updated in the contract
 		await testbed.checkDataExistence(
 			delegatorAccount.address,
 			datasourceName,
 			tag,
 		);
+		console.log("encrypted data under payment settlement condition");
 
-		console.log("encrypted data under empty wallet condition");
 		// wait to make sure pinata is behaving
 		await new Promise((resolve) => setTimeout(resolve, 4_000));
 
+		// pay for file (delegator is buying from self)
+		await testbed.payForFile(
+			delegatorAccount.address,
+			datasourceName,
+			tag,
+			price,
+			usdcDomainName,
+			settlementTrackerAddress,
+			delegatorWalletClient,
+			rpcUrl,
+		);
+
 		// try to get the data associated with the (owner, name, tag) combo
-		const expectedPlaintext = manifest[0].data;
-		const output = await testbed.tryDecrypt(
+		const expectedPlaintext = filedata.data;
+		const output = await testbed.tryDecryptDelegator(
 			delegatorAccount.address,
 			datasourceName,
 			tag,
@@ -169,54 +271,22 @@ describe("payment-gated decryption", () => {
 		expect(outputAsString).toBe(expectedPlaintext);
 		console.log("Decryption succeeded!");
 
-		// decryption should fail if the account has a positive balance of ETH (the delegator)
-		let didFail = false;
-		try {
-			await testbed.tryDecryptDelegator(
-				delegatorAccount.address,
-				datasourceName,
-				tag,
-			);
-			const outputAsString = new TextDecoder().decode(output);
-			console.log("outputAsString " + outputAsString);
-			expect(outputAsString).toBe(expectedPlaintext);
-		} catch (error) {
-			didFail = true;
-		}
+		// // decryption should fail if the account has a positive balance of ETH (the delegator)
+		// let didFail = false;
+		// try {
+		// 	await testbed.tryDecryptDelegator(
+		// 		delegatorAccount.address,
+		// 		datasourceName,
+		// 		tag,
+		// 	);
+		// 	const outputAsString = new TextDecoder().decode(output);
+		// 	console.log("outputAsString " + outputAsString);
+		// 	expect(outputAsString).toBe(expectedPlaintext);
+		// } catch (error) {
+		// 	didFail = true;
+		// }
 
-		expect(didFail).toBe(true);
-
-		// // sleep to avoid any pinata rate limiting
-		// await new Promise((f) => setTimeout(f, 6_000));
-		// // add more data to the vault
-		// const nextFiles = [
-		// 	{
-		// 		tag: "test1",
-		// 		data: "content1",
-		// 		extension: ".png",
-		// 		fileType: "image/png",
-		// 		price: "0.001",
-		// 	},
-		// 	{
-		// 		tag: "test2",
-		// 		data: "content2",
-		// 		extension: ".mp4",
-		// 		fileType: "video/mp4",
-		// 		price: "0",
-		// 	},
-		// ];
-		// await testbed.fileUpload(vaultId, nextFiles);
-
-		// // purchase data access
-		// await testbed.payForFile(vaultId, "test1", price, delegatorAccount.address);
-
-		// // try to access the new files with the same password
-		// const newTag = nextFiles[0].tag;
-		// const newExpectedPlaintext = nextFiles[0].data;
-		// const actualOutput = await testbed.tryDecrypt(vaultId, newTag);
-		// const actualOutputAsString = new TextDecoder().decode(actualOutput);
-		// expect(actualOutputAsString).toBe(newExpectedPlaintext);
-		// console.log("Decryption succeeded again!!");
+		// expect(didFail).toBe(true);
 	}, 120_000);
 
 	// it("should fail to decrypt when the payment is not settled", async () => {
