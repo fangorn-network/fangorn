@@ -166,10 +166,9 @@ program
 	.command("register")
 	.description("Register a new datasource as an agent.")
 	.argument("<name>", "Name of the datasource")
-	.option(
-		"-s, --skip-card",
-		"Set this flag to skip agent card creation and only register with the ERC-8004 registries.",
-	)
+	.option("-s, --skip-card", "Skip agent card creation")
+	.option("-d, --skip-ds", "Skip datasource registrion")
+	.option("-e, --skip-erc", "Skip ERC-8007 registrion")
 	.action(async (name: string, options) => {
 		try {
 			console.clear();
@@ -179,7 +178,9 @@ program
 
 			outro(`Selected chain ${chain.name}`);
 
+			let registerDatasource = options.skipDs ? false : true;
 			let createAgentCard = options.skipCard ? false : true;
+			let erc8004Registration = options.skipErc ? false : true;
 
 			let description = "";
 
@@ -282,8 +283,6 @@ program
 			let cfg = loadConfig();
 
 			createAgentCard = options.skipCard ? false : true;
-
-			let erc8004Registration = true;
 
 			let agent0Sdk: SDK;
 
@@ -523,9 +522,11 @@ program
 			}
 			outro(`Agent Registration is Complete for ${chain.name}`);
 
-			const fangorn = await getFangorn(chain);
-			const id = await fangorn.registerDataSource(name);
-			console.log(`Data source registered with id = ${id}`);
+			if (registerDatasource) {
+				const fangorn = await getFangorn(chain);
+				const id = await fangorn.registerDataSource(name);
+				console.log(`Data source ${name} registered with id = ${id}`);
+			}
 
 			process.exit(0);
 		} catch (err) {
