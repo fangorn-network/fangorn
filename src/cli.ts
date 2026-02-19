@@ -550,7 +550,7 @@ program
 		"-c, --chain <chain>",
 		"The chain to use as the backend (arbitrumSepolia or baseSepolia)",
 	)
-	.option("-p, --predicate <predicate>", "Predicate to access the file")
+	.option("-p, --price <price>", "price to access the file")
 	.option("--overwrite", "Overwrite existing data source contents")
 	.action(async (name: string, files: string[], options) => {
 		try {
