@@ -1,10 +1,10 @@
-import { Predicate, PredicateDescriptor } from "../modules/predicates/types";
+import { Gadget, GadgetDescriptor } from "../modules/gadgets/types";
 
 export interface VaultEntry {
 	tag: string;
 	cid: string;
 	index: number;
-	predicateDescriptor: PredicateDescriptor;
+	gadgetDescriptor: GadgetDescriptor;
 	extension: string;
 	fileType: string;
 }
@@ -35,7 +35,7 @@ export const buildManifest = (options: BuildManifestOptions): VaultManifest => {
 export interface PendingEntry {
 	tag: string;
 	cid: string;
-	predicateDescriptor: PredicateDescriptor;
+	gadgetDescriptor: GadgetDescriptor;
 	extension: string;
 	fileType: string;
 }
@@ -45,8 +45,6 @@ export interface Filedata {
 	data: string;
 	extension: string;
 	fileType: string;
-	// price: string;
-	// predicates?: Predicate[],
 }
 
 export interface EncryptedData {

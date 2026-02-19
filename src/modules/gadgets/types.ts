@@ -1,15 +1,15 @@
-export interface Predicate {
-	// Unique identifier for this predicate type
+export interface Gadget {
+	// Unique identifier for this gadget type
 	type: string;
 	// Generate the Lit action code
 	toLitAction(): string;
 	// Generate the ACC for Lit
 	toAccessCondition(): any;
 	// Serialize to a descriptor (for storage)
-	toDescriptor(): PredicateDescriptor;
+	toDescriptor(): GadgetDescriptor;
 }
 
-export interface PredicateDescriptor {
+export interface GadgetDescriptor {
 	type: string;
 	description?: string;
 	acc?: any;

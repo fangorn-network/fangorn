@@ -1,12 +1,12 @@
 import { WalletClient } from "viem";
 import { Filedata } from "../../types";
-import { Predicate } from "../predicates";
+import { Gadget } from "../gadgets";
 import { EncryptedPayload, DecryptedPayload } from "./types.js";
 
 export * from "./lit.js";
 
 export interface EncryptionService {
-	encrypt(file: Filedata, predicate: Predicate): Promise<EncryptedPayload>;
+	encrypt(file: Filedata, gadget: Gadget): Promise<EncryptedPayload>;
 	decrypt(
 		payload: EncryptedPayload,
 		authContext: AuthContext,

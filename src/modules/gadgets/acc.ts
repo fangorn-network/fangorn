@@ -1,7 +1,7 @@
 import { AccessControlConditions } from "@lit-protocol/access-control-conditions";
-import { Predicate, PredicateDescriptor } from "./types";
+import { Gadget, GadgetDescriptor } from "./types";
 
-export class AccPredicate implements Predicate {
+export class AccGadget implements Gadget {
 	readonly type = "acc";
 
 	constructor(
@@ -18,7 +18,7 @@ export class AccPredicate implements Predicate {
 		return this.acc;
 	}
 
-	toDescriptor(): PredicateDescriptor {
+	toDescriptor(): GadgetDescriptor {
 		return {
 			type: this.type,
 			description: this.description,

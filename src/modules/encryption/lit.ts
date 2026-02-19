@@ -15,7 +15,7 @@ import type {
 	AuthContextWrapper,
 	AuthSig,
 } from "./types.js";
-import type { Predicate } from "../predicates/types.js";
+import type { Gadget } from "../gadgets/types.js";
 import type { Filedata } from "../../types/index.js";
 import { EncryptionService } from "./index.js";
 
@@ -50,15 +50,12 @@ export class LitEncryptionService implements EncryptionService {
 		private config: LitEncryptionServiceConfig,
 	) {}
 
-	async encrypt(
-		file: Filedata,
-		predicate: Predicate,
-	): Promise<EncryptedPayload> {
+	async encrypt(file: Filedata, gadget: Gadget): Promise<EncryptedPayload> {
 		// local AES encryption
 		const { encryptedData, keyMaterial } = await encryptData(file.data);
 
-		// get ACC from predicate
-		const acc = await predicate.toAccessCondition();
+		// get ACC from gadget
+		const acc = await gadget.toAccessCondition();
 
 		// encrypt key with Lit
 		const litEncryptedKey = await this.litClient.encrypt({
@@ -74,7 +71,7 @@ export class LitEncryptionService implements EncryptionService {
 				dataToEncryptHash: litEncryptedKey.dataToEncryptHash,
 			},
 			acc,
-			litAction: predicate.toLitAction(),
+			litAction: gadget.toLitAction(),
 		};
 	}
 

@@ -64,7 +64,6 @@ export namespace FangornConfig {
 	};
 	// Base Sepolia config
 	export const BaseSepolia: AppConfig = {
-		// litActionCid: "QmT5J75W4STgVjEbAUi8i11m9cyKUiZDoPinYf5uTeRfhP",
 		usdcContractAddress: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
 		dataSourceRegistryContractAddress:
 			"0x4e7c79e79da6d98e3747b72147c0bfd9330c95a6",
