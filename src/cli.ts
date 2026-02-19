@@ -167,11 +167,10 @@ program
 	.description("Register a new datasource as an agent.")
 	.argument("<name>", "Name of the datasource")
 	.option("-s, --skip-card", "Skip agent card creation")
-	.option("-d, --skip-ds", "Skip datasource registrion")
 	.option("-e, --skip-erc", "Skip ERC-8007 registrion")
+	.option("-d, --skip-ds", "Skip datasource registrion")
 	.action(async (name: string, options) => {
 		try {
-			console.clear();
 			intro("Chain selection");
 
 			const chain = await selectChain();
@@ -517,6 +516,13 @@ program
 							JSON.stringify(agent.getRegistrationFile()),
 							"Your Registration File",
 						);
+					} else {
+						s.start("Registering with ERC-8004 registry");
+						const regTx = await agent.registerIPFS();
+						s.stop();
+						s.start("Waiting for registration transaction to be confirmed");
+						await regTx.waitConfirmed();
+						s.stop();
 					}
 				}
 			}
