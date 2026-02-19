@@ -166,19 +166,18 @@ program
 	.command("register")
 	.description("Register a new datasource as an agent.")
 	.argument("<name>", "Name of the datasource")
-	.option(
-		"-s, --skip-card",
-		"Set this flag to skip agent card creation and only register with the ERC-8004 registries.",
-	)
+	.option("-s, --skip-card", "Skip agent card creation")
+	.option("-e, --skip-erc", "Skip ERC-8007 registrion")
+	.option("-d, --skip-ds", "Skip datasource registrion")
 	.action(async (name: string, options) => {
 		try {
-			console.clear();
 			intro("Chain selection");
 
 			const chain = await selectChain();
 
 			outro(`Selected chain ${chain.name}`);
 
+			let registerDatasource = options.skipDs ? false : true;
 			let createAgentCard = options.skipCard ? false : true;
 			console.log(options.skipCard);
 
@@ -517,14 +516,23 @@ program
 							JSON.stringify(agent.getRegistrationFile()),
 							"Your Registration File",
 						);
+					} else {
+						s.start("Registering with ERC-8004 registry");
+						const regTx = await agent.registerIPFS();
+						s.stop();
+						s.start("Waiting for registration transaction to be confirmed");
+						await regTx.waitConfirmed();
+						s.stop();
 					}
 				}
 			}
 			outro(`Agent Registration is Complete for ${chain.name}`);
 
-			const fangorn = await getFangorn(chain);
-			const id = await fangorn.registerDataSource(name);
-			console.log(`Data source registered with id = ${id}`);
+			if (registerDatasource) {
+				const fangorn = await getFangorn(chain);
+				const id = await fangorn.registerDataSource(name);
+				console.log(`Data source ${name} registered with id = ${id}`);
+			}
 
 			process.exit(0);
 		} catch (err) {
