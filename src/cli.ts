@@ -77,7 +77,6 @@ function loadConfig(): Config {
 
 	let config = FangornConfig.BaseSepolia;
 	if (chainName === SupportedNetworks.ArbitrumSepolia.name) {
-		console.log("using arbitrum sepolia");
 		config = FangornConfig.ArbitrumSepolia;
 	}
 
@@ -179,7 +178,7 @@ program
 
 			let registerDatasource = options.skipDs ? false : true;
 			let createAgentCard = options.skipCard ? false : true;
-			console.log(options.skipCard);
+			let erc8004Registration = options.skipErc ? false : true;
 
 			let description = "";
 
@@ -282,8 +281,6 @@ program
 
 			intro(`Agent Registration for ${chain.name}`);
 			let cfg = loadConfig();
-
-			let erc8004Registration = true;
 
 			let agent0Sdk: SDK;
 
@@ -547,7 +544,7 @@ program
 				}
 				const fangorn = await getFangorn(chain);
 				const id = await fangorn.registerDataSource(datasourceAgentId);
-				console.log(`Data source ${name} registered with id = ${id}`);
+				note(`Data source ${name} registered with id = ${id}`);
 			}
 
 			process.exit(0);
