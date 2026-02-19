@@ -20,12 +20,12 @@ import { PinataStorage } from "../providers/storage/pinata/index.js";
 import { AppConfig } from "../config.js";
 import { arbitrumSepolia, baseSepolia } from "viem/chains";
 import { LitEncryptionService } from "../modules/encryption/lit.js";
-import { Predicate } from "../modules/predicates/types.js";
+import { Gadget } from "../modules/gadgets/types.js";
 import { SettlementTracker } from "../interface/settlement-tracker/settlementTracker.js";
 import { computeTagCommitment, fieldToHex } from "../utils/index.js";
-import { AccPredicate, emptyWallet } from "./test-predicate.js";
+import { emptyWallet } from "./test-gadget.js";
 import { EvmChain } from "@lit-protocol/access-control-conditions";
-import { PaymentPredicate } from "../modules/predicates/payment.js";
+import { PaymentGadget } from "../modules/gadgets/payment.js";
 
 export class TestBed {
 	// fangorn instances
@@ -145,7 +145,7 @@ export class TestBed {
 	}
 
 	/**
-	 * Upload files with payment predicates
+	 * Upload files with empty wallet gadget
 	 */
 	async fileUploadEmptyWallet(
 		datasourceName: string,
@@ -158,7 +158,7 @@ export class TestBed {
 		);
 	}
 
-	async fileUploadPaymentPredicate(
+	async fileUploadPaymentGadget(
 		datasourceName: string,
 		filedata: Filedata,
 		usdcPrice: string,
@@ -174,7 +174,7 @@ export class TestBed {
 					file.tag,
 					usdcPrice,
 				);
-				return new PaymentPredicate({
+				return new PaymentGadget({
 					commitment: fieldToHex(commitment),
 					chainName: this.config.chainName,
 					settlementTrackerContractAddress,

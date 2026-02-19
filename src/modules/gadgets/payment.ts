@@ -1,9 +1,9 @@
 import { createAccBuilder } from "@lit-protocol/access-control-conditions";
 import { Address, Hex } from "viem";
-import { Predicate, PredicateDescriptor } from "./types";
+import { Gadget, GadgetDescriptor } from "./types";
 
 // hash this all into a transcript => that's the commitment?
-export interface PaymentPredicateParams {
+export interface PaymentGadgetParams {
 	// the usdc price
 	usdcPrice: string;
 	commitment: Hex;
@@ -11,12 +11,12 @@ export interface PaymentPredicateParams {
 	settlementTrackerContractAddress: Address;
 }
 
-export class PaymentPredicate implements Predicate {
+export class PaymentGadget implements Gadget {
 	readonly type = "payment";
 
 	private litActionCid: string | null = null;
 
-	constructor(private params: PaymentPredicateParams) {}
+	constructor(private params: PaymentGadgetParams) {}
 
 	// supports both arbitrum and base (sepolia)
 	// todo: alternatively we can just pass the rpcurl as a param (set in the interface)
@@ -74,7 +74,7 @@ export class PaymentPredicate implements Predicate {
 			.build();
 	}
 
-	toDescriptor(): PredicateDescriptor {
+	toDescriptor(): GadgetDescriptor {
 		return {
 			type: this.type,
 			description: "x402: Payment Required",
@@ -86,7 +86,7 @@ export class PaymentPredicate implements Predicate {
 	// very very very unfortunately, the latest pinata sdk only supports ipfs CID v1
 	// but it does NOT use protobuf, meaning we can't convert it to CID v0
 	// However, Lit nodes seem to use a legacy gateway that requires CID v0
-	// and so, we need to pass the jwt to the predicate...
+	// and so, we need to pass the jwt to the gaget...
 	// there's probably a better way to go about this but this works for now
 	// but I'm not very comfortable with it...
 	private async toLitActionIpfsHash(): Promise<string> {
@@ -94,7 +94,7 @@ export class PaymentPredicate implements Predicate {
 		if (!jwt) throw new Error("PINATA_JWT is required");
 
 		const content = this.toLitAction();
-		const name = "lit-action-payment-predicate-v1";
+		const name = "lit-action-payment-gadget-v1";
 
 		const form = new FormData();
 		form.append("file", new Blob([content], { type: "text/plain" }), name);

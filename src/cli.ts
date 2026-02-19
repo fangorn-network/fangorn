@@ -40,7 +40,7 @@ import getNetwork, {
 } from "./config.js";
 import { LitEncryptionService } from "./modules/encryption/lit.js";
 import { computeTagCommitment, fieldToHex } from "./utils/index.js";
-import { PaymentPredicate } from "./modules/predicates/payment.js";
+import { PaymentGadget } from "./modules/gadgets/payment.js";
 import { createInterface } from "readline";
 import {
 	agentCardBuilder,
@@ -180,6 +180,7 @@ program
 			outro(`Selected chain ${chain.name}`);
 
 			let createAgentCard = options.skipCard ? false : true;
+			console.log(options.skipCard);
 
 			let description = "";
 
@@ -280,8 +281,6 @@ program
 
 			intro(`Agent Registration for ${chain.name}`);
 			let cfg = loadConfig();
-
-			createAgentCard = options.skipCard ? false : true;
 
 			let erc8004Registration = true;
 
@@ -543,7 +542,7 @@ program
 		"-c, --chain <chain>",
 		"The chain to use as the backend (arbitrumSepolia or baseSepolia)",
 	)
-	.option("-p, --price <price>", "Price to access the file (default: 0)", "0")
+	.option("-p, --predicate <predicate>", "Predicate to access the file")
 	.option("--overwrite", "Overwrite existing data source contents")
 	.action(async (name: string, files: string[], options) => {
 		try {
@@ -568,6 +567,8 @@ program
 			const cid = await fangorn.upload(
 				name,
 				filedata,
+				// then we need a predicate builder
+				// to take predicate string to actual class
 				async (file) => {
 					const commitment = await computeTagCommitment(
 						owner,
@@ -577,7 +578,7 @@ program
 					);
 
 					console.log("using commitment " + fieldToHex(commitment));
-					return new PaymentPredicate({
+					return new PaymentGadget({
 						commitment: fieldToHex(commitment),
 						chainName: "arbitrumSepolia",
 						settlementTrackerContractAddress:
