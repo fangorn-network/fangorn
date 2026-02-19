@@ -185,6 +185,8 @@ program
 
 			const s = spinner();
 
+			let datasourceAgentId;
+
 			if (createAgentCard) {
 				intro(`Agent Card Creation for ${chain.name}`);
 
@@ -207,8 +209,8 @@ program
 					builder.version(version as string);
 
 					const url = await text({
-						message: "URL for receiving data from the datasource agent:",
-						placeholder: "https://example.com/resources",
+						message: "Base URL of the resource server:",
+						placeholder: "https://example.com",
 					});
 					handleCancel(url);
 					builder.url(url as string);
@@ -521,16 +523,30 @@ program
 						const regTx = await agent.registerIPFS();
 						s.stop();
 						s.start("Waiting for registration transaction to be confirmed");
-						await regTx.waitConfirmed();
+						const { result: registrationFile } = await regTx.waitConfirmed();
 						s.stop();
+						datasourceAgentId = registrationFile.agentId;
+						note(
+							`Agent registration complete for agent name ${name}. They have the ID: ${datasourceAgentId}`,
+						);
 					}
 				}
 			}
 			outro(`Agent Registration is Complete for ${chain.name}`);
 
 			if (registerDatasource) {
+				if (!datasourceAgentId) {
+					const agentsList = await agent0Sdk.searchAgents({ name });
+					if (agentsList.length > 0) {
+						datasourceAgentId = agentsList[0].agentId;
+					} else {
+						throw new Error(
+							`Agent with name ${name} was not found on the ERC-8004 on ${chain.name}`,
+						);
+					}
+				}
 				const fangorn = await getFangorn(chain);
-				const id = await fangorn.registerDataSource(name);
+				const id = await fangorn.registerDataSource(datasourceAgentId);
 				console.log(`Data source ${name} registered with id = ${id}`);
 			}
 
