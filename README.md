@@ -12,7 +12,7 @@ Fangorn can be deployed on any EVM chain that has a brige to Lit protocol. Curre
 
 ## Build
 
-`pnpm i`.
+`pnpm i
 
 ### Usage
 

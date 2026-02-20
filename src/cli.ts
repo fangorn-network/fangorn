@@ -602,7 +602,7 @@ program
 						commitment: fieldToHex(commitment),
 						chainName: "arbitrumSepolia",
 						settlementTrackerContractAddress:
-							"0xb32ed201896ba765e6aa118a5c18c263f559474e" as Address,
+							"0x7c6ae9eb3398234eb69b2f3acfae69065505ff69" as Address,
 						usdcPrice: options.price,
 					});
 				},
