@@ -1,28 +1,11 @@
-// import type { PredicateConfig } from "./types.js";
-// import { PaymentPredicate } from "./payment.js";
-// import { Hex } from "viem";
+// import { PaymentGadget } from "./payment";
 
-// /**
-//  * Build predicates
-//  */
-// export class PredicateBuilder {
-//   private config: PredicateConfig;
-
-//   constructor(config: PredicateConfig) {
-//     this.config = config;
-//   }
-
-//   /**
-//    * Create a payment predicate: decrypt only after payment is verified
-//    */
-//   payment(commitment: Hex): PaymentPredicate {
-//     return new PaymentPredicate(this.config, { commitment });
-//   }
-
-//   // Add future predicates here
-// }
-
-// // Convenience factory
-// export function predicates(config: PredicateConfig): PredicateBuilder {
-//   return new PredicateBuilder(config);
-// }
+// function buildGadget(gadget: { name: string; params: string[] } | null, baseOptions: object) {
+//     const name = gadget?.name ?? "PaymentGadget"; // default
+//     switch (name) {
+//         case "PaymentGadget":
+//             return new PaymentGadget({ ...baseOptions });
+//         default:
+//             throw new Error(`Unknown gadget: ${name}`);
+//     }
+// }p

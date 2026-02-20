@@ -543,7 +543,7 @@ program
 					}
 				}
 				const fangorn = await getFangorn(chain);
-				const id = await fangorn.registerDataSource(datasourceAgentId);
+				const id = await fangorn.registerDataSource(name, datasourceAgentId);
 				note(`Data source ${name} registered with id = ${id}`);
 			}
 
@@ -598,7 +598,6 @@ program
 						options.price,
 					);
 
-					console.log("using commitment " + fieldToHex(commitment));
 					return new PaymentGadget({
 						commitment: fieldToHex(commitment),
 						chainName: "arbitrumSepolia",

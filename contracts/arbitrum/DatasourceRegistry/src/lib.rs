@@ -6,7 +6,6 @@ extern crate alloc;
 use alloy_sol_types::sol;
 use stylus_sdk::{
     alloy_primitives::{Address, FixedBytes, keccak256},
-    abi::AbiType,
     prelude::*,
     storage::*,
 };
@@ -35,10 +34,10 @@ pub enum DatasourceRegistryError {
     DataSourceAlreadyExists(DataSourceAlreadyExists),
 }
 
-// Mirrors the Solidity DataSource struct in storage
 #[storage]
 pub struct StorageDataSource {
     pub name: StorageString,
+    pub agent_id: StorageString,
     pub manifest_cid: StorageString,
     pub owner: StorageAddress,
 }
@@ -58,6 +57,7 @@ impl DatasourceRegistry {
     pub fn register_data_source(
         &mut self,
         name: String,
+        agent_id: String,
     ) -> Result<FixedBytes<32>, DatasourceRegistryError> {
         let sender = self.vm().msg_sender();
         let id = abi_encode_id(name.clone(), sender);
@@ -74,6 +74,7 @@ impl DatasourceRegistry {
         ds.name.set_str(&name);
         ds.manifest_cid.set_str("");
         ds.owner.set(sender);
+        ds.agent_id.set_str(&agent_id);
 
         self.owned.setter(sender).push(id);
 

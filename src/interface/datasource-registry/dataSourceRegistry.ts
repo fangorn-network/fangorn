@@ -65,14 +65,14 @@ export class DataSourceRegistry {
 		return result as Hex[];
 	}
 
-	async registerDataSource(name: string): Promise<Hex> {
+	async registerDataSource(name: string, agentId: string): Promise<Hex> {
 		const { chain, account } = this.getWriteConfig();
 
 		const hash = await this.walletClient.writeContract({
 			address: this.contractAddress,
 			abi: DS_REGISTRY_ABI,
 			functionName: "registerDataSource",
-			args: [name],
+			args: [name, agentId],
 			chain,
 			account,
 		});

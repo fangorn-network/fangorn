@@ -54,11 +54,8 @@ describe("Fangorn basic encryption works", () => {
 		chainName = process.env.CHAIN_NAME!;
 		if (!chainName) throw new Error("CHAIN_NAME required");
 
-		usdcDomainName = process.env.USDC_DOMAIN_NAME!;
-		if (!usdcDomainName) throw new Error("USDC_DOMAIN_NAME required");
-
-		// todo: set based on chain name
-		const chain = arbitrumSepolia;
+		usdcDomainName = chainName === "arbitrumSepolia" ? "USD Coin" : "USDC";
+		const chain = usdcDomainName === "USDC" ? baseSepolia : arbitrumSepolia;
 
 		rpcUrl = process.env.CHAIN_RPC_URL!;
 		if (!rpcUrl) throw new Error("CHAIN_RPC_URL required");
@@ -166,7 +163,7 @@ describe("Fangorn basic encryption works", () => {
 				fileType: "text/plain",
 			},
 		];
-
+		// user must have an empty wallet
 		await testbed.fileUploadEmptyWallet(datasourceName, manifest);
 		// the manifest should have been updated in the contract
 		await testbed.checkDataExistence(
@@ -174,8 +171,6 @@ describe("Fangorn basic encryption works", () => {
 			datasourceName,
 			tag,
 		);
-
-		console.log("encrypted data under empty wallet condition");
 		// wait to make sure pinata is behaving
 		await new Promise((resolve) => setTimeout(resolve, 4_000));
 
@@ -228,9 +223,9 @@ describe("Fangorn basic encryption works", () => {
 	// 		fileType: "text/plain",
 	// 	};
 
-	// 	// delegator uploads data encrypted for a payment of '0'
-	// 	const price = "0.000001";
-	// 	await testbed.fileUploadPaymentPredicate(
+	// 	// delegator uploads data encrypted for a payment of '0.000001'
+	// 	const price = "0";
+	// 	await testbed.fileUploadPaymentGadget(
 	// 		datasourceName,
 	// 		filedata,
 	// 		price,
@@ -243,9 +238,6 @@ describe("Fangorn basic encryption works", () => {
 	// 		tag,
 	// 	);
 	// 	console.log("encrypted data under payment settlement condition");
-
-	// 	// wait to make sure pinata is behaving
-	// 	await new Promise((resolve) => setTimeout(resolve, 4_000));
 
 	// 	console.log("submitting payment");
 	// 	// pay for file (delegatee has zero funds, so the delegator buys its own file)
@@ -269,19 +261,6 @@ describe("Fangorn basic encryption works", () => {
 	// 	const outputAsString = new TextDecoder().decode(output);
 	// 	expect(outputAsString).toBe(expectedPlaintext);
 	// 	console.log("Decryption succeeded!");
-
-	// 	// decryption should fail if the account has NOT paid
-	// 	let didFail = false;
-	// 	try {
-	// 		await testbed.tryDecrypt(
-	// 			delegatorAccount.address,
-	// 			datasourceName,
-	// 			tag,
-	// 		);
-	// 	} catch (error) {
-	// 		didFail = true;
-	// 	}
-	// 	expect(didFail).toBe(true);
 
 	// }, 120_000);
 });

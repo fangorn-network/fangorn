@@ -4,7 +4,10 @@ export const DS_REGISTRY_ABI = [
 		name: "registerDataSource",
 		type: "function",
 		stateMutability: "nonpayable", // for now...
-		inputs: [{ name: "name", type: "string" }],
+		inputs: [
+			{ name: "name", type: "string" },
+			{ name: "agentId", type: "string" },
+		],
 		outputs: [{ name: "id", type: "bytes32" }],
 	},
 	{

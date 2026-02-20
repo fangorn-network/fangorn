@@ -20,7 +20,6 @@ import { PinataStorage } from "../providers/storage/pinata/index.js";
 import { AppConfig } from "../config.js";
 import { arbitrumSepolia, baseSepolia } from "viem/chains";
 import { LitEncryptionService } from "../modules/encryption/lit.js";
-import { Gadget } from "../modules/gadgets/types.js";
 import { SettlementTracker } from "../interface/settlement-tracker/settlementTracker.js";
 import { computeTagCommitment, fieldToHex } from "../utils/index.js";
 import { emptyWallet } from "./test-gadget.js";
@@ -36,6 +35,8 @@ export class TestBed {
 
 	private storage: PinataStorage;
 
+	private usdcContractAddress: Address;
+
 	private vaultIds: Map<string, Hex>;
 	private config: AppConfig;
 
@@ -48,6 +49,7 @@ export class TestBed {
 		storage: PinataStorage,
 		config: AppConfig,
 		litChain: EvmChain,
+		usdcContractAddress: Address,
 	) {
 		this.delegatorAddress = delegatorAddress;
 		this.delegatorFangorn = delegatorFangorn;
@@ -56,6 +58,7 @@ export class TestBed {
 		this.config = config;
 		this.litChain = litChain;
 		this.storage = storage;
+		this.usdcContractAddress = usdcContractAddress;
 	}
 
 	public static async init(
@@ -77,7 +80,6 @@ export class TestBed {
 
 		const config: AppConfig = {
 			dataSourceRegistryContractAddress,
-			usdcContractAddress,
 			chainName: chain,
 			chain: chainImpl,
 			rpcUrl,
@@ -130,6 +132,7 @@ export class TestBed {
 			delegatorStorage,
 			config,
 			litChain,
+			usdcContractAddress,
 		);
 	}
 
@@ -139,7 +142,8 @@ export class TestBed {
 			return existing;
 		}
 
-		const id = await this.delegatorFangorn.registerDataSource(name);
+		// we don't care about the agent id yet
+		const id = await this.delegatorFangorn.registerDataSource(name, "");
 		this.vaultIds.set(name, id);
 		return id;
 	}
@@ -284,7 +288,7 @@ export class TestBed {
 			amount,
 			this.config.caip2,
 			usdcDomainName,
-			this.config.usdcContractAddress,
+			this.usdcContractAddress,
 		);
 
 		const commitment = await computeTagCommitment(owner, name, tag, amount);

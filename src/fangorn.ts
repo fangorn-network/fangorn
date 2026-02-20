@@ -57,8 +57,11 @@ export class Fangorn {
 	/**
 	 * Register a new named data source owned by the current wallet.
 	 */
-	async registerDataSource(name: string): Promise<Hex> {
-		return await this.dataSourceRegistry.registerDataSource(name);
+	async registerDataSource(name: string, agentId?: string): Promise<Hex> {
+		return await this.dataSourceRegistry.registerDataSource(
+			name,
+			agentId || "",
+		);
 	}
 
 	/**

@@ -1,56 +1,60 @@
 # Fangorn
 
-Fangorn is access-control middleware.
+Programmable data.
 
-## Build
+## Overview
 
-To build this project, navigate to the root directory and run `pnpm i`.
+Fangorn is a programmable data framework that lets you publish encrypted data under public conditions, or predicates, such that it can only be decrypted if you meet the condition.
 
-### Usage
+Heavily inspired by witness encryption, Fangorn is 'practical' witness encryption built on top of threshold encryption and, for now, TEE-based computations (in the future: purely zkps).
 
-Fangorn is a zero-knowlege access control framework. It provides tools to register data sources that can be accessed based on owner-defined conditions, like payment.
+- gadgets
+- contracts
 
 ## Supported Networks
 
-- arbitrum sepolia
-- base sepolia
+Fangorn can be deployed on any EVM chain that has a brige to Lit protocol. Currently, contracts are deployed to both Arbitrum Sepolia and Base Sepolia
 
-### Encryption
+## Build
 
-The library is modular and can support various key management systems. We recommend, and use by default, Lit protocol as the main KMS, or in this case, DKMS.
+`pnpm i`.
 
-Each datasource points to the content identifier (CID) of a "manifest" stored in IPFS. Each manifest stores a complete record of (encrypted) content, descriptions, and prices inserted by the data owner.
+### Usage
+
+Fangorn is a programmable data framework. It provides tools to register data sources that can be accessed based on owner-defined conditions, like payment.
 
 #### Quickstart
 
-Coming soon ;)
-
 ```js
-# TODO
+# Coming soon
 ```
 
 #### Full Guide
 
+#### Setup
+
 ```js
-// initialize a new fangorn client
+// provide the account, rpcurl, and chain externally
+// Initalize a wallet client
+const walletClient = createWalletClient({
+  account,,
+  transport: http(rpcUrl),
+  chain,
+});
 
-// setup config
-const config: AppConfig = {
-  litActionCid: litActionCid,
-  dataSourceRegistryContractAddress: dataSourceRegistryContractAddress,
-  usdcContractAddress,
-  chainName: "arbitrum",
-  rpcUrl: rpcUrl,
-};
+// For ArbSep, also supports BaseSepolia (wallet client must match)
+const config: AppConfig = FangornConfig.ArbitrumSepolia;
 
-// setup the Lit client
-// client to interact with LIT proto
+// setup the Lit client (for encryption)
 const litClient = await createLitClient({
   network: nagaDev,
 });
+// and the encryption service
+const encryptionService = new LitEncryptionService(delegateeLitClient, {
+  chainName: chain,
+});
 
-// setup the storage client (jwt and gateway must be provided)
-// storage via Pinata
+// setup the storage client
 const pinata = new PinataSDK({
   pinataJwt: jwt,
   pinataGateway: gateway,
@@ -59,85 +63,94 @@ const pinata = new PinataSDK({
 const storage = new PinataStorage(pinata);
 
 // the domain/webserver where Fangorn is used
-const domain = "localhost:3000";
+const domain = "localhost";
 
 const fangorn = await Fangorn.init(
-  delegatorAccount,
+  walletClient,
   storage,
-  client,
+  encryptionService,
   domain,
   config,
 );
+```
 
-// create a new named vault
-const vaultName = "myvault-001";
-const vaultId = await fangorn.registerDataSource(vaultName);
+##### Datasource Registration
 
-// upload files to the vault, specifying price
+Now that you have a Fangorn client, you can create a _datasource_. A datasource is an on-chain asset that stores a commitment to its storage root along with an optional `agentId` field for associating the datasource with an ERC-8004 identity.
+
+```js
+const name = "demo";
+// id = sha256(name || owner), agentId = ""
+const id = await this.delegatorFangorn.registerDataSource(name, "");
+```
+
+##### Encryption
+
+Once a datasource exists, the owner can update its storage root to point it to data. Fangorn leverages Lit protocol for encryption and access control.
+
+Encryption works by specifying a [gadget](./src/modules/gadgets/README.md), code that represents a logical statement that you want to encrypt under. The gadgets framework is extensible and customizable, allowing for easy custom implementations. For now, we have three gadgets:
+
+- empty wallet: must have an empty wallet to decrypt
+- identity: must have a specific identity to decrypt
+- payment: must submit a specific payment to decrypt
+
+```js
+// configure data using a json array, note that all data in this array will be encrypted under the same condition
+// each entry has as (tag, data, extension, fileTpe)
 let filedata = [
 	{
 		tag: "test0",
 		data: "content0",
 		extension: ".txt",
 		fileType: "text/plain",
-		price: "0.0001",
 	},
 	{
 		tag: "test1",
 		data: "content1",
 		extension: ".png",
 		fileType: "image/png",
-		price: "0.15",
 	},
 ];
-await fangorn.upload(vaultId, filedata);
 
-// easily add more files to the vault
-let filedata = [
-	{
-		tag: "test2",
-		data: "content2",
-		extension: ".mp4",
-		fileType: "video/mp4",
-		price: "0.091",
-	},
-];
-await fangorn.upload(vaultId, filedata);
-
-// overwrite a vault
-let filedata = [
-	{
-		tag: "test3",
-		data: "content3",
-		extension: ".js",
-		fileType: "text/javascript",
-	},
-];
-await fangorn.upload(vaultId, filedata, true);
+// this encrypts the file under a USDC payment condition, useful for x402
+await fangorn.upload(datasourceName, filedata, async (file) => {
+	const commitment = await computeTagCommitment(
+		this.delegatorAddress,
+		datasourceName,
+		file.tag,
+		usdcPrice,
+	);
+	return new PaymentGadget({
+		commitment: fieldToHex(commitment),
+		chainName: this.config.chainName,
+		settlementTrackerContractAddress,
+		usdcPrice,
+	});
+});
 ```
 
 ### Decryption
 
-Decryption works by providing a vault id, tag, and the valid password to unlock the data. Proof generation is handled by the Fangorn SDK.
+Decryption mandates that the caller has met the condition specified by the ciphertext. If unknown, the condition can be decoded by fetching the entry from storage (pinata) in which we store a `gadgetDescriptor`, providing pertinent information about the gadget used to encrypt the plaintext and how to satisfy it.
 
 ```js
-// The tag associated with the data we want to decrypt
-const taxTag = "tax-2025";
-const password = "test";
+// the address of the owner of the datasource
+const owner = "0xabc123...";
+// the name of the datasource
+const name = "demo";
+// the tag of the data we want to fetch
+const tag = "test0";
 
-const domain = "localhost:3000";
-const fangorn = await Fangorn.init(delegateeAccount, jwt, gateway, domain);
-// try to recover plaintext
-const plaintext = await fangorn.decryptFile(vaultId, taxTag, password);
-
-console.log("we got the plaintext " + plaintext);
+const plaintext = await fangorn.decryptFile(owner, name, tag);
+const outputAsString = new TextDecoder().decode(output);
+console.log("we got the plaintext " + outputAsString);
 ```
 
 ## Testing
 
 ### Unit Tests
 
-Run the tests with
+Run the tests with:
 
 ```sh
 pnpm test
@@ -147,7 +160,7 @@ pnpm test
 
 #### Setup
 
-The e2e test suite requires various environment variables that must be manually configured.
+The e2e test suite requires various environment variables that must be manually configured. In addition, it must be executed on an actual testnet in order to establish comms with Lit protocol.
 
 Testnet tokens (ETH on Base Sepolia) can be obtained from Coinbase's official faucet https://portal.cdp.coinbase.com/
 
@@ -157,19 +170,46 @@ Testnet tokens (ETH on Base Sepolia) can be obtained from Coinbase's official fa
      - Needs to have a balance of test ETH to send transactions
    - `DELEGATEE_ETH_PRIVATE_KEY`: The private key of the delegatee account
      - Needs to have a balance of test ETH to send transactions
-   - `CHAIN_RPC_URL`: The RPC URL of the ERC20 chain
-     - Expected to be Base sepolia testnet: https://base-sepolia-public.nodies.app
-     - It does not currently support other networks (would require modifying the lit action, which we will do in the future)
-   - `PINATA_JWT`: The JWT for Pinata
-     - Can be obtained from: https://app.pinata.cloud/developers/api-keys
-   - `PINATA_GATEWAY`: The gateway for Pinata
-     - Can use your own gateway or the default 'https://gateway.pinata.cloud'
-   - `LIT_ACTION_CID`: The CID of the lit action for access control checks
-     - Can be deployed by the test script, else use "QmcDkeo7YnJbuyYnXfxcnB65UCkjFhLDG5qa3hknMmrDmQ"
-   - `VERIFIER_CONTRACT_ADDR`: The Barretenberg verifier contract address
-     - Can be deployed by the test script, else use "0xb88e05a06bb2a2a424c1740515b5a46c0d181639"
-   - `ZK_GATE_ADDR`: The ZkGate.sol contract address
-     - Can be deployed by the test script, else use "0xec2b41e50ca1b9fc3262b9fd6ad9744c64f135a6"
+
+- `PINATA_JWT`: The JWT for Pinata
+  - Can be obtained from: https://app.pinata.cloud/developers/api-keys
+- `PINATA_GATEWAY`: The gateway for Pinata
+  - Can use your own gateway or the default 'https://gateway.pinata.cloud'
+- `CHAIN_NAME`: arbitrumSepolia or baseSepolia
+- `CAIP2`: The CAIP-2 identifier for the network.
+  - 421614 for Arbitrum Sepolia, 84532 for Base Sepolia
+- `CHAIN_RPC_URL`: The RPC URL of the chain
+  - Expected to be Base sepolia testnet: https://base-sepolia-public.nodies.app or Arbitrum Sepolia: https://sepolia-rollup.arbitrum.io/rpc
+- `USDC_CONTRACT_ADDRESS`: The address of the deployed USDC contract
+  - 0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d for Arbitrum Sepolia 0x036CbD53842c5426634e7929541eC2318f3dCF7e for Base Sepolia
+- `DS_REGISTRY_ADDR`: The address of the deployed data registry contract
+  - Can be deployed by the test script, else use 0x5bd547ce3b5964c2fc0325f523679f66de391d6f for Arbitrum Sepolia and 0x6fd0e50073dbd8169bcaf066bb4a4991bfa48eeb on Base Sepolia
+- `SETTLEMENT_TRACKER_ADDR`: The address of the deployed settlement tracker contract address. This is only needed if you plan to run tests using the payment gadget.
+  - Can be deployed by the test script, else use 0x7c6ae9eb3398234eb69b2f3acfae69065505ff69 for Arbitrum Sepolia
+
+Sample:
+
+For Arbitrum Sepolia
+
+```sh
+CHAIN_NAME=arbitrumSepolia
+CAIP2=421614
+CHAIN_RPC_URL=https://sepolia-rollup.arbitrum.io/rpc
+USDC_CONTRACT_ADDRESS=0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d
+DS_REGISTRY_ADDR=0x602aedafe1096004d4db591b6537bc39d7ac71a6
+SETTLEMENT_TRACKER_ADDR=0x7c6ae9eb3398234eb69b2f3acfae69065505ff69
+```
+
+For Base Sepolia
+
+```sh
+CHAIN_NAME=baseSepolia
+CAIP2=84532
+CHAIN_RPC_URL=https://base-sepolia-public.nodies.app
+USDC_CONTRACT_ADDRESS=0x036CbD53842c5426634e7929541eC2318f3dCF7e
+DS_REGISTRY_ADDR=0x6fd0e50073dbd8169bcaf066bb4a4991bfa48eeb
+SETTLEMENT_TRACKER_ADDR=0x708751829f5f5f584da4142b62cd5cc9235c8a18
+```
 
 ### Running the tests
 
@@ -180,6 +220,15 @@ The tests will:
 1. Build and deploy the solidity verifier to base sepolia (unless it is defined in .env)
 2. Upload the Lit Action to IPFS (unless it is defined in .env)
 
+## Contracts
+
+|                                        | Arbitrum Sepolia                                             | Base Sepolia                                                   |
+| -------------------------------------- | ------------------------------------------------------------ | -------------------------------------------------------------- |
+| Datsource Registry Contract Deployment | 0x602aedafe1096004d4db591b6537bc39d7ac71a6                   | 0x6fd0e50073dbd8169bcaf066bb4a4991bfa48eeb                     |
+| Datsource Registry Contract Code       | [lib.rs](./contracts/arbitrum/DatasourceRegistry/src/lib.rs) | [DSRegistry.sol](./contracts/src/DSRegistry.sol)               |
+| Settlement Tracker Contract Deployment | 0x7c6ae9eb3398234eb69b2f3acfae69065505ff69                   | 0x708751829f5f5f584da4142b62cd5cc9235c8a18                     |
+| Settlement Tracker Contract Code       | [lib.rs](./contracts/arbitrum/SettlementTracker//src/lib.rs) | [SettlementTracker.sol](./contracts/src/SettlementTracker.sol) |
+
 ## CLI
 
 To install locally:
@@ -189,21 +238,22 @@ chmod +x update_clci.sh
 ./update_cli.sh
 ```
 
-```
+```sh
 Usage: Fangorn [options] [command]
 
 CLI for Fangorn
 
 Options:
-  -V, --version                       output the version number
-  -h, --help                          display help for command
+  -V, --version                           output the version number
+  -h, --help                              display help for command
 
 Commands:
-  register [options] <name>           Register a new data source
-  upload [options] <name> <files...>  Upload file(s) to a data source
-  list [options] <name>               List contents (index) of a data source
-  info [options] <name>               Get data source info from contract
-  decrypt [options] <name> <tag>      Decrypt a file from a vault
-  entry [options] <name> <tag>        Get info about a specific vault entry
-  help [command]                      display help for command
+  register [options] <name>               Register a new datasource as an agent.
+  upload [options] <name> <files...>      Upload file(s) to a data source
+  decrypt [options] <owner> <name> <tag>  Decrypt a file from a vault
+  help [command]                          display help for command
 ```
+
+## License
+
+MIT

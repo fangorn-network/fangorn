@@ -10,6 +10,7 @@ contract DSRegistry {
 
     struct DataSource {
         string name;
+        string agentId;
         string manifestCid;
         address owner;
     }
@@ -43,7 +44,8 @@ contract DSRegistry {
      * @return id The unique identifier for the data source
      */
     function registerDataSource(
-        string calldata name
+        string calldata name,
+        string calldata agentId
     ) external returns (bytes32 id) {
         id = keccak256(abi.encode(name, msg.sender));
         
@@ -54,6 +56,7 @@ contract DSRegistry {
 
         dataSources[id] = DataSource({
             name: name,
+            agentId: agentId,
             manifestCid: "",
             owner: msg.sender
         });
