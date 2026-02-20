@@ -4,16 +4,11 @@ Programmable data.
 
 ## Overview
 
-Fangorn is a programmable data framework that lets you publish encrypted data under public conditions, or predicates, such that it can only be decrypted if you meet the condition.
-
-Heavily inspired by witness encryption, Fangorn is 'practical' witness encryption built on top of threshold encryption and, for now, TEE-based computations (in the future: purely zkps).
-
-- gadgets
-- contracts
+Fangorn is a programmable data framework that lets you **register datasources** and **publish encrypted data** under public conditions, or predicates, such that it can only be decrypted if you meet the condition.
 
 ## Supported Networks
 
-Fangorn can be deployed on any EVM chain that has a brige to Lit protocol. Currently, contracts are deployed to both Arbitrum Sepolia and Base Sepolia
+Fangorn can be deployed on any EVM chain that has a brige to Lit protocol. Currently, contracts are deployed to both Arbitrum Sepolia and Base Sepolia. See the [contracts](#contracts) section for more info.
 
 ## Build
 
