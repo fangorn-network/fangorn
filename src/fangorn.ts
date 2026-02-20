@@ -1,473 +1,264 @@
-import { createLitClient } from "@lit-protocol/lit-client";
-import { createAccBuilder } from "@lit-protocol/access-control-conditions";
-import { nagaDev } from "@lit-protocol/networks";
-import {
-	Address,
-	Chain,
-	createPublicClient,
-	Hex,
-	http,
-	toHex,
-	WalletClient,
-} from "viem";
-import { Vault, ZKGate } from "./interface/zkGate.js";
-import { hashPassword } from "./utils/index.js";
-import { buildCircuitInputs, computeTagCommitment } from "./crypto/proof.js";
-import {
-	buildTreeFromLeaves,
-	fieldToHex,
-	hexToField,
-} from "./crypto/merkle.js";
-import {
-	Filedata,
-	PendingEntry,
-	VaultEntry,
-	VaultManifest,
-} from "./types/types.js";
-import { PinataSDK } from "pinata";
-import { Barretenberg, UltraHonkBackend } from "@aztec/bb.js";
-import { CompiledCircuit, Noir } from "@noir-lang/noir_js";
-import { decryptData, encryptData } from "./crypto/encryption.js";
-import { createAuthManager, storagePlugins } from "@lit-protocol/auth";
+// fangorn.ts
 
-export interface AppConfig {
-	// The CID pointing to the expected LIT action
-	litActionCid: string;
-	// The CID pointing to the compiled circuit json
-	circuitJsonCid: string;
-	// The deployed zkGate contract address
-	zkGateContractAddress: Hex;
-	// The name of the chain for LIT action execution (does not always match what is defined by viem)
-	chainName: string;
-	// The public rpc address of the chain we are connecting to
-	rpcUrl: string;
-}
-
-export namespace FangornConfig {
-	// A testnet config for cotnracts deployed on Base Sepolia
-	export const Testnet: AppConfig = {
-		litActionCid: "QmcDkeo7YnJbuyYnXfxcnB65UCkjFhLDG5qa3hknMmrDmQ",
-		circuitJsonCid: "QmXw1rWUC2Kw52Qi55sfW3bCR7jheCDfSUgVRwvsP8ZZPE",
-		zkGateContractAddress: "0x062da4924251c7ed392afc01f57d7ea2c255dc81",
-		chainName: "baseSepolia",
-		rpcUrl: "https://sepolia.base.org",
-	};
-}
+import { Address, createPublicClient, Hex, http, WalletClient } from "viem";
+import {
+	Vault,
+	DataSourceRegistry,
+} from "./interface/datasource-registry/dataSourceRegistry.js";
+import { Filedata, PendingEntry, VaultManifest } from "./types/index.js";
+import StorageProvider from "./providers/storage/index.js";
+import { AppConfig, FangornConfig } from "./config.js";
+import { EncryptionService } from "./modules/encryption/index.js";
+import { Gadget } from "./modules/gadgets/types.js";
 
 /**
- * Fangorn class
+ *
  */
 export class Fangorn {
-	// The name (for LIT) of the chain we are using
-	private chainName: string;
-	// The LIT client for interacting with the LIT network
-	private litClient: any;
-	// The CID of the lit action in storage
-	private litActionCid: string;
-	// The complied noir circuit (e.g. circuit.json)
-	private circuit: CompiledCircuit;
-	// The ZKGate Contract instance
-	private zkGate: any;
-	// The wallet client for signing txs
-	private walletClient: any;
-	// The storage layer (todo: make this into a genericc storage adapter)
-	private pinata: PinataSDK;
-	// in-mem state for building manifests
+	// data ingestion staging
 	private pendingEntries: Map<string, PendingEntry> = new Map();
-	// The domain (i.e. webserver address) that is using the Fangorn Client
-	private domain: string;
 
 	constructor(
-		chainName: string,
-		litActionCid: string,
-		circuit: CompiledCircuit,
-		litClient: any,
-		zkGate: any,
-		walletClient: any,
-		pinata: PinataSDK,
-		domain: string,
-	) {
-		this.litClient = litClient;
-		this.zkGate = zkGate;
-		this.walletClient = walletClient;
-		this.pinata = pinata;
-		this.litActionCid = litActionCid;
-		this.circuit = circuit;
-		this.chainName = chainName;
-		this.domain = domain;
-	}
+		private dataSourceRegistry: DataSourceRegistry,
+		private walletClient: WalletClient,
+		private storage: StorageProvider<any>,
+		private encryptionService: EncryptionService,
+		private domain: string,
+	) {}
 
 	public static async init(
-		jwt: string,
-		gateway: string,
 		walletClient: WalletClient,
+		storage: StorageProvider<any>,
+		encryptionService: EncryptionService,
 		domain: string,
-		config?: AppConfig | undefined,
-	) {
-		const resolvedConfig = config || FangornConfig.Testnet;
-		const rpcUrl = resolvedConfig.rpcUrl;
-		const chainName = resolvedConfig.chainName;
+		config?: AppConfig,
+	): Promise<Fangorn> {
+		const resolvedConfig = config || FangornConfig.ArbitrumSepolia;
 
-		// TODO: should this be made outside of the client?
-		const publicClient = createPublicClient({ transport: http(rpcUrl) });
-
-		// client to interact with LIT proto
-		const litClient = await createLitClient({
-			// @ts-expect-error - TODO: fix this
-			network: nagaDev,
+		const publicClient = createPublicClient({
+			transport: http(resolvedConfig.rpcUrl),
 		});
 
-		// interacts with the zk-gate contract
-		let zkGateClient = new ZKGate(
-			resolvedConfig.zkGateContractAddress,
-			publicClient,
+		const dataSourceRegistry = new DataSourceRegistry(
+			resolvedConfig.dataSourceRegistryContractAddress,
+			publicClient as any,
 			walletClient,
 		);
-
-		// storage via Pinata
-		const pinata = new PinataSDK({
-			pinataJwt: jwt,
-			pinataGateway: gateway,
-		});
-
-		// read the circuit from ipfs
-		// TODO: assumes the circuit exists, no error handling here
-		const circuitResponse = await pinata.gateways.public.get(
-			resolvedConfig.circuitJsonCid,
-		);
-		const compiledCircuit = circuitResponse.data as unknown as CompiledCircuit;
 
 		return new Fangorn(
-			chainName,
-			resolvedConfig.litActionCid,
-			compiledCircuit,
-			litClient,
-			zkGateClient,
+			dataSourceRegistry,
 			walletClient,
-			pinata,
+			storage,
+			encryptionService,
 			domain,
 		);
 	}
 
-	// TODO: how to ensure password is zeroized?
-	async createVault(name: string, password: string): Promise<Hex> {
-		let passwordHash = hashPassword(password);
-		const fee = await this.zkGate.getVaultCreationFee();
-		const { hash: createHash, vaultId } = await this.zkGate.createVault(
+	/**
+	 * Register a new named data source owned by the current wallet.
+	 */
+	async registerDataSource(name: string, agentId?: string): Promise<Hex> {
+		return await this.dataSourceRegistry.registerDataSource(
 			name,
-			passwordHash,
-			fee,
+			agentId || "",
 		);
-		await this.zkGate.waitForTransaction(createHash);
-		return vaultId;
 	}
 
 	/**
-	 * Upload data to an existing vault
-	 * @param vaultId The id of the vault being modified
-	 * @param filedata The file data to insert
-	 * @param overwrite If true, then overwrite the existing vault with new files
-	 * @returns The new manifest CID and Merkle root
+	 * Upload files to a vault with the given gadget for access control.
 	 */
-	async upload(vaultId: Hex, filedata: Filedata[], overwrite?: boolean) {
-		// check if manifest exists or not
-		// load existing manifest
-		const vault = await this.zkGate.getVault(vaultId);
-		// if the manifest exists and we don't want to overwrite
-		if (vault.manifestCid && !overwrite) {
-			const oldManifest = await this.fetchManifest(vault.manifestCid);
-			await this.loadManifest(oldManifest);
-			// try to unpin old manifest
+	async upload(
+		name: string,
+		filedata: Filedata[],
+		gadgetFactory: (file: Filedata) => Gadget | Promise<Gadget>,
+		overwrite?: boolean,
+	): Promise<string> {
+		const who = this.walletClient.account.address;
+		const datasource = await this.dataSourceRegistry.getDataSource(who, name);
+
+		// Load existing manifest if appending
+		if (datasource.manifestCid && !overwrite) {
+			const oldManifest = await this.fetchManifest(datasource.manifestCid);
+			this.loadManifest(oldManifest);
+
 			try {
-				await this.pinata.files.public.delete([vault.manifestCid]);
+				await this.storage.delete(datasource.manifestCid);
 			} catch (e) {
 				console.warn("Failed to unpin old manifest:", e);
 			}
 		}
 
-		// add files
-		for (let file of filedata) {
-			await this.addFile(vaultId, file);
+		// Add files with gadgets
+		for (const file of filedata) {
+			const gadget = await gadgetFactory(file);
+			await this.addFile(file, gadget);
 		}
-		return await this.commitVault(vaultId);
+
+		return await this.commit(name);
 	}
 
 	/**
-	 * Encrypts data (with LIT) and uploads ciphertext to IPFS.
-	 * Does NOT update the vault!! You must call commitVault() after adding all files.
+	 * Encrypt and stage a single file.
+	 * Call commitVault() after adding all files.
 	 */
-	async addFile(
-		vaultId: Hex,
-		file: Filedata,
-	): Promise<{ cid: string; commitment: Hex }> {
-		// compute commitment to (vaultId, tag)
-		const tag = file.tag;
-		const leaf = await computeTagCommitment(vaultId, tag);
-		const commitmentHex = fieldToHex(leaf);
+	async addFile(file: Filedata, gadget: Gadget): Promise<{ cid: string }> {
+		const account = this.walletClient.account;
+		if (!account?.address) throw new Error("Wallet not connected");
 
-		// encrypt the actual file contents using AES-GCM locally
-		const { encryptedData, keyMaterial } = await encryptData(file.data);
+		// Encrypt using the gadget's access control
+		const encrypted = await this.encryptionService.encrypt(file, gadget);
 
-		// build ACC
-		const acc = createAccBuilder()
-			.requireLitAction(
-				this.litActionCid,
-				"go",
-				[this.zkGate.getContractAddress(), vaultId, commitmentHex],
-				"true",
-			)
-			.build();
-
-		// encrypt THE KEY with LIT protocol
-		const keyEncryptedData = await this.litClient.encrypt({
-			dataToEncrypt: keyMaterial,
-			unifiedAccessControlConditions: acc,
-			chain: this.chainName,
+		// Upload ciphertext to storage
+		const cid = await this.storage.store(encrypted, {
+			metadata: { name: file.tag },
 		});
 
-		// upload ciphertext (pin)
-		const upload = await this.pinata.upload.public.json(
-			{ encryptedData, keyEncryptedData, acc },
-			{ metadata: { name: tag } },
-		);
-
-		// stage the entry (not committed yet)
-		this.pendingEntries.set(tag, {
-			tag,
-			cid: upload.cid,
-			leaf,
-			commitment: commitmentHex,
-			acc,
+		// Stage entry
+		this.pendingEntries.set(file.tag, {
+			tag: file.tag,
+			cid,
 			extension: file.extension,
 			fileType: file.fileType,
+			gadgetDescriptor: gadget.toDescriptor(),
 		});
 
-		return { cid: upload.cid, commitment: commitmentHex };
+		return { cid };
 	}
 
 	/**
-	 * Removes a file from staging (call before committing)
-	 * @param tag The tag of the file
-	 * @returns bool
+	 * Remove a staged file before committing.
 	 */
 	removeFile(tag: string): boolean {
 		return this.pendingEntries.delete(tag);
 	}
 
 	/**
-	 * Builds manifest from all staged files and updates the vault on-chain.
-	 * Call this *after* adding all files with addFile().
+	 * Commit all staged files to the vault.
 	 */
-	async commitVault(vaultId: Hex): Promise<{ manifestCid: string; root: Hex }> {
+	async commit(name: string): Promise<string> {
 		if (this.pendingEntries.size === 0) {
 			throw new Error("No files to commit");
 		}
 
-		// build Merkle tree
 		const entries = Array.from(this.pendingEntries.values());
-		const leaves = entries.map((e) => e.leaf);
-		const { root, layers } = await buildTreeFromLeaves(leaves);
-		const rootHex = fieldToHex(root);
 
-		// construct new manifest
 		const manifest: VaultManifest = {
 			version: 1,
-			poseidon_root: rootHex,
 			entries: entries.map((e, i) => ({
 				tag: e.tag,
 				cid: e.cid,
 				index: i,
-				leaf: fieldToHex(e.leaf),
-				commitment: e.commitment,
 				extension: e.extension,
 				fileType: e.fileType,
+				gadgetDescriptor: e.gadgetDescriptor,
 			})),
-			tree: layers.map((layer) => layer.map(fieldToHex)),
+			tree: [],
 		};
 
-		// pin the manifest
-		const manifestUpload = await this.pinata.upload.public.json(manifest, {
-			metadata: { name: `manifest-${vaultId}` },
+		const manifestCid = await this.storage.store(manifest, {
+			metadata: { name: `manifest-${name}` },
 		});
 
-		// update contract
-		const hash = await this.zkGate.updateVault(
-			vaultId,
-			rootHex,
-			manifestUpload.cid,
+		const hash = await this.dataSourceRegistry.updateDataSource(
+			name,
+			manifestCid,
 		);
-		await this.zkGate.waitForTransaction(hash);
+		await this.dataSourceRegistry.waitForTransaction(hash);
 
-		// clear pending entries
 		this.pendingEntries.clear();
-
-		return { manifestCid: manifestUpload.cid, root: rootHex };
+		return manifestCid;
 	}
 
 	/**
-	 * Loads existing manifest
-	 */
-	async loadManifest(oldManifest: any) {
-		// load existing entries into pending
-		for (const entry of oldManifest.entries) {
-			this.pendingEntries.set(entry.tag, {
-				tag: entry.tag,
-				cid: entry.cid,
-				leaf: hexToField(entry.leaf),
-				commitment: entry.commitment as Hex,
-				acc: null,
-				extension: entry.extension,
-				fileType: entry.fileType,
-			});
-		}
-	}
-
-	/**
-	 * Attempt to decrypt data identified with a given tag within the given vault
-	 * @param vaultId
-	 * @param tag
-	 * @param password
-	 * @returns
+	 * Decrypt a file from a vault.
 	 */
 	async decryptFile(
-		vaultId: Hex,
+		owner: Address,
+		name: string,
 		tag: string,
-		password: string,
-	): Promise<Uint8Array<ArrayBufferLike>> {
-		const isWindowUndefined = typeof window === "undefined";
-		const account = isWindowUndefined
-			? this.walletClient.account
-			: this.walletClient;
-		// load the auth context
-		const authManager = isWindowUndefined
-			? // node.js support
-				createAuthManager({
-					storage: storagePlugins.localStorageNode({
-						appName: "fangorn",
-						networkName: nagaDev.getNetworkName(),
-						storagePath: "./lit-auth-storage",
-					}),
-				})
-			: // browser support
-				createAuthManager({
-					storage: storagePlugins.localStorage({
-						appName: "fangorn",
-						networkName: nagaDev.getNetworkName(),
-					}),
-				});
+		authContext?: any,
+	): Promise<Uint8Array> {
+		// Fetch manifest and find entry
+		const vault = await this.dataSourceRegistry.getDataSource(owner, name);
+		const manifest = await this.storage.retrieve(vault.manifestCid);
 
-		const litClient = this.litClient;
-		const authContext = await authManager.createEoaAuthContext({
-			litClient,
-			config: { account: account },
-			authConfig: {
-				domain: this.domain,
-				statement: "Please re-authenticate to enable LIT functionality. ",
-				// is this the right duration for expiry?
-				expiration: new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString(),
-				// Are resources too open?
-				resources: [
-					["access-control-condition-decryption", "*"],
-					["lit-action-execution", "*"],
-				],
-			},
-		});
-
-		// fetch manifest from pinata
-		const vault = await this.zkGate.getVault(vaultId);
-		const manifest = await this.fetchManifest(vault.manifestCid);
-
-		// try to find entry
-		const entry = manifest.entries.find((e) => e.tag === tag);
+		const entry = manifest.entries.find((e: any) => e.tag === tag);
 		if (!entry) {
 			throw new Error(`Entry not found: ${tag}`);
 		}
 
-		// check if already have access (do not need to reverify)
-		const userAddress = this.walletClient.account.address;
-		const hasAccess = await this.zkGate.checkCIDAccess(
-			vaultId,
-			entry.commitment as Hex,
-			userAddress,
+		// Fetch encrypted payload
+		const encrypted = await this.storage.retrieve(entry.cid);
+
+		// Decrypt via encryption service
+		const resolvedAuthContext =
+			authContext ??
+			(await this.encryptionService.createAuthContext(
+				this.walletClient,
+				this.domain,
+			));
+
+		const decrypted = await this.encryptionService.decrypt(
+			encrypted,
+			resolvedAuthContext,
 		);
 
-		// we don't need to request access if we already have it
-		if (!hasAccess) {
-			await this.proveAccess(vaultId, password, entry, manifest);
+		return decrypted.data;
+	}
+
+	// Read operations
+
+	// fetch the data source info
+	async getDataSource(owner: Address, name: string): Promise<Vault> {
+		return await this.dataSourceRegistry.getDataSource(owner, name);
+	}
+
+	// Get the manifest for a given data source
+	async getManifest(
+		owner: Address,
+		name: string,
+	): Promise<VaultManifest | undefined> {
+		const vault = await this.getDataSource(owner, name);
+		if (!vault.manifestCid || vault.manifestCid === "") {
+			return undefined;
 		}
-
-		// fetch ciphertext
-		const response = await this.pinata.gateways.public.get(entry.cid);
-		const { encryptedData, keyEncryptedData, acc } = response.data as any;
-
-		// request decryption
-		const decryptedKey = await this.litClient.decrypt({
-			ciphertext: keyEncryptedData.ciphertext,
-			dataToEncryptHash: keyEncryptedData.dataToEncryptHash,
-			unifiedAccessControlConditions: acc,
-			authContext,
-			chain: this.chainName,
-		});
-
-		// recover the symmetric key
-		const key = decryptedKey.decryptedData;
-		// actually decrypt the data with the recovered key
-		const decryptedFile = await decryptData(encryptedData, key);
-
-		return decryptedFile;
+		return await this.fetchManifest(vault.manifestCid);
 	}
 
-	// proof gen
-	private async proveAccess(
-		vaultId: Hex,
-		password: string,
-		entry: VaultEntry,
-		manifest: VaultManifest,
-	): Promise<void> {
-		const userAddress = this.walletClient.account.address;
-
-		// build circuit inputs
-		const { inputs, nullifier, cidCommitment } = await buildCircuitInputs(
-			password,
-			entry,
-			userAddress,
-			vaultId,
-			manifest,
-		);
-
-		const api = await Barretenberg.new({ threads: 1 });
-		const backend = new UltraHonkBackend(this.circuit.bytecode, api);
-		const noir = new Noir(this.circuit);
-		const { witness } = await noir.execute(inputs);
-		const proofResult = await backend.generateProof(witness, {
-			verifierTarget: "evm",
-		});
-
-		const proofHex: Hex = toHex(proofResult.proof);
-		// submit onchain
-		const hash = await this.zkGate.submitProof(
-			vaultId,
-			cidCommitment,
-			nullifier,
-			proofHex,
-		);
-		await this.zkGate.waitForTransaction(hash);
+	// attempt to get specific data from the data source
+	async getDataSourceData(owner: Address, name: string, tag: string) {
+		const manifest = await this.getManifest(owner, name);
+		if (!manifest) {
+			throw new Error("Vault has no manifest");
+		}
+		const entry = manifest.entries.find((e) => e.tag === tag);
+		if (!entry) {
+			throw new Error(`Entry not found: ${tag}`);
+		}
+		return entry;
 	}
 
-	public async getUserVaults(): Promise<string[]> {
-		const address: Address = this.walletClient.account.address;
-		const vaults = await this.zkGate.getOwnedVaults(address);
-
-		return vaults;
+	getAddress(): Hex {
+		const account = this.walletClient.account;
+		if (!account?.address) throw new Error("Wallet not connected");
+		return account.address;
 	}
 
-	public async getVault(vaultId: Hex): Promise<Vault> {
-		const vault: Vault = await this.zkGate.getVault(vaultId);
-		return vault;
+	async fetchManifest(cid: string): Promise<VaultManifest> {
+		return (await this.storage.retrieve(cid)) as unknown as VaultManifest;
 	}
 
-	public async fetchManifest(cid: string): Promise<VaultManifest> {
-		const response = await this.pinata.gateways.public.get(cid);
-		return response.data as unknown as VaultManifest;
+	// helpers
+
+	private loadManifest(oldManifest: VaultManifest): void {
+		for (const entry of oldManifest.entries) {
+			this.pendingEntries.set(entry.tag, {
+				tag: entry.tag,
+				cid: entry.cid,
+				extension: entry.extension,
+				fileType: entry.fileType,
+				gadgetDescriptor: entry.gadgetDescriptor,
+			});
+		}
 	}
 }

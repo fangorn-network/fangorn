@@ -1,2 +1,2 @@
-// src/index.ts
-export { ZKGate } from "./zkGate.js";
+export * from "./settlement-tracker/abi.js";
+export * from "./datasource-registry/abi.js";

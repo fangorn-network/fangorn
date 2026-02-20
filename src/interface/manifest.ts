@@ -1,4 +1,4 @@
-import type { VaultEntry, VaultManifest } from "../types/types.js";
+import type { VaultEntry, VaultManifest } from "../types/index.js";
 
 export function findEntry(
 	manifest: VaultManifest,

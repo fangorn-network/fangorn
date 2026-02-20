@@ -1,21 +1,34 @@
-const go = async (zkGateAddress, vaultId, cidCommitment) => {
-	const rpcUrl = "https://sepolia.base.org";
+const arbitrumSepolia = "https://sepolia-rollup.arbitrum.io/rpc";
+const baseSepolia = "https://sepolia.base.org";
+
+const go = async (supportedNetwork, paywallAddress, commitment) => {
+	let rpcUrl = baseSepolia;
+	if (supportedNetwork == "arbitrumSepolia") rpcUrl = arbitrumSepolia;
+	else if (supportedNetwork == "baseSepolia") rpcUrl = baseSepolia;
+	else {
+		throw new Error(
+			'Unsupported network.Choose a supported network in the list ["arbitrumSepolia", "baseSepolia"].',
+		);
+	}
+
 	const callerAddress = Lit.Auth.authSigAddress;
-
 	const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
-	const zkGate = new ethers.Contract(
-		zkGateAddress,
-		[
-			"function checkCIDAccess(bytes32 vaultId, bytes32 cidCommitment, address user) view returns (bool)",
-		],
-		provider,
-	);
 
-	const hasAccess = await zkGate.checkCIDAccess(
-		vaultId,
-		cidCommitment,
-		callerAddress,
-	);
+	const paywallAbi = [
+		"function checkSettlement(bytes32 commitment, address buyer) view returns (bool)",
+	];
 
-	return hasAccess.toString();
+	const paywall = new ethers.Contract(paywallAddress, paywallAbi, provider);
+
+	const ok = await paywall.checkSettlement(commitment, callerAddress);
+
+	if (!ok) {
+		Lit.Actions.setResponse({ success: false, response: "goodbye" });
+		throw new Error("x402: Payment Required");
+	}
+
+	// todo: decrypt and return result
+	Lit.Actions.setResponse({ response: ok.toString() });
+
+	return ok.toString();
 };

@@ -1,15 +1,14 @@
 {
 	"compilerOptions": {
-		"declaration": true,
-		"declarationMap": true,
+		"outDir": "./dist",
+		"target": "ES2022",
 		"esModuleInterop": true,
-		"module": "ESNext",
-		"moduleResolution": "Bundler",
-		"noEmit": true,
+		"declaration": true,
 		"resolveJsonModule": true,
-		"skipLibCheck": true,
-		"strict": true,
-		"target": "ES2022"
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"skipLibCheck": true
 	},
-	"include": ["src"]
+	"include": ["src/**/*", "src/cli.ts"],
+	"exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
 }
