@@ -1,5 +1,3 @@
-// e2e/testbed.ts
-
 import {
 	Address,
 	Chain,

@@ -200,69 +200,68 @@ describe("Fangorn basic encryption works", () => {
 		expect(didFail).toBe(true);
 	}, 120_000);
 
-	// it("should create a datasource, add files, and succeed to decrypt when predicates are satisfied against on-chain state (payment settled)", async () => {
-	// 	// delegator creates a vault
-	// 	const datasourceName =
-	// 		"test_datasource_" + getRandomIntInclusive(101010101, 111111111);
-	// 	const id = await testbed.registerDatasource(datasourceName);
-	// 	console.log('called register datasource');
-	// 	// verify existence
-	// 	expect(
-	// 		await testbed.checkDatasourceRegistryExistence(
-	// 			delegatorAccount.address,
-	// 			datasourceName,
-	// 		),
-	// 	).toBe(true);
-	// 	console.log(`Datasource registration successful, with id: ${id}`);
+	it("should create a datasource, add files, and succeed to decrypt when predicates are satisfied against on-chain state (payment settled)", async () => {
+		// delegator creates a vault
+		const datasourceName =
+			"test_datasource_" + getRandomIntInclusive(101010101, 111111111);
+		const id = await testbed.registerDatasource(datasourceName);
+		console.log("called register datasource");
+		// verify existence
+		expect(
+			await testbed.checkDatasourceRegistryExistence(
+				delegatorAccount.address,
+				datasourceName,
+			),
+		).toBe(true);
+		console.log(`Datasource registration successful, with id: ${id}`);
 
-	// 	const tag = "test";
-	// 	const filedata = {
-	// 		tag,
-	// 		data: "Hello, Fangorn!",
-	// 		extension: ".txt",
-	// 		fileType: "text/plain",
-	// 	};
+		const tag = "test";
+		const filedata = {
+			tag,
+			data: "Hello, Fangorn!",
+			extension: ".txt",
+			fileType: "text/plain",
+		};
 
-	// 	// delegator uploads data encrypted for a payment of '0.000001'
-	// 	const price = "0";
-	// 	await testbed.fileUploadPaymentGadget(
-	// 		datasourceName,
-	// 		filedata,
-	// 		price,
-	// 		settlementTrackerAddress,
-	// 	);
-	// 	// the manifest should have been updated in the contract
-	// 	await testbed.checkDataExistence(
-	// 		delegatorAccount.address,
-	// 		datasourceName,
-	// 		tag,
-	// 	);
-	// 	console.log("encrypted data under payment settlement condition");
+		// delegator uploads data encrypted for a payment of '0.000001'
+		const price = "0";
+		await testbed.fileUploadPaymentGadget(
+			datasourceName,
+			filedata,
+			price,
+			settlementTrackerAddress,
+		);
+		// the manifest should have been updated in the contract
+		await testbed.checkDataExistence(
+			delegatorAccount.address,
+			datasourceName,
+			tag,
+		);
+		console.log("encrypted data under payment settlement condition");
 
-	// 	console.log("submitting payment");
-	// 	// pay for file (delegatee has zero funds, so the delegator buys its own file)
-	// 	await testbed.payForFile(
-	// 		delegatorAccount.address,
-	// 		datasourceName,
-	// 		tag,
-	// 		price,
-	// 		usdcDomainName,
-	// 		settlementTrackerAddress,
-	// 		delegatorWalletClient,
-	// 		rpcUrl,
-	// 	);
+		console.log("submitting payment");
+		// pay for file (delegatee has zero funds, so the delegator buys its own file)
+		await testbed.payForFile(
+			delegatorAccount.address,
+			datasourceName,
+			tag,
+			price,
+			usdcDomainName,
+			settlementTrackerAddress,
+			delegatorWalletClient,
+			rpcUrl,
+		);
 
-	// 	const expectedPlaintext = filedata.data;
-	// 	const output = await testbed.tryDecryptDelegator(
-	// 		delegatorAccount.address,
-	// 		datasourceName,
-	// 		tag,
-	// 	);
-	// 	const outputAsString = new TextDecoder().decode(output);
-	// 	expect(outputAsString).toBe(expectedPlaintext);
-	// 	console.log("Decryption succeeded!");
-
-	// }, 120_000);
+		const expectedPlaintext = filedata.data;
+		const output = await testbed.tryDecryptDelegator(
+			delegatorAccount.address,
+			datasourceName,
+			tag,
+		);
+		const outputAsString = new TextDecoder().decode(output);
+		expect(outputAsString).toBe(expectedPlaintext);
+		console.log("Decryption succeeded!");
+	}, 120_000);
 });
 
 function getRandomIntInclusive(min: number, max: number) {
