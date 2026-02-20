@@ -4,7 +4,7 @@ Programmable data.
 
 ## Overview
 
-Fangorn is a programmable data framework that lets you **register datasources** and **publish encrypted data** under public conditions, or predicates, such that it can only be decrypted if you meet the condition.
+Fangorn is a programmable data framework that lets you **register datasources** and **publish encrypted data** under public conditions, or predicates, such that it can only be decrypted if you meet the condition(s).
 
 ## Supported Networks
 
