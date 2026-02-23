@@ -107,16 +107,25 @@ export class LitEncryptionService implements EncryptionService {
 		walletClient: WalletClient,
 		domain: string,
 	): Promise<AuthContextWrapper> {
-		const account = walletClient.account!;
-
-		// Create session context
-		const authManager = createAuthManager({
-			storage: storagePlugins.localStorageNode({
-				appName: "fangorn",
-				networkName: "naga-dev",
-				storagePath: "./lit-auth-storage",
-			}),
-		});
+		const isWindowUndefined = typeof window === "undefined";
+		const account = isWindowUndefined ? walletClient.account : walletClient;
+		// load the auth context
+		const authManager = isWindowUndefined
+			? // node.js support
+				createAuthManager({
+					storage: storagePlugins.localStorageNode({
+						appName: "fangorn",
+						networkName: "naga-dev",
+						storagePath: "./lit-auth-storage",
+					}),
+				})
+			: // browser support
+				createAuthManager({
+					storage: storagePlugins.localStorage({
+						appName: "fangorn",
+						networkName: "naga-dev",
+					}),
+				});
 
 		const sessionContext = await authManager.createEoaAuthContext({
 			litClient: this.litClient,
@@ -186,6 +195,8 @@ export class LitEncryptionService implements EncryptionService {
 	}
 
 	private parseKeyResponse(response: string): Uint8Array {
+		console.log("parse key " + response);
+
 		return Uint8Array.from(
 			response.replace(/^[^\d]+/, "").split(","),
 			(entry) => {
