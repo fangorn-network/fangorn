@@ -22,6 +22,30 @@ To install the fangorn-sdk from NPM, run:
 npm i -g fangorn-sdk
 ```
 
+### Register a Datasource
+
+First register a datasource
+
+```sh
+fangorn register name-of-your-datasource-agent
+```
+
+### Upload Data
+
+On upload, data is encrypted under a user-specified **gadget**. For now, the CLI only supports the payment gadget, which is used by specifying the argument `-g "Payment(amount)"`. The minimum amount is `0.000001`.
+
+For `-c`, the CLI supports both arbitrumSepolia and baseSepolia.
+
+```sh
+fangorn upload name-of-your-datasource-agent file-to-upload.ext -c arbitrumSepolia -g "Payment(0.0001)"
+```
+
+### Decrypt and Download
+
+```sh
+fangorn decrypt [owner] [datasourceName] [tag] -c arbitrumSepolia
+```
+
 ## Full Guide
 
 ### Build
@@ -34,7 +58,7 @@ npm i -g fangorn-sdk
 // provide the account, rpcurl, and chain externally
 // Initalize a wallet client
 const walletClient = createWalletClient({
-  account,,
+  account,
   transport: http(rpcUrl),
   chain,
 });

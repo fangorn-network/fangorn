@@ -1,13 +1,13 @@
 {
 	"name": "fangorn-sdk",
-	"version": "2026.02.24.0",
+	"version": "2026.02.24.2",
 	"description": "A zero-knowledge conditional access control framework",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/fangorn-network/fangorn.git"
 	},
 	"bin": {
-		"fangorn": "lib/cli.js"
+		"fangorn": "lib/cli/cli.js"
 	},
 	"license": "MIT",
 	"type": "module",
@@ -25,7 +25,7 @@
 		"tsc": "tsc",
 		"deploy": "dotenvx run -f .env -- tsx deploy.ts",
 		"prepare:cli": "npm run build",
-		"fangorn": "dotenvx run -f .env -- node dist/src/cli.js"
+		"fangorn": "dotenvx run -f .env -- node dist/src/cli/cli.js"
 	},
 	"lint-staged": {
 		"*": "prettier --ignore-unknown --write"
@@ -48,8 +48,10 @@
 		"release-it": "19.0.6",
 		"tsdown": "0.16.8",
 		"tsx": "^4.21.0",
-		"typescript": "5.9.3",
+		"typescript": "5.8.3",
 		"typescript-eslint": "8.48.1",
+		"vite": "^7.2.7",
+		"vite-plugin-node-polyfills": "0.25.0",
 		"vitest": "4.0.15",
 		"write-file-atomic": "5.0.1"
 	},
@@ -67,11 +69,7 @@
 		"@lit-protocol/lit-client": "^8.3.1",
 		"@lit-protocol/networks": "^8.4.1",
 		"@noble/hashes": "^2.0.1",
-		"@noir-lang/acvm_js": "1.0.0-beta.16",
-		"@noir-lang/backend_barretenberg": "^0.36.0",
-		"@noir-lang/noir_js": "1.0.0-beta.15",
-		"@noir-lang/noir_wasm": "1.0.0-beta.16",
-		"@noir-lang/noirc_abi": "1.0.0-beta.16",
+		"@noir-lang/noir_js": "1.0.0-beta.19",
 		"@rolldown/binding-linux-x64-gnu": "1.0.0-beta.59",
 		"@x402/core": "^2.2.0",
 		"@x402/evm": "^2.2.0",
@@ -84,12 +82,10 @@
 		"multiformats": "^13.4.2",
 		"node-localstorage": "^3.0.5",
 		"pinata": "^2.5.2",
-		"solc": "^0.8.28",
-		"vite": "^7.2.7",
-		"vite-plugin-node-polyfills": "0.17.0"
+		"solc": "^0.8.28"
 	},
 	"peerDependencies": {
-		"viem": "^2.41.2"
+		"viem": "2.38.3"
 	},
 	"pnpm": {
 		"overrides": {

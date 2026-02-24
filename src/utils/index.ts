@@ -5,6 +5,7 @@ import {
 	parseAbiParameters,
 	type Address,
 	Hex,
+	encodePacked,
 } from "viem";
 
 import poseidon2Circuit from "./poseidon2_hash.json" with { type: "json" };
@@ -80,32 +81,18 @@ export function deriveDatasourceId(name: string, owner: Address): Hex {
 }
 
 // create a commitment to the (vaultId, tag) combo using poseidon2
-export async function computeTagCommitment(
+export function computeTagCommitment(
 	owner: Address,
 	name: string,
 	tag: string,
 	price: string,
-): Promise<bigint> {
+): bigint {
 	const id = deriveDatasourceId(name, owner);
-	const idBigInt = BigInt(id);
-
-	// Convert tag to field
-	const tagBytes = new TextEncoder().encode(tag);
-	const priceBytes = new TextEncoder().encode(price);
-
-	let field = 0n;
-
-	// this is probably easier with sha256
-	// the original idea is that we would be proving knowledge of the preimage with a zkp
-	// which is why poseidon2 was chosen as the hash function instead
-	for (let i = 0; i < Math.min(tagBytes.length, 31); i++) {
-		field = (field << 8n) | BigInt(tagBytes[i]);
-	}
-
-	for (let i = 0; i < priceBytes.length; i++) {
-		field = (field << 8n) | BigInt(priceBytes[i]);
-	}
-
-	const hash = await poseidon2Hash(idBigInt, field);
-	return hash;
+	const hash = keccak256(
+		encodePacked(
+			["bytes32", "string", "string", "string"],
+			[id as `0x${string}`, name, tag, price],
+		),
+	);
+	return BigInt(hash);
 }

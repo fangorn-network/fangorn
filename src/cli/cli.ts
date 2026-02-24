@@ -13,23 +13,23 @@ import {
 } from "@clack/prompts";
 import { createWalletClient, Hex, http, Address, Chain } from "viem";
 import { privateKeyToAccount, PrivateKeyAccount } from "viem/accounts";
-import { Fangorn } from "./fangorn.js";
-import { Filedata } from "./types/index.js";
+import { Fangorn } from "../fangorn.js";
+import { Filedata } from "../types/index.js";
 import "dotenv/config";
 import { PinataSDK } from "pinata";
-import { PinataStorage } from "./providers/storage/index.js";
+import { PinataStorage } from "../providers/storage/index.js";
 import getNetwork, {
 	AppConfig,
 	FangornConfig,
 	SupportedNetworks,
-} from "./config.js";
-import { LitEncryptionService } from "./modules/encryption/lit.js";
-import { computeTagCommitment, fieldToHex } from "./utils/index.js";
-import { PaymentGadget } from "./modules/gadgets/payment.js";
+} from "../config.js";
+import { LitEncryptionService } from "../modules/encryption/lit.js";
+import { computeTagCommitment, fieldToHex } from "../utils/index.js";
+import { PaymentGadget } from "../modules/gadgets/payment.js";
 import {
 	agentCardBuilder,
 	AgentCardBuilder,
-} from "./builders/a2aCardBuilder.js";
+} from "../builders/a2aCardBuilder.js";
 import { SDK } from "agent0-sdk";
 import {
 	chmodSync,
@@ -41,6 +41,13 @@ import {
 } from "fs";
 import { basename, extname, join } from "path";
 import { homedir } from "os";
+import {
+	getChain,
+	handleCancel,
+	parseGadgetArg,
+	selectChain,
+} from "./index.js";
+import { GADGET_REGISTRY, selectGadget } from "./registry.js";
 
 // the config for the cli + fangorn
 interface Config {
@@ -64,34 +71,6 @@ const CONFIG_PATH = join(CONFIG_DIR, "config.json");
 let _config: Config | null = null;
 let _account: PrivateKeyAccount | null = null;
 let _fangorn: Fangorn | null = null;
-
-// function loadConfig(): Config {
-// 	if (_config) return _config;
-
-// 	const jwt = process.env.PINATA_JWT;
-// 	const gateway = process.env.PINATA_GATEWAY;
-// 	const privateKey = process.env.DELEGATOR_ETH_PRIVATE_KEY as Hex;
-// 	const chainName = process.env.CHAIN_NAME;
-
-// 	if (!chainName || !jwt || !gateway || !privateKey) {
-// 		throw new Error(
-// 			"Missing required env vars: CHAIN_NAME, PINATA_JWT, PINATA_GATEWAY, DELEGATOR_ETH_PRIVATE_KEY",
-// 		);
-// 	}
-
-// 	let config = FangornConfig.BaseSepolia;
-// 	if (chainName === SupportedNetworks.ArbitrumSepolia.name) {
-// 		config = FangornConfig.ArbitrumSepolia;
-// 	}
-
-// 	_config = {
-// 		jwt,
-// 		gateway,
-// 		privateKey,
-// 		cfg: config,
-// 	};
-// 	return _config;
-// }
 
 function loadConfig(): Config {
 	if (_config) return _config;
@@ -174,28 +153,6 @@ async function getFangorn(chain: Chain): Promise<Fangorn> {
 
 	return _fangorn;
 }
-
-const getChain = (chainStr: string) => {
-	return getNetwork(chainStr);
-};
-
-const handleCancel = (value: unknown) => {
-	if (isCancel(value)) {
-		process.exit(0);
-	}
-};
-
-const selectChain = async () => {
-	const chainChoice = await select({
-		message: "Pick your chain.",
-		options: [
-			{ value: "arbitrumSepolia", label: "Arbitrum Sepolia" },
-			{ value: "baseSepolia", label: "Base Sepolia" },
-		],
-	});
-	handleCancel(chainChoice);
-	return getNetwork(chainChoice.toString());
-};
 
 // CLI setup
 const program = new Command();
@@ -666,8 +623,8 @@ program
 		"-c, --chain <chain>",
 		"The chain to use as the backend (arbitrumSepolia or baseSepolia)",
 	)
-	.option("-p, --price <price>", "price to access the file")
-	.option("--overwrite", "Overwrite existing data source contents")
+	.option("-g, --gadget <type(args)>", "Gadget to use (e.g. Payment(0.000001))")
+	.option("-o --overwrite", "Overwrite existing data source contents")
 	.action(async (name: string, files: string[], options) => {
 		try {
 			// const vaultId = deriveVaultId(name);
@@ -691,23 +648,35 @@ program
 			const cid = await fangorn.upload(
 				name,
 				filedata,
-				// then we need a predicate builder
-				// to take predicate string to actual class
 				async (file) => {
-					const commitment = await computeTagCommitment(
-						owner,
-						name,
-						file.tag,
-						options.price,
-					);
+					if (options.gadget) {
+						const { type, args } = parseGadgetArg(options.gadget);
+						const def = GADGET_REGISTRY[type];
+						if (!def) throw new Error(`Unknown gadget type: ${type}`);
 
-					return new PaymentGadget({
-						commitment: fieldToHex(commitment),
-						chainName: "arbitrumSepolia",
-						settlementTrackerContractAddress:
-							"0x7c6ae9eb3398234eb69b2f3acfae69065505ff69" as Address,
-						usdcPrice: options.price,
-					});
+						const params: Record<string, unknown> = {};
+						def.argSchema.forEach((key, i) => {
+							params[key] = args[i];
+						});
+
+						// derive commitment
+						const commitment = await computeTagCommitment(
+							owner,
+							name,
+							file.tag,
+							options.price,
+						);
+						params.commitment = fieldToHex(commitment);
+						params.chainName = options.chain;
+						params.settlementTrackerContractAddress =
+							options.chain === "arbitrumSepolia"
+								? "0x7c6ae9eb3398234eb69b2f3acfae69065505ff69"
+								: "0x708751829f5f5f584da4142b62cd5cc9235c8a18";
+
+						return def.build(params);
+					}
+
+					return selectGadget(owner, name, file.tag, options.price);
 				},
 				options.overwrite,
 			);
@@ -831,8 +800,11 @@ program
 				writeFileSync(options.output, Buffer.from(decrypted));
 				console.log(`Decrypted file saved to: ${options.output}`);
 			} else {
-				process.stdout.write(Buffer.from(decrypted));
+				const buf = Buffer.from(decrypted);
+				process.stdout.write(atob(buf.toString()));
+				process.stdout.write("\n");
 			}
+
 			process.exit(0);
 		} catch (err) {
 			console.error("Failed to decrypt:", (err as Error).message);

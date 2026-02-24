@@ -22,37 +22,25 @@ importers:
         version: 1.0.1
       '@lit-protocol/access-control-conditions':
         specifier: ^8.0.2
-        version: 8.0.2(typescript@5.9.3)
+        version: 8.0.2(typescript@5.8.3)
       '@lit-protocol/auth':
         specifier: ^8.2.2
-        version: 8.2.3(@sinclair/typebox@0.34.48)(encoding@0.1.13)(tslib@2.8.1)(typescript@5.9.3)(viem@2.46.3(typescript@5.9.3)(zod@3.25.76))
+        version: 8.2.3(@sinclair/typebox@0.34.48)(encoding@0.1.13)(tslib@2.8.1)(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))
       '@lit-protocol/auth-helpers':
         specifier: ^8.2.1
-        version: 8.2.1(typescript@5.9.3)(viem@2.46.3(typescript@5.9.3)(zod@3.25.76))
+        version: 8.2.1(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))
       '@lit-protocol/lit-client':
         specifier: ^8.3.1
-        version: 8.3.1(@sinclair/typebox@0.34.48)(encoding@0.1.13)(typescript@5.9.3)(viem@2.46.3(typescript@5.9.3)(zod@3.25.76))
+        version: 8.3.1(@sinclair/typebox@0.34.48)(encoding@0.1.13)(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))
       '@lit-protocol/networks':
         specifier: ^8.4.1
-        version: 8.4.1(@sinclair/typebox@0.34.48)(typescript@5.9.3)(viem@2.46.3(typescript@5.9.3)(zod@3.25.76))
+        version: 8.4.1(@sinclair/typebox@0.34.48)(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))
       '@noble/hashes':
         specifier: ^2.0.1
         version: 2.0.1
-      '@noir-lang/acvm_js':
-        specifier: 1.0.0-beta.16
-        version: 1.0.0-beta.16
-      '@noir-lang/backend_barretenberg':
-        specifier: ^0.36.0
-        version: 0.36.0
       '@noir-lang/noir_js':
-        specifier: 1.0.0-beta.15
-        version: 1.0.0-beta.15
-      '@noir-lang/noir_wasm':
-        specifier: 1.0.0-beta.16
-        version: 1.0.0-beta.16
-      '@noir-lang/noirc_abi':
-        specifier: 1.0.0-beta.16
-        version: 1.0.0-beta.16
+        specifier: 1.0.0-beta.19
+        version: 1.0.0-beta.19
       '@rolldown/binding-linux-x64-gnu':
         specifier: 1.0.0-beta.59
         version: 1.0.0-beta.59
@@ -61,10 +49,10 @@ importers:
         version: 2.4.0
       '@x402/evm':
         specifier: ^2.2.0
-        version: 2.4.0(ethers@6.16.0)(typescript@5.9.3)
+        version: 2.4.0(ethers@6.16.0)(typescript@5.8.3)
       agent0-sdk:
         specifier: ^1.5.3
-        version: 1.5.3(encoding@0.1.13)(graphql@16.13.0)(typescript@5.9.3)(zod@3.25.76)
+        version: 1.5.3(encoding@0.1.13)(graphql@16.13.0)(typescript@5.8.3)(zod@3.25.76)
       buffer:
         specifier: ^6.0.3
         version: 6.0.3
@@ -93,14 +81,8 @@ importers:
         specifier: ^0.8.28
         version: 0.8.34
       viem:
-        specifier: ^2.41.2
-        version: 2.46.3(typescript@5.9.3)(zod@3.25.76)
-      vite:
-        specifier: ^7.2.7
-        version: 7.3.1(@types/node@24.10.1)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.2)
-      vite-plugin-node-polyfills:
-        specifier: 0.17.0
-        version: 0.17.0(rollup@4.59.0)(vite@7.3.1(@types/node@24.10.1)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.2))
+        specifier: 2.38.3
+        version: 2.38.3(typescript@5.8.3)(zod@3.25.76)
     devDependencies:
       '@dotenvx/dotenvx':
         specifier: ^1.51.1
@@ -119,7 +101,7 @@ importers:
         version: 4.0.15(vitest@4.0.15(@types/node@24.10.1)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.2))
       '@vitest/eslint-plugin':
         specifier: 1.5.1
-        version: 1.5.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.9.3)(vitest@4.0.15(@types/node@24.10.1)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.2))
+        version: 1.5.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.8.3)(vitest@4.0.15(@types/node@24.10.1)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.2))
       blake3-js:
         specifier: ^0.0.5
         version: 0.0.5
@@ -149,16 +131,22 @@ importers:
         version: 19.0.6(@types/node@24.10.1)
       tsdown:
         specifier: 0.16.8
-        version: 0.16.8(synckit@0.11.12)(typescript@5.9.3)
+        version: 0.16.8(synckit@0.11.12)(typescript@5.8.3)
       tsx:
         specifier: ^4.21.0
         version: 4.21.0
       typescript:
-        specifier: 5.9.3
-        version: 5.9.3
+        specifier: 5.8.3
+        version: 5.8.3
       typescript-eslint:
         specifier: 8.48.1
-        version: 8.48.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.9.3)
+        version: 8.48.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.8.3)
+      vite:
+        specifier: ^7.2.7
+        version: 7.3.1(@types/node@24.10.1)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.2)
+      vite-plugin-node-polyfills:
+        specifier: 0.25.0
+        version: 0.25.0(rollup@4.59.0)(vite@7.3.1(@types/node@24.10.1)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.2))
       vitest:
         specifier: 4.0.15
         version: 4.0.15(@types/node@24.10.1)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.2)
@@ -191,10 +179,6 @@ packages:
 
   '@assemblyscript/loader@0.9.4':
     resolution: {integrity: sha512-HazVq9zwTVwGmqdwYzu7WyQ6FQVZ7SwET0KKQuKm55jD0IfUpZgN0OPIiZG3zV1iSrVYcN0bdwLRXI/VNCYsUA==}
-
-  '@aztec/bb.js@0.58.0':
-    resolution: {integrity: sha512-ls9NNAkcTTOQ4TjqQ7oHb6MlM28KfXiXEN7e6YntPmmG4m1I0FqZ1uY0tFkpem1iXIORVyHVY5GqSadqhH1gvA==}
-    hasBin: true
 
   '@aztec/bb.js@3.0.0-rc.2':
     resolution: {integrity: sha512-mWpn39HCOENKpPka1aZmPuhSDhnBVpmSwQW0XbjxNJVPTR46TXyLsw9q0LVfTJDe/vJw4EbMDnW6+kQ26IWxSg==}
@@ -1271,35 +1255,17 @@ packages:
   '@nodeutils/defaults-deep@1.1.0':
     resolution: {integrity: sha512-gG44cwQovaOFdSR02jR9IhVRpnDP64VN6JdjYJTfNz4J4fWn7TQnmrf22nSjRqlwlxPcW8PL/L3KbJg3tdwvpg==}
 
-  '@noir-lang/acvm_js@1.0.0-beta.15':
-    resolution: {integrity: sha512-WQNMycnVGj0J369BDcsa0N6n0IlISqXEznzDBHiP2yugHgTAoxiDzXizRW10K6u/w0EOVrl+bybLxNxLIPUSYQ==}
+  '@noir-lang/acvm_js@1.0.0-beta.19':
+    resolution: {integrity: sha512-J4i5SkZ8SYMAfl3yNyneI3DorEfE5zsgsHljm0aY6mV4x+LcbqxzM6hdsSbXqboZ1ZUXXmmHjE9WqFMkJC94eQ==}
 
-  '@noir-lang/acvm_js@1.0.0-beta.16':
-    resolution: {integrity: sha512-2xcEE0mCFaZEvVoKVVsG5DTUgj68duFosIvV0Z19Gn5YM1Ay5pHQnFBX4xfhJPA/0Ex8yMRZA/QDE4jpMz96KQ==}
+  '@noir-lang/noir_js@1.0.0-beta.19':
+    resolution: {integrity: sha512-KtuO37XuBn+7PHReLGCyLVxKGBk+hSvUQs0r/rtNFTYty/KmSq/NwEXkwiA7aQTNUykrzTJGFbIForQWjIJT4g==}
 
-  '@noir-lang/backend_barretenberg@0.36.0':
-    resolution: {integrity: sha512-TShUJfMZskV8LOKY22jbofKnPAhMxBgUIi2FxcoNJ9y52i56GibrF0iuse3atEMWc8LnOE0ci69wsqZ2yYP8iw==}
+  '@noir-lang/noirc_abi@1.0.0-beta.19':
+    resolution: {integrity: sha512-rCEVNmXwfxC70VVJqOjvgP9mga+HVOIYzmsTQV9JeNG/BiWbxdHPJ+K0gT7EoCpz7VOVwfgWjFepxfbQk++GSw==}
 
-  '@noir-lang/noir_js@1.0.0-beta.15':
-    resolution: {integrity: sha512-ffN3rWzcqaO+FmBF6quFqgXhEK1gyJ8TQ9V4V3A+PIKYE94BOB0L84McxofbRqt3TFuSloBymGiFrJ/Gx8Q8eQ==}
-
-  '@noir-lang/noir_wasm@1.0.0-beta.16':
-    resolution: {integrity: sha512-hDZZaN+eNqoVpTuOM8f5AwZRjzmyqSMHgizVeRJeE9Y6WOSzX3+K8Q5cJqLYcswtPzPs/vWPYadRrackwRAS2A==}
-
-  '@noir-lang/noirc_abi@1.0.0-beta.15':
-    resolution: {integrity: sha512-ZJ5pUSKiZ6Nyj6DcXmLkf/+OA12cApYq/XPYePxX7v1Z2mLLl1/Gj8dO/greHUYRD47ziXIgyaZQWryE3+4ifw==}
-
-  '@noir-lang/noirc_abi@1.0.0-beta.16':
-    resolution: {integrity: sha512-4RpTEyw34ap65B7gQQLTeXoRtFACsATd+o4fgjLgvoIBiwwftcp2+MOFGJA3icRUJyBXknmlNu+HXCOI7Vl+Xg==}
-
-  '@noir-lang/types@0.36.0':
-    resolution: {integrity: sha512-3A/yJtnbTsn0o3T/D3YPs5b0vPOxYwos6Y5Ko6NhZsE6V31rYPv2a2NYmbfJRYuriwwzFbdE8+ui3UiV5BmvWw==}
-
-  '@noir-lang/types@1.0.0-beta.15':
-    resolution: {integrity: sha512-FCydHArW6+oOSCxSIsprOExDaBMmxh0a9+ZhXigxFDZF6j96wzy3WvA0XLgczZzAjWOiBPCr4voTW1bsM0Ca2A==}
-
-  '@noir-lang/types@1.0.0-beta.16':
-    resolution: {integrity: sha512-QDZRdvC3NZ1USCOkmcgONoerQl5eWpl2uPreE/BN+bidgz+Q3cANW/KO9tt0ZeWWVMfLrYV2n7o6l0y8pJUV1g==}
+  '@noir-lang/types@1.0.0-beta.19':
+    resolution: {integrity: sha512-px/gpC8tvOvCPY6TbVYqMDqDadA75I2woOZ3b5vbyjxqaE4UtsKtcdsWQ9titSCslkYCe1WYRGiFE/LPyRgOpQ==}
 
   '@octokit/auth-token@6.0.0':
     resolution: {integrity: sha512-P4YJBPdPSpWTQ1NU4XYdvHvXJJDxM6YwpS0FZHRgP7YFkdVxsWcpWGy/NVqlAA7PcPCnMacXlRm1y2PFZRWL/w==}
@@ -1514,7 +1480,6 @@ packages:
   '@rolldown/binding-linux-x64-gnu@1.0.0-beta.59':
     resolution: {integrity: sha512-VlfwJ/HCskPmQi8R0JuAFndySKVFX7yPhE658o27cjSDWWbXVtGkSbwaxstii7Q+3Rz87ZXN+HLnb1kd4R9Img==}
     engines: {node: ^20.19.0 || >=22.12.0}
-    cpu: [x64]
     os: [linux]
 
   '@rolldown/binding-linux-x64-gnu@1.0.0-rc.3':
@@ -2507,10 +2472,6 @@ packages:
     resolution: {integrity: sha512-sH5ZSPr+7UStsloltmDh7Ce5fb8XPlHyoPzTpyyMuYCtervL65+ubVZ6Q61cFtFl62UyJlc8/JwERRbAFPUqgw==}
     engines: {node: '>=8.0.0'}
 
-  commander@10.0.1:
-    resolution: {integrity: sha512-y4Mg2tXshplEbSGzx7amzPwKKOCGuoSRP/CjEdwwk0FOGlUbq6lKuoyDZTNZkmxHdJtp54hdfY/JUrdL7Xfdug==}
-    engines: {node: '>=14'}
-
   commander@11.1.0:
     resolution: {integrity: sha512-yPVavfyCcRhmorC7rWlkHn15b4wDVgVmBA7kV4QVBsF7kv/9TKJAbAXVTxvTnwP8HHKjRCJDClKbciiYS7p0DQ==}
     engines: {node: '>=16'}
@@ -2970,9 +2931,6 @@ packages:
     peerDependenciesMeta:
       picomatch:
         optional: true
-
-  fflate@0.8.2:
-    resolution: {integrity: sha512-cPJU47OaAoCbg0pBvzsgpTPhmhqI5eJjh/JIu8tPj5q+T7iLvW/JAYUqmE7KOB4R1ZyEhzBaIQpQpardBF5z8A==}
 
   file-entry-cache@8.0.0:
     resolution: {integrity: sha512-XXTUwCvisa5oacNGRP9SfNtYBNAMi+RPwBFmblZEF7N7swHYQS6/Zfk7SRwx4D5j3CH211YNRco1DEMNVfZCnQ==}
@@ -4926,8 +4884,8 @@ packages:
       eslint: ^8.57.0 || ^9.0.0
       typescript: '>=4.8.4 <6.0.0'
 
-  typescript@5.9.3:
-    resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
+  typescript@5.8.3:
+    resolution: {integrity: sha512-p1diW6TqL9L07nNxvRMM7hMMw4c5XOo/1ibL4aAIGmSAt9slTE1Xgw5KWuof2uTOvCg9BY7ZRi+GaF+7sfgPeQ==}
     engines: {node: '>=14.17'}
     hasBin: true
 
@@ -5079,10 +5037,10 @@ packages:
       typescript:
         optional: true
 
-  vite-plugin-node-polyfills@0.17.0:
-    resolution: {integrity: sha512-iPmPn7376e5u6QvoTSJa16hf5Q0DFwHFXJk2uYpsNlmI3JdPms7hWyh55o+OysJ5jo9J5XPhLC9sMOYifwFd1w==}
+  vite-plugin-node-polyfills@0.25.0:
+    resolution: {integrity: sha512-rHZ324W3LhfGPxWwQb2N048TThB6nVvnipsqBUJEzh3R9xeK9KI3si+GMQxCuAcpPJBVf0LpDtJ+beYzB3/chg==}
     peerDependencies:
-      vite: ^2.0.0 || ^3.0.0 || ^4.0.0 || ^5.0.0
+      vite: ^2.0.0 || ^3.0.0 || ^4.0.0 || ^5.0.0 || ^6.0.0 || ^7.0.0
 
   vite@7.3.1:
     resolution: {integrity: sha512-w+N7Hifpc3gRjZ63vYBXA56dvvRlNWRczTdmCBBa+CotUzAPf5b7YMdMR/8CQoeYE5LX3W4wj6RYTgonm1b9DA==}
@@ -5366,15 +5324,6 @@ snapshots:
   '@adraffy/ens-normalize@1.11.1': {}
 
   '@assemblyscript/loader@0.9.4': {}
-
-  '@aztec/bb.js@0.58.0':
-    dependencies:
-      comlink: 4.4.2
-      commander: 10.0.1
-      debug: 4.4.3
-      tslib: 2.8.1
-    transitivePeerDependencies:
-      - supports-color
 
   '@aztec/bb.js@3.0.0-rc.2':
     dependencies:
@@ -6628,17 +6577,17 @@ snapshots:
       multiformats: 11.0.2
       uint8arrays: 4.0.10
 
-  '@lit-protocol/access-control-conditions-schemas@8.0.2(typescript@5.9.3)':
+  '@lit-protocol/access-control-conditions-schemas@8.0.2(typescript@5.8.3)':
     dependencies:
-      '@lit-protocol/constants': 8.0.2(typescript@5.9.3)
-      '@lit-protocol/contracts': 0.5.3(typescript@5.9.3)
+      '@lit-protocol/constants': 8.0.2(typescript@5.8.3)
+      '@lit-protocol/contracts': 0.5.3(typescript@5.8.3)
       '@openagenda/verror': 3.2.0
-      '@t3-oss/env-core': 0.13.8(typescript@5.9.3)(zod@3.24.3)
-      '@typechain/ethers-v6': 0.5.1(ethers@5.8.0)(typechain@8.3.2(typescript@5.9.3))(typescript@5.9.3)
+      '@t3-oss/env-core': 0.13.8(typescript@5.8.3)(zod@3.24.3)
+      '@typechain/ethers-v6': 0.5.1(ethers@5.8.0)(typechain@8.3.2(typescript@5.8.3))(typescript@5.8.3)
       ethers: 5.8.0
       tslib: 2.8.1
-      typechain: 8.3.2(typescript@5.9.3)
-      viem: 2.29.4(typescript@5.9.3)(zod@3.24.3)
+      typechain: 8.3.2(typescript@5.8.3)
+      viem: 2.29.4(typescript@5.8.3)(zod@3.24.3)
       zod: 3.24.3
     transitivePeerDependencies:
       - arktype
@@ -6648,25 +6597,25 @@ snapshots:
       - utf-8-validate
       - valibot
 
-  '@lit-protocol/access-control-conditions@8.0.2(typescript@5.9.3)':
+  '@lit-protocol/access-control-conditions@8.0.2(typescript@5.8.3)':
     dependencies:
       '@ethersproject/contracts': 5.8.0
       '@ethersproject/providers': 5.7.0
-      '@lit-protocol/access-control-conditions-schemas': 8.0.2(typescript@5.9.3)
-      '@lit-protocol/constants': 8.0.2(typescript@5.9.3)
-      '@lit-protocol/contracts': 0.5.3(typescript@5.9.3)
+      '@lit-protocol/access-control-conditions-schemas': 8.0.2(typescript@5.8.3)
+      '@lit-protocol/constants': 8.0.2(typescript@5.8.3)
+      '@lit-protocol/contracts': 0.5.3(typescript@5.8.3)
       '@lit-protocol/logger': 8.0.2
-      '@lit-protocol/schemas': 8.0.2(typescript@5.9.3)
-      '@lit-protocol/types': 8.0.2(typescript@5.9.3)
+      '@lit-protocol/schemas': 8.0.2(typescript@5.8.3)
+      '@lit-protocol/types': 8.0.2(typescript@5.8.3)
       '@openagenda/verror': 3.2.0
-      '@t3-oss/env-core': 0.13.8(typescript@5.9.3)(zod@3.24.3)
-      '@typechain/ethers-v6': 0.5.1(ethers@5.8.0)(typechain@8.3.2(typescript@5.9.3))(typescript@5.9.3)
+      '@t3-oss/env-core': 0.13.8(typescript@5.8.3)(zod@3.24.3)
+      '@typechain/ethers-v6': 0.5.1(ethers@5.8.0)(typechain@8.3.2(typescript@5.8.3))(typescript@5.8.3)
       ethers: 5.8.0
       pino: 9.14.0
       siwe: 2.3.2(ethers@5.8.0)
       tslib: 2.8.1
-      typechain: 8.3.2(typescript@5.9.3)
-      viem: 2.29.4(typescript@5.9.3)(zod@3.24.3)
+      typechain: 8.3.2(typescript@5.8.3)
+      viem: 2.29.4(typescript@5.8.3)(zod@3.24.3)
       zod: 3.24.3
       zod-validation-error: 3.4.0(zod@3.24.3)
     transitivePeerDependencies:
@@ -6681,29 +6630,29 @@ snapshots:
     dependencies:
       ajv: 8.12.0
 
-  '@lit-protocol/auth-helpers@8.2.0(typescript@5.9.3)(viem@2.46.3(typescript@5.9.3)(zod@3.25.76))':
+  '@lit-protocol/auth-helpers@8.2.0(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))':
     dependencies:
       '@ethersproject/contracts': 5.7.0
       '@ethersproject/providers': 5.7.0
       '@ethersproject/transactions': 5.7.0
-      '@lit-protocol/access-control-conditions': 8.0.2(typescript@5.9.3)
-      '@lit-protocol/access-control-conditions-schemas': 8.0.2(typescript@5.9.3)
-      '@lit-protocol/constants': 9.0.0(typescript@5.9.3)
-      '@lit-protocol/contracts': 0.9.0(typescript@5.9.3)(viem@2.46.3(typescript@5.9.3)(zod@3.25.76))
+      '@lit-protocol/access-control-conditions': 8.0.2(typescript@5.8.3)
+      '@lit-protocol/access-control-conditions-schemas': 8.0.2(typescript@5.8.3)
+      '@lit-protocol/constants': 9.0.0(typescript@5.8.3)
+      '@lit-protocol/contracts': 0.9.0(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))
       '@lit-protocol/logger': 8.0.2
-      '@lit-protocol/schemas': 8.0.2(typescript@5.9.3)
-      '@lit-protocol/types': 8.0.2(typescript@5.9.3)
+      '@lit-protocol/schemas': 8.0.2(typescript@5.8.3)
+      '@lit-protocol/types': 8.0.2(typescript@5.8.3)
       '@openagenda/verror': 3.1.4
-      '@t3-oss/env-core': 0.13.8(typescript@5.9.3)(zod@3.24.3)
-      '@typechain/ethers-v6': 0.5.1(ethers@5.7.2)(typechain@8.3.2(typescript@5.9.3))(typescript@5.9.3)
-      '@wagmi/core': 2.22.1(typescript@5.9.3)(viem@2.46.3(typescript@5.9.3)(zod@3.25.76))
+      '@t3-oss/env-core': 0.13.8(typescript@5.8.3)(zod@3.24.3)
+      '@typechain/ethers-v6': 0.5.1(ethers@5.7.2)(typechain@8.3.2(typescript@5.8.3))(typescript@5.8.3)
+      '@wagmi/core': 2.22.1(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))
       ethers: 5.7.2
       pino: 9.6.0
       siwe: 2.3.2(ethers@5.7.2)
       siwe-recap: 0.0.2-alpha.0(ethers@5.7.2)
       tslib: 2.8.1
-      typechain: 8.3.2(typescript@5.9.3)
-      viem: 2.46.3(typescript@5.9.3)(zod@3.25.76)
+      typechain: 8.3.2(typescript@5.8.3)
+      viem: 2.38.3(typescript@5.8.3)(zod@3.25.76)
       zod: 3.24.3
       zod-validation-error: 3.4.0(zod@3.24.3)
     transitivePeerDependencies:
@@ -6719,29 +6668,29 @@ snapshots:
       - utf-8-validate
       - valibot
 
-  '@lit-protocol/auth-helpers@8.2.1(typescript@5.9.3)(viem@2.46.3(typescript@5.9.3)(zod@3.25.76))':
+  '@lit-protocol/auth-helpers@8.2.1(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))':
     dependencies:
       '@ethersproject/contracts': 5.7.0
       '@ethersproject/providers': 5.7.0
       '@ethersproject/transactions': 5.7.0
-      '@lit-protocol/access-control-conditions': 8.0.2(typescript@5.9.3)
-      '@lit-protocol/access-control-conditions-schemas': 8.0.2(typescript@5.9.3)
-      '@lit-protocol/constants': 9.0.1(typescript@5.9.3)
-      '@lit-protocol/contracts': 0.9.1(typescript@5.9.3)(viem@2.46.3(typescript@5.9.3)(zod@3.25.76))
+      '@lit-protocol/access-control-conditions': 8.0.2(typescript@5.8.3)
+      '@lit-protocol/access-control-conditions-schemas': 8.0.2(typescript@5.8.3)
+      '@lit-protocol/constants': 9.0.1(typescript@5.8.3)
+      '@lit-protocol/contracts': 0.9.1(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))
       '@lit-protocol/logger': 8.0.2
-      '@lit-protocol/schemas': 8.0.3(typescript@5.9.3)
-      '@lit-protocol/types': 8.0.4(typescript@5.9.3)
+      '@lit-protocol/schemas': 8.0.3(typescript@5.8.3)
+      '@lit-protocol/types': 8.0.4(typescript@5.8.3)
       '@openagenda/verror': 3.1.4
-      '@t3-oss/env-core': 0.13.8(typescript@5.9.3)(zod@3.24.3)
-      '@typechain/ethers-v6': 0.5.1(ethers@5.7.2)(typechain@8.3.2(typescript@5.9.3))(typescript@5.9.3)
-      '@wagmi/core': 2.22.1(typescript@5.9.3)(viem@2.46.3(typescript@5.9.3)(zod@3.25.76))
+      '@t3-oss/env-core': 0.13.8(typescript@5.8.3)(zod@3.24.3)
+      '@typechain/ethers-v6': 0.5.1(ethers@5.7.2)(typechain@8.3.2(typescript@5.8.3))(typescript@5.8.3)
+      '@wagmi/core': 2.22.1(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))
       ethers: 5.7.2
       pino: 9.6.0
       siwe: 2.3.2(ethers@5.7.2)
       siwe-recap: 0.0.2-alpha.0(ethers@5.7.2)
       tslib: 2.8.1
-      typechain: 8.3.2(typescript@5.9.3)
-      viem: 2.46.3(typescript@5.9.3)(zod@3.25.76)
+      typechain: 8.3.2(typescript@5.8.3)
+      viem: 2.38.3(typescript@5.8.3)(zod@3.25.76)
       zod: 3.24.3
       zod-validation-error: 3.4.0(zod@3.24.3)
     transitivePeerDependencies:
@@ -6757,40 +6706,40 @@ snapshots:
       - utf-8-validate
       - valibot
 
-  '@lit-protocol/auth@8.2.3(@sinclair/typebox@0.34.48)(encoding@0.1.13)(tslib@2.8.1)(typescript@5.9.3)(viem@2.46.3(typescript@5.9.3)(zod@3.25.76))':
+  '@lit-protocol/auth@8.2.3(@sinclair/typebox@0.34.48)(encoding@0.1.13)(tslib@2.8.1)(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))':
     dependencies:
       '@ethersproject/contracts': 5.7.0
       '@ethersproject/providers': 5.7.0
       '@ethersproject/transactions': 5.7.0
       '@jest/globals': 30.2.0
-      '@lit-protocol/access-control-conditions': 8.0.2(typescript@5.9.3)
-      '@lit-protocol/access-control-conditions-schemas': 8.0.2(typescript@5.9.3)
-      '@lit-protocol/auth-helpers': 8.2.0(typescript@5.9.3)(viem@2.46.3(typescript@5.9.3)(zod@3.25.76))
-      '@lit-protocol/constants': 9.0.1(typescript@5.9.3)
-      '@lit-protocol/contracts': 0.9.1(typescript@5.9.3)(viem@2.46.3(typescript@5.9.3)(zod@3.25.76))
-      '@lit-protocol/crypto': 8.1.0(typescript@5.9.3)
-      '@lit-protocol/lit-client': 8.3.1(@sinclair/typebox@0.34.48)(encoding@0.1.13)(typescript@5.9.3)(viem@2.46.3(typescript@5.9.3)(zod@3.25.76))
+      '@lit-protocol/access-control-conditions': 8.0.2(typescript@5.8.3)
+      '@lit-protocol/access-control-conditions-schemas': 8.0.2(typescript@5.8.3)
+      '@lit-protocol/auth-helpers': 8.2.0(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))
+      '@lit-protocol/constants': 9.0.1(typescript@5.8.3)
+      '@lit-protocol/contracts': 0.9.1(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))
+      '@lit-protocol/crypto': 8.1.0(typescript@5.8.3)
+      '@lit-protocol/lit-client': 8.3.1(@sinclair/typebox@0.34.48)(encoding@0.1.13)(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))
       '@lit-protocol/logger': 8.0.2
       '@lit-protocol/nacl': 7.1.1
-      '@lit-protocol/networks': 8.4.1(@sinclair/typebox@0.34.48)(typescript@5.9.3)(viem@2.46.3(typescript@5.9.3)(zod@3.25.76))
-      '@lit-protocol/schemas': 8.0.3(typescript@5.9.3)
-      '@lit-protocol/types': 8.0.3(typescript@5.9.3)
-      '@lit-protocol/uint8arrays': 7.1.1(typescript@5.9.3)
+      '@lit-protocol/networks': 8.4.1(@sinclair/typebox@0.34.48)(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))
+      '@lit-protocol/schemas': 8.0.3(typescript@5.8.3)
+      '@lit-protocol/types': 8.0.3(typescript@5.8.3)
+      '@lit-protocol/uint8arrays': 7.1.1(typescript@5.8.3)
       '@lit-protocol/wasm': 8.1.0
       '@noble/curves': 1.8.1
       '@noble/hashes': 1.8.0
       '@openagenda/verror': 3.1.4
       '@simplewebauthn/browser': 7.2.0
       '@simplewebauthn/typescript-types': 7.0.0
-      '@t3-oss/env-core': 0.13.8(typescript@5.9.3)(zod@3.24.3)
-      '@typechain/ethers-v6': 0.5.1(ethers@5.7.2)(typechain@8.3.2(typescript@5.9.3))(typescript@5.9.3)
-      '@wagmi/core': 2.22.1(typescript@5.9.3)(viem@2.46.3(typescript@5.9.3)(zod@3.25.76))
+      '@t3-oss/env-core': 0.13.8(typescript@5.8.3)(zod@3.24.3)
+      '@typechain/ethers-v6': 0.5.1(ethers@5.7.2)(typechain@8.3.2(typescript@5.8.3))(typescript@5.8.3)
+      '@wagmi/core': 2.22.1(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))
       ajv: 8.12.0
       base64url: 3.0.1
       bs58: 6.0.0
       cbor-web: 9.0.2
       depd: 2.0.0
-      elysia: 1.2.25(@sinclair/typebox@0.34.48)(typescript@5.9.3)
+      elysia: 1.2.25(@sinclair/typebox@0.34.48)(typescript@5.8.3)
       ethers: 5.7.2
       jose: 4.14.4
       pako: 2.1.0
@@ -6800,9 +6749,9 @@ snapshots:
       siwe-recap: 0.0.2-alpha.0(ethers@5.7.2)
       stytch: 12.4.0
       tslib: 2.8.1
-      typechain: 8.3.2(typescript@5.9.3)
+      typechain: 8.3.2(typescript@5.8.3)
       typestub-ipfs-only-hash: 4.0.0(encoding@0.1.13)
-      viem: 2.46.3(typescript@5.9.3)(zod@3.25.76)
+      viem: 2.38.3(typescript@5.8.3)(zod@3.25.76)
       zod: 3.24.3
       zod-validation-error: 3.4.0(zod@3.24.3)
     transitivePeerDependencies:
@@ -6821,32 +6770,32 @@ snapshots:
       - utf-8-validate
       - valibot
 
-  '@lit-protocol/constants@7.1.1(typescript@5.9.3)':
+  '@lit-protocol/constants@7.1.1(typescript@5.8.3)':
     dependencies:
       '@ethersproject/abstract-provider': 5.7.0
       '@lit-protocol/accs-schemas': 0.0.24
-      '@lit-protocol/contracts': 0.0.74(typescript@5.9.3)
+      '@lit-protocol/contracts': 0.0.74(typescript@5.8.3)
       '@lit-protocol/types': 7.1.1
       '@openagenda/verror': 3.1.4
       depd: 2.0.0
-      ethers: 5.7.2
-      siwe: 2.3.2(ethers@5.7.2)
+      ethers: 5.8.0
+      siwe: 2.3.2(ethers@5.8.0)
       tslib: 1.14.1
     transitivePeerDependencies:
       - bufferutil
       - typescript
       - utf-8-validate
 
-  '@lit-protocol/constants@8.0.2(typescript@5.9.3)':
+  '@lit-protocol/constants@8.0.2(typescript@5.8.3)':
     dependencies:
-      '@lit-protocol/contracts': 0.5.3(typescript@5.9.3)
+      '@lit-protocol/contracts': 0.5.3(typescript@5.8.3)
       '@openagenda/verror': 3.2.0
-      '@t3-oss/env-core': 0.13.8(typescript@5.9.3)(zod@3.24.3)
-      '@typechain/ethers-v6': 0.5.1(ethers@5.8.0)(typechain@8.3.2(typescript@5.9.3))(typescript@5.9.3)
+      '@t3-oss/env-core': 0.13.8(typescript@5.8.3)(zod@3.24.3)
+      '@typechain/ethers-v6': 0.5.1(ethers@5.8.0)(typechain@8.3.2(typescript@5.8.3))(typescript@5.8.3)
       ethers: 5.8.0
       tslib: 2.8.1
-      typechain: 8.3.2(typescript@5.9.3)
-      viem: 2.29.4(typescript@5.9.3)(zod@3.24.3)
+      typechain: 8.3.2(typescript@5.8.3)
+      viem: 2.29.4(typescript@5.8.3)(zod@3.24.3)
       zod: 3.24.3
     transitivePeerDependencies:
       - arktype
@@ -6856,16 +6805,16 @@ snapshots:
       - utf-8-validate
       - valibot
 
-  '@lit-protocol/constants@9.0.0(typescript@5.9.3)':
+  '@lit-protocol/constants@9.0.0(typescript@5.8.3)':
     dependencies:
-      '@lit-protocol/contracts': 0.9.0(typescript@5.9.3)(viem@2.38.3(typescript@5.9.3)(zod@3.24.3))
+      '@lit-protocol/contracts': 0.9.0(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))
       '@openagenda/verror': 3.1.4
-      '@t3-oss/env-core': 0.13.8(typescript@5.9.3)(zod@3.24.3)
-      '@typechain/ethers-v6': 0.5.1(ethers@5.7.2)(typechain@8.3.2(typescript@5.9.3))(typescript@5.9.3)
+      '@t3-oss/env-core': 0.13.8(typescript@5.8.3)(zod@3.24.3)
+      '@typechain/ethers-v6': 0.5.1(ethers@5.7.2)(typechain@8.3.2(typescript@5.8.3))(typescript@5.8.3)
       ethers: 5.7.2
       tslib: 2.8.1
-      typechain: 8.3.2(typescript@5.9.3)
-      viem: 2.38.3(typescript@5.9.3)(zod@3.24.3)
+      typechain: 8.3.2(typescript@5.8.3)
+      viem: 2.38.3(typescript@5.8.3)(zod@3.24.3)
       zod: 3.24.3
     transitivePeerDependencies:
       - arktype
@@ -6875,16 +6824,16 @@ snapshots:
       - utf-8-validate
       - valibot
 
-  '@lit-protocol/constants@9.0.1(typescript@5.9.3)':
+  '@lit-protocol/constants@9.0.1(typescript@5.8.3)':
     dependencies:
-      '@lit-protocol/contracts': 0.9.1(typescript@5.9.3)(viem@2.38.3(typescript@5.9.3)(zod@3.24.3))
+      '@lit-protocol/contracts': 0.9.1(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))
       '@openagenda/verror': 3.1.4
-      '@t3-oss/env-core': 0.13.8(typescript@5.9.3)(zod@3.24.3)
-      '@typechain/ethers-v6': 0.5.1(ethers@5.7.2)(typechain@8.3.2(typescript@5.9.3))(typescript@5.9.3)
+      '@t3-oss/env-core': 0.13.8(typescript@5.8.3)(zod@3.24.3)
+      '@typechain/ethers-v6': 0.5.1(ethers@5.7.2)(typechain@8.3.2(typescript@5.8.3))(typescript@5.8.3)
       ethers: 5.7.2
       tslib: 2.8.1
-      typechain: 8.3.2(typescript@5.9.3)
-      viem: 2.38.3(typescript@5.9.3)(zod@3.24.3)
+      typechain: 8.3.2(typescript@5.8.3)
+      viem: 2.38.3(typescript@5.8.3)(zod@3.24.3)
       zod: 3.24.3
     transitivePeerDependencies:
       - arktype
@@ -6894,57 +6843,47 @@ snapshots:
       - utf-8-validate
       - valibot
 
-  '@lit-protocol/contracts@0.0.74(typescript@5.9.3)':
+  '@lit-protocol/contracts@0.0.74(typescript@5.8.3)':
     dependencies:
-      typescript: 5.9.3
+      typescript: 5.8.3
 
-  '@lit-protocol/contracts@0.5.3(typescript@5.9.3)':
+  '@lit-protocol/contracts@0.5.3(typescript@5.8.3)':
     dependencies:
-      typescript: 5.9.3
+      typescript: 5.8.3
 
-  '@lit-protocol/contracts@0.9.0(typescript@5.9.3)(viem@2.38.3(typescript@5.9.3)(zod@3.24.3))':
+  '@lit-protocol/contracts@0.9.0(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))':
     dependencies:
-      typescript: 5.9.3
-      viem: 2.38.3(typescript@5.9.3)(zod@3.24.3)
+      typescript: 5.8.3
+      viem: 2.38.3(typescript@5.8.3)(zod@3.25.76)
 
-  '@lit-protocol/contracts@0.9.0(typescript@5.9.3)(viem@2.46.3(typescript@5.9.3)(zod@3.25.76))':
+  '@lit-protocol/contracts@0.9.1(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))':
     dependencies:
-      typescript: 5.9.3
-      viem: 2.46.3(typescript@5.9.3)(zod@3.25.76)
+      typescript: 5.8.3
+      viem: 2.38.3(typescript@5.8.3)(zod@3.25.76)
 
-  '@lit-protocol/contracts@0.9.1(typescript@5.9.3)(viem@2.38.3(typescript@5.9.3)(zod@3.24.3))':
-    dependencies:
-      typescript: 5.9.3
-      viem: 2.38.3(typescript@5.9.3)(zod@3.24.3)
-
-  '@lit-protocol/contracts@0.9.1(typescript@5.9.3)(viem@2.46.3(typescript@5.9.3)(zod@3.25.76))':
-    dependencies:
-      typescript: 5.9.3
-      viem: 2.46.3(typescript@5.9.3)(zod@3.25.76)
-
-  '@lit-protocol/crypto@8.1.0(typescript@5.9.3)':
+  '@lit-protocol/crypto@8.1.0(typescript@5.8.3)':
     dependencies:
       '@jest/globals': 30.2.0
-      '@lit-protocol/access-control-conditions-schemas': 8.0.2(typescript@5.9.3)
-      '@lit-protocol/constants': 9.0.0(typescript@5.9.3)
-      '@lit-protocol/contracts': 0.9.0(typescript@5.9.3)(viem@2.38.3(typescript@5.9.3)(zod@3.24.3))
+      '@lit-protocol/access-control-conditions-schemas': 8.0.2(typescript@5.8.3)
+      '@lit-protocol/constants': 9.0.0(typescript@5.8.3)
+      '@lit-protocol/contracts': 0.9.0(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))
       '@lit-protocol/nacl': 7.1.1
-      '@lit-protocol/schemas': 8.0.2(typescript@5.9.3)
-      '@lit-protocol/types': 8.0.2(typescript@5.9.3)
-      '@lit-protocol/uint8arrays': 7.1.1(typescript@5.9.3)
+      '@lit-protocol/schemas': 8.0.2(typescript@5.8.3)
+      '@lit-protocol/types': 8.0.2(typescript@5.8.3)
+      '@lit-protocol/uint8arrays': 7.1.1(typescript@5.8.3)
       '@lit-protocol/wasm': 8.1.0
       '@noble/curves': 1.8.1
       '@noble/hashes': 1.8.0
       '@openagenda/verror': 3.1.4
-      '@t3-oss/env-core': 0.13.8(typescript@5.9.3)(zod@3.24.3)
-      '@typechain/ethers-v6': 0.5.1(ethers@5.7.2)(typechain@8.3.2(typescript@5.9.3))(typescript@5.9.3)
+      '@t3-oss/env-core': 0.13.8(typescript@5.8.3)(zod@3.24.3)
+      '@typechain/ethers-v6': 0.5.1(ethers@5.7.2)(typechain@8.3.2(typescript@5.8.3))(typescript@5.8.3)
       ajv: 8.12.0
       ethers: 5.7.2
       pako: 2.1.0
       siwe: 2.3.2(ethers@5.7.2)
       tslib: 2.8.1
-      typechain: 8.3.2(typescript@5.9.3)
-      viem: 2.38.3(typescript@5.9.3)(zod@3.24.3)
+      typechain: 8.3.2(typescript@5.8.3)
+      viem: 2.38.3(typescript@5.8.3)(zod@3.24.3)
       zod: 3.24.3
       zod-validation-error: 3.4.0(zod@3.24.3)
     transitivePeerDependencies:
@@ -6955,34 +6894,34 @@ snapshots:
       - utf-8-validate
       - valibot
 
-  '@lit-protocol/lit-client@8.3.1(@sinclair/typebox@0.34.48)(encoding@0.1.13)(typescript@5.9.3)(viem@2.46.3(typescript@5.9.3)(zod@3.25.76))':
+  '@lit-protocol/lit-client@8.3.1(@sinclair/typebox@0.34.48)(encoding@0.1.13)(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))':
     dependencies:
       '@ethersproject/contracts': 5.7.0
       '@ethersproject/providers': 5.7.0
       '@ethersproject/transactions': 5.7.0
       '@jest/globals': 30.2.0
-      '@lit-protocol/access-control-conditions': 8.0.2(typescript@5.9.3)
-      '@lit-protocol/access-control-conditions-schemas': 8.0.2(typescript@5.9.3)
-      '@lit-protocol/auth-helpers': 8.2.0(typescript@5.9.3)(viem@2.46.3(typescript@5.9.3)(zod@3.25.76))
-      '@lit-protocol/constants': 9.0.1(typescript@5.9.3)
-      '@lit-protocol/contracts': 0.9.1(typescript@5.9.3)(viem@2.46.3(typescript@5.9.3)(zod@3.25.76))
-      '@lit-protocol/crypto': 8.1.0(typescript@5.9.3)
+      '@lit-protocol/access-control-conditions': 8.0.2(typescript@5.8.3)
+      '@lit-protocol/access-control-conditions-schemas': 8.0.2(typescript@5.8.3)
+      '@lit-protocol/auth-helpers': 8.2.0(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))
+      '@lit-protocol/constants': 9.0.1(typescript@5.8.3)
+      '@lit-protocol/contracts': 0.9.1(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))
+      '@lit-protocol/crypto': 8.1.0(typescript@5.8.3)
       '@lit-protocol/logger': 8.0.2
       '@lit-protocol/nacl': 7.1.1
-      '@lit-protocol/networks': 8.4.1(@sinclair/typebox@0.34.48)(typescript@5.9.3)(viem@2.46.3(typescript@5.9.3)(zod@3.25.76))
-      '@lit-protocol/schemas': 8.0.3(typescript@5.9.3)
-      '@lit-protocol/types': 8.0.3(typescript@5.9.3)
-      '@lit-protocol/uint8arrays': 7.1.1(typescript@5.9.3)
+      '@lit-protocol/networks': 8.4.1(@sinclair/typebox@0.34.48)(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))
+      '@lit-protocol/schemas': 8.0.3(typescript@5.8.3)
+      '@lit-protocol/types': 8.0.3(typescript@5.8.3)
+      '@lit-protocol/uint8arrays': 7.1.1(typescript@5.8.3)
       '@lit-protocol/wasm': 8.1.0
       '@noble/curves': 1.8.1
       '@noble/hashes': 1.8.0
       '@openagenda/verror': 3.1.4
-      '@t3-oss/env-core': 0.13.8(typescript@5.9.3)(zod@3.24.3)
-      '@typechain/ethers-v6': 0.5.1(ethers@5.7.2)(typechain@8.3.2(typescript@5.9.3))(typescript@5.9.3)
-      '@wagmi/core': 2.22.1(typescript@5.9.3)(viem@2.46.3(typescript@5.9.3)(zod@3.25.76))
+      '@t3-oss/env-core': 0.13.8(typescript@5.8.3)(zod@3.24.3)
+      '@typechain/ethers-v6': 0.5.1(ethers@5.7.2)(typechain@8.3.2(typescript@5.8.3))(typescript@5.8.3)
+      '@wagmi/core': 2.22.1(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))
       ajv: 8.12.0
       bs58: 6.0.0
-      elysia: 1.2.25(@sinclair/typebox@0.34.48)(typescript@5.9.3)
+      elysia: 1.2.25(@sinclair/typebox@0.34.48)(typescript@5.8.3)
       ethers: 5.7.2
       pako: 2.1.0
       pino: 9.6.0
@@ -6990,9 +6929,9 @@ snapshots:
       siwe: 2.3.2(ethers@5.7.2)
       siwe-recap: 0.0.2-alpha.0(ethers@5.7.2)
       tslib: 2.8.1
-      typechain: 8.3.2(typescript@5.9.3)
+      typechain: 8.3.2(typescript@5.8.3)
       typestub-ipfs-only-hash: 4.0.0(encoding@0.1.13)
-      viem: 2.46.3(typescript@5.9.3)(zod@3.25.76)
+      viem: 2.38.3(typescript@5.8.3)(zod@3.25.76)
       zod: 3.24.3
       zod-validation-error: 3.4.0(zod@3.24.3)
     transitivePeerDependencies:
@@ -7020,33 +6959,33 @@ snapshots:
     dependencies:
       tslib: 1.14.1
 
-  '@lit-protocol/networks@8.4.1(@sinclair/typebox@0.34.48)(typescript@5.9.3)(viem@2.46.3(typescript@5.9.3)(zod@3.25.76))':
+  '@lit-protocol/networks@8.4.1(@sinclair/typebox@0.34.48)(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))':
     dependencies:
       '@ethersproject/contracts': 5.7.0
       '@ethersproject/providers': 5.7.0
       '@ethersproject/transactions': 5.7.0
       '@jest/globals': 30.2.0
-      '@lit-protocol/access-control-conditions': 8.0.2(typescript@5.9.3)
-      '@lit-protocol/access-control-conditions-schemas': 8.0.2(typescript@5.9.3)
-      '@lit-protocol/auth-helpers': 8.2.0(typescript@5.9.3)(viem@2.46.3(typescript@5.9.3)(zod@3.25.76))
-      '@lit-protocol/constants': 9.0.1(typescript@5.9.3)
-      '@lit-protocol/contracts': 0.9.1(typescript@5.9.3)(viem@2.46.3(typescript@5.9.3)(zod@3.25.76))
-      '@lit-protocol/crypto': 8.1.0(typescript@5.9.3)
+      '@lit-protocol/access-control-conditions': 8.0.2(typescript@5.8.3)
+      '@lit-protocol/access-control-conditions-schemas': 8.0.2(typescript@5.8.3)
+      '@lit-protocol/auth-helpers': 8.2.0(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))
+      '@lit-protocol/constants': 9.0.1(typescript@5.8.3)
+      '@lit-protocol/contracts': 0.9.1(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))
+      '@lit-protocol/crypto': 8.1.0(typescript@5.8.3)
       '@lit-protocol/logger': 8.0.2
       '@lit-protocol/nacl': 7.1.1
-      '@lit-protocol/schemas': 8.0.3(typescript@5.9.3)
-      '@lit-protocol/types': 8.0.3(typescript@5.9.3)
-      '@lit-protocol/uint8arrays': 7.1.1(typescript@5.9.3)
+      '@lit-protocol/schemas': 8.0.3(typescript@5.8.3)
+      '@lit-protocol/types': 8.0.3(typescript@5.8.3)
+      '@lit-protocol/uint8arrays': 7.1.1(typescript@5.8.3)
       '@lit-protocol/wasm': 8.1.0
       '@noble/curves': 1.8.1
       '@noble/hashes': 1.8.0
       '@openagenda/verror': 3.1.4
-      '@t3-oss/env-core': 0.13.8(typescript@5.9.3)(zod@3.24.3)
-      '@typechain/ethers-v6': 0.5.1(ethers@5.7.2)(typechain@8.3.2(typescript@5.9.3))(typescript@5.9.3)
-      '@wagmi/core': 2.22.1(typescript@5.9.3)(viem@2.46.3(typescript@5.9.3)(zod@3.25.76))
+      '@t3-oss/env-core': 0.13.8(typescript@5.8.3)(zod@3.24.3)
+      '@typechain/ethers-v6': 0.5.1(ethers@5.7.2)(typechain@8.3.2(typescript@5.8.3))(typescript@5.8.3)
+      '@wagmi/core': 2.22.1(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))
       ajv: 8.12.0
       bs58: 6.0.0
-      elysia: 1.2.25(@sinclair/typebox@0.34.48)(typescript@5.9.3)
+      elysia: 1.2.25(@sinclair/typebox@0.34.48)(typescript@5.8.3)
       ethers: 5.7.2
       node-localstorage: 3.0.5
       pako: 2.1.0
@@ -7055,8 +6994,8 @@ snapshots:
       siwe: 2.3.2(ethers@5.7.2)
       siwe-recap: 0.0.2-alpha.0(ethers@5.7.2)
       tslib: 2.8.1
-      typechain: 8.3.2(typescript@5.9.3)
-      viem: 2.46.3(typescript@5.9.3)(zod@3.25.76)
+      typechain: 8.3.2(typescript@5.8.3)
+      viem: 2.38.3(typescript@5.8.3)(zod@3.25.76)
       zod: 3.24.3
       zod-validation-error: 3.4.0(zod@3.24.3)
     transitivePeerDependencies:
@@ -7074,19 +7013,19 @@ snapshots:
       - utf-8-validate
       - valibot
 
-  '@lit-protocol/schemas@8.0.2(typescript@5.9.3)':
+  '@lit-protocol/schemas@8.0.2(typescript@5.8.3)':
     dependencies:
-      '@lit-protocol/access-control-conditions-schemas': 8.0.2(typescript@5.9.3)
-      '@lit-protocol/constants': 8.0.2(typescript@5.9.3)
-      '@lit-protocol/contracts': 0.5.3(typescript@5.9.3)
+      '@lit-protocol/access-control-conditions-schemas': 8.0.2(typescript@5.8.3)
+      '@lit-protocol/constants': 8.0.2(typescript@5.8.3)
+      '@lit-protocol/contracts': 0.5.3(typescript@5.8.3)
       '@openagenda/verror': 3.2.0
-      '@t3-oss/env-core': 0.13.8(typescript@5.9.3)(zod@3.24.3)
-      '@typechain/ethers-v6': 0.5.1(ethers@5.8.0)(typechain@8.3.2(typescript@5.9.3))(typescript@5.9.3)
+      '@t3-oss/env-core': 0.13.8(typescript@5.8.3)(zod@3.24.3)
+      '@typechain/ethers-v6': 0.5.1(ethers@5.8.0)(typechain@8.3.2(typescript@5.8.3))(typescript@5.8.3)
       ethers: 5.8.0
       siwe: 2.3.2(ethers@5.8.0)
       tslib: 2.8.1
-      typechain: 8.3.2(typescript@5.9.3)
-      viem: 2.29.4(typescript@5.9.3)(zod@3.24.3)
+      typechain: 8.3.2(typescript@5.8.3)
+      viem: 2.29.4(typescript@5.8.3)(zod@3.24.3)
       zod: 3.24.3
       zod-validation-error: 3.4.0(zod@3.24.3)
     transitivePeerDependencies:
@@ -7097,19 +7036,19 @@ snapshots:
       - utf-8-validate
       - valibot
 
-  '@lit-protocol/schemas@8.0.3(typescript@5.9.3)':
+  '@lit-protocol/schemas@8.0.3(typescript@5.8.3)':
     dependencies:
-      '@lit-protocol/access-control-conditions-schemas': 8.0.2(typescript@5.9.3)
-      '@lit-protocol/constants': 9.0.1(typescript@5.9.3)
-      '@lit-protocol/contracts': 0.9.1(typescript@5.9.3)(viem@2.38.3(typescript@5.9.3)(zod@3.24.3))
+      '@lit-protocol/access-control-conditions-schemas': 8.0.2(typescript@5.8.3)
+      '@lit-protocol/constants': 9.0.1(typescript@5.8.3)
+      '@lit-protocol/contracts': 0.9.1(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))
       '@openagenda/verror': 3.1.4
-      '@t3-oss/env-core': 0.13.8(typescript@5.9.3)(zod@3.24.3)
-      '@typechain/ethers-v6': 0.5.1(ethers@5.7.2)(typechain@8.3.2(typescript@5.9.3))(typescript@5.9.3)
+      '@t3-oss/env-core': 0.13.8(typescript@5.8.3)(zod@3.24.3)
+      '@typechain/ethers-v6': 0.5.1(ethers@5.7.2)(typechain@8.3.2(typescript@5.8.3))(typescript@5.8.3)
       ethers: 5.7.2
       siwe: 2.3.2(ethers@5.7.2)
       tslib: 2.8.1
-      typechain: 8.3.2(typescript@5.9.3)
-      viem: 2.38.3(typescript@5.9.3)(zod@3.24.3)
+      typechain: 8.3.2(typescript@5.8.3)
+      viem: 2.38.3(typescript@5.8.3)(zod@3.24.3)
       zod: 3.24.3
       zod-validation-error: 3.4.0(zod@3.24.3)
     transitivePeerDependencies:
@@ -7125,27 +7064,27 @@ snapshots:
       '@ethersproject/abstract-provider': 5.7.0
       '@lit-protocol/accs-schemas': 0.0.24
       depd: 2.0.0
-      ethers: 5.7.2
-      siwe: 2.3.2(ethers@5.7.2)
+      ethers: 5.8.0
+      siwe: 2.3.2(ethers@5.8.0)
       tslib: 1.14.1
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@lit-protocol/types@8.0.2(typescript@5.9.3)':
+  '@lit-protocol/types@8.0.2(typescript@5.8.3)':
     dependencies:
-      '@lit-protocol/access-control-conditions-schemas': 8.0.2(typescript@5.9.3)
-      '@lit-protocol/constants': 8.0.2(typescript@5.9.3)
-      '@lit-protocol/contracts': 0.5.3(typescript@5.9.3)
-      '@lit-protocol/schemas': 8.0.2(typescript@5.9.3)
+      '@lit-protocol/access-control-conditions-schemas': 8.0.2(typescript@5.8.3)
+      '@lit-protocol/constants': 8.0.2(typescript@5.8.3)
+      '@lit-protocol/contracts': 0.5.3(typescript@5.8.3)
+      '@lit-protocol/schemas': 8.0.2(typescript@5.8.3)
       '@openagenda/verror': 3.2.0
-      '@t3-oss/env-core': 0.13.8(typescript@5.9.3)(zod@3.24.3)
-      '@typechain/ethers-v6': 0.5.1(ethers@5.8.0)(typechain@8.3.2(typescript@5.9.3))(typescript@5.9.3)
+      '@t3-oss/env-core': 0.13.8(typescript@5.8.3)(zod@3.24.3)
+      '@typechain/ethers-v6': 0.5.1(ethers@5.8.0)(typechain@8.3.2(typescript@5.8.3))(typescript@5.8.3)
       ethers: 5.8.0
       siwe: 2.3.2(ethers@5.8.0)
       tslib: 2.8.1
-      typechain: 8.3.2(typescript@5.9.3)
-      viem: 2.29.4(typescript@5.9.3)(zod@3.24.3)
+      typechain: 8.3.2(typescript@5.8.3)
+      viem: 2.29.4(typescript@5.8.3)(zod@3.24.3)
       zod: 3.24.3
       zod-validation-error: 3.4.0(zod@3.24.3)
     transitivePeerDependencies:
@@ -7156,20 +7095,20 @@ snapshots:
       - utf-8-validate
       - valibot
 
-  '@lit-protocol/types@8.0.3(typescript@5.9.3)':
+  '@lit-protocol/types@8.0.3(typescript@5.8.3)':
     dependencies:
-      '@lit-protocol/access-control-conditions-schemas': 8.0.2(typescript@5.9.3)
-      '@lit-protocol/constants': 9.0.1(typescript@5.9.3)
-      '@lit-protocol/contracts': 0.9.1(typescript@5.9.3)(viem@2.38.3(typescript@5.9.3)(zod@3.24.3))
-      '@lit-protocol/schemas': 8.0.3(typescript@5.9.3)
+      '@lit-protocol/access-control-conditions-schemas': 8.0.2(typescript@5.8.3)
+      '@lit-protocol/constants': 9.0.1(typescript@5.8.3)
+      '@lit-protocol/contracts': 0.9.1(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))
+      '@lit-protocol/schemas': 8.0.3(typescript@5.8.3)
       '@openagenda/verror': 3.1.4
-      '@t3-oss/env-core': 0.13.8(typescript@5.9.3)(zod@3.24.3)
-      '@typechain/ethers-v6': 0.5.1(ethers@5.7.2)(typechain@8.3.2(typescript@5.9.3))(typescript@5.9.3)
+      '@t3-oss/env-core': 0.13.8(typescript@5.8.3)(zod@3.24.3)
+      '@typechain/ethers-v6': 0.5.1(ethers@5.7.2)(typechain@8.3.2(typescript@5.8.3))(typescript@5.8.3)
       ethers: 5.7.2
       siwe: 2.3.2(ethers@5.7.2)
       tslib: 2.8.1
-      typechain: 8.3.2(typescript@5.9.3)
-      viem: 2.38.3(typescript@5.9.3)(zod@3.24.3)
+      typechain: 8.3.2(typescript@5.8.3)
+      viem: 2.38.3(typescript@5.8.3)(zod@3.24.3)
       zod: 3.24.3
       zod-validation-error: 3.4.0(zod@3.24.3)
     transitivePeerDependencies:
@@ -7180,20 +7119,20 @@ snapshots:
       - utf-8-validate
       - valibot
 
-  '@lit-protocol/types@8.0.4(typescript@5.9.3)':
+  '@lit-protocol/types@8.0.4(typescript@5.8.3)':
     dependencies:
-      '@lit-protocol/access-control-conditions-schemas': 8.0.2(typescript@5.9.3)
-      '@lit-protocol/constants': 9.0.1(typescript@5.9.3)
-      '@lit-protocol/contracts': 0.9.1(typescript@5.9.3)(viem@2.38.3(typescript@5.9.3)(zod@3.24.3))
-      '@lit-protocol/schemas': 8.0.3(typescript@5.9.3)
+      '@lit-protocol/access-control-conditions-schemas': 8.0.2(typescript@5.8.3)
+      '@lit-protocol/constants': 9.0.1(typescript@5.8.3)
+      '@lit-protocol/contracts': 0.9.1(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))
+      '@lit-protocol/schemas': 8.0.3(typescript@5.8.3)
       '@openagenda/verror': 3.1.4
-      '@t3-oss/env-core': 0.13.8(typescript@5.9.3)(zod@3.24.3)
-      '@typechain/ethers-v6': 0.5.1(ethers@5.7.2)(typechain@8.3.2(typescript@5.9.3))(typescript@5.9.3)
+      '@t3-oss/env-core': 0.13.8(typescript@5.8.3)(zod@3.24.3)
+      '@typechain/ethers-v6': 0.5.1(ethers@5.7.2)(typechain@8.3.2(typescript@5.8.3))(typescript@5.8.3)
       ethers: 5.7.2
       siwe: 2.3.2(ethers@5.7.2)
       tslib: 2.8.1
-      typechain: 8.3.2(typescript@5.9.3)
-      viem: 2.38.3(typescript@5.9.3)(zod@3.24.3)
+      typechain: 8.3.2(typescript@5.8.3)
+      viem: 2.38.3(typescript@5.8.3)(zod@3.24.3)
       zod: 3.24.3
       zod-validation-error: 3.4.0(zod@3.24.3)
     transitivePeerDependencies:
@@ -7204,17 +7143,17 @@ snapshots:
       - utf-8-validate
       - valibot
 
-  '@lit-protocol/uint8arrays@7.1.1(typescript@5.9.3)':
+  '@lit-protocol/uint8arrays@7.1.1(typescript@5.8.3)':
     dependencies:
       '@ethersproject/abstract-provider': 5.7.0
       '@lit-protocol/accs-schemas': 0.0.24
-      '@lit-protocol/constants': 7.1.1(typescript@5.9.3)
-      '@lit-protocol/contracts': 0.0.74(typescript@5.9.3)
+      '@lit-protocol/constants': 7.1.1(typescript@5.8.3)
+      '@lit-protocol/contracts': 0.0.74(typescript@5.8.3)
       '@lit-protocol/types': 7.1.1
       '@openagenda/verror': 3.1.4
       depd: 2.0.0
-      ethers: 5.7.2
-      siwe: 2.3.2(ethers@5.7.2)
+      ethers: 5.8.0
+      siwe: 2.3.2(ethers@5.8.0)
       tslib: 1.14.1
     transitivePeerDependencies:
       - bufferutil
@@ -7224,7 +7163,7 @@ snapshots:
   '@lit-protocol/wasm@8.1.0':
     dependencies:
       '@jest/globals': 30.2.0
-      ethers: 5.7.2
+      ethers: 5.8.0
       pako: 2.1.0
       tslib: 1.14.1
     transitivePeerDependencies:
@@ -7336,43 +7275,20 @@ snapshots:
     dependencies:
       lodash: 4.17.23
 
-  '@noir-lang/acvm_js@1.0.0-beta.15': {}
+  '@noir-lang/acvm_js@1.0.0-beta.19': {}
 
-  '@noir-lang/acvm_js@1.0.0-beta.16': {}
-
-  '@noir-lang/backend_barretenberg@0.36.0':
+  '@noir-lang/noir_js@1.0.0-beta.19':
     dependencies:
-      '@aztec/bb.js': 0.58.0
-      '@noir-lang/types': 0.36.0
-      fflate: 0.8.2
-    transitivePeerDependencies:
-      - supports-color
-
-  '@noir-lang/noir_js@1.0.0-beta.15':
-    dependencies:
-      '@noir-lang/acvm_js': 1.0.0-beta.15
-      '@noir-lang/noirc_abi': 1.0.0-beta.15
-      '@noir-lang/types': 1.0.0-beta.15
+      '@noir-lang/acvm_js': 1.0.0-beta.19
+      '@noir-lang/noirc_abi': 1.0.0-beta.19
+      '@noir-lang/types': 1.0.0-beta.19
       pako: 2.1.0
 
-  '@noir-lang/noir_wasm@1.0.0-beta.16':
+  '@noir-lang/noirc_abi@1.0.0-beta.19':
     dependencies:
-      '@noir-lang/types': 1.0.0-beta.16
-      pako: 2.1.0
+      '@noir-lang/types': 1.0.0-beta.19
 
-  '@noir-lang/noirc_abi@1.0.0-beta.15':
-    dependencies:
-      '@noir-lang/types': 1.0.0-beta.15
-
-  '@noir-lang/noirc_abi@1.0.0-beta.16':
-    dependencies:
-      '@noir-lang/types': 1.0.0-beta.16
-
-  '@noir-lang/types@0.36.0': {}
-
-  '@noir-lang/types@1.0.0-beta.15': {}
-
-  '@noir-lang/types@1.0.0-beta.16': {}
+  '@noir-lang/types@1.0.0-beta.19': {}
 
   '@octokit/auth-token@6.0.0': {}
 
@@ -7700,7 +7616,7 @@ snapshots:
 
   '@scure/bip32@1.7.0':
     dependencies:
-      '@noble/curves': 1.9.1
+      '@noble/curves': 1.9.7
       '@noble/hashes': 1.8.0
       '@scure/base': 1.2.6
 
@@ -7761,9 +7677,9 @@ snapshots:
 
   '@standard-schema/spec@1.1.0': {}
 
-  '@t3-oss/env-core@0.13.8(typescript@5.9.3)(zod@3.24.3)':
+  '@t3-oss/env-core@0.13.8(typescript@5.8.3)(zod@3.24.3)':
     optionalDependencies:
-      typescript: 5.9.3
+      typescript: 5.8.3
       zod: 3.24.3
 
   '@tootallnate/quickjs-emscripten@0.23.0': {}
@@ -7773,21 +7689,21 @@ snapshots:
       tslib: 2.8.1
     optional: true
 
-  '@typechain/ethers-v6@0.5.1(ethers@5.7.2)(typechain@8.3.2(typescript@5.9.3))(typescript@5.9.3)':
+  '@typechain/ethers-v6@0.5.1(ethers@5.7.2)(typechain@8.3.2(typescript@5.8.3))(typescript@5.8.3)':
     dependencies:
       ethers: 5.7.2
       lodash: 4.17.23
-      ts-essentials: 7.0.3(typescript@5.9.3)
-      typechain: 8.3.2(typescript@5.9.3)
-      typescript: 5.9.3
+      ts-essentials: 7.0.3(typescript@5.8.3)
+      typechain: 8.3.2(typescript@5.8.3)
+      typescript: 5.8.3
 
-  '@typechain/ethers-v6@0.5.1(ethers@5.8.0)(typechain@8.3.2(typescript@5.9.3))(typescript@5.9.3)':
+  '@typechain/ethers-v6@0.5.1(ethers@5.8.0)(typechain@8.3.2(typescript@5.8.3))(typescript@5.8.3)':
     dependencies:
       ethers: 5.8.0
       lodash: 4.17.23
-      ts-essentials: 7.0.3(typescript@5.9.3)
-      typechain: 8.3.2(typescript@5.9.3)
-      typescript: 5.9.3
+      ts-essentials: 7.0.3(typescript@5.8.3)
+      typechain: 8.3.2(typescript@5.8.3)
+      typescript: 5.8.3
 
   '@types/chai@5.2.3':
     dependencies:
@@ -7848,50 +7764,50 @@ snapshots:
     dependencies:
       '@types/yargs-parser': 21.0.3
 
-  '@typescript-eslint/eslint-plugin@8.48.1(@typescript-eslint/parser@8.48.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.9.3))(eslint@9.39.1(jiti@2.6.1))(typescript@5.9.3)':
+  '@typescript-eslint/eslint-plugin@8.48.1(@typescript-eslint/parser@8.48.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.8.3))(eslint@9.39.1(jiti@2.6.1))(typescript@5.8.3)':
     dependencies:
       '@eslint-community/regexpp': 4.12.2
-      '@typescript-eslint/parser': 8.48.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.9.3)
+      '@typescript-eslint/parser': 8.48.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.8.3)
       '@typescript-eslint/scope-manager': 8.48.1
-      '@typescript-eslint/type-utils': 8.48.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.9.3)
-      '@typescript-eslint/utils': 8.48.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.9.3)
+      '@typescript-eslint/type-utils': 8.48.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.8.3)
+      '@typescript-eslint/utils': 8.48.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.8.3)
       '@typescript-eslint/visitor-keys': 8.48.1
       eslint: 9.39.1(jiti@2.6.1)
       graphemer: 1.4.0
       ignore: 7.0.5
       natural-compare: 1.4.0
-      ts-api-utils: 2.4.0(typescript@5.9.3)
-      typescript: 5.9.3
+      ts-api-utils: 2.4.0(typescript@5.8.3)
+      typescript: 5.8.3
     transitivePeerDependencies:
       - supports-color
 
-  '@typescript-eslint/parser@8.48.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.9.3)':
+  '@typescript-eslint/parser@8.48.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.8.3)':
     dependencies:
       '@typescript-eslint/scope-manager': 8.48.1
       '@typescript-eslint/types': 8.48.1
-      '@typescript-eslint/typescript-estree': 8.48.1(typescript@5.9.3)
+      '@typescript-eslint/typescript-estree': 8.48.1(typescript@5.8.3)
       '@typescript-eslint/visitor-keys': 8.48.1
       debug: 4.4.3
       eslint: 9.39.1(jiti@2.6.1)
-      typescript: 5.9.3
+      typescript: 5.8.3
     transitivePeerDependencies:
       - supports-color
 
-  '@typescript-eslint/project-service@8.48.1(typescript@5.9.3)':
+  '@typescript-eslint/project-service@8.48.1(typescript@5.8.3)':
     dependencies:
-      '@typescript-eslint/tsconfig-utils': 8.48.1(typescript@5.9.3)
+      '@typescript-eslint/tsconfig-utils': 8.48.1(typescript@5.8.3)
       '@typescript-eslint/types': 8.48.1
       debug: 4.4.3
-      typescript: 5.9.3
+      typescript: 5.8.3
     transitivePeerDependencies:
       - supports-color
 
-  '@typescript-eslint/project-service@8.56.1(typescript@5.9.3)':
+  '@typescript-eslint/project-service@8.56.1(typescript@5.8.3)':
     dependencies:
-      '@typescript-eslint/tsconfig-utils': 8.56.1(typescript@5.9.3)
+      '@typescript-eslint/tsconfig-utils': 8.56.1(typescript@5.8.3)
       '@typescript-eslint/types': 8.56.1
       debug: 4.4.3
-      typescript: 5.9.3
+      typescript: 5.8.3
     transitivePeerDependencies:
       - supports-color
 
@@ -7905,23 +7821,23 @@ snapshots:
       '@typescript-eslint/types': 8.56.1
       '@typescript-eslint/visitor-keys': 8.56.1
 
-  '@typescript-eslint/tsconfig-utils@8.48.1(typescript@5.9.3)':
+  '@typescript-eslint/tsconfig-utils@8.48.1(typescript@5.8.3)':
     dependencies:
-      typescript: 5.9.3
+      typescript: 5.8.3
 
-  '@typescript-eslint/tsconfig-utils@8.56.1(typescript@5.9.3)':
+  '@typescript-eslint/tsconfig-utils@8.56.1(typescript@5.8.3)':
     dependencies:
-      typescript: 5.9.3
+      typescript: 5.8.3
 
-  '@typescript-eslint/type-utils@8.48.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.9.3)':
+  '@typescript-eslint/type-utils@8.48.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.8.3)':
     dependencies:
       '@typescript-eslint/types': 8.48.1
-      '@typescript-eslint/typescript-estree': 8.48.1(typescript@5.9.3)
-      '@typescript-eslint/utils': 8.48.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.9.3)
+      '@typescript-eslint/typescript-estree': 8.48.1(typescript@5.8.3)
+      '@typescript-eslint/utils': 8.48.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.8.3)
       debug: 4.4.3
       eslint: 9.39.1(jiti@2.6.1)
-      ts-api-utils: 2.4.0(typescript@5.9.3)
-      typescript: 5.9.3
+      ts-api-utils: 2.4.0(typescript@5.8.3)
+      typescript: 5.8.3
     transitivePeerDependencies:
       - supports-color
 
@@ -7929,55 +7845,55 @@ snapshots:
 
   '@typescript-eslint/types@8.56.1': {}
 
-  '@typescript-eslint/typescript-estree@8.48.1(typescript@5.9.3)':
+  '@typescript-eslint/typescript-estree@8.48.1(typescript@5.8.3)':
     dependencies:
-      '@typescript-eslint/project-service': 8.48.1(typescript@5.9.3)
-      '@typescript-eslint/tsconfig-utils': 8.48.1(typescript@5.9.3)
+      '@typescript-eslint/project-service': 8.48.1(typescript@5.8.3)
+      '@typescript-eslint/tsconfig-utils': 8.48.1(typescript@5.8.3)
       '@typescript-eslint/types': 8.48.1
       '@typescript-eslint/visitor-keys': 8.48.1
       debug: 4.4.3
       minimatch: 9.0.6
       semver: 7.7.4
       tinyglobby: 0.2.15
-      ts-api-utils: 2.4.0(typescript@5.9.3)
-      typescript: 5.9.3
+      ts-api-utils: 2.4.0(typescript@5.8.3)
+      typescript: 5.8.3
     transitivePeerDependencies:
       - supports-color
 
-  '@typescript-eslint/typescript-estree@8.56.1(typescript@5.9.3)':
+  '@typescript-eslint/typescript-estree@8.56.1(typescript@5.8.3)':
     dependencies:
-      '@typescript-eslint/project-service': 8.56.1(typescript@5.9.3)
-      '@typescript-eslint/tsconfig-utils': 8.56.1(typescript@5.9.3)
+      '@typescript-eslint/project-service': 8.56.1(typescript@5.8.3)
+      '@typescript-eslint/tsconfig-utils': 8.56.1(typescript@5.8.3)
       '@typescript-eslint/types': 8.56.1
       '@typescript-eslint/visitor-keys': 8.56.1
       debug: 4.4.3
       minimatch: 10.2.2
       semver: 7.7.4
       tinyglobby: 0.2.15
-      ts-api-utils: 2.4.0(typescript@5.9.3)
-      typescript: 5.9.3
+      ts-api-utils: 2.4.0(typescript@5.8.3)
+      typescript: 5.8.3
     transitivePeerDependencies:
       - supports-color
 
-  '@typescript-eslint/utils@8.48.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.9.3)':
+  '@typescript-eslint/utils@8.48.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.8.3)':
     dependencies:
       '@eslint-community/eslint-utils': 4.9.1(eslint@9.39.1(jiti@2.6.1))
       '@typescript-eslint/scope-manager': 8.48.1
       '@typescript-eslint/types': 8.48.1
-      '@typescript-eslint/typescript-estree': 8.48.1(typescript@5.9.3)
+      '@typescript-eslint/typescript-estree': 8.48.1(typescript@5.8.3)
       eslint: 9.39.1(jiti@2.6.1)
-      typescript: 5.9.3
+      typescript: 5.8.3
     transitivePeerDependencies:
       - supports-color
 
-  '@typescript-eslint/utils@8.56.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.9.3)':
+  '@typescript-eslint/utils@8.56.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.8.3)':
     dependencies:
       '@eslint-community/eslint-utils': 4.9.1(eslint@9.39.1(jiti@2.6.1))
       '@typescript-eslint/scope-manager': 8.56.1
       '@typescript-eslint/types': 8.56.1
-      '@typescript-eslint/typescript-estree': 8.56.1(typescript@5.9.3)
+      '@typescript-eslint/typescript-estree': 8.56.1(typescript@5.8.3)
       eslint: 9.39.1(jiti@2.6.1)
-      typescript: 5.9.3
+      typescript: 5.8.3
     transitivePeerDependencies:
       - supports-color
 
@@ -8010,13 +7926,13 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@vitest/eslint-plugin@1.5.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.9.3)(vitest@4.0.15(@types/node@24.10.1)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.2))':
+  '@vitest/eslint-plugin@1.5.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.8.3)(vitest@4.0.15(@types/node@24.10.1)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.2))':
     dependencies:
       '@typescript-eslint/scope-manager': 8.56.1
-      '@typescript-eslint/utils': 8.56.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.9.3)
+      '@typescript-eslint/utils': 8.56.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.8.3)
       eslint: 9.39.1(jiti@2.6.1)
     optionalDependencies:
-      typescript: 5.9.3
+      typescript: 5.8.3
       vitest: 4.0.15(@types/node@24.10.1)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.2)
     transitivePeerDependencies:
       - supports-color
@@ -8060,14 +7976,14 @@ snapshots:
       '@vitest/pretty-format': 4.0.15
       tinyrainbow: 3.0.3
 
-  '@wagmi/core@2.22.1(typescript@5.9.3)(viem@2.46.3(typescript@5.9.3)(zod@3.25.76))':
+  '@wagmi/core@2.22.1(typescript@5.8.3)(viem@2.38.3(typescript@5.8.3)(zod@3.25.76))':
     dependencies:
       eventemitter3: 5.0.1
-      mipd: 0.0.7(typescript@5.9.3)
-      viem: 2.46.3(typescript@5.9.3)(zod@3.25.76)
+      mipd: 0.0.7(typescript@5.8.3)
+      viem: 2.38.3(typescript@5.8.3)(zod@3.25.76)
       zustand: 5.0.0
     optionalDependencies:
-      typescript: 5.9.3
+      typescript: 5.8.3
     transitivePeerDependencies:
       - '@types/react'
       - immer
@@ -8078,11 +7994,11 @@ snapshots:
     dependencies:
       zod: 3.25.76
 
-  '@x402/evm@2.4.0(ethers@6.16.0)(typescript@5.9.3)':
+  '@x402/evm@2.4.0(ethers@6.16.0)(typescript@5.8.3)':
     dependencies:
       '@x402/core': 2.4.0
-      '@x402/extensions': 2.4.0(ethers@6.16.0)(typescript@5.9.3)
-      viem: 2.46.3(typescript@5.9.3)(zod@3.25.76)
+      '@x402/extensions': 2.4.0(ethers@6.16.0)(typescript@5.8.3)
+      viem: 2.46.3(typescript@5.8.3)(zod@3.25.76)
       zod: 3.25.76
     transitivePeerDependencies:
       - bufferutil
@@ -8090,14 +8006,14 @@ snapshots:
       - typescript
       - utf-8-validate
 
-  '@x402/extensions@2.4.0(ethers@6.16.0)(typescript@5.9.3)':
+  '@x402/extensions@2.4.0(ethers@6.16.0)(typescript@5.8.3)':
     dependencies:
       '@scure/base': 1.2.6
       '@x402/core': 2.4.0
       ajv: 8.18.0
       siwe: 2.3.2(ethers@6.16.0)
       tweetnacl: 1.0.3
-      viem: 2.46.3(typescript@5.9.3)(zod@3.25.76)
+      viem: 2.46.3(typescript@5.8.3)(zod@3.25.76)
       zod: 3.25.76
     transitivePeerDependencies:
       - bufferutil
@@ -8107,19 +8023,29 @@ snapshots:
 
   '@yarnpkg/lockfile@1.1.0': {}
 
-  abitype@1.0.8(typescript@5.9.3)(zod@3.24.3):
+  abitype@1.0.8(typescript@5.8.3)(zod@3.24.3):
     optionalDependencies:
-      typescript: 5.9.3
+      typescript: 5.8.3
       zod: 3.24.3
 
-  abitype@1.1.0(typescript@5.9.3)(zod@3.24.3):
+  abitype@1.1.0(typescript@5.8.3)(zod@3.24.3):
     optionalDependencies:
-      typescript: 5.9.3
+      typescript: 5.8.3
       zod: 3.24.3
 
-  abitype@1.2.3(typescript@5.9.3)(zod@3.25.76):
+  abitype@1.1.0(typescript@5.8.3)(zod@3.25.76):
     optionalDependencies:
-      typescript: 5.9.3
+      typescript: 5.8.3
+      zod: 3.25.76
+
+  abitype@1.2.3(typescript@5.8.3)(zod@3.24.3):
+    optionalDependencies:
+      typescript: 5.8.3
+      zod: 3.24.3
+
+  abitype@1.2.3(typescript@5.8.3)(zod@3.25.76):
+    optionalDependencies:
+      typescript: 5.8.3
       zod: 3.25.76
 
   abort-error@1.0.1: {}
@@ -8136,11 +8062,11 @@ snapshots:
 
   agent-base@7.1.4: {}
 
-  agent0-sdk@1.5.3(encoding@0.1.13)(graphql@16.13.0)(typescript@5.9.3)(zod@3.25.76):
+  agent0-sdk@1.5.3(encoding@0.1.13)(graphql@16.13.0)(typescript@5.8.3)(zod@3.25.76):
     dependencies:
       graphql-request: 6.1.0(encoding@0.1.13)(graphql@16.13.0)
       ipfs-http-client: 60.0.1(encoding@0.1.13)
-      viem: 2.46.3(typescript@5.9.3)(zod@3.25.76)
+      viem: 2.46.3(typescript@5.8.3)(zod@3.25.76)
     transitivePeerDependencies:
       - bufferutil
       - encoding
@@ -8574,8 +8500,6 @@ snapshots:
       table-layout: 1.0.2
       typical: 5.2.0
 
-  commander@10.0.1: {}
-
   commander@11.1.0: {}
 
   commander@12.1.0: {}
@@ -8849,13 +8773,13 @@ snapshots:
       minimalistic-assert: 1.0.1
       minimalistic-crypto-utils: 1.0.1
 
-  elysia@1.2.25(@sinclair/typebox@0.34.48)(typescript@5.9.3):
+  elysia@1.2.25(@sinclair/typebox@0.34.48)(typescript@5.8.3):
     dependencies:
       '@sinclair/typebox': 0.34.48
       cookie: 1.1.1
       memoirist: 0.3.1
     optionalDependencies:
-      typescript: 5.9.3
+      typescript: 5.8.3
 
   emoji-regex@10.6.0: {}
 
@@ -9168,8 +9092,6 @@ snapshots:
   fdir@6.5.0(picomatch@4.0.3):
     optionalDependencies:
       picomatch: 4.0.3
-
-  fflate@0.8.2: {}
 
   file-entry-cache@8.0.0:
     dependencies:
@@ -10082,7 +10004,7 @@ snapshots:
 
   md5.js@1.3.5:
     dependencies:
-      hash-base: 3.0.5
+      hash-base: 3.1.2
       inherits: 2.0.4
       safe-buffer: 5.2.1
 
@@ -10161,9 +10083,9 @@ snapshots:
 
   minimist@1.2.8: {}
 
-  mipd@0.0.7(typescript@5.9.3):
+  mipd@0.0.7(typescript@5.8.3):
     optionalDependencies:
-      typescript: 5.9.3
+      typescript: 5.8.3
 
   mkdirp@1.0.4: {}
 
@@ -10416,7 +10338,7 @@ snapshots:
 
   os-tmpdir@1.0.2: {}
 
-  ox@0.12.4(typescript@5.9.3)(zod@3.25.76):
+  ox@0.12.4(typescript@5.8.3)(zod@3.25.76):
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
       '@noble/ciphers': 1.3.0
@@ -10424,28 +10346,28 @@ snapshots:
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@5.9.3)(zod@3.25.76)
+      abitype: 1.2.3(typescript@5.8.3)(zod@3.25.76)
       eventemitter3: 5.0.1
     optionalDependencies:
-      typescript: 5.9.3
+      typescript: 5.8.3
     transitivePeerDependencies:
       - zod
 
-  ox@0.6.9(typescript@5.9.3)(zod@3.24.3):
+  ox@0.6.9(typescript@5.8.3)(zod@3.24.3):
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
-      '@noble/curves': 1.8.2
-      '@noble/hashes': 1.7.2
-      '@scure/bip32': 1.6.2
-      '@scure/bip39': 1.5.4
-      abitype: 1.0.8(typescript@5.9.3)(zod@3.24.3)
+      '@noble/curves': 1.9.7
+      '@noble/hashes': 1.8.0
+      '@scure/bip32': 1.7.0
+      '@scure/bip39': 1.6.0
+      abitype: 1.2.3(typescript@5.8.3)(zod@3.24.3)
       eventemitter3: 5.0.1
     optionalDependencies:
-      typescript: 5.9.3
+      typescript: 5.8.3
     transitivePeerDependencies:
       - zod
 
-  ox@0.9.6(typescript@5.9.3)(zod@3.24.3):
+  ox@0.9.6(typescript@5.8.3)(zod@3.24.3):
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
       '@noble/ciphers': 1.3.0
@@ -10453,10 +10375,25 @@ snapshots:
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.1.0(typescript@5.9.3)(zod@3.24.3)
+      abitype: 1.2.3(typescript@5.8.3)(zod@3.24.3)
       eventemitter3: 5.0.1
     optionalDependencies:
-      typescript: 5.9.3
+      typescript: 5.8.3
+    transitivePeerDependencies:
+      - zod
+
+  ox@0.9.6(typescript@5.8.3)(zod@3.25.76):
+    dependencies:
+      '@adraffy/ens-normalize': 1.11.1
+      '@noble/ciphers': 1.3.0
+      '@noble/curves': 1.9.1
+      '@noble/hashes': 1.8.0
+      '@scure/bip32': 1.7.0
+      '@scure/bip39': 1.6.0
+      abitype: 1.2.3(typescript@5.8.3)(zod@3.25.76)
+      eventemitter3: 5.0.1
+    optionalDependencies:
+      typescript: 5.8.3
     transitivePeerDependencies:
       - zod
 
@@ -10891,7 +10828,7 @@ snapshots:
       hash-base: 3.1.2
       inherits: 2.0.4
 
-  rolldown-plugin-dts@0.18.4(rolldown@1.0.0-beta.52)(typescript@5.9.3):
+  rolldown-plugin-dts@0.18.4(rolldown@1.0.0-beta.52)(typescript@5.8.3):
     dependencies:
       '@babel/generator': 7.29.1
       '@babel/parser': 7.29.0
@@ -10904,7 +10841,7 @@ snapshots:
       obug: 2.1.1
       rolldown: 1.0.0-beta.52
     optionalDependencies:
-      typescript: 5.9.3
+      typescript: 5.8.3
     transitivePeerDependencies:
       - oxc-resolver
 
@@ -11329,9 +11266,9 @@ snapshots:
 
   trim-newlines@3.0.1: {}
 
-  ts-api-utils@2.4.0(typescript@5.9.3):
+  ts-api-utils@2.4.0(typescript@5.8.3):
     dependencies:
-      typescript: 5.9.3
+      typescript: 5.8.3
 
   ts-command-line-args@2.5.1:
     dependencies:
@@ -11340,11 +11277,11 @@ snapshots:
       command-line-usage: 6.1.3
       string-format: 2.0.0
 
-  ts-essentials@7.0.3(typescript@5.9.3):
+  ts-essentials@7.0.3(typescript@5.8.3):
     dependencies:
-      typescript: 5.9.3
+      typescript: 5.8.3
 
-  tsdown@0.16.8(synckit@0.11.12)(typescript@5.9.3):
+  tsdown@0.16.8(synckit@0.11.12)(typescript@5.8.3):
     dependencies:
       ansis: 4.2.0
       cac: 6.7.14
@@ -11354,7 +11291,7 @@ snapshots:
       hookable: 5.5.3
       obug: 2.1.1
       rolldown: 1.0.0-beta.52
-      rolldown-plugin-dts: 0.18.4(rolldown@1.0.0-beta.52)(typescript@5.9.3)
+      rolldown-plugin-dts: 0.18.4(rolldown@1.0.0-beta.52)(typescript@5.8.3)
       semver: 7.7.4
       tinyexec: 1.0.2
       tinyglobby: 0.2.15
@@ -11362,7 +11299,7 @@ snapshots:
       unconfig-core: 7.5.0
       unrun: 0.2.27(synckit@0.11.12)
     optionalDependencies:
-      typescript: 5.9.3
+      typescript: 5.8.3
     transitivePeerDependencies:
       - '@ts-macro/tsc'
       - '@typescript/native-preview'
@@ -11401,7 +11338,7 @@ snapshots:
 
   type-fest@2.19.0: {}
 
-  typechain@8.3.2(typescript@5.9.3):
+  typechain@8.3.2(typescript@5.8.3):
     dependencies:
       '@types/prettier': 2.7.3
       debug: 4.4.3
@@ -11412,8 +11349,8 @@ snapshots:
       mkdirp: 1.0.4
       prettier: 2.8.8
       ts-command-line-args: 2.5.1
-      ts-essentials: 7.0.3(typescript@5.9.3)
-      typescript: 5.9.3
+      ts-essentials: 7.0.3(typescript@5.8.3)
+      typescript: 5.8.3
     transitivePeerDependencies:
       - supports-color
 
@@ -11425,18 +11362,18 @@ snapshots:
 
   typedarray@0.0.6: {}
 
-  typescript-eslint@8.48.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.9.3):
+  typescript-eslint@8.48.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.8.3):
     dependencies:
-      '@typescript-eslint/eslint-plugin': 8.48.1(@typescript-eslint/parser@8.48.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.9.3))(eslint@9.39.1(jiti@2.6.1))(typescript@5.9.3)
-      '@typescript-eslint/parser': 8.48.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.9.3)
-      '@typescript-eslint/typescript-estree': 8.48.1(typescript@5.9.3)
-      '@typescript-eslint/utils': 8.48.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.9.3)
+      '@typescript-eslint/eslint-plugin': 8.48.1(@typescript-eslint/parser@8.48.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.8.3))(eslint@9.39.1(jiti@2.6.1))(typescript@5.8.3)
+      '@typescript-eslint/parser': 8.48.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.8.3)
+      '@typescript-eslint/typescript-estree': 8.48.1(typescript@5.8.3)
+      '@typescript-eslint/utils': 8.48.1(eslint@9.39.1(jiti@2.6.1))(typescript@5.8.3)
       eslint: 9.39.1(jiti@2.6.1)
-      typescript: 5.9.3
+      typescript: 5.8.3
     transitivePeerDependencies:
       - supports-color
 
-  typescript@5.9.3: {}
+  typescript@5.8.3: {}
 
   typestub-ipfs-only-hash@4.0.0(encoding@0.1.13):
     dependencies:
@@ -11552,63 +11489,78 @@ snapshots:
 
   varint@6.0.0: {}
 
-  viem@2.29.4(typescript@5.9.3)(zod@3.24.3):
+  viem@2.29.4(typescript@5.8.3)(zod@3.24.3):
     dependencies:
       '@noble/curves': 1.8.2
       '@noble/hashes': 1.7.2
       '@scure/bip32': 1.6.2
       '@scure/bip39': 1.5.4
-      abitype: 1.0.8(typescript@5.9.3)(zod@3.24.3)
+      abitype: 1.0.8(typescript@5.8.3)(zod@3.24.3)
       isows: 1.0.7(ws@8.18.1)
-      ox: 0.6.9(typescript@5.9.3)(zod@3.24.3)
+      ox: 0.6.9(typescript@5.8.3)(zod@3.24.3)
       ws: 8.18.1
     optionalDependencies:
-      typescript: 5.9.3
+      typescript: 5.8.3
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
       - zod
 
-  viem@2.38.3(typescript@5.9.3)(zod@3.24.3):
+  viem@2.38.3(typescript@5.8.3)(zod@3.24.3):
     dependencies:
       '@noble/curves': 1.9.1
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.1.0(typescript@5.9.3)(zod@3.24.3)
+      abitype: 1.1.0(typescript@5.8.3)(zod@3.24.3)
       isows: 1.0.7(ws@8.18.3)
-      ox: 0.9.6(typescript@5.9.3)(zod@3.24.3)
+      ox: 0.9.6(typescript@5.8.3)(zod@3.24.3)
       ws: 8.18.3
     optionalDependencies:
-      typescript: 5.9.3
+      typescript: 5.8.3
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
       - zod
 
-  viem@2.46.3(typescript@5.9.3)(zod@3.25.76):
+  viem@2.38.3(typescript@5.8.3)(zod@3.25.76):
     dependencies:
       '@noble/curves': 1.9.1
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@5.9.3)(zod@3.25.76)
+      abitype: 1.1.0(typescript@5.8.3)(zod@3.25.76)
       isows: 1.0.7(ws@8.18.3)
-      ox: 0.12.4(typescript@5.9.3)(zod@3.25.76)
+      ox: 0.9.6(typescript@5.8.3)(zod@3.25.76)
       ws: 8.18.3
     optionalDependencies:
-      typescript: 5.9.3
+      typescript: 5.8.3
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
       - zod
 
-  vite-plugin-node-polyfills@0.17.0(rollup@4.59.0)(vite@7.3.1(@types/node@24.10.1)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.2)):
+  viem@2.46.3(typescript@5.8.3)(zod@3.25.76):
+    dependencies:
+      '@noble/curves': 1.9.1
+      '@noble/hashes': 1.8.0
+      '@scure/bip32': 1.7.0
+      '@scure/bip39': 1.6.0
+      abitype: 1.2.3(typescript@5.8.3)(zod@3.25.76)
+      isows: 1.0.7(ws@8.18.3)
+      ox: 0.12.4(typescript@5.8.3)(zod@3.25.76)
+      ws: 8.18.3
+    optionalDependencies:
+      typescript: 5.8.3
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+      - zod
+
+  vite-plugin-node-polyfills@0.25.0(rollup@4.59.0)(vite@7.3.1(@types/node@24.10.1)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.2)):
     dependencies:
       '@rollup/plugin-inject': 5.0.5(rollup@4.59.0)
-      buffer-polyfill: buffer@6.0.3
       node-stdlib-browser: 1.3.1
-      process: 0.11.10
       vite: 7.3.1(@types/node@24.10.1)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.2)
     transitivePeerDependencies:
       - rollup
