@@ -8,42 +8,6 @@ import {
 	encodePacked,
 } from "viem";
 
-import poseidon2Circuit from "./poseidon2_hash.json" with { type: "json" };
-
-export function deriveVaultId(
-	passwordHash: `0x${string}`,
-	owner: Address,
-): `0x${string}` {
-	return keccak256(
-		encodeAbiParameters(parseAbiParameters("bytes32, address"), [
-			passwordHash,
-			owner,
-		]),
-	);
-}
-
-// The Prime Field Modulus for BN254
-const MODULUS =
-	21888242871839275222246405745257275088548364400416034343698204186575808495617n;
-
-export async function poseidon2Hash(
-	left: bigint,
-	right: bigint,
-): Promise<bigint> {
-	const poseidonCircuit2 = poseidon2Circuit as CompiledCircuit;
-	const noir = new Noir(poseidonCircuit2);
-	// ensure both inputs are < MODULUS
-	const safeLeft = left < MODULUS ? left : left % MODULUS;
-	const safeRight = right < MODULUS ? right : right % MODULUS;
-
-	const { returnValue } = await noir.execute({
-		value1: safeLeft.toString(),
-		value2: safeRight.toString(),
-	});
-
-	return BigInt(returnValue as string);
-}
-
 // String to 32-byte array
 export function stringToBytes32Array(str: string): number[] {
 	const padded = str.padEnd(32, "\0");
@@ -80,7 +44,6 @@ export function deriveDatasourceId(name: string, owner: Address): Hex {
 	);
 }
 
-// create a commitment to the (vaultId, tag) combo using poseidon2
 export function computeTagCommitment(
 	owner: Address,
 	name: string,
