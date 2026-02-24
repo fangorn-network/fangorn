@@ -213,6 +213,10 @@ export class Fangorn {
 		return await this.dataSourceRegistry.getDataSource(owner, name);
 	}
 
+	registry(): DataSourceRegistry {
+		return this.dataSourceRegistry;
+	}
+
 	// Get the manifest for a given data source
 	async getManifest(
 		owner: Address,

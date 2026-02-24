@@ -84,17 +84,9 @@ export class TestBed {
 			caip2,
 		};
 
-		// Lit clients
-		const delegatorLitClient = await createLitClient({ network: nagaDev });
-		const delegateeLitClient = await createLitClient({ network: nagaDev });
-
-		// Encryption services
-		const delegatorEncryption = new LitEncryptionService(delegatorLitClient, {
-			chainName: chain,
-		});
-		const delegateeEncryption = new LitEncryptionService(delegateeLitClient, {
-			chainName: chain,
-		});
+		// Lit-based Encryption services
+		const delegatorEncryption = await LitEncryptionService.init(chain);
+		const delegateeEncryption = await LitEncryptionService.init(chain);
 
 		// Storage
 		const pinata = new PinataSDK({

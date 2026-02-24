@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { Command, Option } from "commander";
+import { Command } from "commander";
 import {
 	intro,
 	outro,
@@ -9,25 +9,10 @@ import {
 	note,
 	spinner,
 	isCancel,
-	log,
-	groupMultiselect,
 	multiselect,
 } from "@clack/prompts";
-import {
-	createWalletClient,
-	Hex,
-	http,
-	Address,
-	keccak256,
-	encodeAbiParameters,
-	parseAbiParameters,
-	Chain,
-} from "viem";
+import { createWalletClient, Hex, http, Address, Chain } from "viem";
 import { privateKeyToAccount, PrivateKeyAccount } from "viem/accounts";
-import { createLitClient } from "@lit-protocol/lit-client";
-import { nagaDev } from "@lit-protocol/networks";
-import { readFileSync, writeFileSync } from "fs";
-import { basename, extname } from "path";
 import { Fangorn } from "./fangorn.js";
 import { Filedata } from "./types/index.js";
 import "dotenv/config";
@@ -41,14 +26,23 @@ import getNetwork, {
 import { LitEncryptionService } from "./modules/encryption/lit.js";
 import { computeTagCommitment, fieldToHex } from "./utils/index.js";
 import { PaymentGadget } from "./modules/gadgets/payment.js";
-import { createInterface } from "readline";
 import {
 	agentCardBuilder,
 	AgentCardBuilder,
 } from "./builders/a2aCardBuilder.js";
 import { SDK } from "agent0-sdk";
-import { setTimeout } from "timers";
+import {
+	chmodSync,
+	exists,
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	writeFileSync,
+} from "fs";
+import { basename, extname, join } from "path";
+import { homedir } from "os";
 
+// the config for the cli + fangorn
 interface Config {
 	jwt: string;
 	gateway: string;
@@ -56,37 +50,88 @@ interface Config {
 	cfg: AppConfig;
 }
 
+// the config interface for the user secrets
+interface StoredConfig {
+	privateKey: Hex;
+	jwt: string;
+	gateway: string;
+	chainName: string;
+}
+
+const CONFIG_DIR = join(homedir(), ".fangorn");
+const CONFIG_PATH = join(CONFIG_DIR, "config.json");
+
 let _config: Config | null = null;
 let _account: PrivateKeyAccount | null = null;
 let _fangorn: Fangorn | null = null;
 
+// function loadConfig(): Config {
+// 	if (_config) return _config;
+
+// 	const jwt = process.env.PINATA_JWT;
+// 	const gateway = process.env.PINATA_GATEWAY;
+// 	const privateKey = process.env.DELEGATOR_ETH_PRIVATE_KEY as Hex;
+// 	const chainName = process.env.CHAIN_NAME;
+
+// 	if (!chainName || !jwt || !gateway || !privateKey) {
+// 		throw new Error(
+// 			"Missing required env vars: CHAIN_NAME, PINATA_JWT, PINATA_GATEWAY, DELEGATOR_ETH_PRIVATE_KEY",
+// 		);
+// 	}
+
+// 	let config = FangornConfig.BaseSepolia;
+// 	if (chainName === SupportedNetworks.ArbitrumSepolia.name) {
+// 		config = FangornConfig.ArbitrumSepolia;
+// 	}
+
+// 	_config = {
+// 		jwt,
+// 		gateway,
+// 		privateKey,
+// 		cfg: config,
+// 	};
+// 	return _config;
+// }
+
 function loadConfig(): Config {
 	if (_config) return _config;
 
-	// const rpcUrl = process.env.CHAIN_RPC_URL;
+	// 1. try env vars
+	const privateKey = process.env.DELEGATOR_ETH_PRIVATE_KEY as Hex;
 	const jwt = process.env.PINATA_JWT;
 	const gateway = process.env.PINATA_GATEWAY;
-	const privateKey = process.env.DELEGATOR_ETH_PRIVATE_KEY as Hex;
 	const chainName = process.env.CHAIN_NAME;
 
-	if (!chainName || !jwt || !gateway || !privateKey) {
-		throw new Error(
-			"Missing required env vars: CHAIN_NAME, PINATA_JWT, PINATA_GATEWAY, DELEGATOR_ETH_PRIVATE_KEY",
-		);
+	if (privateKey && jwt && gateway && chainName) {
+		_config = buildConfig({ privateKey, jwt, gateway, chainName });
+		return _config;
 	}
 
-	let config = FangornConfig.BaseSepolia;
+	// 2. fall back to ~/.fangorn/config.json
+	if (existsSync(CONFIG_PATH)) {
+		const stored: StoredConfig = JSON.parse(readFileSync(CONFIG_PATH, "utf-8"));
+		_config = buildConfig(stored);
+		return _config;
+	}
+
+	// 3. nothing found
+	throw new Error(
+		"No configuration found. Run `fangorn init` to set up your credentials, " +
+			"or set DELEGATOR_ETH_PRIVATE_KEY, PINATA_JWT, PINATA_GATEWAY, and CHAIN_NAME env vars.",
+	);
+}
+
+function buildConfig({
+	privateKey,
+	jwt,
+	gateway,
+	chainName,
+}: StoredConfig): Config {
+	let cfg = FangornConfig.BaseSepolia;
 	if (chainName === SupportedNetworks.ArbitrumSepolia.name) {
-		config = FangornConfig.ArbitrumSepolia;
+		cfg = FangornConfig.ArbitrumSepolia;
 	}
-
-	_config = {
-		jwt,
-		gateway,
-		privateKey,
-		cfg: config,
-	};
-	return _config;
+	return { privateKey, jwt, gateway, cfg };
 }
 
 function getAccount(): PrivateKeyAccount {
@@ -105,8 +150,6 @@ async function getFangorn(chain: Chain): Promise<Fangorn> {
 		chain,
 	});
 
-	const litClient = await createLitClient({ network: nagaDev });
-
 	// default to arbitrum sepolia
 	const appConfig: AppConfig = cfg.cfg;
 
@@ -119,9 +162,7 @@ async function getFangorn(chain: Chain): Promise<Fangorn> {
 	});
 	const storage = new PinataStorage(pinata);
 	const chainName = process.env.CHAIN_NAME;
-	const encryptionService = new LitEncryptionService(litClient, {
-		chainName,
-	});
+	const encryptionService = await LitEncryptionService.init(chainName);
 
 	_fangorn = await Fangorn.init(
 		walletClient,
@@ -135,7 +176,6 @@ async function getFangorn(chain: Chain): Promise<Fangorn> {
 }
 
 const getChain = (chainStr: string) => {
-	// console.log("getting chain for string " + chainStr);
 	return getNetwork(chainStr);
 };
 
@@ -159,7 +199,70 @@ const selectChain = async () => {
 
 // CLI setup
 const program = new Command();
-program.name("Fangorn").description("CLI for Fangorn").version("9129129");
+program.name("Fangorn").description("CLI for Fangorn").version("0.0.1");
+
+program
+	.command("init")
+	.description("Configure your Fangorn credentials")
+	.action(async () => {
+		intro("Fangorn Setup");
+
+		const privateKey = await text({
+			message: "Your wallet private key (stored locally, never transmitted):",
+			placeholder: "0x...",
+			validate: (v) => {
+				if (!v.startsWith("0x") || v.length !== 66)
+					return "Must be a valid 0x-prefixed 32-byte hex key";
+			},
+		});
+		handleCancel(privateKey);
+
+		const jwt = await text({
+			message: "Pinata JWT:",
+			validate: (v) => {
+				if (!v) return "Required";
+			},
+		});
+		handleCancel(jwt);
+
+		const gateway = await text({
+			message: "Pinata Gateway URL:",
+			placeholder: "https://your-gateway.mypinata.cloud",
+			validate: (v) => {
+				if (!v) return "Required";
+			},
+		});
+		handleCancel(gateway);
+
+		const chainName = await select({
+			message: "Default chain:",
+			options: [
+				{
+					value: SupportedNetworks.ArbitrumSepolia.name,
+					label: "Arbitrum Sepolia",
+				},
+				{ value: SupportedNetworks.BaseSepolia.name, label: "Base Sepolia" },
+			],
+		});
+		handleCancel(chainName);
+
+		const stored: StoredConfig = {
+			privateKey: privateKey as Hex,
+			jwt: jwt as string,
+			gateway: gateway as string,
+			chainName: chainName as string,
+		};
+
+		if (!existsSync(CONFIG_DIR)) {
+			mkdirSync(CONFIG_DIR, { recursive: true });
+		}
+
+		writeFileSync(CONFIG_PATH, JSON.stringify(stored, null, 2), "utf-8");
+		// owner read/write only
+		chmodSync(CONFIG_PATH, 0o600);
+
+		outro(`Config saved to ${CONFIG_PATH}`);
+	});
 
 program
 	.command("register")
@@ -616,68 +719,96 @@ program
 		}
 	});
 
-// program
-// 	.command("list")
-// 	.description("List contents (index) of a data source")
-// 	.argument("<name>", "Data source name")
-// 	.option(
-// 		"-c, --chain <chain>",
-// 		"The chain to use as the backend (arbitrumSepolia or baseSepolia)",
-// 	)
-// 	.action(async (name: string, options) => {
-// 		try {
-// 			const vaultId = deriveVaultId(name);
-// 			const chain = getChain(options.chain);
-// 			const fangorn = await getFangorn(chain);
-// 			const manifest = await fangorn.getManifest(vaultId);
+program
+	.command("list")
+	.description("List contents (index) of a data source")
+	.argument("<name>", "Data source name")
+	.option(
+		"-c, --chain <chain>",
+		"The chain to use as the backend (arbitrumSepolia or baseSepolia)",
+	)
+	.action(async (name: string, options) => {
+		try {
+			const owner = getAccount().address;
+			const chain = getChain(options.chain);
+			const fangorn = await getFangorn(chain);
+			const manifest = await fangorn.getManifest(owner, name);
 
-// 			if (!manifest) {
-// 				console.log("The data source is empty. \n");
-// 				console.log(
-// 					"Upload data with `fangorn upload <dataSourceName> <file> --price <set-price>",
-// 				);
-// 				process.exit(0);
-// 			}
-// 			console.log(`Vault: ${name} (${vaultId})`);
-// 			console.log(`Entries (${manifest.entries.length}):`);
-// 			for (const entry of manifest.entries) {
-// 				console.log(
-// 					`  - ${entry.tag} | price: ${entry.price} | cid: ${entry.cid}`,
-// 				);
-// 			}
-// 			process.exit(0);
-// 		} catch (err) {
-// 			console.error("Failed to list vault:", (err as Error).message);
-// 			process.exit(1);
-// 		}
-// 	});
+			if (!manifest) {
+				console.log("The data source is empty. \n");
+				console.log(
+					"Upload data with `fangorn upload <dataSourceName> <file> --price <set-price>",
+				);
+				process.exit(0);
+			}
+			console.log(`Datasource: ${name} (${owner})`);
+			console.log(`Entries (${manifest.entries.length}):`);
+			for (const entry of manifest.entries) {
+				console.log(
+					`  - ${entry.tag} | gadget descriptor: ${JSON.stringify(entry.gadgetDescriptor)} | cid: ${entry.cid}`,
+				);
+			}
+			process.exit(0);
+		} catch (err) {
+			console.error("Failed to list vault:", (err as Error).message);
+			process.exit(1);
+		}
+	});
 
-// program
-// 	.command("info")
-// 	.description("Get data source info from contract")
-// 	.argument("<name>", "Data source name")
-// 	.option(
-// 		"-c, --chain <chain>",
-// 		"The chain to use as the backend (arbitrumSepolia or baseSepolia)",
-// 	)
-// 	.action(async (name: string, options) => {
-// 		try {
-// 			const vaultId = deriveVaultId(name);
-// 			const chain = getChain(options.chain);
-// 			const fangorn = await getFangorn(chain);
-// 			const vault = await fangorn.getDataSource(vaultId);
+program
+	.command("info")
+	.description("Get data source info from contract")
+	.argument("<name>", "Data source name")
+	.option(
+		"-c, --chain <chain>",
+		"The chain to use as the backend (arbitrumSepolia or baseSepolia)",
+	)
+	.action(async (name: string, options) => {
+		try {
+			const owner = getAccount().address;
+			const chain = getChain(options.chain);
+			const fangorn = await getFangorn(chain);
+			const vault = await fangorn.getDataSource(owner, name);
 
-// 			console.log(`Vault: ${name} (${vaultId})`);
-// 			console.log(`Owner: ${vault.owner}`);
-// 			console.log(
-// 				`Manifest CID: ${vault.manifestCid == "" ? "Upload data with `fangorn upload <vaultName> <file> --price <set-price>`" : vault.manifestCid}`,
-// 			);
-// 			process.exit(0);
-// 		} catch (err) {
-// 			console.error("Failed to get vault info:", (err as Error).message);
-// 			process.exit(1);
-// 		}
-// 	});
+			console.log(`Datasource: ${name} (${owner})`);
+			console.log(`Owner: ${vault.owner}`);
+			console.log(
+				`Manifest CID: ${vault.manifestCid == "" ? "Upload data with `fangorn upload <vaultName> <file> --price <set-price>`" : vault.manifestCid}`,
+			);
+			process.exit(0);
+		} catch (err) {
+			console.error("Failed to get vault info:", (err as Error).message);
+			process.exit(1);
+		}
+	});
+
+program
+	.command("entry")
+	.description("Get info about a specific entry")
+	.argument("<name>", "Vault name")
+	.argument("<tag>", "File tag")
+	.option(
+		"-c, --chain <chain>",
+		"The chain to use as the backend (arbitrumSepolia or baseSepolia",
+	)
+	.action(async (name: string, tag: string, options) => {
+		try {
+			const owner = getAccount().address;
+			const chain = getChain(options.chain);
+			const fangorn = await getFangorn(chain);
+			const entry = await fangorn.getDataSourceData(owner, name, tag);
+
+			console.log(`Entry: ${tag}`);
+			console.log(`  CID: ${entry.cid}`);
+			console.log(
+				`  Gadget Descriptor: ${JSON.stringify(entry.gadgetDescriptor)}`,
+			);
+			process.exit(0);
+		} catch (err) {
+			console.error("Failed to get entry:", (err as Error).message);
+			process.exit(1);
+		}
+	});
 
 program
 	.command("decrypt")
@@ -708,32 +839,6 @@ program
 			process.exit(1);
 		}
 	});
-
-// program
-// 	.command("entry")
-// 	.description("Get info about a specific vault entry")
-// 	.argument("<name>", "Vault name")
-// 	.argument("<tag>", "File tag")
-// 	.option(
-// 		"-c, --chain <chain>",
-// 		"The chain to use as the backend (arbitrumSepolia or baseSepolia",
-// 	)
-// 	.action(async (name: string, tag: string, options) => {
-// 		try {
-// 			const vaultId = deriveVaultId(name);
-// 			const chain = getChain(options.chain);
-// 			const fangorn = await getFangorn(chain);
-// 			const entry = await fangorn.getDataSourceData(vaultId, tag);
-
-// 			console.log(`Entry: ${tag}`);
-// 			console.log(`  CID: ${entry.cid}`);
-// 			console.log(`  Price: ${entry.price}`);
-// 			process.exit(0);
-// 		} catch (err) {
-// 			console.error("Failed to get entry:", (err as Error).message);
-// 			process.exit(1);
-// 		}
-// 	});
 
 function getMimeType(ext: string): string {
 	const types: Record<string, string> = {

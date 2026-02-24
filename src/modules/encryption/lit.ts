@@ -4,7 +4,7 @@ import {
 	LitActionResource,
 	LitPKPResource,
 } from "@lit-protocol/auth-helpers";
-import { LitClient } from "@lit-protocol/lit-client";
+import { createLitClient, LitClient } from "@lit-protocol/lit-client";
 import { createAuthManager, storagePlugins } from "@lit-protocol/auth";
 import { WalletClient } from "viem";
 
@@ -18,6 +18,7 @@ import type {
 import type { Gadget } from "../gadgets/types.js";
 import type { Filedata } from "../../types/index.js";
 import { EncryptionService } from "./index.js";
+import { nagaDev } from "@lit-protocol/networks";
 
 const createDecryptLitActionCode = (chainName: string) => `(async () => {
     try {
@@ -47,21 +48,30 @@ export interface LitEncryptionServiceConfig {
 export class LitEncryptionService implements EncryptionService {
 	constructor(
 		private litClient: LitClient,
-		private config: LitEncryptionServiceConfig,
+		private chainName: string,
 	) {}
 
+	public static async init(chain: string): Promise<LitEncryptionService> {
+		const litclient = await createLitClient({ network: nagaDev });
+		return new LitEncryptionService(litclient, chain);
+	}
+
+	/**
+	 * Encrypt filedata under the given gadget
+	 * @param file The filedata to encrypt
+	 * @param gadget The gadget to use
+	 * @returns The ciphertext bundle
+	 */
 	async encrypt(file: Filedata, gadget: Gadget): Promise<EncryptedPayload> {
 		// local AES encryption
 		const { encryptedData, keyMaterial } = await encryptData(file.data);
-
 		// get ACC from gadget
 		const acc = await gadget.toAccessCondition();
-
 		// encrypt key with Lit
 		const litEncryptedKey = await this.litClient.encrypt({
 			dataToEncrypt: keyMaterial.toString(),
 			unifiedAccessControlConditions: acc,
-			chain: this.config.chainName,
+			chain: this.chainName,
 		});
 
 		return {
@@ -75,6 +85,12 @@ export class LitEncryptionService implements EncryptionService {
 		};
 	}
 
+	/**
+	 * Attempt to decrypt some encrypted data
+	 * @param payload The encrytped bundle to recover
+	 * @param authContext The authorization context
+	 * @returns The decrytped output (on success), else empty
+	 */
 	async decrypt(
 		payload: EncryptedPayload,
 		authContext: AuthContextWrapper,
@@ -92,7 +108,6 @@ export class LitEncryptionService implements EncryptionService {
 		});
 
 		// TODO: error handling
-		// parse key from response
 		const key = this.parseKeyResponse(
 			result.response as string,
 		) as Uint8Array<ArrayBuffer>;
@@ -194,9 +209,8 @@ export class LitEncryptionService implements EncryptionService {
 		};
 	}
 
+	// parse the aes key from the response string
 	private parseKeyResponse(response: string): Uint8Array {
-		console.log("parse key " + response);
-
 		return Uint8Array.from(
 			response.replace(/^[^\d]+/, "").split(","),
 			(entry) => {

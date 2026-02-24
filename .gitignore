@@ -6,5 +6,4 @@ lit-auth-storage
 ignore
 **/dist
 **/out
-**/nitro-testnode
-**/target
+**/target/*

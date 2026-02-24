@@ -1,10 +1,13 @@
 {
 	"name": "fangorn-sdk",
-	"version": "0.0.5",
+	"version": "2.24.2026 ",
 	"description": "A zero-knowledge conditional access control framework",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/fangorn-network/fangorn.git"
+	},
+	"bin": {
+		"fangorn": "lib/cli.js"
 	},
 	"license": "MIT",
 	"type": "module",
