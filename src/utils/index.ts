@@ -1,4 +1,3 @@
-import { CompiledCircuit, Noir } from "@noir-lang/noir_js";
 import {
 	keccak256,
 	encodeAbiParameters,
