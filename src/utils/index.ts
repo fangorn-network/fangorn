@@ -7,8 +7,7 @@ import {
 	Hex,
 } from "viem";
 
-import poseidon1Circuit from "../../circuits/poseiden1_hash/target/poseiden1_hash.json" with { type: "json" };
-import poseidon2Circuit from "../../circuits/poseiden2_hash/target/poseiden2_hash.json" with { type: "json" };
+import poseidon2Circuit from "./poseidon2_hash.json" with { type: "json" };
 
 export function deriveVaultId(
 	passwordHash: `0x${string}`,
@@ -25,19 +24,6 @@ export function deriveVaultId(
 // The Prime Field Modulus for BN254
 const MODULUS =
 	21888242871839275222246405745257275088548364400416034343698204186575808495617n;
-
-export async function poseidon1Hash(input: bigint): Promise<bigint> {
-	const poseidonCircuit1 = poseidon1Circuit as CompiledCircuit;
-	const noir = new Noir(poseidonCircuit1);
-	// ensure input is < MODULUS
-	const safeInput = input < MODULUS ? input : input % MODULUS;
-
-	const { returnValue } = await noir.execute({
-		value: safeInput.toString(),
-	});
-
-	return BigInt(returnValue as string);
-}
 
 export async function poseidon2Hash(
 	left: bigint,
