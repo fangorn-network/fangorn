@@ -157,6 +157,7 @@ export class TestBed {
 		filedata: Filedata,
 		usdcPrice: string,
 		settlementTrackerContractAddress: Address,
+		jwt: string,
 	): Promise<string> {
 		return await this.delegatorFangorn.upload(
 			datasourceName,
@@ -173,6 +174,7 @@ export class TestBed {
 					chainName: this.config.chainName,
 					settlementTrackerContractAddress,
 					usdcPrice,
+					pinataJwt: jwt,
 				});
 			},
 		);

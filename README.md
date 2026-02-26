@@ -62,18 +62,10 @@ const walletClient = createWalletClient({
   transport: http(rpcUrl),
   chain,
 });
-
 // For ArbSep, also supports BaseSepolia (wallet client must match)
 const config: AppConfig = FangornConfig.ArbitrumSepolia;
-
-// setup the Lit client (for encryption)
-const litClient = await createLitClient({
-  network: nagaDev,
-});
 // and the encryption service
-const encryptionService = new LitEncryptionService(delegateeLitClient, {
-  chainName: chain,
-});
+const encryptionService = new LitEncryptionService(chain);
 
 // setup the storage client
 const pinata = new PinataSDK({

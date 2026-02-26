@@ -8,7 +8,6 @@ import {
 	select,
 	note,
 	spinner,
-	isCancel,
 	multiselect,
 } from "@clack/prompts";
 import { createWalletClient, Hex, http, Address, Chain } from "viem";
@@ -25,7 +24,6 @@ import getNetwork, {
 } from "../config.js";
 import { LitEncryptionService } from "../modules/encryption/lit.js";
 import { computeTagCommitment, fieldToHex } from "../utils/index.js";
-import { PaymentGadget } from "../modules/gadgets/payment.js";
 import {
 	agentCardBuilder,
 	AgentCardBuilder,
@@ -33,7 +31,6 @@ import {
 import { SDK } from "agent0-sdk";
 import {
 	chmodSync,
-	exists,
 	existsSync,
 	mkdirSync,
 	readFileSync,
@@ -672,7 +669,7 @@ program
 							options.chain === "arbitrumSepolia"
 								? "0x7c6ae9eb3398234eb69b2f3acfae69065505ff69"
 								: "0x708751829f5f5f584da4142b62cd5cc9235c8a18";
-
+						params.pinataJwt = loadConfig().jwt;
 						return def.build(params);
 					}
 
