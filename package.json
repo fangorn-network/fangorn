@@ -1,6 +1,6 @@
 {
 	"name": "fangorn-sdk",
-	"version": "2026.02.25",
+	"version": "2026.02.26",
 	"description": "A zero-knowledge conditional access control framework",
 	"repository": {
 		"type": "git",
