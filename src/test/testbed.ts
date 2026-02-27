@@ -89,12 +89,8 @@ export class TestBed {
 		const delegateeEncryption = await LitEncryptionService.init(chain);
 
 		// Storage
-		const pinata = new PinataSDK({
-			pinataJwt: jwt,
-			pinataGateway: gateway,
-		});
-		const delegatorStorage = new PinataStorage(pinata);
-		const delegateeStorage = new PinataStorage(pinata);
+		const delegatorStorage = new PinataStorage(jwt, gateway);
+		const delegateeStorage = new PinataStorage(jwt, gateway);
 
 		const domain = "localhost";
 
