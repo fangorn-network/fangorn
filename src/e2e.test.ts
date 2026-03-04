@@ -230,6 +230,7 @@ describe("Fangorn basic encryption works", () => {
 			filedata,
 			price,
 			settlementTrackerAddress,
+			jwt,
 		);
 		// the manifest should have been updated in the contract
 		await testbed.checkDataExistence(

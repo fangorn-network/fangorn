@@ -1,0 +1,72 @@
+{
+	"_format": "",
+	"paths": {
+		"artifacts": "out",
+		"build_infos": "out/build-info",
+		"sources": "src/DSRegistry.sol",
+		"tests": "test",
+		"scripts": "script",
+		"libraries": ["lib"]
+	},
+	"files": {
+		"src/DSRegistry.sol": {
+			"lastModificationDate": 1771350956920,
+			"contentHash": "c2f59bde08cb203c",
+			"interfaceReprHash": null,
+			"sourceName": "src/DSRegistry.sol",
+			"imports": [],
+			"versionRequirement": ">=0.8.21",
+			"artifacts": {
+				"DSRegistry": {
+					"0.8.21": {
+						"default": {
+							"path": "DSRegistry.sol/DSRegistry.json",
+							"build_id": "45cd17c88fcaa73c"
+						}
+					}
+				}
+			},
+			"seenByCompiler": true
+		}
+	},
+	"builds": ["45cd17c88fcaa73c"],
+	"profiles": {
+		"default": {
+			"solc": {
+				"optimizer": { "enabled": false, "runs": 200 },
+				"metadata": {
+					"useLiteralContent": false,
+					"bytecodeHash": "ipfs",
+					"appendCBOR": true
+				},
+				"outputSelection": {
+					"*": {
+						"*": [
+							"abi",
+							"evm.bytecode.object",
+							"evm.bytecode.sourceMap",
+							"evm.bytecode.linkReferences",
+							"evm.deployedBytecode.object",
+							"evm.deployedBytecode.sourceMap",
+							"evm.deployedBytecode.linkReferences",
+							"evm.deployedBytecode.immutableReferences",
+							"evm.methodIdentifiers",
+							"metadata"
+						]
+					}
+				},
+				"evmVersion": "shanghai",
+				"viaIR": false,
+				"libraries": {}
+			},
+			"vyper": {
+				"evmVersion": "shanghai",
+				"outputSelection": {
+					"*": { "*": ["abi", "evm.bytecode", "evm.deployedBytecode"] }
+				}
+			}
+		}
+	},
+	"preprocessed": false,
+	"mocks": []
+}

@@ -1,7 +1,0 @@
-[package]
-name = "poseiden1_hash"
-type = "bin"
-authors = [""]
-
-[dependencies]
-poseidon2 = { tag = "v0.4.0", git = "https://github.com/TaceoLabs/noir-poseidon", directory = "poseidon2"}

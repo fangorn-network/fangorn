@@ -9,6 +9,7 @@ export interface PaymentGadgetParams {
 	commitment: Hex;
 	chainName: string;
 	settlementTrackerContractAddress: Address;
+	pinataJwt: String;
 }
 
 export class PaymentGadget implements Gadget {
@@ -90,8 +91,8 @@ export class PaymentGadget implements Gadget {
 	// there's probably a better way to go about this but this works for now
 	// but I'm not very comfortable with it...
 	private async toLitActionIpfsHash(): Promise<string> {
-		const jwt = process.env.PINATA_JWT!;
-		if (!jwt) throw new Error("PINATA_JWT is required");
+		// const jwt = process.env.PINATA_JWT!;
+		// if (!jwt) throw new Error("PINATA_JWT is required");
 
 		const content = this.toLitAction();
 		const name = "lit-action-payment-gadget-v1";
@@ -103,7 +104,7 @@ export class PaymentGadget implements Gadget {
 
 		const res = await fetch("https://api.pinata.cloud/pinning/pinFileToIPFS", {
 			method: "POST",
-			headers: { Authorization: `Bearer ${jwt}` },
+			headers: { Authorization: `Bearer ${this.params.pinataJwt}` },
 			body: form,
 		});
 
