@@ -695,7 +695,7 @@ program
 		"-c, --chain <chain>",
 		"The chain to use as the backend (arbitrumSepolia or baseSepolia)",
 	)
-	.action(async (name: string, options) => {
+	.action(async (name: string, options: {chain: string}) => {
 		try {
 			const owner = getAccount().address;
 			const chain = getChain(options.chain);
@@ -710,7 +710,7 @@ program
 				process.exit(0);
 			}
 			console.log(`Datasource: ${name} (${owner})`);
-			console.log(`Entries (${manifest.entries.length}):`);
+			console.log(`Entries (${String(manifest.entries.length)}):`);
 			for (const entry of manifest.entries) {
 				console.log(
 					`  - ${entry.tag} | gadget descriptor: ${JSON.stringify(entry.gadgetDescriptor)} | cid: ${entry.cid}`,
@@ -731,7 +731,7 @@ program
 		"-c, --chain <chain>",
 		"The chain to use as the backend (arbitrumSepolia or baseSepolia)",
 	)
-	.action(async (name: string, options) => {
+	.action(async (name: string, options: {chain: string}) => {
 		try {
 			const owner = getAccount().address;
 			const chain = getChain(options.chain);
@@ -759,7 +759,7 @@ program
 		"-c, --chain <chain>",
 		"The chain to use as the backend (arbitrumSepolia or baseSepolia",
 	)
-	.action(async (name: string, tag: string, options) => {
+	.action(async (name: string, tag: string, options: {chain: string}) => {
 		try {
 			const owner = getAccount().address;
 			const chain = getChain(options.chain);
@@ -789,7 +789,7 @@ program
 		"The chain to use as the backend (arbitrumSepolia or baseSepolia",
 	)
 	.option("-o, --output <path>", "Output file path")
-	.action(async (owner: Address, name: string, tag: string, options) => {
+	.action(async (owner: Address, name: string, tag: string, options: {chain: string; output?: string;}) => {
 		try {
 			const chain = getChain(options.chain);
 			const fangorn = await getFangorn(chain);
