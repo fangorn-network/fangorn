@@ -79,8 +79,15 @@
 		"multiformats": "^13.4.2",
 		"node-localstorage": "^3.0.5",
 		"pinata": "^2.5.2",
+<<<<<<< HEAD
 		"solc": "^0.8.28",
 		"viem": "^2.47.1"
+=======
+		"solc": "^0.8.28"
+	},
+	"peerDependencies": {
+		"viem": "2.38.3"
+>>>>>>> main
 	},
 	"pnpm": {
 		"overrides": {
