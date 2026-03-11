@@ -15,9 +15,8 @@ import { privateKeyToAccount, PrivateKeyAccount } from "viem/accounts";
 import { Fangorn } from "../fangorn.js";
 import { Filedata } from "../types/index.js";
 import "dotenv/config";
-import { PinataSDK } from "pinata";
 import { PinataStorage } from "../providers/storage/index.js";
-import getNetwork, {
+import {
 	AppConfig,
 	FangornConfig,
 	SupportedNetworks,
@@ -131,13 +130,8 @@ async function getFangorn(chain: Chain): Promise<Fangorn> {
 
 	const domain = process.env.DOMAIN || "localhost:3000";
 
-	// storage via Pinata
-	const pinata = new PinataSDK({
-		pinataJwt: cfg.jwt,
-		pinataGateway: cfg.gateway,
-	});
-	const storage = new PinataStorage(pinata);
-	const chainName = process.env.CHAIN_NAME;
+	const storage = new PinataStorage(cfg.jwt, cfg.gateway);
+	const chainName = cfg.cfg.chainName;
 	const encryptionService = await LitEncryptionService.init(chainName);
 
 	_fangorn = await Fangorn.init(
