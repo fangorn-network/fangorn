@@ -36,13 +36,13 @@ export class SettlementTracker {
 	}
 
 	async checkSettlement(commitment: Hex, user: Address): Promise<boolean> {
-		const result = await this.publicClient.readContract({
-			address: this.contractAddress,
-			abi: SETTLEMENT_TRACKER_ABI,
-			functionName: "checkSettlement",
-			args: [commitment, user],
-		} as any);
-		return result as boolean;
+	    const result = await this.publicClient.readContract({
+	        address: this.contractAddress,
+	        abi: SETTLEMENT_TRACKER_ABI,
+	        functionName: "checkSettlement",
+	        args: [commitment, user],
+	    });
+	    return result as boolean;
 	}
 
 	/**

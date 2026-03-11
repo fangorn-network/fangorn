@@ -1,4 +1,4 @@
-import { Gadget, GadgetDescriptor } from "../modules/gadgets/types";
+import { GadgetDescriptor } from "../modules/gadgets/types";
 
 export interface VaultEntry {
 	tag: string;
@@ -22,7 +22,9 @@ interface BuildManifestOptions {
 }
 
 export const buildManifest = (options: BuildManifestOptions): VaultManifest => {
-	const { root, entries, tree } = options;
+
+	// root destructure removed due to linting. Interface remains unchanged.
+	const { entries, tree } = options;
 
 	return {
 		version: 1,
