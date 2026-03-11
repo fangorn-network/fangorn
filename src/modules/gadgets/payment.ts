@@ -116,6 +116,8 @@ export class PaymentGadget implements Gadget {
 		const resData = await res.json();
 		this.litActionCid = resData.IpfsHash;
 
+		if (!this.litActionCid) throw new Error("No litAction IPFS hash returned")
+
 		return this.litActionCid;
 	}
 }

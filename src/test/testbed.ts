@@ -11,9 +11,6 @@ import {
 } from "viem";
 import { Fangorn } from "../fangorn.js";
 import { Filedata } from "../types/index.js";
-import { createLitClient } from "@lit-protocol/lit-client";
-import { nagaDev } from "@lit-protocol/networks";
-import { PinataSDK } from "pinata";
 import { PinataStorage } from "../providers/storage/pinata/index.js";
 import { AppConfig } from "../config.js";
 import { arbitrumSepolia, baseSepolia } from "viem/chains";
@@ -110,6 +107,8 @@ export class TestBed {
 			domain,
 			config,
 		);
+
+		if(!delegatorWalletClient.account) throw new Error("Delegator account not found")
 
 		return new TestBed(
 			delegatorWalletClient.account.address,
@@ -212,8 +211,9 @@ export class TestBed {
 		usdcContractName: string,
 		usdcAddress: Address,
 	) {
-		const walletClient = this.delegateeFangorn.walletClient;
+		const walletClient = this.delegateeFangorn.getWalletClient();
 		const account = walletClient.account;
+		if(!account) throw new Error("Delegatee account not found in wallet client");
 		const domain = {
 			name: usdcContractName,
 			version: "2",
@@ -305,8 +305,8 @@ export class TestBed {
 	}
 
 	private parseSignature(signature: Hex): { v: number; r: Hex; s: Hex } {
-		const r = `0x${signature.slice(2, 66)}`;
-		const s = `0x${signature.slice(66, 130)}`;
+		const r = `0x${signature.slice(2, 66)}` as Hex;
+		const s = `0x${signature.slice(66, 130)}` as Hex;
 		const v = parseInt(signature.slice(130, 132), 16);
 		return { v, r, s };
 	}

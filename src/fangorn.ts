@@ -267,4 +267,8 @@ export class Fangorn {
 			});
 		}
 	}
+
+	public getWalletClient() {
+		return this.walletClient;
+	}
 }
