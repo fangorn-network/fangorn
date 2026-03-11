@@ -22,10 +22,10 @@ export function hexToBytes32Array(hex: `0x${string}`): number[] {
 
 // Address (20 bytes) to 32-byte array, left-padded!!
 export function addressToBytes32Array(address: Address): number[] {
-	const clean = address.slice(2).toLowerCase();
-	const bytes20 = Array.from(Buffer.from(clean, "hex"));
-	const padding = new Array(12).fill(0);
-	return [...padding, ...bytes20];
+    const clean = address.slice(2).toLowerCase();
+    const bytes20 = Array.from(Buffer.from(clean, "hex"));
+    const padding = new Array<number>(12).fill(0);
+    return [...padding, ...bytes20];
 }
 
 export function fieldToHex(field: bigint): `0x${string}` {

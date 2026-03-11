@@ -43,7 +43,7 @@ export class DataSourceRegistry {
 	}
 
 	async getDataSource(owner: Address, name: string): Promise<Vault> {
-		const result = await (this.publicClient.readContract as any)({
+		const result = await this.publicClient.readContract({
 			address: this.contractAddress,
 			abi: DS_REGISTRY_ABI,
 			functionName: "getDataSource",
@@ -60,7 +60,7 @@ export class DataSourceRegistry {
 			abi: DS_REGISTRY_ABI,
 			functionName: "getOwnedDataSources",
 			args: [address],
-		} as any);
+		});
 
 		return result as Hex[];
 	}

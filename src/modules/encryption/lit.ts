@@ -97,15 +97,15 @@ export class LitEncryptionService implements EncryptionService {
 	): Promise<DecryptedPayload> {
 		// execute Lit action to recover key
 		const result = await this.litClient.executeJs({
-			code: createDecryptLitActionCode(authContext.chainName),
-			authContext: authContext.sessionContext,
-			jsParams: {
-				accessControlConditions: payload.acc,
-				ciphertext: payload.key.ciphertext,
-				dataToEncryptHash: payload.key.dataToEncryptHash,
-				authSig: authContext.authSig,
-			},
-		});
+		    code: createDecryptLitActionCode(authContext.chainName),
+		    authContext: authContext.sessionContext,
+		    jsParams: {
+		        accessControlConditions: payload.acc,
+		        ciphertext: payload.key.ciphertext,
+		        dataToEncryptHash: payload.key.dataToEncryptHash,
+		        authSig: authContext.authSig,
+		    },
+		} as Parameters<LitClient["executeJs"]>[0]);
 
 		// TODO: error handling
 		const key = this.parseKeyResponse(
@@ -171,7 +171,7 @@ export class LitEncryptionService implements EncryptionService {
 		domain: string,
 	): Promise<AuthSig> {
 		const account = walletClient.account;
-		
+
 		if (!account) throw new Error("No account found in wallet client");
 
 		const resources = [

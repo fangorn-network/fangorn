@@ -135,7 +135,7 @@ async function getFangorn(chain: Chain): Promise<Fangorn> {
 	const chainName = cfg.cfg.chainName;
 	const encryptionService = await LitEncryptionService.init(chainName);
 
-	_fangorn = await Fangorn.init(
+	_fangorn = Fangorn.init(
 		walletClient,
 		storage,
 		encryptionService,

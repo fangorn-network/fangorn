@@ -1,4 +1,4 @@
-import { createAccBuilder } from "@lit-protocol/access-control-conditions";
+import { createAccBuilder, UnifiedAccessControlCondition } from "@lit-protocol/access-control-conditions";
 import { Address, Hex } from "viem";
 import { Gadget, GadgetDescriptor } from "./types";
 
@@ -59,7 +59,7 @@ export class PaymentGadget implements Gadget {
     `;
 	}
 
-	async toAccessCondition(): Promise<any> {
+	async toAccessCondition(): Promise<UnifiedAccessControlCondition[]> {
 		return createAccBuilder()
 			.requireLitAction(
 				await this.toLitActionIpfsHash(),
@@ -75,11 +75,12 @@ export class PaymentGadget implements Gadget {
 			.build();
 	}
 
-	toDescriptor(): GadgetDescriptor {
+	async toDescriptor(): Promise<GadgetDescriptor> {
+		const acc = await this.toAccessCondition();
 		return {
 			type: this.type,
 			description: "x402: Payment Required",
-			acc: this.toAccessCondition(),
+			acc,
 			params: { price: this.params.usdcPrice, token: "USDC" },
 		};
 	}
@@ -110,10 +111,10 @@ export class PaymentGadget implements Gadget {
 
 		if (!res.ok) {
 			const text = await res.text();
-			throw new Error(`Pinata upload failed: ${res.status} - ${text}`);
+			throw new Error(`Pinata upload failed: ${String(res.status)} - ${text}`);
 		}
 
-		const resData = await res.json();
+		const resData = await res.json() as { IpfsHash: string };
 		this.litActionCid = resData.IpfsHash;
 
 		if (!this.litActionCid) throw new Error("No litAction IPFS hash returned")

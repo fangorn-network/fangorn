@@ -116,13 +116,15 @@ export class Fangorn {
 			metadata: { name: file.tag },
 		});
 
+		const gadgetDescriptor = await gadget.toDescriptor();
+
 		// Stage entry
 		this.pendingEntries.set(file.tag, {
 			tag: file.tag,
 			cid,
 			extension: file.extension,
 			fileType: file.fileType,
-			gadgetDescriptor: gadget.toDescriptor(),
+			gadgetDescriptor,
 		});
 
 		return { cid };
