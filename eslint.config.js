@@ -13,6 +13,9 @@ export default defineConfig(
 			"node_modules",
 			"pnpm-lock.yaml",
 			"src/lit-actions/**",
+			"deploy.ts",
+			"src/e2e.test.ts",
+			"src/modules.test.ts"
 		],
 	},
 	{ linterOptions: { reportUnusedDisableDirectives: "error" } },
