@@ -645,8 +645,9 @@ program
 				async (file) => {
 					if (options.gadget) {
 						const { type, args } = parseGadgetArg(options.gadget);
-						const def: any = GADGET_REGISTRY[type];
-						if (!def) throw new Error(`Unknown gadget type: ${type}`);
+						if (!(type in GADGET_REGISTRY))
+						    throw new Error(`Unknown gadget type: ${type}`);
+						const def = GADGET_REGISTRY[type as keyof typeof GADGET_REGISTRY];
 
 						const params: Record<string, unknown> = {};
 						def.argSchema.forEach((key: any, i: any) => {
