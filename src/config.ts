@@ -40,9 +40,9 @@ export interface AppConfig {
 	caip2: number;
 }
 
-export namespace FangornConfig {
+export const FangornConfig = {
 	// Arbitrum Sepolia config
-	export const ArbitrumSepolia: AppConfig = {
+	ArbitrumSepolia: {
 		// an arbitrum stylus contract
 		dataSourceRegistryContractAddress:
 			"0x602aedafe1096004d4db591b6537bc39d7ac71a6",
@@ -50,14 +50,14 @@ export namespace FangornConfig {
 		chain: arbitrumSepolia,
 		rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
 		caip2: 421614,
-	};
+	} satisfies AppConfig,
 	// Base Sepolia config
-	export const BaseSepolia: AppConfig = {
+	BaseSepolia: {
 		dataSourceRegistryContractAddress:
 			"0x6fd0e50073dbd8169bcaf066bb4a4991bfa48eeb",
 		chainName: "baseSepolia",
 		chain: baseSepolia,
 		rpcUrl: "https://sepolia.base.org",
 		caip2: 84532,
-	};
+	} satisfies AppConfig
 }

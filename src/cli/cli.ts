@@ -103,7 +103,7 @@ function buildConfig({
 	gateway,
 	chainName,
 }: StoredConfig): Config {
-	let cfg = FangornConfig.BaseSepolia;
+	let cfg: AppConfig = FangornConfig.BaseSepolia;
 	if (chainName === SupportedNetworks.ArbitrumSepolia.name) {
 		cfg = FangornConfig.ArbitrumSepolia;
 	}
