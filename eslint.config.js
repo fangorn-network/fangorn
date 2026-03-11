@@ -15,7 +15,8 @@ export default defineConfig(
 			"src/lit-actions/**",
 			"deploy.ts",
 			"src/e2e.test.ts",
-			"src/modules.test.ts"
+			"src/modules.test.ts",
+			"src/modules/encryption/aes.test.ts",
 		],
 	},
 	{ linterOptions: { reportUnusedDisableDirectives: "error" } },
