@@ -73,7 +73,9 @@ export class Fangorn {
 		gadgetFactory: (file: Filedata) => Gadget | Promise<Gadget>,
 		overwrite?: boolean,
 	): Promise<string> {
-		const who = this.walletClient.account.address;
+		const account = this.walletClient.account;
+		if (!account) throw new Error("No account found in wallet client");
+		const who = account.address;
 		const datasource = await this.dataSourceRegistry.getDataSource(who, name);
 
 		// Load existing manifest if appending

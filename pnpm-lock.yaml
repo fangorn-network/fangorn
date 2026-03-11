@@ -32,6 +32,9 @@ importers:
       '@lit-protocol/networks':
         specifier: ^8.4.1
         version: 8.4.1(@sinclair/typebox@0.34.48)(typescript@5.8.3)(viem@2.47.1(typescript@5.8.3)(zod@3.24.3))
+      '@lit-protocol/types':
+        specifier: ^8.0.4
+        version: 8.0.4(typescript@5.8.3)
       agent0-sdk:
         specifier: ^1.5.3
         version: 1.5.3(encoding@0.1.13)(graphql@16.12.0)(typescript@5.8.3)(zod@3.24.3)
@@ -5246,10 +5249,10 @@ snapshots:
       '@lit-protocol/accs-schemas': 0.0.24
       '@lit-protocol/contracts': 0.0.74(typescript@5.8.3)
       '@lit-protocol/types': 7.1.1
-      '@openagenda/verror': 3.1.4
+      '@openagenda/verror': 3.2.0
       depd: 2.0.0
-      ethers: 5.7.2
-      siwe: 2.3.2(ethers@5.7.2)
+      ethers: 5.8.0
+      siwe: 2.3.2(ethers@5.8.0)
       tslib: 1.14.1
     transitivePeerDependencies:
       - bufferutil
@@ -5544,8 +5547,8 @@ snapshots:
       '@ethersproject/abstract-provider': 5.7.0
       '@lit-protocol/accs-schemas': 0.0.24
       depd: 2.0.0
-      ethers: 5.7.2
-      siwe: 2.3.2(ethers@5.7.2)
+      ethers: 5.8.0
+      siwe: 2.3.2(ethers@5.8.0)
       tslib: 1.14.1
     transitivePeerDependencies:
       - bufferutil

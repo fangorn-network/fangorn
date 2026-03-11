@@ -124,6 +124,9 @@ export class LitEncryptionService implements EncryptionService {
 	): Promise<AuthContextWrapper> {
 		const isWindowUndefined = typeof window === "undefined";
 		const account = isWindowUndefined ? walletClient.account : walletClient;
+
+		if (!account) throw new Error("Error, no account found in wallet client")
+		if (!walletClient.chain) throw new Error("No chain found in wallet client.")
 		// load the auth context
 		const authManager = isWindowUndefined
 			? // node.js support
@@ -168,6 +171,8 @@ export class LitEncryptionService implements EncryptionService {
 		domain: string,
 	): Promise<AuthSig> {
 		const account = walletClient.account;
+		
+		if (!account) throw new Error("No account found in wallet client");
 
 		const resources = [
 			{
