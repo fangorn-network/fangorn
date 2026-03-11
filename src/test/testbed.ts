@@ -84,25 +84,13 @@ export class TestBed {
 			caip2,
 		};
 
-		// Lit clients
-		const delegatorLitClient = await createLitClient({ network: nagaDev });
-		const delegateeLitClient = await createLitClient({ network: nagaDev });
-
-		// Encryption services
-		const delegatorEncryption = new LitEncryptionService(delegatorLitClient, {
-			chainName: chain,
-		});
-		const delegateeEncryption = new LitEncryptionService(delegateeLitClient, {
-			chainName: chain,
-		});
+		// Lit-based Encryption services
+		const delegatorEncryption = await LitEncryptionService.init(chain);
+		const delegateeEncryption = await LitEncryptionService.init(chain);
 
 		// Storage
-		const pinata = new PinataSDK({
-			pinataJwt: jwt,
-			pinataGateway: gateway,
-		});
-		const delegatorStorage = new PinataStorage(pinata);
-		const delegateeStorage = new PinataStorage(pinata);
+		const delegatorStorage = new PinataStorage(jwt, gateway);
+		const delegateeStorage = new PinataStorage(jwt, gateway);
 
 		const domain = "localhost";
 
@@ -165,6 +153,7 @@ export class TestBed {
 		filedata: Filedata,
 		usdcPrice: string,
 		settlementTrackerContractAddress: Address,
+		jwt: string,
 	): Promise<string> {
 		return await this.delegatorFangorn.upload(
 			datasourceName,
@@ -181,6 +170,7 @@ export class TestBed {
 					chainName: this.config.chainName,
 					settlementTrackerContractAddress,
 					usdcPrice,
+					pinataJwt: jwt,
 				});
 			},
 		);

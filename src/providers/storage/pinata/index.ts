@@ -2,7 +2,12 @@ import { PinataSDK } from "pinata";
 import StorageProvider from "..";
 
 export class PinataStorage implements StorageProvider<any> {
-	constructor(private pinata: PinataSDK) {}
+	private pinata: PinataSDK;
+
+	constructor(pinataJwt: string, pinataGateway: string) {
+		const pinata = new PinataSDK({ pinataJwt, pinataGateway });
+		this.pinata = pinata;
+	}
 
 	async store(data: any, metadata?: Record<string, unknown>) {
 		const content = typeof data === "string" ? data : JSON.stringify(data);

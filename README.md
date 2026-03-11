@@ -10,44 +10,62 @@ Fangorn is a programmable data framework that lets you **register datasources** 
 
 Fangorn can be deployed on any EVM chain that has a brige to Lit protocol. Currently, contracts are deployed to both Arbitrum Sepolia and Base Sepolia. See the [contracts](#contracts) section for more info.
 
-## Build
-
-`pnpm i
-
-### Usage
+## Usage
 
 Fangorn is a programmable data framework. It provides tools to register data sources that can be accessed based on owner-defined conditions, like payment.
 
-#### Quickstart
+## CLI/Quickstart
 
-```js
-# Coming soon
+To install the fangorn-sdk from NPM, run:
+
+```shell
+npm i -g fangorn-sdk
 ```
 
-#### Full Guide
+### Register a Datasource
 
-#### Setup
+First register a datasource
+
+```sh
+fangorn register name-of-your-datasource-agent
+```
+
+### Upload Data
+
+On upload, data is encrypted under a user-specified **gadget**. For now, the CLI only supports the payment gadget, which is used by specifying the argument `-g "Payment(amount)"`. The minimum amount is `0.000001`.
+
+For `-c`, the CLI supports both arbitrumSepolia and baseSepolia.
+
+```sh
+fangorn upload name-of-your-datasource-agent file-to-upload.ext -c arbitrumSepolia -g "Payment(0.0001)"
+```
+
+### Decrypt and Download
+
+```sh
+fangorn decrypt [owner] [datasourceName] [tag] -c arbitrumSepolia
+```
+
+## Full Guide
+
+### Build
+
+`pnpm i`
+
+### Setup
 
 ```js
 // provide the account, rpcurl, and chain externally
 // Initalize a wallet client
 const walletClient = createWalletClient({
-  account,,
+  account,
   transport: http(rpcUrl),
   chain,
 });
-
 // For ArbSep, also supports BaseSepolia (wallet client must match)
 const config: AppConfig = FangornConfig.ArbitrumSepolia;
-
-// setup the Lit client (for encryption)
-const litClient = await createLitClient({
-  network: nagaDev,
-});
 // and the encryption service
-const encryptionService = new LitEncryptionService(delegateeLitClient, {
-  chainName: chain,
-});
+const encryptionService = new LitEncryptionService(chain);
 
 // setup the storage client
 const pinata = new PinataSDK({
@@ -69,7 +87,7 @@ const fangorn = await Fangorn.init(
 );
 ```
 
-##### Datasource Registration
+### Datasource Registration
 
 Now that you have a Fangorn client, you can create a _datasource_. A datasource is an on-chain asset that stores a commitment to its storage root along with an optional `agentId` field for associating the datasource with an ERC-8004 identity.
 
@@ -79,7 +97,7 @@ const name = "demo";
 const id = await this.delegatorFangorn.registerDataSource(name, "");
 ```
 
-##### Encryption
+### Encryption
 
 Once a datasource exists, the owner can update its storage root to point it to data. Fangorn leverages Lit protocol for encryption and access control.
 
@@ -229,7 +247,7 @@ The tests will:
 To install locally:
 
 ```sh
-chmod +x update_clci.sh
+chmod +x update_cli.sh
 ./update_cli.sh
 ```
 
@@ -243,8 +261,12 @@ Options:
   -h, --help                              display help for command
 
 Commands:
+  init                                    Configure your Fangorn credentials
   register [options] <name>               Register a new datasource as an agent.
   upload [options] <name> <files...>      Upload file(s) to a data source
+  list [options] <name>                   List contents (index) of a data source
+  info [options] <name>                   Get data source info from contract
+  entry [options] <name> <tag>            Get info about a specific entry
   decrypt [options] <owner> <name> <tag>  Decrypt a file from a vault
   help [command]                          display help for command
 ```
