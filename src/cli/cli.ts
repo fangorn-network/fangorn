@@ -72,13 +72,14 @@ function loadConfig(): Config {
 	if (_config) return _config;
 
 	// 1. try env vars
-	const privateKey = process.env.DELEGATOR_ETH_PRIVATE_KEY as Hex;
+	const privateKey = process.env.DELEGATOR_ETH_PRIVATE_KEY;
 	const jwt = process.env.PINATA_JWT;
 	const gateway = process.env.PINATA_GATEWAY;
 	const chainName = process.env.CHAIN_NAME;
 
 	if (privateKey && jwt && gateway && chainName) {
-		_config = buildConfig({ privateKey, jwt, gateway, chainName });
+		const privateKeyHex = privateKey as Hex;
+		_config = buildConfig({ privateKey: privateKeyHex, jwt, gateway, chainName });
 		return _config;
 	}
 
