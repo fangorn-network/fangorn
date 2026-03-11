@@ -305,8 +305,8 @@ export class TestBed {
 	}
 
 	private parseSignature(signature: Hex): { v: number; r: Hex; s: Hex } {
-		const r = `0x${signature.slice(2, 66)}`;
-		const s = `0x${signature.slice(66, 130)}`;
+		const r = `0x${signature.slice(2, 66)}` as Hex;
+		const s = `0x${signature.slice(66, 130)}` as Hex;
 		const v = parseInt(signature.slice(130, 132), 16);
 		return { v, r, s };
 	}
