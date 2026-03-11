@@ -438,9 +438,9 @@ program
 					message: createAgentCard
 						? "Did you upload your agent card already?"
 						: "Does your agent have an agent card?",
-				})) as boolean;
+				}));
 				handleCancel(agentCardAvailable);
-				if (agentCardAvailable) {
+				if (agentCardAvailable === true) {
 					const agentCardLocation = (await text({
 						message: "Location of agent card:",
 						placeholder: "https://example.com/.well-known/agentcard.json",
@@ -578,6 +578,7 @@ program
 						const { result: registrationFile } = await regTx.waitConfirmed();
 						s.stop();
 						datasourceAgentId = registrationFile.agentId;
+						datasourceAgentId ??= "agentId wasn't found"
 						note(
 							`Agent registration complete for agent name ${name}. They have the ID: ${datasourceAgentId}`,
 						);
