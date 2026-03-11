@@ -622,12 +622,13 @@ program
 	)
 	.option("-g, --gadget <type(args)>", "Gadget to use (e.g. Payment(0.000001))")
 	.option("-o --overwrite", "Overwrite existing data source contents")
-	.action(async (name: string, files: string[], options) => {
+	.action(async (name: string, files: string[], options: {chain: string; price: string; gadget?: string; overwriteOption?: boolean;}) => {
 		try {
 			// const vaultId = deriveVaultId(name);
 			const owner = getAccount().address;
 			const chain = getChain(options.chain);
 			const fangorn = await getFangorn(chain);
+			const overwrite = !!options.overwriteOption;
 
 			const filedata: Filedata[] = files.map((filepath) => {
 				const data = readFileSync(filepath);
@@ -653,12 +654,12 @@ program
 						const def = GADGET_REGISTRY[type as keyof typeof GADGET_REGISTRY];
 
 						const params: Record<string, unknown> = {};
-						def.argSchema.forEach((key: any, i: any) => {
+						def.argSchema.forEach((key, i) => {
 							params[key] = args[i];
 						});
 
 						// derive commitment
-						const commitment = await computeTagCommitment(
+						const commitment = computeTagCommitment(
 							owner,
 							name,
 							file.tag,
@@ -676,7 +677,7 @@ program
 
 					return selectGadget(owner, name, file.tag, options.price);
 				},
-				options.overwrite,
+				overwrite,
 			);
 			console.log(`Upload complete! Manifest CID: ${cid}`);
 			process.exit(0);
