@@ -85,7 +85,7 @@ function loadConfig(): Config {
 
 	// 2. fall back to ~/.fangorn/config.json
 	if (existsSync(CONFIG_PATH)) {
-		const stored: StoredConfig = JSON.parse(readFileSync(CONFIG_PATH, "utf-8"));
+		const stored: StoredConfig = JSON.parse(readFileSync(CONFIG_PATH, "utf-8")) as StoredConfig;
 		_config = buildConfig(stored);
 		return _config;
 	}
@@ -129,7 +129,7 @@ async function getFangorn(chain: Chain): Promise<Fangorn> {
 	// default to arbitrum sepolia
 	const appConfig: AppConfig = cfg.cfg;
 
-	const domain = process.env.DOMAIN || "localhost:3000";
+	const domain = process.env.DOMAIN ?? "localhost:3000";
 
 	const storage = new PinataStorage(cfg.jwt, cfg.gateway);
 	const chainName = cfg.cfg.chainName;
@@ -223,7 +223,7 @@ program
 	.option("-s, --skip-card", "Skip agent card creation")
 	.option("-e, --skip-erc", "Skip ERC-8007 registrion")
 	.option("-d, --skip-ds", "Skip datasource registrion")
-	.action(async (name: string, options) => {
+	.action(async (name: string, options: {skipDs?: boolean; skipCard: boolean; skipErc: boolean}) => {
 		try {
 			intro("Chain selection");
 
