@@ -5,7 +5,15 @@ import tseslint from "typescript-eslint";
 
 export default defineConfig(
 	{
-		ignores: ["**/*.snap", "coverage", "lib", "node_modules", "pnpm-lock.yaml"],
+		ignores: [
+			"**/*.snap",
+			"coverage",
+			"dist",
+			"lib",
+			"node_modules",
+			"pnpm-lock.yaml",
+			"src/lit-actions/**",
+		],
 	},
 	{ linterOptions: { reportUnusedDisableDirectives: "error" } },
 	{
@@ -17,7 +25,11 @@ export default defineConfig(
 		files: ["**/*.{js,ts}"],
 		languageOptions: {
 			parserOptions: {
-				projectService: { allowDefaultProject: ["*.config.*s"] },
+				projectService: {
+					allowDefaultProject: ["*.config.*s"],
+					defaultProject: "tsconfig.json",
+				},
+				tsconfigRootDir: import.meta.dirname,
 			},
 		},
 	},
