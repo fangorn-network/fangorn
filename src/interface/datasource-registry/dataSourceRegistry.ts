@@ -91,6 +91,8 @@ export class DataSourceRegistry {
 		}
 
 		console.error("Something went wrong: no id created!");
+		throw new Error("Something went wrong: no id created!")
+
 	}
 
 	async updateDataSource(name: string, newManifestCid: string): Promise<Hash> {
