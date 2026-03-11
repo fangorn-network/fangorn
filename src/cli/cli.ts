@@ -433,14 +433,15 @@ program
 				}
 
 				agent = agent0Sdk.createAgent(name, description);
+				createAgentCard = options.skipCard ? false : true;
 
 				const agentCardAvailable = (await confirm({
 					message: createAgentCard
 						? "Did you upload your agent card already?"
 						: "Does your agent have an agent card?",
-				}));
+				})) as boolean;
 				handleCancel(agentCardAvailable);
-				if (agentCardAvailable === true) {
+				if (agentCardAvailable) {
 					const agentCardLocation = (await text({
 						message: "Location of agent card:",
 						placeholder: "https://example.com/.well-known/agentcard.json",
