@@ -37,7 +37,7 @@ export class SettlementTracker {
 
 	async checkSettlement(commitment: Hex, user: Address): Promise<boolean> {
 		const result = await this.publicClient.readContract({
-			address: this.contractAddress as Hex,
+			address: this.contractAddress,
 			abi: SETTLEMENT_TRACKER_ABI,
 			functionName: "checkSettlement",
 			args: [commitment, user],

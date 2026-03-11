@@ -9,7 +9,7 @@ export interface PaymentGadgetParams {
 	commitment: Hex;
 	chainName: string;
 	settlementTrackerContractAddress: Address;
-	pinataJwt: String;
+	pinataJwt: string;
 }
 
 export class PaymentGadget implements Gadget {
@@ -116,6 +116,6 @@ export class PaymentGadget implements Gadget {
 		const resData = await res.json();
 		this.litActionCid = resData.IpfsHash;
 
-		return this.litActionCid!;
+		return this.litActionCid;
 	}
 }

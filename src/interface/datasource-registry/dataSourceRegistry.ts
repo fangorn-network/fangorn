@@ -86,7 +86,7 @@ export class DataSourceRegistry {
 		for (const log of logs) {
 			if (log.eventName == "DataSourceCreated") {
 				// TODO: verify the owner too?
-				return log.args.id as Hex;
+				return log.args.id;
 			}
 		}
 

@@ -167,7 +167,7 @@ export class LitEncryptionService implements EncryptionService {
 		walletClient: WalletClient,
 		domain: string,
 	): Promise<AuthSig> {
-		const account = walletClient.account!;
+		const account = walletClient.account;
 
 		const resources = [
 			{

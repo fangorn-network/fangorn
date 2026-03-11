@@ -227,7 +227,7 @@ program
 
 			outro(`Selected chain ${chain.name}`);
 
-			let registerDatasource = options.skipDs ? false : true;
+			const registerDatasource = options.skipDs ? false : true;
 			let createAgentCard = options.skipCard ? false : true;
 			let erc8004Registration = options.skipErc ? false : true;
 
@@ -241,7 +241,7 @@ program
 				intro(`Agent Card Creation for ${chain.name}`);
 
 				while (createAgentCard) {
-					let builder: AgentCardBuilder = agentCardBuilder();
+					const builder: AgentCardBuilder = agentCardBuilder();
 
 					builder.name(name);
 
@@ -249,7 +249,7 @@ program
 						message: "Description of the Datasource:",
 					})) as string;
 					handleCancel(description);
-					builder.description(description as string);
+					builder.description(description);
 
 					const version = await text({
 						message: "Agent Version:",
@@ -331,7 +331,7 @@ program
 			}
 
 			intro(`Agent Registration for ${chain.name}`);
-			let cfg = loadConfig();
+			const cfg = loadConfig();
 
 			let agent0Sdk: SDK;
 

@@ -16,7 +16,7 @@ import { Gadget } from "./modules/gadgets/types.js";
  */
 export class Fangorn {
 	// data ingestion staging
-	private pendingEntries: Map<string, PendingEntry> = new Map();
+	private pendingEntries = new Map<string, PendingEntry>();
 
 	constructor(
 		private dataSourceRegistry: DataSourceRegistry,

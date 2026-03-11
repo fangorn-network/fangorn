@@ -8,14 +8,14 @@ function getCrypto(): Crypto {
 }
 
 // For Node 15-18, you might need top-level await or lazy init:
-let cryptoModule: Crypto | null = null;
+const cryptoModule: Crypto | null = null;
 
 export function getSubtleCrypto(): SubtleCrypto {
 	if (typeof window !== "undefined" && window.crypto) {
 		return window.crypto.subtle;
 	} else {
 		const webcrypto = getCrypto();
-		return webcrypto.subtle as SubtleCrypto;
+		return webcrypto.subtle;
 	}
 }
 

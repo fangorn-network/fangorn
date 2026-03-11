@@ -212,8 +212,8 @@ export class TestBed {
 		usdcContractName: string,
 		usdcAddress: Address,
 	) {
-		const walletClient = this.delegateeFangorn["walletClient"];
-		const account = walletClient.account!;
+		const walletClient = this.delegateeFangorn.walletClient;
+		const account = walletClient.account;
 		const domain = {
 			name: usdcContractName,
 			version: "2",
@@ -305,8 +305,8 @@ export class TestBed {
 	}
 
 	private parseSignature(signature: Hex): { v: number; r: Hex; s: Hex } {
-		const r = `0x${signature.slice(2, 66)}` as Hex;
-		const s = `0x${signature.slice(66, 130)}` as Hex;
+		const r = `0x${signature.slice(2, 66)}`;
+		const s = `0x${signature.slice(66, 130)}`;
 		const v = parseInt(signature.slice(130, 132), 16);
 		return { v, r, s };
 	}

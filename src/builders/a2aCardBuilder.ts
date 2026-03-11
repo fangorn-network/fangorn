@@ -97,7 +97,7 @@ export class AgentCardBuilder {
 			tags,
 		};
 		if (examples) skill.examples = examples;
-		this.card.skills!.push(skill);
+		this.card.skills.push(skill);
 		return this;
 	}
 

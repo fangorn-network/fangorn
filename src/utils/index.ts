@@ -29,7 +29,7 @@ export function addressToBytes32Array(address: Address): number[] {
 }
 
 export function fieldToHex(field: bigint): `0x${string}` {
-	return `0x${field.toString(16).padStart(64, "0")}` as `0x${string}`;
+	return `0x${field.toString(16).padStart(64, "0")}`;
 }
 
 export function hexToField(hex: string): bigint {
@@ -53,7 +53,7 @@ export function computeTagCommitment(
 	const hash = keccak256(
 		encodePacked(
 			["bytes32", "string", "string", "string"],
-			[id as `0x${string}`, name, tag, price],
+			[id, name, tag, price],
 		),
 	);
 	return BigInt(hash);

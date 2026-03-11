@@ -84,7 +84,7 @@ export async function deployContract({
 	// Encode constructor args dynamically
 	const deployData = encodeDeployData({
 		abi: compiled.abi,
-		bytecode: `0x${compiled.bytecode}` as Hex,
+		bytecode: `0x${compiled.bytecode}`,
 		args: constructorArgs,
 	});
 
