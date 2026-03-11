@@ -159,7 +159,10 @@ program
 			message: "Your wallet private key (stored locally, never transmitted):",
 			placeholder: "0x...",
 			validate: (v) => {
-				if (!v.startsWith("0x") || v.length !== 66)
+				if(!v) {
+					return "Private key does not exist"
+				}
+				else if (!v.startsWith("0x") || v.length !== 66)
 					return "Must be a valid 0x-prefixed 32-byte hex key";
 			},
 		});
@@ -642,11 +645,11 @@ program
 				async (file) => {
 					if (options.gadget) {
 						const { type, args } = parseGadgetArg(options.gadget);
-						const def = GADGET_REGISTRY[type];
+						const def: any = GADGET_REGISTRY[type];
 						if (!def) throw new Error(`Unknown gadget type: ${type}`);
 
 						const params: Record<string, unknown> = {};
-						def.argSchema.forEach((key, i) => {
+						def.argSchema.forEach((key: any, i: any) => {
 							params[key] = args[i];
 						});
 
