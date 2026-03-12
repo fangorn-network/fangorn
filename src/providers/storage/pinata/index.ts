@@ -1,7 +1,7 @@
 import { PinataSDK } from "pinata";
 import StorageProvider from "..";
 
-export class PinataStorage implements StorageProvider<any> {
+export class PinataStorage implements StorageProvider<unknown> {
 	private pinata: PinataSDK;
 
 	constructor(pinataJwt: string, pinataGateway: string) {
@@ -9,13 +9,13 @@ export class PinataStorage implements StorageProvider<any> {
 		this.pinata = pinata;
 	}
 
-	async store(data: any, metadata?: Record<string, unknown>) {
-		const content = typeof data === "string" ? data : JSON.stringify(data);
-		const file = new File([content], (metadata as any)?.name ?? "file", {
-			type: "text/plain",
-		});
-		const upload = await this.pinata.upload.public.file(file, { metadata });
-		return upload.cid;
+	async store(data: unknown, metadata?: Record<string, string>) {
+	    const content = typeof data === "string" ? data : JSON.stringify(data);
+	    const file = new File([content], metadata?.name ?? "file", {
+	        type: "text/plain",
+	    });
+	    const upload = await this.pinata.upload.public.file(file, { metadata });
+	    return upload.cid;
 	}
 
 	async retrieve(cid: string) {

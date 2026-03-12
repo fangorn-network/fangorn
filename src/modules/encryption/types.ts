@@ -1,4 +1,4 @@
-import { AuthContext } from ".";
+import { UnifiedAccessControlCondition } from "@lit-protocol/access-control-conditions";
 
 export interface AesEncryptedData {
 	ciphertext: Uint8Array<ArrayBuffer>;
@@ -18,7 +18,7 @@ export interface LitEncryptedData {
 export interface EncryptedPayload {
 	data: AesEncryptedData;
 	key: LitEncryptedData;
-	acc: AccessControlCondition;
+	acc: UnifiedAccessControlCondition;
 	litAction: string;
 }
 
@@ -43,7 +43,7 @@ export interface AuthSig {
  */
 export interface AuthContextWrapper {
 	authSig: AuthSig;
-	sessionContext: any;
+	sessionContext: Record<string, unknown>;
 	chainName: string;
 }
 

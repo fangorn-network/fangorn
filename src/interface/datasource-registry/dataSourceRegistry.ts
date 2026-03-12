@@ -43,7 +43,7 @@ export class DataSourceRegistry {
 	}
 
 	async getDataSource(owner: Address, name: string): Promise<Vault> {
-		const result = await (this.publicClient.readContract as any)({
+		const result = await this.publicClient.readContract({
 			address: this.contractAddress,
 			abi: DS_REGISTRY_ABI,
 			functionName: "getDataSource",
@@ -60,7 +60,7 @@ export class DataSourceRegistry {
 			abi: DS_REGISTRY_ABI,
 			functionName: "getOwnedDataSources",
 			args: [address],
-		} as any);
+		});
 
 		return result as Hex[];
 	}
@@ -86,11 +86,13 @@ export class DataSourceRegistry {
 		for (const log of logs) {
 			if (log.eventName == "DataSourceCreated") {
 				// TODO: verify the owner too?
-				return log.args.id as Hex;
+				return log.args.id;
 			}
 		}
 
 		console.error("Something went wrong: no id created!");
+		throw new Error("Something went wrong: no id created!")
+
 	}
 
 	async updateDataSource(name: string, newManifestCid: string): Promise<Hash> {

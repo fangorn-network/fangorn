@@ -38,9 +38,9 @@ export async function encryptData(data: string | Uint8Array): Promise<{
 
 	return {
 		encryptedData: {
-			ciphertext: new Uint8Array(ciphertext) as Uint8Array<ArrayBuffer>,
+			ciphertext: new Uint8Array(ciphertext),
 			iv,
-			authTag: new Uint8Array(authTag) as Uint8Array<ArrayBuffer>,
+			authTag: new Uint8Array(authTag),
 			salt,
 		},
 		keyMaterial,
@@ -73,7 +73,7 @@ export async function decryptData(
 	const decryptedContent = await subtle.decrypt(
 		{ name: "AES-GCM", iv, tagLength: 128 },
 		key,
-		dataWithAuthTag as Uint8Array<ArrayBuffer>,
+		dataWithAuthTag,
 	);
 
 	return new Uint8Array(decryptedContent);
@@ -86,7 +86,7 @@ function toUint8Array(
 		return data as Uint8Array<ArrayBuffer>;
 	}
 	if (Array.isArray(data)) {
-		return new Uint8Array(data) as Uint8Array<ArrayBuffer>;
+		return new Uint8Array(data);
 	}
-	return new Uint8Array(Object.values(data)) as Uint8Array<ArrayBuffer>;
+	return new Uint8Array(Object.values(data));
 }

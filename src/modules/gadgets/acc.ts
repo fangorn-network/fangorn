@@ -1,11 +1,11 @@
-import { AccessControlConditions } from "@lit-protocol/access-control-conditions";
+import {UnifiedAccessControlCondition } from "@lit-protocol/access-control-conditions";
 import { Gadget, GadgetDescriptor } from "./types";
 
 export class AccGadget implements Gadget {
 	readonly type = "acc";
 
 	constructor(
-		private acc: AccessControlConditions,
+		private acc: UnifiedAccessControlCondition,
 		private description?: string,
 	) {}
 
@@ -14,15 +14,15 @@ export class AccGadget implements Gadget {
 		return ``;
 	}
 
-	async toAccessCondition(): Promise<AccessControlConditions> {
-		return this.acc;
+	async toAccessCondition(): Promise<UnifiedAccessControlCondition[]> {
+		return Promise.resolve([this.acc]);
 	}
 
-	toDescriptor(): GadgetDescriptor {
-		return {
+	async toDescriptor(): Promise<GadgetDescriptor> {
+		return Promise.resolve({
 			type: this.type,
 			description: this.description,
 			acc: this.acc,
-		};
+		})
 	}
 }

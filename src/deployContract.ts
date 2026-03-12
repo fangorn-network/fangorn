@@ -1,4 +1,3 @@
-import { ethers } from "ethers";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
@@ -8,16 +7,16 @@ import {
 	http,
 	type Account,
 	type Address,
-	type Hex,
 	encodeDeployData,
-	parseEther,
+	Chain,
+	Abi,
 } from "viem";
 import solc from "solc";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-function compileContract(contractName: string): { abi: any; bytecode: string } {
+function compileContract(contractName: string): { abi: Abi; bytecode: string } {
 	const fileName = `${contractName}.sol`;
 	const path = join(__dirname, "..", "contracts", "src", fileName);
 	const source = readFileSync(path, "utf-8");
@@ -39,19 +38,27 @@ function compileContract(contractName: string): { abi: any; bytecode: string } {
 		},
 	};
 
-	const output = JSON.parse(solc.compile(JSON.stringify(input)));
+	// Cast the compile call
+	const output = JSON.parse((solc as { compile: (input: string) => string }).compile(JSON.stringify(input))) as {
+	    errors?: { severity: string }[];
+	    contracts: Record<string, Record<string, {
+	        abi: unknown[];
+	        evm: { bytecode: { object: string } };
+	    }>>;
+	};
 
 	// Filter for actual errors (ignore warnings)
-	const errors = output.errors?.filter((e: any) => e.severity === "error");
+	const errors = output.errors?.filter((e) => e.severity === "error");
 	if (errors && errors.length > 0) {
 		console.error(`Compilation errors in ${fileName}:`, errors);
 		throw new Error(`${contractName} compilation failed`);
 	}
 
 	const contractData = output.contracts[fileName][contractName];
+	const abi = contractData.abi as Abi;
 
 	return {
-		abi: contractData.abi,
+		abi,
 		bytecode: contractData.evm.bytecode.object,
 	};
 }
@@ -67,9 +74,9 @@ export async function deployContract({
 }: {
 	account: Account;
 	contractName: string;
-	constructorArgs?: any[];
-	chain: any;
-}): Promise<{ address: Address; abi: any }> {
+	constructorArgs?: unknown[];
+	chain: Chain;
+}): Promise<{ address: Address; abi: Abi }> {
 	console.log(`Compiling ${contractName}...`);
 	const compiled = compileContract(contractName);
 
@@ -84,13 +91,13 @@ export async function deployContract({
 	// Encode constructor args dynamically
 	const deployData = encodeDeployData({
 		abi: compiled.abi,
-		bytecode: `0x${compiled.bytecode}` as Hex,
+		bytecode: `0x${compiled.bytecode}`,
 		args: constructorArgs,
 	});
 
 	// Estimate gas
 	const gasPrice = await publicClient.getGasPrice();
-	console.log("the gas price is " + gasPrice);
+	console.log(`the gas price is ${String(gasPrice)}`);
 	const gasEstimate = await publicClient.estimateGas({
 		data: deployData,
 		account: walletClient.account.address,
@@ -102,15 +109,20 @@ export async function deployContract({
 		gas: gasEstimate + gasEstimate / 10n, // 10% buffer
 		// gasPrice,
 		chain,
-	} as any);
+	} as Parameters<typeof walletClient.sendTransaction>[0]);
 
 	// Wait for deployment
 	const receipt = await publicClient.waitForTransactionReceipt({
 		hash: txHash,
 	});
-	const address = receipt.contractAddress!;
 
-	console.log(`${contractName} deployed at: ${address}`);
+	if (!receipt.contractAddress) {
+		throw new Error(`${contractName} deployment failed: no contract address in receipt`);
+	}
 
-	return { address, abi: compiled.abi };
+	console.log(`${contractName} deployed at: ${receipt.contractAddress}`);
+
+	const abi = compiled.abi;
+
+	return { address: receipt.contractAddress, abi };
 }

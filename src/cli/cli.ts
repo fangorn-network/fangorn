@@ -15,9 +15,8 @@ import { privateKeyToAccount, PrivateKeyAccount } from "viem/accounts";
 import { Fangorn } from "../fangorn.js";
 import { Filedata } from "../types/index.js";
 import "dotenv/config";
-import { PinataSDK } from "pinata";
 import { PinataStorage } from "../providers/storage/index.js";
-import getNetwork, {
+import {
 	AppConfig,
 	FangornConfig,
 	SupportedNetworks,
@@ -73,19 +72,20 @@ function loadConfig(): Config {
 	if (_config) return _config;
 
 	// 1. try env vars
-	const privateKey = process.env.DELEGATOR_ETH_PRIVATE_KEY as Hex;
+	const privateKey = process.env.DELEGATOR_ETH_PRIVATE_KEY;
 	const jwt = process.env.PINATA_JWT;
 	const gateway = process.env.PINATA_GATEWAY;
 	const chainName = process.env.CHAIN_NAME;
 
 	if (privateKey && jwt && gateway && chainName) {
-		_config = buildConfig({ privateKey, jwt, gateway, chainName });
+		const privateKeyHex = privateKey as Hex;
+		_config = buildConfig({ privateKey: privateKeyHex, jwt, gateway, chainName });
 		return _config;
 	}
 
 	// 2. fall back to ~/.fangorn/config.json
 	if (existsSync(CONFIG_PATH)) {
-		const stored: StoredConfig = JSON.parse(readFileSync(CONFIG_PATH, "utf-8"));
+		const stored: StoredConfig = JSON.parse(readFileSync(CONFIG_PATH, "utf-8")) as StoredConfig;
 		_config = buildConfig(stored);
 		return _config;
 	}
@@ -103,7 +103,7 @@ function buildConfig({
 	gateway,
 	chainName,
 }: StoredConfig): Config {
-	let cfg = FangornConfig.BaseSepolia;
+	let cfg: AppConfig = FangornConfig.BaseSepolia;
 	if (chainName === SupportedNetworks.ArbitrumSepolia.name) {
 		cfg = FangornConfig.ArbitrumSepolia;
 	}
@@ -129,18 +129,13 @@ async function getFangorn(chain: Chain): Promise<Fangorn> {
 	// default to arbitrum sepolia
 	const appConfig: AppConfig = cfg.cfg;
 
-	const domain = process.env.DOMAIN || "localhost:3000";
+	const domain = process.env.DOMAIN ?? "localhost:3000";
 
-	// storage via Pinata
-	const pinata = new PinataSDK({
-		pinataJwt: cfg.jwt,
-		pinataGateway: cfg.gateway,
-	});
-	const storage = new PinataStorage(pinata);
-	const chainName = process.env.CHAIN_NAME;
+	const storage = new PinataStorage(cfg.jwt, cfg.gateway);
+	const chainName = cfg.cfg.chainName;
 	const encryptionService = await LitEncryptionService.init(chainName);
 
-	_fangorn = await Fangorn.init(
+	_fangorn = Fangorn.init(
 		walletClient,
 		storage,
 		encryptionService,
@@ -165,7 +160,10 @@ program
 			message: "Your wallet private key (stored locally, never transmitted):",
 			placeholder: "0x...",
 			validate: (v) => {
-				if (!v.startsWith("0x") || v.length !== 66)
+				if(!v) {
+					return "Private key does not exist"
+				}
+				else if (!v.startsWith("0x") || v.length !== 66)
 					return "Must be a valid 0x-prefixed 32-byte hex key";
 			},
 		});
@@ -225,7 +223,7 @@ program
 	.option("-s, --skip-card", "Skip agent card creation")
 	.option("-e, --skip-erc", "Skip ERC-8007 registrion")
 	.option("-d, --skip-ds", "Skip datasource registrion")
-	.action(async (name: string, options) => {
+	.action(async (name: string, options: {skipDs?: boolean; skipCard: boolean; skipErc: boolean}) => {
 		try {
 			intro("Chain selection");
 
@@ -233,7 +231,7 @@ program
 
 			outro(`Selected chain ${chain.name}`);
 
-			let registerDatasource = options.skipDs ? false : true;
+			const registerDatasource = options.skipDs ? false : true;
 			let createAgentCard = options.skipCard ? false : true;
 			let erc8004Registration = options.skipErc ? false : true;
 
@@ -247,7 +245,7 @@ program
 				intro(`Agent Card Creation for ${chain.name}`);
 
 				while (createAgentCard) {
-					let builder: AgentCardBuilder = agentCardBuilder();
+					const builder: AgentCardBuilder = agentCardBuilder();
 
 					builder.name(name);
 
@@ -255,7 +253,7 @@ program
 						message: "Description of the Datasource:",
 					})) as string;
 					handleCancel(description);
-					builder.description(description as string);
+					builder.description(description);
 
 					const version = await text({
 						message: "Agent Version:",
@@ -337,7 +335,7 @@ program
 			}
 
 			intro(`Agent Registration for ${chain.name}`);
-			let cfg = loadConfig();
+			const cfg = loadConfig();
 
 			let agent0Sdk: SDK;
 
@@ -435,6 +433,7 @@ program
 				}
 
 				agent = agent0Sdk.createAgent(name, description);
+				createAgentCard = options.skipCard ? false : true;
 
 				const agentCardAvailable = (await confirm({
 					message: createAgentCard
@@ -580,6 +579,7 @@ program
 						const { result: registrationFile } = await regTx.waitConfirmed();
 						s.stop();
 						datasourceAgentId = registrationFile.agentId;
+						datasourceAgentId ??= "agentId wasn't found"
 						note(
 							`Agent registration complete for agent name ${name}. They have the ID: ${datasourceAgentId}`,
 						);
@@ -622,12 +622,13 @@ program
 	)
 	.option("-g, --gadget <type(args)>", "Gadget to use (e.g. Payment(0.000001))")
 	.option("-o --overwrite", "Overwrite existing data source contents")
-	.action(async (name: string, files: string[], options) => {
+	.action(async (name: string, files: string[], options: {chain: string; price: string; gadget?: string; overwriteOption?: boolean;}) => {
 		try {
 			// const vaultId = deriveVaultId(name);
 			const owner = getAccount().address;
 			const chain = getChain(options.chain);
 			const fangorn = await getFangorn(chain);
+			const overwrite = !!options.overwriteOption;
 
 			const filedata: Filedata[] = files.map((filepath) => {
 				const data = readFileSync(filepath);
@@ -648,8 +649,9 @@ program
 				async (file) => {
 					if (options.gadget) {
 						const { type, args } = parseGadgetArg(options.gadget);
-						const def = GADGET_REGISTRY[type];
-						if (!def) throw new Error(`Unknown gadget type: ${type}`);
+						if (!(type in GADGET_REGISTRY))
+						    throw new Error(`Unknown gadget type: ${type}`);
+						const def = GADGET_REGISTRY[type as keyof typeof GADGET_REGISTRY];
 
 						const params: Record<string, unknown> = {};
 						def.argSchema.forEach((key, i) => {
@@ -657,7 +659,7 @@ program
 						});
 
 						// derive commitment
-						const commitment = await computeTagCommitment(
+						const commitment = computeTagCommitment(
 							owner,
 							name,
 							file.tag,
@@ -675,7 +677,7 @@ program
 
 					return selectGadget(owner, name, file.tag, options.price);
 				},
-				options.overwrite,
+				overwrite,
 			);
 			console.log(`Upload complete! Manifest CID: ${cid}`);
 			process.exit(0);
@@ -693,7 +695,7 @@ program
 		"-c, --chain <chain>",
 		"The chain to use as the backend (arbitrumSepolia or baseSepolia)",
 	)
-	.action(async (name: string, options) => {
+	.action(async (name: string, options: {chain: string}) => {
 		try {
 			const owner = getAccount().address;
 			const chain = getChain(options.chain);
@@ -708,7 +710,7 @@ program
 				process.exit(0);
 			}
 			console.log(`Datasource: ${name} (${owner})`);
-			console.log(`Entries (${manifest.entries.length}):`);
+			console.log(`Entries (${String(manifest.entries.length)}):`);
 			for (const entry of manifest.entries) {
 				console.log(
 					`  - ${entry.tag} | gadget descriptor: ${JSON.stringify(entry.gadgetDescriptor)} | cid: ${entry.cid}`,
@@ -729,7 +731,7 @@ program
 		"-c, --chain <chain>",
 		"The chain to use as the backend (arbitrumSepolia or baseSepolia)",
 	)
-	.action(async (name: string, options) => {
+	.action(async (name: string, options: {chain: string}) => {
 		try {
 			const owner = getAccount().address;
 			const chain = getChain(options.chain);
@@ -757,7 +759,7 @@ program
 		"-c, --chain <chain>",
 		"The chain to use as the backend (arbitrumSepolia or baseSepolia",
 	)
-	.action(async (name: string, tag: string, options) => {
+	.action(async (name: string, tag: string, options: {chain: string}) => {
 		try {
 			const owner = getAccount().address;
 			const chain = getChain(options.chain);
@@ -787,7 +789,7 @@ program
 		"The chain to use as the backend (arbitrumSepolia or baseSepolia",
 	)
 	.option("-o, --output <path>", "Output file path")
-	.action(async (owner: Address, name: string, tag: string, options) => {
+	.action(async (owner: Address, name: string, tag: string, options: {chain: string; output?: string;}) => {
 		try {
 			const chain = getChain(options.chain);
 			const fangorn = await getFangorn(chain);

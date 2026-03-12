@@ -7,8 +7,9 @@
 		"resolveJsonModule": true,
 		"module": "ESNext",
 		"moduleResolution": "bundler",
+		"strict": true,
 		"skipLibCheck": true
 	},
-	"include": ["src/**/*", "src/cli/cli.ts"],
+	"include": ["src/**/*"],
 	"exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
 }
