@@ -6,7 +6,7 @@ import {
     type Hex,
     parseEventLogs,
 } from "viem";
-import { DS_REGISTRY_ABI } from "./abi";
+import { DS_REGISTRY_ABI } from "./abi.js";
 
 export interface DataSource {
     manifestCid: string;
@@ -42,7 +42,6 @@ export class DataSourceRegistry {
         return this.contractAddress;
     }
 
-    /// Initialize with the SchemaRegistry contract address (call once after deploy)
     async initialize(schemaRegistryAddress: Address): Promise<Hash> {
         const { chain, account } = this.getWriteConfig();
         const hash = await this.walletClient.writeContract({
@@ -57,11 +56,11 @@ export class DataSourceRegistry {
         return hash;
     }
 
-    /// Publish or re-publish the caller's manifest.
-    /// Pass schemaId as `0x000...0` (zero bytes32) to leave schema unset/unchanged.
+    /// Publish or re-publish a manifest under a specific schema.
+    /// schemaId must be non-zero and must exist in the SchemaRegistry.
     async publishManifest(
         manifestCid: string,
-        schemaId: Hex = "0x0000000000000000000000000000000000000000000000000000000000000000",
+        schemaId: Hex,
     ): Promise<{ hash: Hash; version: bigint }> {
         const { chain, account } = this.getWriteConfig();
         const hash = await this.walletClient.writeContract({
@@ -82,40 +81,33 @@ export class DataSourceRegistry {
         return { hash, version };
     }
 
-    /// Get the current manifest for a given owner address
-    async getManifest(owner: Address): Promise<DataSource> {
-        const [manifestCid, schemaId, version] = await Promise.all([
+    /// Get the manifest CID and version for a given (owner, schemaId) pair.
+    async getManifest(owner: Address, schemaId: Hex): Promise<DataSource> {
+        const [manifestCid, version] = await Promise.all([
             this.publicClient.readContract({
                 address: this.contractAddress,
                 abi: DS_REGISTRY_ABI,
                 functionName: "getManifest",
-                args: [owner],
+                args: [owner, schemaId],
             }) as Promise<string>,
             this.publicClient.readContract({
                 address: this.contractAddress,
                 abi: DS_REGISTRY_ABI,
-                functionName: "getSchemaId",
-                args: [owner],
-            }) as Promise<Hex>,
-            this.publicClient.readContract({
-                address: this.contractAddress,
-                abi: DS_REGISTRY_ABI,
                 functionName: "getVersion",
-                args: [owner],
+                args: [owner, schemaId],
             }) as Promise<bigint>,
         ]);
         return { manifestCid, schemaId, version };
     }
-    
-    async getSchemaId(owner: Address): Promise<Hex> {
-        const schemaId = await this.publicClient.readContract({
-                address: this.contractAddress,
-                abi: DS_REGISTRY_ABI,
-                functionName: "getSchemaId",
-                args: [owner],
-            }) as Hex;
 
-        return schemaId;
+    /// Get the current version for a given (owner, schemaId) pair.
+    async getVersion(owner: Address, schemaId: Hex): Promise<bigint> {
+        return this.publicClient.readContract({
+            address: this.contractAddress,
+            abi: DS_REGISTRY_ABI,
+            functionName: "getVersion",
+            args: [owner, schemaId],
+        }) as Promise<bigint>;
     }
 
     async waitForTransaction(hash: Hash) {

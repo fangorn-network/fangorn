@@ -1,5 +1,3 @@
-// fangorn.ts
-
 import { Address, createPublicClient, Hex, http, PublicClient, WalletClient } from "viem";
 import { DataSourceRegistry } from "./interface/datasource-registry/dataSourceRegistry.js";
 import { Filedata, PendingEntry, VaultEntry, VaultManifest } from "./types/index.js";
@@ -62,22 +60,21 @@ export class Fangorn {
     // -------------------------------------------------------------------------
 
     /**
-     * Upload files and publish a new manifest.
-     * Loads and merges the existing manifest unless overwrite is true.
+     * Upload files and publish a manifest under a specific schema.
+     * Loads and merges the existing manifest for that schema unless overwrite is true.
      */
     async upload(
         filedata: Filedata[],
         gadgetFactory: (file: Filedata) => Gadget | Promise<Gadget>,
-        schemaId?: Hex,
+        schemaId: Hex,
         overwrite?: boolean,
     ): Promise<string> {
         const account = this.walletClient.account;
         if (!account) throw new Error("No account found in wallet client");
 
-        // Load existing manifest if appending
         if (!overwrite) {
             try {
-                const existing = await this.dataSourceRegistry.getManifest(account.address);
+                const existing = await this.dataSourceRegistry.getManifest(account.address, schemaId);
                 if (existing.manifestCid) {
                     const oldManifest = await this.fetchManifest(existing.manifestCid);
                     this.loadManifest(oldManifest);
@@ -88,7 +85,7 @@ export class Fangorn {
                     }
                 }
             } catch {
-                // no existing manifest, first publish
+                // no existing manifest for this schema, first publish
             }
         }
 
@@ -134,9 +131,9 @@ export class Fangorn {
     }
 
     /**
-     * Serialize staged files into a manifest, pin it, and publish the CID on-chain.
+     * Serialize staged files into a manifest, pin it, and publish on-chain under the given schema.
      */
-    async commit(schemaId?: Hex): Promise<string> {
+    async commit(schemaId: Hex): Promise<string> {
         if (this.pendingEntries.size === 0) {
             throw new Error("No files to commit");
         }
@@ -157,7 +154,7 @@ export class Fangorn {
         };
 
         const manifestCid = await this.storage.store(manifest, {
-            metadata: { name: `manifest` },
+            metadata: { name: "manifest" },
         });
 
         await this.dataSourceRegistry.publishManifest(manifestCid, schemaId);
@@ -171,15 +168,16 @@ export class Fangorn {
     // -------------------------------------------------------------------------
 
     /**
-     * Decrypt a file belonging to an owner's data source by tag.
+     * Decrypt a file from an owner's manifest under a specific schema, by tag.
      */
     async decryptFile(
         owner: Address,
+        schemaId: Hex,
         tag: string,
         authContext?: AuthContext,
     ): Promise<Uint8Array> {
-        const manifest = await this.getManifest(owner);
-        if (!manifest) throw new Error("No manifest found for owner");
+        const manifest = await this.getManifest(owner, schemaId);
+        if (!manifest) throw new Error("No manifest found for owner + schema");
 
         const entry = manifest.entries.find((e: VaultEntry) => e.tag === tag);
         if (!entry) throw new Error(`Entry not found: ${tag}`);
@@ -195,11 +193,11 @@ export class Fangorn {
     }
 
     /**
-     * Fetch and deserialize the manifest for a given owner.
+     * Fetch and deserialize the manifest for a given (owner, schemaId) pair.
      */
-    async getManifest(owner: Address): Promise<VaultManifest | undefined> {
+    async getManifest(owner: Address, schemaId: Hex): Promise<VaultManifest | undefined> {
         try {
-            const ds = await this.dataSourceRegistry.getManifest(owner);
+            const ds = await this.dataSourceRegistry.getManifest(owner, schemaId);
             if (!ds.manifestCid || ds.manifestCid === "") return undefined;
             return await this.fetchManifest(ds.manifestCid);
         } catch {
@@ -208,21 +206,14 @@ export class Fangorn {
     }
 
     /**
-     * Get a specific entry from an owner's manifest by tag.
+     * Get a specific entry from an owner's manifest under a schema, by tag.
      */
-    async getEntry(owner: Address, tag: string): Promise<VaultEntry> {
-        const manifest = await this.getManifest(owner);
-        if (!manifest) throw new Error("No manifest found for owner");
+    async getEntry(owner: Address, schemaId: Hex, tag: string): Promise<VaultEntry> {
+        const manifest = await this.getManifest(owner, schemaId);
+        if (!manifest) throw new Error("No manifest found for owner + schema");
         const entry = manifest.entries.find((e) => e.tag === tag);
         if (!entry) throw new Error(`Entry not found: ${tag}`);
         return entry;
-    }
-
-    /**
-     * Get the current schema for the caller's data source.
-     */
-    async getSchemaId(owner: Address): Promise<Hex> {
-        return this.dataSourceRegistry.getSchemaId(owner);
     }
 
     getAddress(): Hex {
@@ -244,7 +235,7 @@ export class Fangorn {
     }
 
     getWalletClient(): WalletClient {
-        return this.walletClient; 
+        return this.walletClient;
     }
 
     // -------------------------------------------------------------------------

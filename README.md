@@ -160,7 +160,7 @@ The tests will deploy any contracts not defined in `.env`, register a test schem
 
 |  | Arbitrum Sepolia |
 |---|---|
-| DataSource Registry | `0x6fb3579bfd504cce85b923db335dfc096d912478` |
+| DataSource Registry | `0x3941c7d50caa56f7f676554bc4e78d77aaf27ebb` |
 | Schema Registry | `0x49ab3d52b997e63ad56c91178df48263fd80b2dc` |
 | Settlement Tracker | `0x7c6ae9eb3398234eb69b2f3acfae69065505ff69` |
 

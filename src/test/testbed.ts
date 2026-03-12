@@ -62,9 +62,7 @@ export class TestBed {
         caip2: number,
     ) {
         let chainImpl: Chain = arbitrumSepolia;
-        if (chain === "baseSepolia") {
-            chainImpl = baseSepolia;
-        }
+        if (chain === "baseSepolia") chainImpl = baseSepolia;
 
         const config: AppConfig = {
             dataSourceRegistryContractAddress,
@@ -77,27 +75,12 @@ export class TestBed {
 
         const delegatorEncryption = await LitEncryptionService.init(chain);
         const delegateeEncryption = await LitEncryptionService.init(chain);
-
         const delegatorStorage = new PinataStorage(jwt, gateway);
         const delegateeStorage = new PinataStorage(jwt, gateway);
-
         const domain = "localhost";
 
-        const delegatorFangorn = Fangorn.init(
-            delegatorWalletClient,
-            delegatorStorage,
-            delegatorEncryption,
-            domain,
-            config,
-        );
-
-        const delegateeFangorn = Fangorn.init(
-            delegateeWalletClient,
-            delegateeStorage,
-            delegateeEncryption,
-            domain,
-            config,
-        );
+        const delegatorFangorn = Fangorn.init(delegatorWalletClient, delegatorStorage, delegatorEncryption, domain, config);
+        const delegateeFangorn = Fangorn.init(delegateeWalletClient, delegateeStorage, delegateeEncryption, domain, config);
 
         if (!delegatorWalletClient.account) throw new Error("Delegator account not found");
 
@@ -127,10 +110,7 @@ export class TestBed {
     // Upload
     // -------------------------------------------------------------------------
 
-    async fileUploadEmptyWallet(
-        filedata: Filedata[],
-        schemaId?: Hex,
-    ): Promise<string> {
+    async fileUploadEmptyWallet(filedata: Filedata[], schemaId: Hex): Promise<string> {
         return await this.delegatorFangorn.upload(
             filedata,
             () => emptyWallet(this.litChain),
@@ -143,16 +123,12 @@ export class TestBed {
         usdcPrice: string,
         settlementTrackerContractAddress: Address,
         jwt: string,
-        schemaId?: Hex,
+        schemaId: Hex,
     ): Promise<string> {
         return await this.delegatorFangorn.upload(
             [filedata],
             (file) => {
-                const commitment = computeTagCommitment(
-                    this.delegatorAddress,
-                    file.tag,
-                    usdcPrice,
-                );
+                const commitment = computeTagCommitment(this.delegatorAddress, file.tag, usdcPrice);
                 return new PaymentGadget({
                     commitment: fieldToHex(commitment),
                     chainName: this.config.chainName,
@@ -169,22 +145,22 @@ export class TestBed {
     // Read / decrypt
     // -------------------------------------------------------------------------
 
-    async tryDecrypt(owner: Address, tag: string): Promise<Uint8Array> {
-        return await this.delegateeFangorn.decryptFile(owner, tag);
+    async tryDecrypt(owner: Address, schemaId: Hex, tag: string): Promise<Uint8Array> {
+        return await this.delegateeFangorn.decryptFile(owner, schemaId, tag);
     }
 
-    async tryDecryptDelegator(owner: Address, tag: string): Promise<Uint8Array> {
-        return await this.delegatorFangorn.decryptFile(owner, tag);
+    async tryDecryptDelegator(owner: Address, schemaId: Hex, tag: string): Promise<Uint8Array> {
+        return await this.delegatorFangorn.decryptFile(owner, schemaId, tag);
     }
 
-    async checkManifestExists(who: Address): Promise<boolean> {
-        const manifest = await this.delegatorFangorn.getManifest(who);
+    async checkManifestExists(who: Address, schemaId: Hex): Promise<boolean> {
+        const manifest = await this.delegatorFangorn.getManifest(who, schemaId);
         return manifest !== undefined;
     }
 
-    async checkEntryExists(who: Address, tag: string): Promise<boolean> {
+    async checkEntryExists(who: Address, schemaId: Hex, tag: string): Promise<boolean> {
         try {
-            await this.delegatorFangorn.getEntry(who, tag);
+            await this.delegatorFangorn.getEntry(who, schemaId, tag);
             return true;
         } catch {
             return false;
@@ -209,7 +185,7 @@ export class TestBed {
         const domain = {
             name: usdcContractName,
             version: "2",
-            chainId: chainId,
+            chainId,
             verifyingContract: usdcAddress,
         } as const;
 
@@ -272,14 +248,8 @@ export class TestBed {
 
         const commitment = computeTagCommitment(owner, tag, amount);
         const commitmentHex = fieldToHex(commitment);
-
         const publicClient = createPublicClient({ transport: http(rpcUrl) });
-
-        const settlementTracker = new SettlementTracker(
-            settlementTrackerAddress,
-            publicClient,
-            walletClient,
-        );
+        const settlementTracker = new SettlementTracker(settlementTrackerAddress, publicClient, walletClient);
 
         await settlementTracker.pay({
             commitment: commitmentHex,
