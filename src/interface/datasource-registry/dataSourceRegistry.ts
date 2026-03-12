@@ -106,6 +106,17 @@ export class DataSourceRegistry {
         ]);
         return { manifestCid, schemaId, version };
     }
+    
+    async getSchemaId(owner: Address): Promise<Hex> {
+        const schemaId = await this.publicClient.readContract({
+                address: this.contractAddress,
+                abi: DS_REGISTRY_ABI,
+                functionName: "getSchemaId",
+                args: [owner],
+            }) as Hex;
+
+        return schemaId;
+    }
 
     async waitForTransaction(hash: Hash) {
         return this.publicClient.waitForTransactionReceipt({ hash });

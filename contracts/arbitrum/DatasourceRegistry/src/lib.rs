@@ -52,6 +52,7 @@ pub struct DataSourceRegistry {
 impl DataSourceRegistry {
 
     /// Set the SchemaRegistry contract address (called once on deploy).
+    #[constructor]
     pub fn initialize(&mut self, schema_registry: Address) {
         // only set if not already initialized
         if self.schema_registry.get() == Address::ZERO {
@@ -61,7 +62,7 @@ impl DataSourceRegistry {
 
     /// Publish (or re-publish) the caller's manifest.
     /// Pass `schema_id` as zero bytes to leave schema unset/unchanged.
-    pub fn publish_manifest(
+    pub fn publish_manifest( 
         &mut self,
         manifest_cid: String,
         schema_id: FixedBytes<32>,
@@ -74,7 +75,7 @@ impl DataSourceRegistry {
             let registry = self.schema_registry.get();
             let calldata = schema_exists_calldata(schema_id);
             let result = unsafe { RawCall::new(self.vm()).call(registry, &calldata) };
-            let exists = result.map(|r| r.first().copied().unwrap_or(0) != 0).unwrap_or(false);
+            let exists = result.map(|r| r.last().copied().unwrap_or(0) != 0).unwrap_or(false);
             if !exists {
                 return Err(DataSourceRegistryError::SchemaNotFound(SchemaNotFound {}));
             }
@@ -122,7 +123,7 @@ impl DataSourceRegistry {
 /// Encode a call to `schema_exists(bytes32)` — selector = keccak256("schema_exists(bytes32)")[..4]
 fn schema_exists_calldata(id: FixedBytes<32>) -> Vec<u8> {
     use stylus_sdk::alloy_primitives::keccak256;
-    let selector = &keccak256(b"schema_exists(bytes32)")[..4];
+    let selector = &keccak256(b"schemaExists(bytes32)")[..4];
     let mut calldata = selector.to_vec();
     calldata.extend_from_slice(id.as_slice());
     calldata

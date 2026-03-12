@@ -1,13 +1,13 @@
 import {
-	Address,
-	Chain,
-	Hex,
-	keccak256,
-	parseUnits,
-	toHex,
-	WalletClient,
-	createPublicClient,
-	http,
+    Address,
+    Chain,
+    Hex,
+    keccak256,
+    parseUnits,
+    toHex,
+    WalletClient,
+    createPublicClient,
+    http,
 } from "viem";
 import { Fangorn } from "../fangorn.js";
 import { Filedata } from "../types/index.js";
@@ -22,292 +22,281 @@ import { EvmChain } from "@lit-protocol/access-control-conditions";
 import { PaymentGadget } from "../modules/gadgets/payment.js";
 
 export class TestBed {
-	// fangorn instances
-	private delegatorFangorn: Fangorn;
-	private delegateeFangorn: Fangorn;
+    private delegatorFangorn: Fangorn;
+    private delegateeFangorn: Fangorn;
+    private delegatorAddress: Address;
+    private storage: PinataStorage;
+    private usdcContractAddress: Address;
+    private config: AppConfig;
+    private litChain: EvmChain;
 
-	private delegatorAddress: Address;
+    constructor(
+        delegatorAddress: Address,
+        delegatorFangorn: Fangorn,
+        delegateeFangorn: Fangorn,
+        storage: PinataStorage,
+        config: AppConfig,
+        litChain: EvmChain,
+        usdcContractAddress: Address,
+    ) {
+        this.delegatorAddress = delegatorAddress;
+        this.delegatorFangorn = delegatorFangorn;
+        this.delegateeFangorn = delegateeFangorn;
+        this.config = config;
+        this.litChain = litChain;
+        this.storage = storage;
+        this.usdcContractAddress = usdcContractAddress;
+    }
 
-	private storage: PinataStorage;
+    public static async init(
+        delegatorWalletClient: WalletClient,
+        delegateeWalletClient: WalletClient,
+        jwt: string,
+        gateway: string,
+        dataSourceRegistryContractAddress: Hex,
+        schemaRegistryContractAddress: Hex,
+        usdcContractAddress: Hex,
+        rpcUrl: string,
+        chain: string,
+        litChain: EvmChain,
+        caip2: number,
+    ) {
+        let chainImpl: Chain = arbitrumSepolia;
+        if (chain === "baseSepolia") {
+            chainImpl = baseSepolia;
+        }
 
-	private usdcContractAddress: Address;
+        const config: AppConfig = {
+            dataSourceRegistryContractAddress,
+            schemaRegistryContractAddress,
+            chainName: chain,
+            chain: chainImpl,
+            rpcUrl,
+            caip2,
+        };
 
-	private vaultIds: Map<string, Hex>;
-	private config: AppConfig;
+        const delegatorEncryption = await LitEncryptionService.init(chain);
+        const delegateeEncryption = await LitEncryptionService.init(chain);
 
-	private litChain: EvmChain;
+        const delegatorStorage = new PinataStorage(jwt, gateway);
+        const delegateeStorage = new PinataStorage(jwt, gateway);
 
-	constructor(
-		delegatorAddress: Address,
-		delegatorFangorn: Fangorn,
-		delegateeFangorn: Fangorn,
-		storage: PinataStorage,
-		config: AppConfig,
-		litChain: EvmChain,
-		usdcContractAddress: Address,
-	) {
-		this.delegatorAddress = delegatorAddress;
-		this.delegatorFangorn = delegatorFangorn;
-		this.delegateeFangorn = delegateeFangorn;
-		this.vaultIds = new Map();
-		this.config = config;
-		this.litChain = litChain;
-		this.storage = storage;
-		this.usdcContractAddress = usdcContractAddress;
-	}
+        const domain = "localhost";
 
-	public static async init(
-		delegatorWalletClient: WalletClient,
-		delegateeWalletClient: WalletClient,
-		jwt: string,
-		gateway: string,
-		dataSourceRegistryContractAddress: Hex,
-		usdcContractAddress: Hex,
-		rpcUrl: string,
-		chain: string,
-		litChain: EvmChain,
-		caip2: number,
-	) {
-		let chainImpl: Chain = arbitrumSepolia;
-		if (chain === "baseSepolia") {
-			chainImpl = baseSepolia;
-		}
+        const delegatorFangorn = Fangorn.init(
+            delegatorWalletClient,
+            delegatorStorage,
+            delegatorEncryption,
+            domain,
+            config,
+        );
 
-		const config: AppConfig = {
-			dataSourceRegistryContractAddress,
-			chainName: chain,
-			chain: chainImpl,
-			rpcUrl,
-			caip2,
-		};
+        const delegateeFangorn = Fangorn.init(
+            delegateeWalletClient,
+            delegateeStorage,
+            delegateeEncryption,
+            domain,
+            config,
+        );
 
-		// Lit-based Encryption services
-		const delegatorEncryption = await LitEncryptionService.init(chain);
-		const delegateeEncryption = await LitEncryptionService.init(chain);
+        if (!delegatorWalletClient.account) throw new Error("Delegator account not found");
 
-		// Storage
-		const delegatorStorage = new PinataStorage(jwt, gateway);
-		const delegateeStorage = new PinataStorage(jwt, gateway);
+        return new TestBed(
+            delegatorWalletClient.account.address,
+            delegatorFangorn,
+            delegateeFangorn,
+            delegatorStorage,
+            config,
+            litChain,
+            usdcContractAddress,
+        );
+    }
 
-		const domain = "localhost";
+    // -------------------------------------------------------------------------
+    // Schema
+    // -------------------------------------------------------------------------
 
-		// Fangorn instances
-		const delegatorFangorn = Fangorn.init(
-			delegatorWalletClient,
-			delegatorStorage,
-			delegatorEncryption,
-			domain,
-			config,
-		);
+    async registerSchema(name: string, specCid: string, agentId: string): Promise<Hex> {
+        const { schemaId } = await this.delegatorFangorn
+            .getSchemaRegistry()
+            .registerSchema(name, specCid, agentId);
+        return schemaId;
+    }
 
-		const delegateeFangorn = Fangorn.init(
-			delegateeWalletClient,
-			delegateeStorage,
-			delegateeEncryption,
-			domain,
-			config,
-		);
+    // -------------------------------------------------------------------------
+    // Upload
+    // -------------------------------------------------------------------------
 
-		if(!delegatorWalletClient.account) throw new Error("Delegator account not found")
+    async fileUploadEmptyWallet(
+        filedata: Filedata[],
+        schemaId?: Hex,
+    ): Promise<string> {
+        return await this.delegatorFangorn.upload(
+            filedata,
+            () => emptyWallet(this.litChain),
+            schemaId,
+        );
+    }
 
-		return new TestBed(
-			delegatorWalletClient.account.address,
-			delegatorFangorn,
-			delegateeFangorn,
-			delegatorStorage,
-			config,
-			litChain,
-			usdcContractAddress,
-		);
-	}
+    async fileUploadPaymentGadget(
+        filedata: Filedata,
+        usdcPrice: string,
+        settlementTrackerContractAddress: Address,
+        jwt: string,
+        schemaId?: Hex,
+    ): Promise<string> {
+        return await this.delegatorFangorn.upload(
+            [filedata],
+            (file) => {
+                const commitment = computeTagCommitment(
+                    this.delegatorAddress,
+                    file.tag,
+                    usdcPrice,
+                );
+                return new PaymentGadget({
+                    commitment: fieldToHex(commitment),
+                    chainName: this.config.chainName,
+                    settlementTrackerContractAddress,
+                    usdcPrice,
+                    pinataJwt: jwt,
+                });
+            },
+            schemaId,
+        );
+    }
 
-	async registerDatasource(name: string): Promise<Hex> {
-		const existing = this.vaultIds.get(name);
-		if (existing) {
-			return existing;
-		}
+    // -------------------------------------------------------------------------
+    // Read / decrypt
+    // -------------------------------------------------------------------------
 
-		// we don't care about the agent id yet
-		const id = await this.delegatorFangorn.registerDataSource(name, "");
-		this.vaultIds.set(name, id);
-		return id;
-	}
+    async tryDecrypt(owner: Address, tag: string): Promise<Uint8Array> {
+        return await this.delegateeFangorn.decryptFile(owner, tag);
+    }
 
-	/**
-	 * Upload files with empty wallet gadget
-	 */
-	async fileUploadEmptyWallet(
-		datasourceName: string,
-		filedata: Filedata[],
-	): Promise<string> {
-		return await this.delegatorFangorn.upload(
-			datasourceName,
-			filedata,
-			() => emptyWallet(this.litChain),
-		);
-	}
+    async tryDecryptDelegator(owner: Address, tag: string): Promise<Uint8Array> {
+        return await this.delegatorFangorn.decryptFile(owner, tag);
+    }
 
-	async fileUploadPaymentGadget(
-		datasourceName: string,
-		filedata: Filedata,
-		usdcPrice: string,
-		settlementTrackerContractAddress: Address,
-		jwt: string,
-	): Promise<string> {
-		return await this.delegatorFangorn.upload(
-			datasourceName,
-			[filedata],
-			(file) => {
-				const commitment = computeTagCommitment(
-					this.delegatorAddress,
-					datasourceName,
-					file.tag,
-					usdcPrice,
-				);
-				return new PaymentGadget({
-					commitment: fieldToHex(commitment),
-					chainName: this.config.chainName,
-					settlementTrackerContractAddress,
-					usdcPrice,
-					pinataJwt: jwt,
-				});
-			},
-		);
-	}
+    async checkManifestExists(who: Address): Promise<boolean> {
+        const manifest = await this.delegatorFangorn.getManifest(who);
+        return manifest !== undefined;
+    }
 
-	async tryDecrypt(
-		owner: Address,
-		name: string,
-		tag: string,
-	): Promise<Uint8Array> {
-		return await this.delegateeFangorn.decryptFile(owner, name, tag);
-	}
+    async checkEntryExists(who: Address, tag: string): Promise<boolean> {
+        try {
+            await this.delegatorFangorn.getEntry(who, tag);
+            return true;
+        } catch {
+            return false;
+        }
+    }
 
-	async tryDecryptDelegator(
-		owner: Address,
-		name: string,
-		tag: string,
-	): Promise<Uint8Array> {
-		return await this.delegatorFangorn.decryptFile(owner, name, tag);
-	}
+    // -------------------------------------------------------------------------
+    // Payment
+    // -------------------------------------------------------------------------
 
-	async checkDatasourceRegistryExistence(
-		who: Address,
-		name: string,
-	): Promise<boolean> {
-		const datasource = await this.delegatorFangorn.getDataSource(who, name);
-		return datasource.owner == who && datasource.name == name;
-	}
+    async buildUsdcAuthorization(
+        recipient: Address,
+        amount: string,
+        chainId: number,
+        usdcContractName: string,
+        usdcAddress: Address,
+    ) {
+        const walletClient = this.delegateeFangorn.getWalletClient();
+        const account = walletClient.account;
+        if (!account) throw new Error("Delegatee account not found in wallet client");
 
-	async checkDataExistence(who: Address, name: string, tag: string) {
-		// if there's no error then we're good
-		await this.delegatorFangorn.getDataSourceData(who, name, tag);
-	}
+        const domain = {
+            name: usdcContractName,
+            version: "2",
+            chainId: chainId,
+            verifyingContract: usdcAddress,
+        } as const;
 
-	async buildUsdcAuthorization(
-		recipient: Address,
-		amount: string,
-		chainId: number,
-		usdcContractName: string,
-		usdcAddress: Address,
-	) {
-		const walletClient = this.delegateeFangorn.getWalletClient();
-		const account = walletClient.account;
-		if(!account) throw new Error("Delegatee account not found in wallet client");
-		const domain = {
-			name: usdcContractName,
-			version: "2",
-			chainId: chainId,
-			verifyingContract: usdcAddress,
-		} as const;
+        const types = {
+            TransferWithAuthorization: [
+                { name: "from", type: "address" },
+                { name: "to", type: "address" },
+                { name: "value", type: "uint256" },
+                { name: "validAfter", type: "uint256" },
+                { name: "validBefore", type: "uint256" },
+                { name: "nonce", type: "bytes32" },
+            ],
+        } as const;
 
-		const types = {
-			TransferWithAuthorization: [
-				{ name: "from", type: "address" },
-				{ name: "to", type: "address" },
-				{ name: "value", type: "uint256" },
-				{ name: "validAfter", type: "uint256" },
-				{ name: "validBefore", type: "uint256" },
-				{ name: "nonce", type: "bytes32" },
-			],
-		} as const;
+        const value = parseUnits(amount, 6);
+        const nonce = keccak256(toHex(crypto.getRandomValues(new Uint8Array(32))));
 
-		const value = parseUnits(amount, 6);
-		const nonce = keccak256(toHex(crypto.getRandomValues(new Uint8Array(32))));
+        const signature = await walletClient.signTypedData({
+            account,
+            domain,
+            types,
+            primaryType: "TransferWithAuthorization",
+            message: {
+                from: account.address,
+                to: recipient,
+                value,
+                validAfter: 0n,
+                validBefore: 281474976710655n,
+                nonce,
+            },
+        });
 
-		const signature = await walletClient.signTypedData({
-			account,
-			domain,
-			types,
-			primaryType: "TransferWithAuthorization",
-			message: {
-				from: account.address,
-				to: recipient,
-				value,
-				validAfter: 0n,
-				validBefore: 281474976710655n,
-				nonce,
-			},
-		});
+        return {
+            from: account.address,
+            to: recipient,
+            amount: value,
+            validAfter: 0n,
+            validBefore: 281474976710655n,
+            nonce,
+            signature,
+        };
+    }
 
-		return {
-			from: account.address,
-			to: recipient,
-			amount: value,
-			validAfter: 0n,
-			validBefore: 281474976710655n,
-			nonce,
-			signature,
-		};
-	}
+    public async payForFile(
+        owner: Address,
+        tag: string,
+        amount: string,
+        usdcDomainName: string,
+        settlementTrackerAddress: Address,
+        walletClient: WalletClient,
+        rpcUrl: string,
+    ) {
+        const auth = await this.buildUsdcAuthorization(
+            this.delegatorAddress,
+            amount,
+            this.config.caip2,
+            usdcDomainName,
+            this.usdcContractAddress,
+        );
 
-	public async payForFile(
-		owner: Address,
-		name: string,
-		tag: string,
-		amount: string,
-		usdcDomainName: string,
-		settlementTrackerAddress: Address,
-		walletClient: WalletClient,
-		rpcUrl: string,
-	) {
-		const auth = await this.buildUsdcAuthorization(
-			this.delegatorAddress,
-			amount,
-			this.config.caip2,
-			usdcDomainName,
-			this.usdcContractAddress,
-		);
+        const commitment = computeTagCommitment(owner, tag, amount);
+        const commitmentHex = fieldToHex(commitment);
 
-		const commitment = computeTagCommitment(owner, name, tag, amount);
-		const commitmentHex = fieldToHex(commitment);
+        const publicClient = createPublicClient({ transport: http(rpcUrl) });
 
-		const publicClient = createPublicClient({
-			transport: http(rpcUrl),
-		});
+        const settlementTracker = new SettlementTracker(
+            settlementTrackerAddress,
+            publicClient,
+            walletClient,
+        );
 
-		const settlementTracker = new SettlementTracker(
-			settlementTrackerAddress,
-			publicClient,
-			walletClient,
-		);
+        await settlementTracker.pay({
+            commitment: commitmentHex,
+            from: auth.from,
+            to: auth.to,
+            value: auth.amount,
+            validAfter: auth.validAfter,
+            validBefore: auth.validBefore,
+            nonce: auth.nonce,
+            ...this.parseSignature(auth.signature),
+        });
+    }
 
-		await settlementTracker.pay({
-			commitment: commitmentHex,
-			from: auth.from,
-			to: auth.to,
-			value: auth.amount,
-			validAfter: auth.validAfter,
-			validBefore: auth.validBefore,
-			nonce: auth.nonce,
-			...this.parseSignature(auth.signature),
-		});
-	}
-
-	private parseSignature(signature: Hex): { v: number; r: Hex; s: Hex } {
-	    const r: Hex = `0x${signature.slice(2, 66)}`;
-	    const s: Hex = `0x${signature.slice(66, 130)}`;
-	    const v = parseInt(signature.slice(130, 132), 16);
-	    return { v, r, s };
-	}
+    private parseSignature(signature: Hex): { v: number; r: Hex; s: Hex } {
+        const r: Hex = `0x${signature.slice(2, 66)}`;
+        const s: Hex = `0x${signature.slice(66, 130)}`;
+        const v = parseInt(signature.slice(130, 132), 16);
+        return { v, r, s };
+    }
 }
