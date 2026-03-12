@@ -178,7 +178,11 @@ Options:
 
 Commands:
   init                             Configure your Fangorn credentials
+  register [options] <name>        Register a schema and ERC-8004 agent identity.
   upload [options] <files...>      Upload file(s) to your data source
+  list [options]                   List contents of your data source manifest
+  info [options]                   Get your data source info from the contract
+  entry [options] <tag>            Get info about a specific entry by tag
   decrypt [options] <owner> <tag>  Decrypt a file from a data source
   help [command]                   display help for command
 ```
