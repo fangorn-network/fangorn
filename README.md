@@ -4,7 +4,7 @@ Programmable data.
 
 ## Overview
 
-Fangorn is a programmable data framework that lets you **publish encrypted data** under public conditions, or predicates, such that it can only be decrypted if you meet the condition(s). Each owner has a single on-chain manifest pointer — a CID referencing their current data tree — which can be updated as data changes. Data schemas group compatible data sources together, enabling agent-based discovery and interoperability.
+Fangorn is a programmable data framework that lets you **publish encrypted data** under public conditions, or predicates, such that it can only be decrypted if you meet the condition(s). Each owner has a single on-chain CID referencing their current storage root which can be updated as data changes. Data schemas group compatible data sources together, enabling agent-based discovery and interoperability.
 
 ## Supported Networks
 
@@ -16,7 +16,7 @@ Fangorn contracts are deployed to Arbitrum Sepolia. See the [contracts](#contrac
 
 To install the fangorn-sdk from NPM, run:
 ```shell
-npm i -g fangorn-sdk
+npm i -g @fangorn-network/sdk
 ```
 
 ### Publish Data
