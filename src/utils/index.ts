@@ -43,6 +43,10 @@ export function deriveDatasourceId(name: string, owner: Address): Hex {
 	);
 }
 
+export function computeSchemaId(name: string): Hex {
+    return keccak256(encodeAbiParameters(parseAbiParameters("string"), [name]));
+}
+
 export function computeTagCommitment(
     owner: Address,
     tag: string,

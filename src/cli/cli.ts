@@ -18,7 +18,7 @@ import "dotenv/config";
 import { PinataStorage } from "../providers/storage/index.js";
 import { AppConfig, FangornConfig, SupportedNetworks } from "../config.js";
 import { LitEncryptionService } from "../modules/encryption/lit.js";
-import { computeTagCommitment, fieldToHex } from "../utils/index.js";
+import { computeSchemaId, computeTagCommitment, fieldToHex } from "../utils/index.js";
 import { agentCardBuilder, AgentCardBuilder } from "../builders/a2aCardBuilder.js";
 import { SDK } from "agent0-sdk";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
@@ -79,6 +79,18 @@ function buildConfig({ privateKey, jwt, gateway, chainName }: StoredConfig): Con
         cfg = FangornConfig.ArbitrumSepolia;
     }
     return { privateKey, jwt, gateway, cfg };
+}
+
+async function resolveSchemaId(fangorn: Fangorn, schemaOrId: string): Promise<Hex> {
+    if (schemaOrId.startsWith("0x") && schemaOrId.length === 66) {
+        return schemaOrId as Hex;
+    }
+    const id = computeSchemaId(schemaOrId);
+    const exists = await fangorn.getSchemaRegistry().schemaExists(id);
+    if (!exists) {
+        throw new Error(`Schema "${schemaOrId}" not found on-chain. Register it first with \`fangorn register\`.`);
+    }
+    return id;
 }
 
 function getAccount(): PrivateKeyAccount {
@@ -351,25 +363,66 @@ program
 
             // --- Schema Registry ---
             if (!options.skipSchema) {
-                const specCid = (await text({
-                    message: "IPFS CID of your schema spec document:",
-                    placeholder: "bafy...",
+                intro("Schema Registration");
+
+                const schemaFilePath = (await text({
+                    message: "Path to your JSON schema file:",
+                    placeholder: "./schema.json",
+                    validate: (v) => {
+                        if (!v) return "Required";
+                        if (!existsSync(v)) return `File not found: ${v}`;
+                        if (extname(v).toLowerCase() !== ".json") return "Must be a .json file";
+                    },
                 })) as string;
-                handleCancel(specCid);
+                handleCancel(schemaFilePath);
 
                 const schemaName = (await text({
                     message: "Schema name (e.g. fangorn.music.v1):",
                     placeholder: "fangorn.myapp.v1",
+                    validate: (v) => { if (!v) return "Required"; },
                 })) as string;
                 handleCancel(schemaName);
 
+                // Parse and pretty-print so the user can confirm what they're registering
+                let schemaJson: unknown;
+                try {
+                    schemaJson = JSON.parse(readFileSync(schemaFilePath, "utf-8"));
+                } catch {
+                    throw new Error(`Failed to parse ${schemaFilePath} as JSON`);
+                }
+                note(JSON.stringify(schemaJson, null, 2), "Schema file contents:");
+
+                const ok = (await confirm({ message: "Upload and register this schema?" })) as boolean;
+                handleCancel(ok);
+                if (!ok) {
+                    outro("Schema registration skipped.");
+                    process.exit(0);
+                }
+
+                const cfg = loadConfig();
+                const storage = new PinataStorage(cfg.jwt, cfg.gateway);
+
+                const s = spinner();
+                s.start("Uploading schema to IPFS...");
+                const specCid = await storage.store(schemaJson, {
+                    metadata: `${schemaName}.schema.json`,
+                });
+
+                s.stop(`Schema uploaded: ${specCid}`);
+
                 const fangorn = await getFangorn(chain);
+                s.start("Registering schema on-chain...");
                 const { schemaId } = await fangorn.getSchemaRegistry().registerSchema(
                     schemaName,
                     specCid,
                     datasourceAgentId ?? "",
                 );
-                note(`Schema registered with ID: ${schemaId}`);
+                s.stop();
+
+                note(
+                    `Schema ID: ${schemaId}\nSpec CID:  ${specCid}`,
+                    "Schema registered",
+                );
             }
 
             process.exit(0);
@@ -387,15 +440,33 @@ program
     .command("upload")
     .description("Upload file(s) to your data source")
     .argument("<files...>", "File path(s) to upload")
+    .requiredOption("-s, --schema-id <schemaOrId>", "Schema name (e.g. fangorn.music.v1) or ID (bytes32 hex)")
     .option("-c, --chain <chain>", "Chain to use (arbitrumSepolia or baseSepolia)")
     .option("-g, --gadget <type(args)>", "Gadget to use (e.g. Payment(0.000001))")
-    .option("-s, --schema-id <schemaId>", "Schema ID (bytes32 hex) to associate with the manifest")
     .option("-o, --overwrite", "Overwrite existing manifest contents")
-    .action(async (files: string[], options: { chain: string; gadget?: string; schemaId?: Hex; overwrite?: boolean }) => {
+    .action(async (files: string[], options: { chain: string; gadget?: string; schemaId: Hex; overwrite?: boolean }) => {
         try {
             const owner = getAccount().address;
             const chain = getChain(options.chain);
             const fangorn = await getFangorn(chain);
+
+            // Resolve schema name → ID if not already a bytes32 hex
+            let schemaId: Hex;
+            if (options.schemaId.startsWith("0x") && options.schemaId.length === 66) {
+                schemaId = options.schemaId as Hex;
+            } else {
+                const s = spinner();
+                s.start(`Resolving schema "${options.schemaId}"...`);
+                const exists = await fangorn.getSchemaRegistry().schemaExists(
+                    computeSchemaId(options.schemaId)
+                );
+                if (!exists) {
+                    s.stop();
+                    throw new Error(`Schema "${options.schemaId}" not found on-chain. Register it first with \`fangorn register\`.`);
+                }
+                schemaId = computeSchemaId(options.schemaId);
+                s.stop(`Resolved: ${schemaId}`);
+            }
 
             const filedata: Filedata[] = files.map((filepath) => {
                 const data = readFileSync(filepath);
@@ -431,10 +502,9 @@ program
                         params.pinataJwt = loadConfig().jwt;
                         return def.build(params);
                     }
-
                     return selectGadget(owner, file.tag, "0");
                 },
-                options.schemaId,
+                schemaId,
                 !!options.overwrite,
             );
 
@@ -452,21 +522,27 @@ program
 
 program
     .command("list")
-    .description("List contents of your data source manifest")
+    .description("List contents of a manifest under a schema")
+    .requiredOption("-s, --schema-id <schemaId>", "Schema ID (bytes32 hex)")
     .option("-c, --chain <chain>", "Chain to use (arbitrumSepolia or baseSepolia)")
-    .action(async (options: { chain: string }) => {
+    .option("--owner <address>", "Owner address (defaults to your own)")
+    .action(async (options: { chain: string; schemaId: Hex; owner?: Address }) => {
         try {
-            const owner = getAccount().address;
+            const self = getAccount().address;
+            const owner = options.owner ?? self;
             const chain = getChain(options.chain);
             const fangorn = await getFangorn(chain);
-            const manifest = await fangorn.getManifest(owner);
+            const schemaId = await resolveSchemaId(fangorn, options.schemaId);
+            const manifest = await fangorn.getManifest(owner, schemaId);
 
             if (!manifest) {
-                console.log("No manifest found. Upload data with `fangorn upload <file>`.");
+                console.log("No manifest found for this owner + schema.");
+                console.log("Upload data with `fangorn upload <file> --schema-id <id>`");
                 process.exit(0);
             }
 
-            console.log(`Owner: ${owner}`);
+            console.log(`Owner:    ${owner}`);
+            console.log(`Schema:   ${options.schemaId}`);
             console.log(`Entries (${String(manifest.entries.length)}):`);
             for (const entry of manifest.entries) {
                 console.log(
@@ -486,21 +562,23 @@ program
 
 program
     .command("info")
-    .description("Get your data source info from the contract")
+    .description("Get data source info from the contract for a given schema")
+    .requiredOption("-s, --schema-id <schemaId>", "Schema ID (bytes32 hex)")
     .option("-c, --chain <chain>", "Chain to use (arbitrumSepolia or baseSepolia)")
-    .action(async (options: { chain: string }) => {
+    .option("--owner <address>", "Owner address (defaults to your own)")
+    .action(async (options: { chain: string; schemaId: Hex; owner?: Address }) => {
         try {
-            const owner = getAccount().address;
+            const self = getAccount().address;
+            const owner = options.owner ?? self;
             const chain = getChain(options.chain);
             const fangorn = await getFangorn(chain);
-            const ds = await fangorn.registry().getManifest(owner);
+            const schemaId = await resolveSchemaId(fangorn, options.schemaId);
+            const ds = await fangorn.registry().getManifest(owner, schemaId);
 
-            console.log(`Owner: ${owner}`);
-            console.log(`Version: ${String(ds.version)}`);
-            console.log(`Schema ID: ${ds.schemaId}`);
-            console.log(
-                `Manifest CID: ${ds.manifestCid || "No manifest yet — upload with `fangorn upload <file>`"}`,
-            );
+            console.log(`Owner:        ${owner}`);
+            console.log(`Schema ID:    ${options.schemaId}`);
+            console.log(`Version:      ${String(ds.version)}`);
+            console.log(`Manifest CID: ${ds.manifestCid || "No manifest yet — upload with `fangorn upload <file> --schema-id <id>`"}`);
             process.exit(0);
         } catch (err) {
             console.error("Failed to get info:", (err as Error).message);
@@ -516,18 +594,20 @@ program
     .command("entry")
     .description("Get info about a specific entry by tag")
     .argument("<tag>", "File tag")
-    .option("-o, --owner <address>", "Owner address (defaults to your own)")
+    .requiredOption("-s, --schema-id <schemaId>", "Schema ID (bytes32 hex)")
+    .option("--owner <address>", "Owner address (defaults to your own)")
     .option("-c, --chain <chain>", "Chain to use (arbitrumSepolia or baseSepolia)")
-    .action(async (tag: string, options: { chain: string; owner?: Address }) => {
+    .action(async (tag: string, options: { chain: string; schemaId: Hex; owner?: Address }) => {
         try {
             const self = getAccount().address;
             const owner = options.owner ?? self;
             const chain = getChain(options.chain);
             const fangorn = await getFangorn(chain);
-            const entry = await fangorn.getEntry(owner, tag);
+            const schemaId = await resolveSchemaId(fangorn, options.schemaId);
+            const entry = await fangorn.getEntry(owner, schemaId, tag);
 
-            console.log(`Entry: ${tag}`);
-            console.log(`  CID: ${entry.cid}`);
+            console.log(`Entry:              ${tag}`);
+            console.log(`  CID:              ${entry.cid}`);
             console.log(`  Gadget Descriptor: ${JSON.stringify(entry.gadgetDescriptor)}`);
             process.exit(0);
         } catch (err) {
@@ -545,13 +625,15 @@ program
     .description("Decrypt a file from a data source")
     .argument("<owner>", "Owner address of the data source")
     .argument("<tag>", "File tag")
+    .requiredOption("-s, --schema-id <schemaId>", "Schema ID (bytes32 hex)")
     .option("-c, --chain <chain>", "Chain to use (arbitrumSepolia or baseSepolia)")
     .option("-o, --output <path>", "Output file path")
-    .action(async (owner: Address, tag: string, options: { chain: string; output?: string }) => {
+    .action(async (owner: Address, tag: string, options: { chain: string; schemaId: Hex; output?: string }) => {
         try {
             const chain = getChain(options.chain);
             const fangorn = await getFangorn(chain);
-            const decrypted = await fangorn.decryptFile(owner, tag);
+            const schemaId = await resolveSchemaId(fangorn, options.schemaId);
+            const decrypted = await fangorn.decryptFile(owner, schemaId, tag);
 
             if (options.output) {
                 writeFileSync(options.output, Buffer.from(decrypted));
