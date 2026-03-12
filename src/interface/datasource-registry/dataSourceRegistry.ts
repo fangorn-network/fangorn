@@ -3,15 +3,15 @@ import {
     type WalletClient,
     type Address,
     type Hash,
+    type Hex,
     parseEventLogs,
-    Hex,
 } from "viem";
-import { DS_REGISTRY_ABI } from "./abi.js";
+import { DS_REGISTRY_ABI } from "./abi";
 
 export interface DataSource {
     manifestCid: string;
-    owner: Address;
-    name: string;
+    schemaId: Hex;
+    version: bigint;
 }
 
 export class DataSourceRegistry {
@@ -42,65 +42,69 @@ export class DataSourceRegistry {
         return this.contractAddress;
     }
 
-    /// Returns the manifest CID + reconstructed DataSource for the given owner+name
-    async getDataSource(owner: Address, name: string): Promise<DataSource> {
-        const manifestCid = await this.publicClient.readContract({
-            address: this.contractAddress,
-            abi: DS_REGISTRY_ABI,
-            functionName: "getDataSource",
-            args: [owner, name],
-        } as any) as string;
-
-        return { manifestCid, owner, name };
-    }
-
-    /// Returns the list of datasource names owned by the given address
-    async getOwnedDataSources(address: Address): Promise<string[]> {
-        const result = await this.publicClient.readContract({
-            address: this.contractAddress,
-            abi: DS_REGISTRY_ABI,
-            functionName: "getOwnedDataSources",
-            args: [address],
-        } as any);
-        return result as string[];
-    }
-
-    /// Registers a new datasource and returns its bytes32 id
-    async registerDataSource(name: string, agentId: string): Promise<Hex> {
+    /// Initialize with the SchemaRegistry contract address (call once after deploy)
+    async initialize(schemaRegistryAddress: Address): Promise<Hash> {
         const { chain, account } = this.getWriteConfig();
         const hash = await this.walletClient.writeContract({
             address: this.contractAddress,
             abi: DS_REGISTRY_ABI,
-            functionName: "registerDataSource",
-            args: [name, agentId],
-            chain,
-            account,
-        });
-
-        const receipt = await this.waitForTransaction(hash);
-        const logs = parseEventLogs({ abi: DS_REGISTRY_ABI, logs: receipt.logs });
-
-        const created = logs.find((log) => log.eventName === "DataSourceCreated");
-        if (!created) {
-            throw new Error("registerDataSource: DataSourceCreated event not found in receipt");
-        }
-
-        return (created.args as { id: Hex }).id;
-    }
-
-    /// Updates the manifest CID for an existing datasource
-    async updateDataSource(name: string, newManifestCid: string): Promise<Hash> {
-        const { chain, account } = this.getWriteConfig();
-        const hash = await this.walletClient.writeContract({
-            address: this.contractAddress,
-            abi: DS_REGISTRY_ABI,
-            functionName: "updateDataSource",
-            args: [name, newManifestCid],
+            functionName: "initialize",
+            args: [schemaRegistryAddress],
             chain,
             account,
         });
         await this.waitForTransaction(hash);
         return hash;
+    }
+
+    /// Publish or re-publish the caller's manifest.
+    /// Pass schemaId as `0x000...0` (zero bytes32) to leave schema unset/unchanged.
+    async publishManifest(
+        manifestCid: string,
+        schemaId: Hex = "0x0000000000000000000000000000000000000000000000000000000000000000",
+    ): Promise<{ hash: Hash; version: bigint }> {
+        const { chain, account } = this.getWriteConfig();
+        const hash = await this.walletClient.writeContract({
+            address: this.contractAddress,
+            abi: DS_REGISTRY_ABI,
+            functionName: "publishManifest",
+            args: [manifestCid, schemaId],
+            chain,
+            account,
+        });
+        const receipt = await this.waitForTransaction(hash);
+        const logs = parseEventLogs({ abi: DS_REGISTRY_ABI, logs: receipt.logs });
+        const event = logs.find((log) => log.eventName === "ManifestPublished");
+        if (!event) {
+            throw new Error("publishManifest: ManifestPublished event not found in receipt");
+        }
+        const version = (event.args as { version: bigint }).version;
+        return { hash, version };
+    }
+
+    /// Get the current manifest for a given owner address
+    async getManifest(owner: Address): Promise<DataSource> {
+        const [manifestCid, schemaId, version] = await Promise.all([
+            this.publicClient.readContract({
+                address: this.contractAddress,
+                abi: DS_REGISTRY_ABI,
+                functionName: "getManifest",
+                args: [owner],
+            }) as Promise<string>,
+            this.publicClient.readContract({
+                address: this.contractAddress,
+                abi: DS_REGISTRY_ABI,
+                functionName: "getSchemaId",
+                args: [owner],
+            }) as Promise<Hex>,
+            this.publicClient.readContract({
+                address: this.contractAddress,
+                abi: DS_REGISTRY_ABI,
+                functionName: "getVersion",
+                args: [owner],
+            }) as Promise<bigint>,
+        ]);
+        return { manifestCid, schemaId, version };
     }
 
     async waitForTransaction(hash: Hash) {

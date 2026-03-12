@@ -19,8 +19,6 @@ tokio = { version = "1.49.0", features = ["full"] }
 eyre = "0.6.12"
 stylus-sdk = { version = "0.10.0", features = ["stylus-test"] }
 alloy-primitives = { version = "^1.0.1", features = ["sha3-keccak"] }
-# [patch.crates-io]
-# parity-scale-codec = { version = "3.6.12" }
 
 [features]
 export-abi = ["stylus-sdk/export-abi"]

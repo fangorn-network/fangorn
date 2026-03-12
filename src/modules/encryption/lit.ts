@@ -97,15 +97,15 @@ export class LitEncryptionService implements EncryptionService {
 	): Promise<DecryptedPayload> {
 		// execute Lit action to recover key
 		const result = await this.litClient.executeJs({
-			code: createDecryptLitActionCode(authContext.chainName),
-			authContext: authContext.sessionContext,
-			jsParams: {
-				accessControlConditions: payload.acc,
-				ciphertext: payload.key.ciphertext,
-				dataToEncryptHash: payload.key.dataToEncryptHash,
-				authSig: authContext.authSig,
-			},
-		});
+		    code: createDecryptLitActionCode(authContext.chainName),
+		    authContext: authContext.sessionContext,
+		    jsParams: {
+		        accessControlConditions: payload.acc,
+		        ciphertext: payload.key.ciphertext,
+		        dataToEncryptHash: payload.key.dataToEncryptHash,
+		        authSig: authContext.authSig,
+		    },
+		} as Parameters<LitClient["executeJs"]>[0]);
 
 		// TODO: error handling
 		const key = this.parseKeyResponse(
@@ -124,6 +124,9 @@ export class LitEncryptionService implements EncryptionService {
 	): Promise<AuthContextWrapper> {
 		const isWindowUndefined = typeof window === "undefined";
 		const account = isWindowUndefined ? walletClient.account : walletClient;
+
+		if (!account) throw new Error("Error, no account found in wallet client")
+		if (!walletClient.chain) throw new Error("No chain found in wallet client.")
 		// load the auth context
 		const authManager = isWindowUndefined
 			? // node.js support
@@ -167,7 +170,9 @@ export class LitEncryptionService implements EncryptionService {
 		walletClient: WalletClient,
 		domain: string,
 	): Promise<AuthSig> {
-		const account = walletClient.account!;
+		const account = walletClient.account;
+
+		if (!account) throw new Error("No account found in wallet client");
 
 		const resources = [
 			{

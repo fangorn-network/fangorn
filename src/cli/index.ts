@@ -26,7 +26,7 @@ export const selectChain = async () => {
 };
 
 export function parseGadgetArg(raw: string): { type: string; args: string[] } {
-	const match = raw.match(/^(\w+)\(([^)]*)\)$/);
+	const match = /^(\w+)\(([^)]*)\)$/.exec(raw);
 	if (!match)
 		throw new Error(
 			`Invalid gadget format: "${raw}". Expected e.g. Payment(0.00001)`,

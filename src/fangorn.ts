@@ -1,37 +1,44 @@
+<<<<<<< HEAD
 import { Address, createPublicClient, Hex, http, WalletClient } from "viem";
+=======
+// fangorn.ts
+
+import { Address, createPublicClient, Hex, http, PublicClient, WalletClient } from "viem";
+>>>>>>> main
 import {
 	Vault,
 	DataSourceRegistry,
 } from "./interface/datasource-registry/dataSourceRegistry.js";
-import { Filedata, PendingEntry, VaultManifest } from "./types/index.js";
+import { Filedata, PendingEntry, VaultEntry, VaultManifest } from "./types/index.js";
 import StorageProvider from "./providers/storage/index.js";
 import { AppConfig, FangornConfig } from "./config.js";
-import { EncryptionService } from "./modules/encryption/index.js";
+import { AuthContext, EncryptionService } from "./modules/encryption/index.js";
 import { Gadget } from "./modules/gadgets/types.js";
+import { EncryptedPayload } from "./modules/encryption/types.js";
 
 /**
  *
  */
 export class Fangorn {
 	// data ingestion staging
-	private pendingEntries: Map<string, PendingEntry> = new Map();
+	private pendingEntries = new Map<string, PendingEntry>();
 
 	constructor(
 		private dataSourceRegistry: DataSourceRegistry,
 		private walletClient: WalletClient,
-		private storage: StorageProvider<any>,
+		private storage: StorageProvider<unknown>,
 		private encryptionService: EncryptionService,
 		private domain: string,
 	) {}
 
-	public static async init(
+	public static init(
 		walletClient: WalletClient,
-		storage: StorageProvider<any>,
+		storage: StorageProvider<unknown>,
 		encryptionService: EncryptionService,
 		domain: string,
 		config?: AppConfig,
-	): Promise<Fangorn> {
-		const resolvedConfig = config || FangornConfig.ArbitrumSepolia;
+	): Fangorn {
+		const resolvedConfig = config ?? FangornConfig.ArbitrumSepolia;
 
 		const publicClient = createPublicClient({
 			transport: http(resolvedConfig.rpcUrl),
@@ -39,7 +46,7 @@ export class Fangorn {
 
 		const dataSourceRegistry = new DataSourceRegistry(
 			resolvedConfig.dataSourceRegistryContractAddress,
-			publicClient as any,
+			publicClient as PublicClient,
 			walletClient,
 		);
 
@@ -58,7 +65,7 @@ export class Fangorn {
 	async registerDataSource(name: string, agentId?: string): Promise<Hex> {
 		return await this.dataSourceRegistry.registerDataSource(
 			name,
-			agentId || "",
+			agentId ?? "",
 		);
 	}
 
@@ -71,7 +78,9 @@ export class Fangorn {
 		gadgetFactory: (file: Filedata) => Gadget | Promise<Gadget>,
 		overwrite?: boolean,
 	): Promise<string> {
-		const who = this.walletClient.account.address;
+		const account = this.walletClient.account;
+		if (!account) throw new Error("No account found in wallet client");
+		const who = account.address;
 		const datasource = await this.dataSourceRegistry.getDataSource(who, name);
 
 		// Load existing manifest if appending
@@ -111,13 +120,15 @@ export class Fangorn {
 			metadata: { name: file.tag },
 		});
 
+		const gadgetDescriptor = await gadget.toDescriptor();
+
 		// Stage entry
 		this.pendingEntries.set(file.tag, {
 			tag: file.tag,
 			cid,
 			extension: file.extension,
 			fileType: file.fileType,
-			gadgetDescriptor: gadget.toDescriptor(),
+			gadgetDescriptor,
 		});
 
 		return { cid };
@@ -174,19 +185,19 @@ export class Fangorn {
 		owner: Address,
 		name: string,
 		tag: string,
-		authContext?: any,
+		authContext?: AuthContext,
 	): Promise<Uint8Array> {
 		// Fetch manifest and find entry
 		const vault = await this.dataSourceRegistry.getDataSource(owner, name);
-		const manifest = await this.storage.retrieve(vault.manifestCid);
+		const manifest = await this.storage.retrieve(vault.manifestCid) as VaultManifest;
 
-		const entry = manifest.entries.find((e: any) => e.tag === tag);
+		const entry = manifest.entries.find((e: VaultEntry) => e.tag === tag);
 		if (!entry) {
 			throw new Error(`Entry not found: ${tag}`);
 		}
 
 		// Fetch encrypted payload
-		const encrypted = await this.storage.retrieve(entry.cid);
+		const encrypted = await this.storage.retrieve(entry.cid) as EncryptedPayload;
 
 		// Decrypt via encryption service
 		const resolvedAuthContext =
@@ -247,7 +258,7 @@ export class Fangorn {
 	}
 
 	async fetchManifest(cid: string): Promise<VaultManifest> {
-		return (await this.storage.retrieve(cid)) as unknown as VaultManifest;
+		return (await this.storage.retrieve(cid)) as VaultManifest;
 	}
 
 	// helpers
@@ -262,5 +273,9 @@ export class Fangorn {
 				gadgetDescriptor: entry.gadgetDescriptor,
 			});
 		}
+	}
+
+	public getWalletClient() {
+		return this.walletClient;
 	}
 }

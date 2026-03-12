@@ -6,18 +6,16 @@
 // SPDX-License-Identifier: MIT-OR-APACHE-2.0
 pragma solidity ^0.8.23;
 
-interface IDatasourceRegistry {
-    function registerDataSource(string calldata name) external returns (bytes32);
+interface ISchemaRegistry {
+    function registerSchema(string calldata name, string calldata spec_cid, string calldata agent_id) external returns (bytes32);
 
-    function updateDataSource(string calldata name, string calldata new_manifest_cid) external;
+    function updateSchema(string calldata name, string calldata new_spec_cid) external;
 
-    function getDataSource(address owner, string calldata name) external view returns (bytes32, string memory);
-
-    function getOwnedDataSources(address owner) external view returns (bytes32[] memory);
+    function getSchema(string calldata name) external view returns (string memory);
 
     error NotOwner();
 
-    error DataSourceNotFound();
+    error SchemaNotFound();
 
-    error DataSourceAlreadyExists();
+    error SchemaAlreadyExists();
 }

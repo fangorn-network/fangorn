@@ -177,7 +177,7 @@ The e2e test suite requires various environment variables that must be manually 
 
 Testnet tokens (ETH on Base Sepolia) can be obtained from Coinbase's official faucet https://portal.cdp.coinbase.com/
 
-1. `cp .env.example .env`
+1. `cp env.example .env`
 2. Fill in the ENVs:
    - `DELEGATOR_ETH_PRIVATE_KEY`: The private key of the delegator account
      - Needs to have a balance of test ETH to send transactions

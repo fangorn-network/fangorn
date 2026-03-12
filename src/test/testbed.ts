@@ -11,9 +11,6 @@ import {
 } from "viem";
 import { Fangorn } from "../fangorn.js";
 import { Filedata } from "../types/index.js";
-import { createLitClient } from "@lit-protocol/lit-client";
-import { nagaDev } from "@lit-protocol/networks";
-import { PinataSDK } from "pinata";
 import { PinataStorage } from "../providers/storage/pinata/index.js";
 import { AppConfig } from "../config.js";
 import { arbitrumSepolia, baseSepolia } from "viem/chains";
@@ -95,7 +92,7 @@ export class TestBed {
 		const domain = "localhost";
 
 		// Fangorn instances
-		const delegatorFangorn = await Fangorn.init(
+		const delegatorFangorn = Fangorn.init(
 			delegatorWalletClient,
 			delegatorStorage,
 			delegatorEncryption,
@@ -103,13 +100,15 @@ export class TestBed {
 			config,
 		);
 
-		const delegateeFangorn = await Fangorn.init(
+		const delegateeFangorn = Fangorn.init(
 			delegateeWalletClient,
 			delegateeStorage,
 			delegateeEncryption,
 			domain,
 			config,
 		);
+
+		if(!delegatorWalletClient.account) throw new Error("Delegator account not found")
 
 		return new TestBed(
 			delegatorWalletClient.account.address,
@@ -144,7 +143,7 @@ export class TestBed {
 		return await this.delegatorFangorn.upload(
 			datasourceName,
 			filedata,
-			(_file) => emptyWallet(this.litChain),
+			() => emptyWallet(this.litChain),
 		);
 	}
 
@@ -158,8 +157,8 @@ export class TestBed {
 		return await this.delegatorFangorn.upload(
 			datasourceName,
 			[filedata],
-			async (file) => {
-				const commitment = await computeTagCommitment(
+			(file) => {
+				const commitment = computeTagCommitment(
 					this.delegatorAddress,
 					datasourceName,
 					file.tag,
@@ -197,7 +196,7 @@ export class TestBed {
 		name: string,
 	): Promise<boolean> {
 		const datasource = await this.delegatorFangorn.getDataSource(who, name);
-		return datasource.owner == who.toString() && datasource.name == name;
+		return datasource.owner == who && datasource.name == name;
 	}
 
 	async checkDataExistence(who: Address, name: string, tag: string) {
@@ -212,8 +211,9 @@ export class TestBed {
 		usdcContractName: string,
 		usdcAddress: Address,
 	) {
-		const walletClient = this.delegateeFangorn["walletClient"];
-		const account = walletClient.account!;
+		const walletClient = this.delegateeFangorn.getWalletClient();
+		const account = walletClient.account;
+		if(!account) throw new Error("Delegatee account not found in wallet client");
 		const domain = {
 			name: usdcContractName,
 			version: "2",
@@ -279,7 +279,7 @@ export class TestBed {
 			this.usdcContractAddress,
 		);
 
-		const commitment = await computeTagCommitment(owner, name, tag, amount);
+		const commitment = computeTagCommitment(owner, name, tag, amount);
 		const commitmentHex = fieldToHex(commitment);
 
 		const publicClient = createPublicClient({
@@ -288,7 +288,7 @@ export class TestBed {
 
 		const settlementTracker = new SettlementTracker(
 			settlementTrackerAddress,
-			publicClient as any,
+			publicClient,
 			walletClient,
 		);
 
@@ -305,9 +305,9 @@ export class TestBed {
 	}
 
 	private parseSignature(signature: Hex): { v: number; r: Hex; s: Hex } {
-		const r = `0x${signature.slice(2, 66)}` as Hex;
-		const s = `0x${signature.slice(66, 130)}` as Hex;
-		const v = parseInt(signature.slice(130, 132), 16);
-		return { v, r, s };
+	    const r: Hex = `0x${signature.slice(2, 66)}`;
+	    const s: Hex = `0x${signature.slice(66, 130)}`;
+	    const v = parseInt(signature.slice(130, 132), 16);
+	    return { v, r, s };
 	}
 }

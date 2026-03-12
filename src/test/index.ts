@@ -3,17 +3,16 @@
  */
 export async function uploadToPinata(
 	name: string,
-	data: any,
+	data: unknown,
 	pinataJwt?: string,
 ): Promise<string> {
-	const jwt = pinataJwt || process.env.PINATA_JWT;
+	const jwt = pinataJwt ?? process.env.PINATA_JWT;
 	if (!jwt) throw new Error("PINATA_JWT is required");
 
-	// If data is an object, stringify it
 	const content =
 		typeof data === "object" && !(data instanceof Blob)
 			? JSON.stringify(data)
-			: data;
+			: (data as BlobPart);
 
 	const contentType =
 		typeof data === "object" ? "application/json" : "text/plain";
@@ -32,9 +31,9 @@ export async function uploadToPinata(
 
 	if (!response.ok) {
 		const text = await response.text();
-		throw new Error(`Upload failed: ${response.status} - ${text}`);
+		throw new Error(`Upload failed: ${String(response.status)} - ${text}`);
 	}
 
-	const resData = await response.json();
+	const resData = await response.json() as { IpfsHash: string };
 	return resData.IpfsHash;
 }

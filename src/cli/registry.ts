@@ -1,5 +1,5 @@
 import { Address } from "viem";
-import { PaymentGadget } from "../modules/gadgets/payment";
+import { PaymentGadget, PaymentGadgetParams } from "../modules/gadgets/payment";
 import { Gadget } from "../modules/gadgets";
 import { select, text } from "@clack/prompts";
 import { handleCancel } from ".";
@@ -10,7 +10,7 @@ export const GADGET_REGISTRY = {
 		label: "Payment (x402)",
 		argSchema: ["usdcPrice"],
 		build: (namedParams: Record<string, unknown>) =>
-			new PaymentGadget(namedParams as any),
+			new PaymentGadget(namedParams as unknown as PaymentGadgetParams),
 		prompts: [
 			{ key: "usdcPrice", message: "USDC price:", placeholder: "1.00" },
 			{
@@ -54,7 +54,7 @@ export async function selectGadget(
 	}
 
 	// commitment is always derived
-	const commitment = await computeTagCommitment(owner, name, tag, price);
+	const commitment = computeTagCommitment(owner, name, tag, price);
 	params.commitment = fieldToHex(commitment);
 
 	return def.build(params);

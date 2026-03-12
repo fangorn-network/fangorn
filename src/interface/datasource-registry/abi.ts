@@ -1,75 +1,13 @@
-// The data source registry contract abi
-export const DS_REGISTRY_ABI = [
-	{
-		name: "registerDataSource",
-		type: "function",
-		stateMutability: "nonpayable", // for now...
-		inputs: [
-			{ name: "name", type: "string" },
-			{ name: "agentId", type: "string" },
-		],
-		outputs: [{ name: "id", type: "bytes32" }],
-	},
-	{
-		name: "updateDataSource",
-		type: "function",
-		stateMutability: "nonpayable",
-		inputs: [
-			{ name: "name", type: "string" },
-			{ name: "newManifestCid", type: "string" },
-		],
-		outputs: [],
-	},
-	{
-		name: "getDataSource",
-		type: "function",
-		stateMutability: "view",
-		inputs: [
-			{ name: "owner", type: "address" },
-			{ name: "name", type: "string" },
-		],
-		outputs: [{ name: "manifestCid", type: "string" }],
-	},
-	{
-		name: "getOwnedDataSources",
-		type: "function",
-		stateMutability: "view",
-		inputs: [{ name: "owner", type: "address" }],
-		outputs: [{ type: "bytes32[]" }],
-	},
-	// Events
-	{
-		name: "DataSourceCreated",
-		type: "event",
-		inputs: [
-			{ name: "id", type: "bytes32", indexed: true },
-			{ name: "owner", type: "address", indexed: true },
-			{ name: "name", type: "string", indexed: false },
-		],
-	},
-	{
-		name: "DataSourceUpdated",
-		type: "event",
-		inputs: [
-			{ name: "id", type: "bytes32", indexed: true },
-			{ name: "newManifestCid", type: "string", indexed: false },
-		],
-	},
+// abi.ts
+import { parseAbi } from "viem";
 
-	// Errors
-	{
-		name: "NotOwner",
-		type: "error",
-		inputs: [],
-	},
-	{
-		name: "DataSourceNotFound",
-		type: "error",
-		inputs: [],
-	},
-	{
-		name: "DataSourceAlreadyExists",
-		type: "error",
-		inputs: [],
-	},
-] as const;
+export const DS_REGISTRY_ABI = parseAbi([
+	"function initialize(address schema_registry) external",
+	"function publishManifest(string calldata manifest_cid, bytes32 schema_id) external",
+	"function getManifest(address owner) external view returns (string memory)",
+	"function getVersion(address owner) external view returns (uint64)",
+	"function getSchemaId(address owner) external view returns (bytes32)",
+	"event ManifestPublished(address indexed owner, string manifest_cid, uint64 version, bytes32 indexed schema_id)",
+	"error DataSourceNotFound()",
+	"error SchemaNotFound()",
+]);
