@@ -1,5 +1,3 @@
-// fangorn.ts
-
 import { Address, createPublicClient, Hex, http, WalletClient } from "viem";
 import {
 	Vault,

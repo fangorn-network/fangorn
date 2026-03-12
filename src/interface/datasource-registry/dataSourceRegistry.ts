@@ -1,116 +1,109 @@
 import {
-	type PublicClient,
-	type WalletClient,
-	type Address,
-	type Hash,
-	parseEventLogs,
-	Hex,
+    type PublicClient,
+    type WalletClient,
+    type Address,
+    type Hash,
+    parseEventLogs,
+    Hex,
 } from "viem";
 import { DS_REGISTRY_ABI } from "./abi.js";
 
-export interface Vault {
-	manifestCid: string;
-	owner: Address;
-	name: string;
+export interface DataSource {
+    manifestCid: string;
+    owner: Address;
+    name: string;
 }
 
 export class DataSourceRegistry {
-	private publicClient: PublicClient;
-	private walletClient: WalletClient;
-	private contractAddress: Address;
+    private publicClient: PublicClient;
+    private walletClient: WalletClient;
+    private contractAddress: Address;
 
-	constructor(
-		contractAddress: Address,
-		publicClient: PublicClient,
-		walletClient: WalletClient,
-	) {
-		this.publicClient = publicClient;
-		this.contractAddress = contractAddress;
-		this.walletClient = walletClient;
-	}
+    constructor(
+        contractAddress: Address,
+        publicClient: PublicClient,
+        walletClient: WalletClient,
+    ) {
+        this.publicClient = publicClient;
+        this.contractAddress = contractAddress;
+        this.walletClient = walletClient;
+    }
 
-	private getWriteConfig() {
-		if (!this.walletClient.chain) throw new Error("Chain required");
-		if (!this.walletClient.account) throw new Error("Account required");
-		return {
-			chain: this.walletClient.chain,
-			account: this.walletClient.account,
-		};
-	}
+    private getWriteConfig() {
+        if (!this.walletClient.chain) throw new Error("Chain required");
+        if (!this.walletClient.account) throw new Error("Account required");
+        return {
+            chain: this.walletClient.chain,
+            account: this.walletClient.account,
+        };
+    }
 
-	getContractAddress() {
-		return this.contractAddress;
-	}
+    getContractAddress() {
+        return this.contractAddress;
+    }
 
-	async getDataSource(owner: Address, name: string): Promise<Vault> {
-		const result = await (this.publicClient.readContract as any)({
-			address: this.contractAddress,
-			abi: DS_REGISTRY_ABI,
-			functionName: "getDataSource",
-			args: [owner, name],
-		});
+    /// Returns the manifest CID + reconstructed DataSource for the given owner+name
+    async getDataSource(owner: Address, name: string): Promise<DataSource> {
+        const manifestCid = await this.publicClient.readContract({
+            address: this.contractAddress,
+            abi: DS_REGISTRY_ABI,
+            functionName: "getDataSource",
+            args: [owner, name],
+        } as any) as string;
 
-		const manifestCid = result;
-		return { manifestCid, owner, name };
-	}
+        return { manifestCid, owner, name };
+    }
 
-	async getOwnedDataSources(address: Address): Promise<Hex[]> {
-		const result = await this.publicClient.readContract({
-			address: this.contractAddress,
-			abi: DS_REGISTRY_ABI,
-			functionName: "getOwnedDataSources",
-			args: [address],
-		} as any);
+    /// Returns the list of datasource names owned by the given address
+    async getOwnedDataSources(address: Address): Promise<string[]> {
+        const result = await this.publicClient.readContract({
+            address: this.contractAddress,
+            abi: DS_REGISTRY_ABI,
+            functionName: "getOwnedDataSources",
+            args: [address],
+        } as any);
+        return result as string[];
+    }
 
-		return result as Hex[];
-	}
+    /// Registers a new datasource and returns its bytes32 id
+    async registerDataSource(name: string, agentId: string): Promise<Hex> {
+        const { chain, account } = this.getWriteConfig();
+        const hash = await this.walletClient.writeContract({
+            address: this.contractAddress,
+            abi: DS_REGISTRY_ABI,
+            functionName: "registerDataSource",
+            args: [name, agentId],
+            chain,
+            account,
+        });
 
-	async registerDataSource(name: string, agentId: string): Promise<Hex> {
-		const { chain, account } = this.getWriteConfig();
+        const receipt = await this.waitForTransaction(hash);
+        const logs = parseEventLogs({ abi: DS_REGISTRY_ABI, logs: receipt.logs });
 
-		const hash = await this.walletClient.writeContract({
-			address: this.contractAddress,
-			abi: DS_REGISTRY_ABI,
-			functionName: "registerDataSource",
-			args: [name, agentId],
-			chain,
-			account,
-		});
+        const created = logs.find((log) => log.eventName === "DataSourceCreated");
+        if (!created) {
+            throw new Error("registerDataSource: DataSourceCreated event not found in receipt");
+        }
 
-		const receipt = await this.waitForTransaction(hash);
-		const logs = parseEventLogs({
-			abi: DS_REGISTRY_ABI,
-			logs: receipt.logs,
-		});
+        return (created.args as { id: Hex }).id;
+    }
 
-		for (const log of logs) {
-			if (log.eventName == "DataSourceCreated") {
-				// TODO: verify the owner too?
-				return log.args.id as Hex;
-			}
-		}
+    /// Updates the manifest CID for an existing datasource
+    async updateDataSource(name: string, newManifestCid: string): Promise<Hash> {
+        const { chain, account } = this.getWriteConfig();
+        const hash = await this.walletClient.writeContract({
+            address: this.contractAddress,
+            abi: DS_REGISTRY_ABI,
+            functionName: "updateDataSource",
+            args: [name, newManifestCid],
+            chain,
+            account,
+        });
+        await this.waitForTransaction(hash);
+        return hash;
+    }
 
-		console.error("Something went wrong: no id created!");
-	}
-
-	async updateDataSource(name: string, newManifestCid: string): Promise<Hash> {
-		const { chain, account } = this.getWriteConfig();
-
-		const hash = await this.walletClient.writeContract({
-			address: this.contractAddress,
-			abi: DS_REGISTRY_ABI,
-			functionName: "updateDataSource",
-			args: [name, newManifestCid],
-			chain,
-			account,
-		});
-
-		await this.waitForTransaction(hash);
-
-		return hash;
-	}
-
-	async waitForTransaction(hash: Hash) {
-		return this.publicClient.waitForTransactionReceipt({ hash });
-	}
+    async waitForTransaction(hash: Hash) {
+        return this.publicClient.waitForTransactionReceipt({ hash });
+    }
 }

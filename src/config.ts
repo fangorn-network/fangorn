@@ -30,6 +30,8 @@ export default function getNetwork(name: string) {
 export interface AppConfig {
 	// The deployed dataSourceRegistry contract address
 	dataSourceRegistryContractAddress: Hex;
+	// The deployed schemaRegistry contract address
+	schemaRegistryContractAddress: Hex;
 	// The name of the chain for LIT action execution (does not always match what is defined by viem)
 	chainName: string;
 	// The viem chain
@@ -43,9 +45,10 @@ export interface AppConfig {
 export namespace FangornConfig {
 	// Arbitrum Sepolia config
 	export const ArbitrumSepolia: AppConfig = {
-		// an arbitrum stylus contract
 		dataSourceRegistryContractAddress:
 			"0x602aedafe1096004d4db591b6537bc39d7ac71a6",
+		// TODO
+		schemaRegistryContractAddress: "0x0",
 		chainName: "arbitrumSepolia",
 		chain: arbitrumSepolia,
 		rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
@@ -55,6 +58,8 @@ export namespace FangornConfig {
 	export const BaseSepolia: AppConfig = {
 		dataSourceRegistryContractAddress:
 			"0x6fd0e50073dbd8169bcaf066bb4a4991bfa48eeb",
+		// TODO
+		schemaRegistryContractAddress: "0x0",
 		chainName: "baseSepolia",
 		chain: baseSepolia,
 		rpcUrl: "https://sepolia.base.org",

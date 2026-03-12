@@ -3,7 +3,7 @@
 version = 4
 
 [[package]]
-name = "DatasourceRegistry"
+name = "SchemaRegistry"
 version = "0.0.1"
 dependencies = [
  "alloy-primitives",
