@@ -13,6 +13,7 @@ import { deployContract } from "./deployContract.js";
 import { TestBed } from "./test/testbed.js";
 import { arbitrumSepolia, baseSepolia } from "viem/chains";
 import { DataSourceRegistry } from "./interface/datasource-registry/dataSourceRegistry.js";
+import testSound from './test/data/test.wav';
 
 const getEnv = (key: string) => {
     const value = process.env[key];
