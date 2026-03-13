@@ -87,7 +87,7 @@ export class Fangorn {
             } catch {
                 // no existing manifest for this schema, first publish
             }
-        }
+    }
 
         for (const file of filedata) {
             const gadget = await gadgetFactory(file);

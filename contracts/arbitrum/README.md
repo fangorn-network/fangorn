@@ -53,6 +53,3 @@ cargo stylus deploy --private-key-path <KEY_PATH> \
  --endpoint <RPC_ENDPOINT> \
  --args <HEX_ENCODED_ARGS>
 
-
-cargo stylus deploy --private-key 0xde0e6c1c331fcd8692463d6ffcf20f9f2e1847264f7a3f578cf54f62f05196cb --endpoint https://sepolia-rollup.arbitrum.io/rpc
-
