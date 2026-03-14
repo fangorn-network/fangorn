@@ -94,13 +94,13 @@ export class SchemaRegistry {
                 abi: SCHEMA_REGISTRY_ABI,
                 functionName: "getSchemaSpec",
                 args: [name],
-            }) as Promise<string>,
+            }),
             this.publicClient.readContract({
                 address: this.contractAddress,
                 abi: SCHEMA_REGISTRY_ABI,
                 functionName: "getSchemaAgent",
                 args: [name],
-            }) as Promise<string>,
+            }),
         ]);
         return { name, specCid, agentId };
     }
@@ -112,7 +112,7 @@ export class SchemaRegistry {
             abi: SCHEMA_REGISTRY_ABI,
             functionName: "schemaExists",
             args: [schemaId],
-        }) as Promise<boolean>;
+        });
     }
 
     async waitForTransaction(hash: Hash) {

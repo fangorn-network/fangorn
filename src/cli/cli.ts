@@ -7,8 +7,7 @@ import {
     confirm,
     select,
     note,
-    spinner,
-    multiselect,
+    spinner
 } from "@clack/prompts";
 import { createWalletClient, Hex, http, Address, Chain } from "viem";
 import { privateKeyToAccount, PrivateKeyAccount } from "viem/accounts";
@@ -453,7 +452,7 @@ program
             // Resolve schema name → ID if not already a bytes32 hex
             let schemaId: Hex;
             if (options.schemaId.startsWith("0x") && options.schemaId.length === 66) {
-                schemaId = options.schemaId as Hex;
+                schemaId = options.schemaId;
             } else {
                 const s = spinner();
                 s.start(`Resolving schema "${options.schemaId}"...`);

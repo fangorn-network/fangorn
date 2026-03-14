@@ -72,12 +72,19 @@ export class DataSourceRegistry {
             account,
         });
         const receipt = await this.waitForTransaction(hash);
-        const logs = parseEventLogs({ abi: DS_REGISTRY_ABI, logs: receipt.logs });
-        const event = logs.find((log) => log.eventName === "ManifestPublished");
-        if (!event) {
+        const logs = parseEventLogs({
+            abi: DS_REGISTRY_ABI,
+            eventName: "ManifestPublished",
+            logs: receipt.logs,
+        });
+
+        if (logs.length === 0) {
             throw new Error("publishManifest: ManifestPublished event not found in receipt");
         }
-        const version = (event.args as { version: bigint }).version;
+        
+        const event = logs[0];
+        
+        const version = event.args.version;
         return { hash, version };
     }
 
@@ -89,13 +96,13 @@ export class DataSourceRegistry {
                 abi: DS_REGISTRY_ABI,
                 functionName: "getManifest",
                 args: [owner, schemaId],
-            }) as Promise<string>,
+            }),
             this.publicClient.readContract({
                 address: this.contractAddress,
                 abi: DS_REGISTRY_ABI,
                 functionName: "getVersion",
                 args: [owner, schemaId],
-            }) as Promise<bigint>,
+            }),
         ]);
         return { manifestCid, schemaId, version };
     }
@@ -107,7 +114,7 @@ export class DataSourceRegistry {
             abi: DS_REGISTRY_ABI,
             functionName: "getVersion",
             args: [owner, schemaId],
-        }) as Promise<bigint>;
+        });
     }
 
     async waitForTransaction(hash: Hash) {

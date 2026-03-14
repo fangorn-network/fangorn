@@ -17,7 +17,7 @@ export class PinataStorage implements StorageProvider<unknown> {
 				if (value instanceof Uint8Array) {
 					return { __type: "Uint8Array", data: Buffer.from(value).toString("base64") };
 				}
-				return value;
+				return value as Record<string, string>;
 			});
 
 		const file = new File([content], metadata?.name ?? "file", { type: "text/plain" });
@@ -27,15 +27,18 @@ export class PinataStorage implements StorageProvider<unknown> {
 
 	async retrieve(cid: string): Promise<unknown> {
 		const url = `https://${this.gateway}/ipfs/${cid}`;
-		console.log("retrieve url:", url);
 		const response = await fetch(url);
-		console.log("retrieve status:", response.status);
 		const text = await response.text();
-		console.log("retrieve body (first 200):", text.slice(0, 200));
 		if (!response.ok) throw new Error(`Failed to retrieve ${cid}: ${response.statusText}`);
-		return JSON.parse(text, (_key, value) => {
-			if (value && typeof value === "object" && value.__type === "Uint8Array") {
-				return new Uint8Array(Buffer.from(value.data, "base64"));
+		return JSON.parse(text, (_key, value: unknown) => {
+			if (
+				value !== null &&
+				typeof value === "object" &&
+				"__type" in value &&
+				"data" in value &&
+				(value as { __type: unknown }).__type === "Uint8Array"
+			) {
+				return new Uint8Array(Buffer.from((value as { data: string }).data, "base64"));
 			}
 			return value;
 		});
