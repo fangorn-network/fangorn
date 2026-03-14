@@ -43,18 +43,20 @@ export function deriveDatasourceId(name: string, owner: Address): Hex {
 	);
 }
 
+export function computeSchemaId(name: string): Hex {
+    return keccak256(encodeAbiParameters(parseAbiParameters("string"), [name]));
+}
+
 export function computeTagCommitment(
-	owner: Address,
-	name: string,
-	tag: string,
-	price: string,
+    owner: Address,
+    tag: string,
+    price: string,
 ): bigint {
-	const id = deriveDatasourceId(name, owner);
-	const hash = keccak256(
-		encodePacked(
-			["bytes32", "string", "string", "string"],
-			[id, name, tag, price],
-		),
-	);
-	return BigInt(hash);
+    const hash = keccak256(
+        encodePacked(
+            ["address", "string", "string"],
+            [owner, tag, price],
+        ),
+    );
+    return BigInt(hash);
 }

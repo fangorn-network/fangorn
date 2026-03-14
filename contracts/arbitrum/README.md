@@ -52,3 +52,4 @@ cargo stylus deploy \
 cargo stylus deploy --private-key-path <KEY_PATH> \
  --endpoint <RPC_ENDPOINT> \
  --args <HEX_ENCODED_ARGS>
+

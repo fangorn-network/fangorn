@@ -1,6 +1,6 @@
 {
 	"name": "@fangorn-network/sdk",
-	"version": "2026.03.11",
+	"version": "2026.03.13",
 	"description": "A zero-knowledge conditional access control framework",
 	"repository": {
 		"type": "git",
@@ -66,9 +66,18 @@
 		"solc": "^0.8.28",
 		"viem": "^2.47.1"
 	},
+	"overrides": {
+		"viem": "$viem"
+	},
 	"pnpm": {
 		"overrides": {
 			"write-file-atomic": "7.0.0"
+		},
+		"peerDependencyRules": {
+			"allowedVersions": {
+				"viem": ">=2.38.3",
+				"ethers": ">=5.7.2"
+			}
 		}
 	}
 }

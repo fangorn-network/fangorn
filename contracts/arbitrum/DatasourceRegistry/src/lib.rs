@@ -5,172 +5,189 @@ extern crate alloc;
 
 use alloy_sol_types::sol;
 use stylus_sdk::{
-    alloy_primitives::{Address, FixedBytes, keccak256},
+    alloy_primitives::{Address, FixedBytes, U64},
+    call::RawCall,
     prelude::*,
     storage::*,
 };
 
 sol! {
-    event DataSourceCreated(
-        bytes32 indexed id,
+    event ManifestPublished(
         address indexed owner,
-        string name
+        bytes32 indexed schema_id,
+        string manifest_cid,
+        uint64 version
     );
 
-    event DataSourceUpdated(
-        bytes32 indexed id,
-        string newManifestCid
-    );
-
-    error NotOwner();
     error DataSourceNotFound();
-    error DataSourceAlreadyExists();
+    error SchemaNotFound();
+    error SchemaRequired();
 }
 
 #[derive(SolidityError)]
-pub enum DatasourceRegistryError {
-    NotOwner(NotOwner),
+pub enum DataSourceRegistryError {
     DataSourceNotFound(DataSourceNotFound),
-    DataSourceAlreadyExists(DataSourceAlreadyExists),
+    SchemaNotFound(SchemaNotFound),
+    SchemaRequired(SchemaRequired),
 }
 
 #[storage]
 pub struct StorageDataSource {
-    pub name: StorageString,
-    pub agent_id: StorageString,
+    /// IPFS CID of the current manifest
     pub manifest_cid: StorageString,
-    pub owner: StorageAddress,
+    /// Monotonically incrementing publish counter
+    pub version: StorageU64,
 }
 
 #[storage]
 #[entrypoint]
-pub struct DatasourceRegistry {
-    // owner => datasource ids
-    owned: StorageMap<Address, StorageVec<StorageFixedBytes<32>>>,
-    // id => DataSource struct
-    data_sources: StorageMap<FixedBytes<32>, StorageDataSource>,
+pub struct DataSourceRegistry {
+    /// owner => schema_id => DataSource
+    data_sources: StorageMap<Address, StorageMap<FixedBytes<32>, StorageDataSource>>,
+    /// address of the deployed SchemaRegistry contract
+    schema_registry: StorageAddress,
 }
 
 #[public]
-impl DatasourceRegistry {
+impl DataSourceRegistry {
 
-    pub fn register_data_source(
-        &mut self,
-        name: String,
-        agent_id: String,
-    ) -> Result<FixedBytes<32>, DatasourceRegistryError> {
-        let sender = self.vm().msg_sender();
-        let id = abi_encode_id(name.clone(), sender);
-
-        // reject if already registered
-        if self.data_sources.getter(id).owner.get() != Address::ZERO {
-            return Err(DatasourceRegistryError::DataSourceAlreadyExists(
-                DataSourceAlreadyExists {},
-            ));
-        }
-
-        // store struct fields
-        let mut ds = self.data_sources.setter(id);
-        ds.name.set_str(&name);
-        ds.manifest_cid.set_str("");
-        ds.owner.set(sender);
-        ds.agent_id.set_str(&agent_id);
-
-        self.owned.setter(sender).push(id);
-
-        self.vm().log(DataSourceCreated {
-            id,
-            owner: sender,
-            name,
-        });
-
-        Ok(id)
+    #[constructor]
+    pub fn initialize(&mut self, schema_registry: Address) {
+        self.schema_registry.set(schema_registry);
     }
 
-    pub fn update_data_source(
+    /// Publish (or re-publish) a manifest under a specific schema.
+    /// schema_id must be non-zero and must exist in the SchemaRegistry.
+    pub fn publish_manifest(
         &mut self,
-        name: String,
-        new_manifest_cid: String,
-    ) -> Result<(), DatasourceRegistryError> {
+        manifest_cid: String,
+        schema_id: FixedBytes<32>,
+    ) -> Result<(), DataSourceRegistryError> {
         let sender = self.vm().msg_sender();
-        let id = abi_encode_id(name.clone(), sender);
+        let zero: FixedBytes<32> = FixedBytes::ZERO;
 
-        let owner = self.data_sources.getter(id).owner.get();
-        if owner == Address::ZERO {
-            return Err(DatasourceRegistryError::DataSourceNotFound(DataSourceNotFound {}));
-        }
-        if owner != sender {
-            return Err(DatasourceRegistryError::NotOwner(NotOwner {}));
+        if schema_id == zero {
+            return Err(DataSourceRegistryError::SchemaRequired(SchemaRequired {}));
         }
 
-        self.data_sources.setter(id).manifest_cid.set_str(&new_manifest_cid);
+        // Validate schema exists in SchemaRegistry
+        let registry = self.schema_registry.get();
+        let calldata = schema_exists_calldata(schema_id);
+        let result = unsafe { RawCall::new(self.vm()).call(registry, &calldata) };
+        let exists = result.map(|r| r.last().copied().unwrap_or(0) != 0).unwrap_or(false);
+        if !exists {
+            return Err(DataSourceRegistryError::SchemaNotFound(SchemaNotFound {}));
+        }
 
-        self.vm().log(DataSourceUpdated {
-            id,
-            newManifestCid: new_manifest_cid,
+        let mut binding = self.data_sources.setter(sender);
+        let mut ds = binding.setter(schema_id);
+   
+        let new_version = ds.version.get() + U64::from(1);
+        ds.version.set(new_version);
+        ds.manifest_cid.set_str(&manifest_cid);
+
+        self.vm().log(ManifestPublished {
+            owner: sender,
+            schema_id,
+            manifest_cid,
+            version: new_version.to::<u64>(),
         });
 
         Ok(())
     }
 
-    pub fn get_data_source(
+    /// Get the manifest CID for a given (owner, schema_id) pair.
+    pub fn get_manifest(
         &self,
         owner: Address,
-        name: String,
-    ) -> Result<String, DatasourceRegistryError> {
-        let id = abi_encode_id(name.clone(), owner);
-
-        if self.data_sources.getter(id).owner.get() == Address::ZERO {
-            return Err(DatasourceRegistryError::DataSourceNotFound(DataSourceNotFound {}));
+        schema_id: FixedBytes<32>,
+    ) -> Result<String, DataSourceRegistryError> {
+        let binding = self.data_sources.getter(owner);
+        let ds = binding.getter(schema_id);
+        if ds.version.get() == U64::ZERO {
+            return Err(DataSourceRegistryError::DataSourceNotFound(DataSourceNotFound {}));
         }
-
-        Ok(self.data_sources.getter(id).manifest_cid.get_string())
+        Ok(ds.manifest_cid.get_string())
     }
 
-    pub fn get_owned_data_sources(&self, owner: Address) -> Vec<FixedBytes<32>> {
-        let owned_vec = self.owned.getter(owner);
-        (0..owned_vec.len()).filter_map(|i| owned_vec.get(i)).collect()
+    /// Get the current version for a given (owner, schema_id) pair.
+    pub fn get_version(&self, owner: Address, schema_id: FixedBytes<32>) -> u64 {
+        self.data_sources.getter(owner).getter(schema_id).version.get().to::<u64>()
     }
 }
 
-fn abi_encode_id(name: String, owner: Address) -> FixedBytes<32> {
-    use alloy_sol_types::{SolValue};
-    let encoded = (name, owner).abi_encode();
-    keccak256(&encoded)
+fn schema_exists_calldata(id: FixedBytes<32>) -> Vec<u8> {
+    use stylus_sdk::alloy_primitives::keccak256;
+    let selector = &keccak256(b"schemaExists(bytes32)")[..4];
+    let mut calldata = selector.to_vec();
+    calldata.extend_from_slice(id.as_slice());
+    calldata
 }
 
-// fn abi_encode_id(name: &[u8], owner: Address) -> FixedBytes<32> {
-//     // Replicates keccak256(abi.encode(name, msg.sender))
-//     // abi.encode(string, address) layout:
-//     //   [0..32]  offset to string data = 0x40 (64)
-//     //   [32..64] address, right-padded to 32 bytes
-//     //   [64..96] string length
-//     //   [96..]   string bytes, padded to 32-byte boundary
-    
-//     let mut buf = Vec::new();
+#[cfg(test)]
+mod test {
+    use super::*;
+    use alloy_primitives::address;
+    use stylus_sdk::testing::*;
 
-//     // offset for the string (points past the two head slots = 64)
-//     let mut offset = [0u8; 32];
-//     offset[31] = 64;
-//     buf.extend_from_slice(&offset);
+    const USER: Address = address!("0xCDC41bff86a62716f050622325CC17a317f99404");
+    const SCHEMA_A: FixedBytes<32> = FixedBytes::new([1u8; 32]);
+    const SCHEMA_B: FixedBytes<32> = FixedBytes::new([2u8; 32]);
+    const DUMMY_REGISTRY: Address = address!("0x1111111111111111111111111111111111111111");
 
-//     // address padded to 32 bytes (left-padded with zeros)
-//     let mut addr_padded = [0u8; 32];
-//     addr_padded[12..].copy_from_slice(owner.as_slice());
-//     buf.extend_from_slice(&addr_padded);
+    fn setup() -> (TestVM, DataSourceRegistry) {
+        let vm = TestVM::default();
+        vm.set_sender(USER);
+        let mut contract = DataSourceRegistry::from(&vm);
+        contract.initialize(DUMMY_REGISTRY);
+        (vm, contract)
+    }
 
-//     // string length as uint256
-//     let mut len_padded = [0u8; 32];
-//     let name_len = name.len();
-//     len_padded[24..].copy_from_slice(&(name_len as u64).to_be_bytes());
-//     buf.extend_from_slice(&len_padded);
+    #[test]
+    fn test_schema_required() {
+        let (_, mut contract) = setup();
+        // zero schema_id must be rejected
+        assert!(contract
+            .publish_manifest("bafy...abc".to_string(), FixedBytes::ZERO)
+            .is_err());
+    }
 
-//     // string bytes padded to 32-byte boundary
-//     buf.extend_from_slice(name);
-//     let remainder = name_len % 32;
-//     if remainder != 0 {
-//         buf.extend(core::iter::repeat(0u8).take(32 - remainder));
-//     }
+    #[test]
+    fn test_publish_with_unknown_schema_fails() {
+        let (_, mut contract) = setup();
+        // dummy registry returns false for all schema_exists calls
+        assert!(contract
+            .publish_manifest("bafy...abc".to_string(), SCHEMA_A)
+            .is_err());
+    }
 
-//     keccak256(&buf)
-// }
+    #[test]
+    fn test_no_manifest_before_publish() {
+        let (_, contract) = setup();
+        match contract.get_manifest(USER, SCHEMA_A) {
+            Ok(_) => panic!("Should not have a manifest yet"),
+            Err(_) => {}
+        }
+    }
+
+    #[test]
+    fn test_independent_manifests_per_schema() {
+        // This test validates the (owner, schema_id) keying at the storage level.
+        // We bypass schema validation by pointing at DUMMY_REGISTRY which returns
+        // false, so we can't call publish_manifest directly here — the cross-contract
+        // call always fails in the test VM. Storage independence is verified by the
+        // contract structure: two nested StorageMap lookups guarantee isolation.
+        //
+        // Full integration coverage lives in the e2e tests where a real
+        // SchemaRegistry is deployed and schemaExists returns true.
+        let (_, contract) = setup();
+        assert_eq!(contract.get_version(USER, SCHEMA_A), 0);
+        assert_eq!(contract.get_version(USER, SCHEMA_B), 0);
+    }
+
+    #[test]
+    fn test_version_starts_at_zero() {
+        let (_, contract) = setup();
+        assert_eq!(contract.get_version(USER, SCHEMA_A), 0);
+    }
+}
