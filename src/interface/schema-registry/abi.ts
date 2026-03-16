@@ -1,4 +1,3 @@
-// abi.ts
 import { parseAbi } from "viem";
 
 export const SCHEMA_REGISTRY_ABI = parseAbi([

@@ -17,13 +17,23 @@ Fangorn contracts are deployed to Arbitrum Sepolia. See the [contracts](#contrac
 To install the fangorn-sdk from NPM, run:
 ```shell
 npm i -g @fangorn-network/sdk
+# confirm installation 
+fangorn -v
+# initialize the sdk (requires secret key + pinata jwt and gateway)
+fangorn init
+```
+
+### Register a Schema
+
+``` sh
+fangorn register [schema-name]
 ```
 
 ### Publish Data
 
 On upload, data is encrypted under a user-specified **gadget**. For now, the CLI only supports the payment gadget, specified via `-g "Payment(amount)"`. The minimum amount is `0.000001`.
 ```sh
-fangorn upload file-to-upload.ext -c arbitrumSepolia -g "Payment(0.0001)"
+fangorn upload file-to-upload.ext -s [schema-name] -c arbitrumSepolia -g "Payment(0.0001)"
 ```
 
 ### Decrypt and Download
@@ -162,9 +172,7 @@ The tests will deploy any contracts not defined in `.env`, register a test schem
 |---|---|
 | DataSource Registry | `0x3941c7d50caa56f7f676554bc4e78d77aaf27ebb` |
 | Schema Registry | `0x49ab3d52b997e63ad56c91178df48263fd80b2dc` |
-| Settlement Tracker | `0x7c6ae9eb3398234eb69b2f3acfae69065505ff69` |
-
-Contract source: [`contracts/arbitrum/`](./contracts/arbitrum/)
+| Settlement Tracker | `0x4536881306ee355c2f18ae81658771c4488139a3` |
 
 ## CLI
 ```sh

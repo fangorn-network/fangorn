@@ -32,6 +32,8 @@ export interface AppConfig {
 	dataSourceRegistryContractAddress: Hex;
 	// The deployed schemaRegistry contract address
 	schemaRegistryContractAddress: Hex;
+	// The deployed settlementRegistry contract adddress
+	settlementRegistryContractAddress: Hex;
 	// The name of the chain for LIT action execution (does not always match what is defined by viem)
 	chainName: string;
 	// The viem chain
@@ -48,17 +50,19 @@ export const FangornConfig = {
 		dataSourceRegistryContractAddress:
 			"0x3941c7d50caa56f7f676554bc4e78d77aaf27ebb",
 		schemaRegistryContractAddress: "0x49ab3d52b997e63ad56c91178df48263fd80b2dc",
+		settlementRegistryContractAddress: "0x4536881306ee355c2f18ae81658771c4488139a3",
 		chainName: "arbitrumSepolia",
 		chain: arbitrumSepolia,
 		rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
 		caip2: 421614,
 	} satisfies AppConfig,
-	// Base Sepolia config
+	// Base Sepolia config (incomplete :| do not use)
 	BaseSepolia: {
 		dataSourceRegistryContractAddress:
 			"0x6fd0e50073dbd8169bcaf066bb4a4991bfa48eeb",
 		// TODO
 		schemaRegistryContractAddress: "0x0",
+		settlementRegistryContractAddress: "0x0",
 		chainName: "baseSepolia",
 		chain: baseSepolia,
 		rpcUrl: "https://sepolia.base.org",

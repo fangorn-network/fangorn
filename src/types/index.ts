@@ -44,7 +44,7 @@ export interface PendingEntry {
 
 export interface Filedata {
 	tag: string;
-	data: string;
+	data: Uint8Array;
 	extension: string;
 	fileType: string;
 }
