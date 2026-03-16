@@ -31,7 +31,6 @@ export const GADGET_REGISTRY = {
 
 export async function selectGadget(
 	owner: Address,
-	name: string,
 	tag: string,
 	price: string,
 ): Promise<Gadget> {
@@ -54,7 +53,7 @@ export async function selectGadget(
 	}
 
 	// commitment is always derived
-	const commitment = computeTagCommitment(owner, name, tag, price);
+	const commitment = computeTagCommitment(owner, tag, price);
 	params.commitment = fieldToHex(commitment);
 
 	return def.build(params);
