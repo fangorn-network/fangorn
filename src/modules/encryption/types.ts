@@ -11,15 +11,25 @@ export interface LitEncryptedData {
 	ciphertext: string;
 	dataToEncryptHash: string;
 }
-
-/**
- * Complete encrypted payload - stored to IPFS
- */
 export interface EncryptedPayload {
+	/** Locally AES-encrypted file bytes */
 	data: AesEncryptedData;
-	key: LitEncryptedData;
-	acc: UnifiedAccessControlCondition;
-	litAction: string;
+	/** Lit-threshold-encrypted AES key */
+	key: {
+		ciphertext:        string;
+		dataToEncryptHash: string;
+	};
+	/**
+	 * The ACC used to encrypt the key — stored here so decrypt() can
+	 * reconstruct the exact conditions without re-deriving them from
+	 * the gadget. The gadget is a publisher-time concept; the consumer
+	 * only has the payload.
+	 */
+	acc: UnifiedAccessControlCondition[];
+}
+ 
+export interface DecryptedPayload {
+	data: Uint8Array;
 }
 
 /**
@@ -45,6 +55,7 @@ export interface AuthContextWrapper {
 	authSig: AuthSig;
 	sessionContext: Record<string, unknown>;
 	chainName: string;
+	nullifierHash?: string;
 }
 
 /**

@@ -30,75 +30,7 @@ import { Identity } from "@semaphore-protocol/identity";
 import { Group } from "@semaphore-protocol/group";
 import { generateProof, type SemaphoreProof } from "@semaphore-protocol/proof";
 import { arbitrumSepolia } from "viem/chains";
-
-// ─── ABI ─────────────────────────────────────────────────────────────────────
-
-const REGISTRY_ABI = [
-    {
-        name: "createResource",
-        type: "function",
-        inputs: [{ name: "resourceId", type: "bytes32" }],
-        outputs: [{ name: "groupId", type: "uint256" }],
-        stateMutability: "nonpayable",
-    },
-    {
-        name: "register",
-        type: "function",
-        inputs: [
-            { name: "resourceId", type: "bytes32" },
-            { name: "identityCommitment", type: "uint256" },
-            { name: "from", type: "address" },
-            { name: "to", type: "address" },
-            { name: "amount", type: "uint256" },
-            { name: "validAfter", type: "uint256" },
-            { name: "validBefore", type: "uint256" },
-            { name: "nonce", type: "bytes32" },
-            { name: "v", type: "uint8" },
-            { name: "r", type: "bytes32" },
-            { name: "s", type: "bytes32" },
-        ],
-        outputs: [],
-        stateMutability: "payable",
-    },
-    {
-        name: "settle",
-        type: "function",
-        inputs: [
-            { name: "resourceId", type: "bytes32" },
-            { name: "nullifierHash", type: "uint256" },
-            { name: "message", type: "uint256" },
-            { name: "merkleRoot", type: "uint256" },
-            { name: "proof", type: "uint256[8]" },
-            { name: "hookData", type: "bytes" },
-        ],
-        outputs: [],
-        stateMutability: "nonpayable",
-    },
-    {
-        name: "getGroupId",
-        type: "function",
-        inputs: [{ name: "resourceId", type: "bytes32" }],
-        outputs: [{ name: "", type: "uint256" }],
-        stateMutability: "view",
-    },
-    {
-        name: "isSettled",
-        type: "function",
-        inputs: [{ name: "nullifierHash", type: "uint256" }],
-        outputs: [{ name: "", type: "bool" }],
-        stateMutability: "view",
-    },
-    {
-        name: "isRegistered",
-        type: "function",
-        inputs: [
-            { name: "resourceId", type: "bytes32" },
-            { name: "identityCommitment", type: "uint256" },
-        ],
-        outputs: [{ name: "", type: "bool" }],
-        stateMutability: "view",
-    },
-] as const;
+import { SETTLEMENT_REGISTRY_ABI } from "./abi";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -122,39 +54,36 @@ export interface SettleParams {
     callerKey: Hex;               // any wallet — proof is the auth, not msg.sender
 }
 
-// ─── SettlementRegistry ───────────────────────────────────────────────────────
-
 export class SettlementRegistry {
+
     constructor(
         readonly contractAddress: Address,
         private readonly publicClient: PublicClient,
         private readonly walletClient: WalletClient,
     ) { }
 
-    // ── Owner side ────────────────────────────────────────────────────────────
-
     /**
      * Create a Semaphore group for a resource. Called by the schema owner
      * once per (schemaId, tag) asset — typically inside Fangorn.commit().
      */
-    async createResource(resourceId: Hex): Promise<Hex> {
-        const txHash = await this.walletClient.writeContract({
+    async createResource(resourceId: Hex, price: bigint): Promise<Hex> {
+        const hash = await this.walletClient.writeContract({
             address: this.contractAddress,
-            abi: REGISTRY_ABI,
+            abi: SETTLEMENT_REGISTRY_ABI,
             functionName: "createResource",
-            args: [resourceId],
-            gas: 5_000_000n,
-            // todo
+            args: [resourceId, price],
             chain: arbitrumSepolia,
             account: this.walletClient.account!
         });
-        return txHash;
+
+        // TODO: should I output the receipt? the hash isn't really needed...
+        await this.publicClient.waitForTransactionReceipt({ hash });
+        return hash;
+        // return receipt;
     }
 
-    // ── Buyer side ────────────────────────────────────────────────────────────
-
     /**
-     * Phase 1: Pay via ERC-3009 and join the resource's Semaphore group.
+     * Pay via ERC-3009 and join the resource's Semaphore group.
      *
      * The burner wallet is `from` in the ERC-3009 authorization — it is never
      * linked to the identity commitment on-chain. The tx submitter (relayer or
@@ -216,11 +145,10 @@ export class SettlementRegistry {
             })
             : burnerWallet;
 
-        return submitter.writeContract({
+        const hash = await submitter.writeContract({
             address: this.contractAddress,
-            abi: REGISTRY_ABI,
+            abi: SETTLEMENT_REGISTRY_ABI,
             functionName: "register",
-            gas: 5_000_000n,
             args: [
                 resourceId,
                 identity.commitment,
@@ -235,6 +163,10 @@ export class SettlementRegistry {
                 s,
             ],
         });
+
+        const _receipt = await this.publicClient.waitForTransactionReceipt({ hash });
+        // TODO: receipt validations?
+        return hash;
     }
 
     /**
@@ -243,13 +175,13 @@ export class SettlementRegistry {
      *
      * The caller can be any wallet — the Semaphore proof is the auth.
      */
-    async settle(params: SettleParams): Promise<Hex> {
+    async settle(params: SettleParams): Promise<{ hash: Hex, nullifier: BigInt }> {
         const { resourceId, identity, stealthAddress, callerKey } = params;
-        const chain = this.walletClient.chain!;
+        // const chain = this.walletClient.chain!;
 
         const groupId = await this.publicClient.readContract({
             address: this.contractAddress,
-            abi: REGISTRY_ABI,
+            abi: SETTLEMENT_REGISTRY_ABI,
             functionName: "getGroupId",
             args: [resourceId],
         });
@@ -264,32 +196,34 @@ export class SettlementRegistry {
             identity,
             group,
             BigInt(stealthAddress),
-            groupId,
+            groupId
         );
 
-        const hookData = params.hookData ?? encodeAbiParameters(
-            parseAbiParameters("address, string"),
-            [stealthAddress, ""],
-        );
+        // TODO: hookData not yet implemented
 
-        return createWalletClient({
-            account: privateKeyToAccount(callerKey),
-            chain,
-            transport: http(chain.rpcUrls.default.http[0]),
-        }).writeContract({
+        const hash = await this.walletClient.writeContract({
             address: this.contractAddress,
-            abi: REGISTRY_ABI,
+            abi: SETTLEMENT_REGISTRY_ABI,
             functionName: "settle",
             gas: 8_000_000n,
             args: [
                 resourceId,
+                params.stealthAddress,
+                BigInt(proof.merkleTreeDepth),
+                BigInt(proof.merkleTreeRoot),
                 BigInt(proof.nullifier),
                 BigInt(proof.message),
-                BigInt(proof.merkleTreeRoot),
                 proof.points.map(BigInt) as [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint],
-                hookData,
+                [],
             ],
+            chain: arbitrumSepolia,
+            account: this.walletClient.account!
         });
+
+        const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
+        console.log('settlement status ' + receipt.status);
+
+        return { hash, nullifier: BigInt(proof.nullifier) };
     }
 
     // ── Access checks ─────────────────────────────────────────────────────────
@@ -298,12 +232,12 @@ export class SettlementRegistry {
      * Check if a nullifier has been settled (i.e. the user completed Phase 2).
      * Used to gate decryptFile() in the Fangorn class.
      */
-    async isSettled(nullifierHash: bigint): Promise<boolean> {
+    async isSettled(stealthAddress: Address, resourceId: Hex): Promise<boolean> {
         return this.publicClient.readContract({
             address: this.contractAddress,
-            abi: REGISTRY_ABI,
+            abi: SETTLEMENT_REGISTRY_ABI,
             functionName: "isSettled",
-            args: [nullifierHash],
+            args: [stealthAddress, resourceId],
         });
     }
 
@@ -313,7 +247,7 @@ export class SettlementRegistry {
     async isRegistered(resourceId: Hex, identityCommitment: bigint): Promise<boolean> {
         return this.publicClient.readContract({
             address: this.contractAddress,
-            abi: REGISTRY_ABI,
+            abi: SETTLEMENT_REGISTRY_ABI,
             functionName: "isRegistered",
             args: [resourceId, identityCommitment],
         });
@@ -322,7 +256,7 @@ export class SettlementRegistry {
     async getGroupId(resourceId: Hex): Promise<bigint> {
         return this.publicClient.readContract({
             address: this.contractAddress,
-            abi: REGISTRY_ABI,
+            abi: SETTLEMENT_REGISTRY_ABI,
             functionName: "getGroupId",
             args: [resourceId],
         });
@@ -364,14 +298,24 @@ export class SettlementRegistry {
             fromBlock: 0n,
         });
 
+        console.log(`[fetchGroup] total MemberRegistered logs: ${logs.length}`);
+
         const filtered = logs.filter(
-            l => l.args.resourceId?.toLowerCase() === resourceId.toLowerCase()
+            (log) => log.args.resourceId?.toLowerCase() === resourceId.toLowerCase()
         );
 
+        console.log(`[fetchGroup] logs matching resourceId ${resourceId}: ${filtered.length}`);
+        for (const log of filtered) console.log(`  commitment: ${log.args.identityCommitment}`);
+
         const group = new Group();
-        for (const log of filtered) {
-            group.addMember(log.args.identityCommitment!.toString());
-        }
+        for (const log of filtered) group.addMember(log.args.identityCommitment!.toString());
+
+        console.log(`[fetchGroup] group size: ${group.size}`);
         return group;
+    }
+
+    async waitForTransaction(hash: Hex) {
+        const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
+        return receipt;
     }
 }

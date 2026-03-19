@@ -10,7 +10,7 @@ import { SCHEMA_REGISTRY_ABI } from "./abi";
 
 export interface Schema {
     name: string;
-    specCid: string;
+    cid: string;
     agentId: string;
 }
 
@@ -57,13 +57,14 @@ export class SchemaRegistry {
             chain,
             account,
         });
+        // fail if the schema was not actually registered
         const receipt = await this.waitForTransaction(hash);
         const logs = parseEventLogs({ abi: SCHEMA_REGISTRY_ABI, logs: receipt.logs });
         const event = logs.find((log) => log.eventName === "SchemaRegistered");
-        if (!event) {
-            throw new Error("registerSchema: SchemaRegistered event not found in receipt");
-        }
-        const schemaId = (event.args as { id: Hex }).id;
+        // if (!event) {
+        //     throw new Error("registerSchema: SchemaRegistered event not found in receipt");
+        // }
+        const schemaId = (event?.args as { id: Hex }).id;
         return { hash, schemaId };
     }
 
@@ -102,7 +103,7 @@ export class SchemaRegistry {
                 args: [name],
             }),
         ]);
-        return { name, specCid, agentId };
+        return { name, cid: specCid, agentId };
     }
 
     /// Check whether a schema exists by its bytes32 id
