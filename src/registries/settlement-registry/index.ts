@@ -1,8 +1,6 @@
 /**
- * src/interface/settlement-registry/index.ts
  *
  * SDK wrapper for the on-chain SettlementRegistry Stylus contract.
- * Mirrors the pattern of DataSourceRegistry and SchemaRegistry.
  *
  * Responsible for:
  *   - createResource(): owner calls once per (schemaId, tag) asset
@@ -17,8 +15,6 @@ import {
     http,
     encodePacked,
     keccak256,
-    encodeAbiParameters,
-    parseAbiParameters,
     parseSignature,
     type Address,
     type Hex,
@@ -67,19 +63,24 @@ export class SettlementRegistry {
      * once per (schemaId, tag) asset — typically inside Fangorn.commit().
      */
     async createResource(resourceId: Hex, price: bigint): Promise<Hex> {
+
+        const account = this.walletClient.account;
+        if (!account) {
+            throw new Error("The wallet client must have an account configured");
+        }
+
         const hash = await this.walletClient.writeContract({
             address: this.contractAddress,
             abi: SETTLEMENT_REGISTRY_ABI,
             functionName: "createResource",
             args: [resourceId, price],
             chain: arbitrumSepolia,
-            account: this.walletClient.account!
+            account,
         });
 
         // TODO: should I output the receipt? the hash isn't really needed...
         await this.publicClient.waitForTransactionReceipt({ hash });
         return hash;
-        // return receipt;
     }
 
     /**
@@ -95,7 +96,9 @@ export class SettlementRegistry {
             amount, usdcAddress, usdcDomainName, usdcDomainVersion,
         } = params;
 
-        const chain = this.walletClient.chain!;
+        const chain = this.walletClient.chain;
+        if (!chain) throw new Error("The wallet client must be configured with a well-known chain.")
+
         const burner = privateKeyToAccount(burnerPrivateKey);
         const burnerWallet = createWalletClient({
             account: burner, chain, transport: http(chain.rpcUrls.default.http[0]),
@@ -104,7 +107,7 @@ export class SettlementRegistry {
         const validAfter = 0n;
         const validBefore = BigInt(Math.floor(Date.now() / 1000) + 3600);
         const nonceBytes = crypto.getRandomValues(new Uint8Array(32));
-        const nonce = `0x${Array.from(nonceBytes).map(b => b.toString(16).padStart(2, "0")).join("")}` as Hex;
+        const nonce: Hex = `0x${Array.from(nonceBytes).map(b => b.toString(16).padStart(2, "0")).join("")}`;
 
         const sig = await burnerWallet.signTypedData({
             domain: {
@@ -164,7 +167,7 @@ export class SettlementRegistry {
             ],
         });
 
-        const _receipt = await this.publicClient.waitForTransactionReceipt({ hash });
+        await this.publicClient.waitForTransactionReceipt({ hash });
         // TODO: receipt validations?
         return hash;
     }
@@ -175,8 +178,8 @@ export class SettlementRegistry {
      *
      * The caller can be any wallet — the Semaphore proof is the auth.
      */
-    async settle(params: SettleParams): Promise<{ hash: Hex, nullifier: BigInt }> {
-        const { resourceId, identity, stealthAddress, callerKey } = params;
+    async settle(params: SettleParams): Promise<{ hash: Hex, nullifier: bigint }> {
+        const { resourceId, identity, stealthAddress } = params;
         // const chain = this.walletClient.chain!;
 
         const groupId = await this.publicClient.readContract({
@@ -201,6 +204,9 @@ export class SettlementRegistry {
 
         // TODO: hookData not yet implemented
 
+        const account = this.walletClient.account;
+        if (!account) throw new Error("The wallet client must be configured with a valid account.")
+
         const hash = await this.walletClient.writeContract({
             address: this.contractAddress,
             abi: SETTLEMENT_REGISTRY_ABI,
@@ -217,7 +223,7 @@ export class SettlementRegistry {
                 [],
             ],
             chain: arbitrumSepolia,
-            account: this.walletClient.account!
+            account
         });
 
         const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
@@ -225,8 +231,6 @@ export class SettlementRegistry {
 
         return { hash, nullifier: BigInt(proof.nullifier) };
     }
-
-    // ── Access checks ─────────────────────────────────────────────────────────
 
     /**
      * Check if a nullifier has been settled (i.e. the user completed Phase 2).
@@ -277,8 +281,6 @@ export class SettlementRegistry {
         );
     }
 
-    // ── Internal ──────────────────────────────────────────────────────────────
-
     /**
      * Reconstruct the Semaphore group from MemberRegistered events.
      * Fetches all logs (no topic filter) and filters in JS to avoid
@@ -298,21 +300,19 @@ export class SettlementRegistry {
             fromBlock: 0n,
         });
 
-        console.log(`[fetchGroup] total MemberRegistered logs: ${logs.length}`);
-
         const filtered = logs.filter(
             (log) => log.args.resourceId?.toLowerCase() === resourceId.toLowerCase()
         );
 
-        console.log(`[fetchGroup] logs matching resourceId ${resourceId}: ${filtered.length}`);
-        for (const log of filtered) console.log(`  commitment: ${log.args.identityCommitment}`);
-
         const group = new Group();
-        for (const log of filtered) group.addMember(log.args.identityCommitment!.toString());
+        for (const log of filtered) {
+            group.addMember(String(log.args.identityCommitment));
+        }
 
-        console.log(`[fetchGroup] group size: ${group.size}`);
         return group;
     }
+
+
 
     async waitForTransaction(hash: Hex) {
         const receipt = await this.publicClient.waitForTransactionReceipt({ hash });

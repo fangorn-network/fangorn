@@ -1,4 +1,7 @@
 import { UnifiedAccessControlCondition } from "@lit-protocol/access-control-conditions";
+import { createAuthManager } from "@lit-protocol/auth";
+
+export type EoaAuthContext = Awaited<ReturnType<ReturnType<typeof createAuthManager>["createEoaAuthContext"]>>;
 
 export interface AesEncryptedData {
 	ciphertext: Uint8Array<ArrayBuffer>;
@@ -53,7 +56,7 @@ export interface AuthSig {
  */
 export interface AuthContextWrapper {
 	authSig: AuthSig;
-	sessionContext: Record<string, unknown>;
+	sessionContext: EoaAuthContext;
 	chainName: string;
 	nullifierHash?: string;
 }

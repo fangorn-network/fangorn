@@ -2,29 +2,28 @@ import { WalletClient, type Address, type Hex } from "viem";
 import { type Identity } from "@semaphore-protocol/identity";
 import { RegisterParams, SettleParams } from "../../registries/settlement-registry";
 import { AuthContext } from "../../modules/encryption";
-import { VaultEntry } from "../../types";
 import { ManifestEntry } from "../publisher/types";
 
-export type PurchaseParams = {
+export interface PurchaseParams {
 	owner: Address;
 	schemaId: Hex;
 	tag: string;
 	identity: Identity;
 	payment: Omit<RegisterParams, "resourceId">;
-};
+}
  
-export type ClaimParams = {
+export interface ClaimParams {
 	owner: Address;
 	schemaId: Hex;
 	tag: string;
 	proof: Omit<SettleParams, "resourceId">;
-};
+}
  
-export type DecryptParams = {
+export interface DecryptParams {
 	owner: Address;
 	walletClient: WalletClient;
 	schemaId: Hex;
-	nullifierHash: BigInt;
+	nullifierHash: bigint;
 	/** The record tag — maps to the resourceId */
 	tag: string;
 	/** The specific encrypted field within the record to decrypt */
@@ -36,9 +35,9 @@ export type DecryptParams = {
 	 */
 	skipSettlementCheck?: boolean;
 	authContext?: AuthContext;
-};
+}
  
-export type AccessParams = {
+export interface AccessParams {
 	owner: Address;
 	schemaId: Hex;
 	tag: string;
@@ -48,21 +47,21 @@ export type AccessParams = {
 	payment: Omit<RegisterParams, "resourceId">;
 	proof: Omit<SettleParams, "resourceId">;
 	authContext?: AuthContext;
-};
+}
 
-export type PurchaseResult = {
+export interface PurchaseResult {
     txHash: Hex;
     resourceId: Hex;
-};
+}
 
-export type ClaimResult = {
+export interface ClaimResult {
     txHash: Hex;
-	nullifier: BigInt,
+	nullifier: bigint,
     resourceId: Hex;
-};
+}
 
-export type AccessResult = {
+export interface AccessResult {
     data: Uint8Array;
     resourceId: Hex;
     entry: ManifestEntry;
-};
+}

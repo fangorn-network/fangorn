@@ -1,10 +1,10 @@
-import { type Address, type Hex, type WalletClient } from "viem";
+import { type Address, type Hex } from "viem";
 import { type Identity } from "@semaphore-protocol/identity";
 import { DataSourceRegistry } from "../../registries/datasource-registry";
 import { SettlementRegistry } from "../../registries/settlement-registry";
 import StorageProvider from "../../providers/storage";
 import { EncryptionService } from "../../modules/encryption";
-import { AccessParams, AccessResult, ClaimParams, ClaimResult, DecryptParams, PurchaseParams, PurchaseResult } from "./types";
+import { ClaimParams, ClaimResult, DecryptParams, PurchaseParams, PurchaseResult } from "./types";
 import { EncryptedPayload } from "../../modules/encryption/types";
 import { Manifest, ManifestEntry, ResolvedEncryptedField } from "../publisher/types";
 
@@ -16,8 +16,8 @@ export class ConsumerRole {
 		private readonly encryptionService: EncryptionService,
 		// private readonly walletClient: WalletClient,
 		private readonly domain: string,
-	) {}
- 
+	) { }
+
 	/**
 	 * Phase 1: Pay and register a Semaphore identity commitment for a resource.
 	 * The resource is identified by (owner, schemaId, tag) — one resource per record.
@@ -31,7 +31,7 @@ export class ConsumerRole {
 		});
 		return { txHash, resourceId };
 	}
- 
+
 	/**
 	 * Phase 2: Prove group membership and claim access to a record.
 	 */
@@ -43,7 +43,7 @@ export class ConsumerRole {
 		});
 		return { txHash: hash, nullifier, resourceId };
 	}
- 
+
 	/**
 	 * Decrypt a specific encrypted field within a record.
 	 *
@@ -55,7 +55,7 @@ export class ConsumerRole {
 	 */
 	async decrypt(params: DecryptParams): Promise<Uint8Array> {
 		const resourceId = this.deriveResourceId(params.owner, params.schemaId, params.tag);
- 
+
 		if (!params.skipSettlementCheck) {
 			if (!params.identity) {
 				throw new Error(
@@ -74,49 +74,52 @@ export class ConsumerRole {
 				);
 			}
 		}
- 
+
 		const entry = await this.getEntry(params.owner, params.schemaId, params.tag);
 		const fieldValue = entry.fields[params.field];
- 
-		if (!fieldValue || typeof fieldValue !== "object" || (fieldValue as ResolvedEncryptedField)["@type"] !== "encrypted") {
-			throw new Error(
-				`Field "${params.field}" in record "${params.tag}" is not an epsetindcrypted field`,
-			);
+
+		if (!fieldValue || typeof fieldValue !== "object") {
+			throw new Error(`Field "${params.field}" is missing or invalid`);
 		}
- 
+		// if (!fieldValue || typeof fieldValue !== "object" || (fieldValue as ResolvedEncryptedField)["@type"] !== "encrypted") {
+		// 	throw new Error(
+		// 		`Field "${params.field}" in record "${params.tag}" is not an epsetindcrypted field`,
+		// 	);
+		// }
+
 		const encryptedField = fieldValue as ResolvedEncryptedField;
 		const encrypted = (await this.storage.retrieve(
 			encryptedField.handle.cid,
 		)) as EncryptedPayload;
- 
+
 		const authContext =
 			params.authContext ??
 			(await this.encryptionService.createAuthContext(
-				params.walletClient, 
-				this.domain, 
+				params.walletClient,
+				this.domain,
 				params.nullifierHash
 			));
- 
+
 		const decrypted = await this.encryptionService.decrypt(encrypted, authContext);
 		return decrypted.data;
 	}
- 
+
 	// /**
 	//  * Convenience: purchase → await confirmation → claim → decrypt a field.
 	//  * For agent/script flows that can block on each step.
 	//  */
 	// async access(params: AccessParams): Promise<AccessResult> {
 	// 	const { owner, schemaId, tag, field, identity, payment, proof, authContext } = params;
- 
+
 	// 	const { resourceId } = await this.purchase({ owner, schemaId, tag, identity, payment });
 	// 	await this.awaitRegistration(resourceId, identity.commitment);
 	// 	await this.claim({ owner, schemaId, tag, proof });
 	// 	const data = await this.decrypt({ owner, schemaId, tag, field, identity, authContext });
 	// 	const entry = await this.getEntry(owner, schemaId, tag);
- 
+
 	// 	return { data, resourceId, entry };
 	// }
- 
+
 	async getManifest(owner: Address, schemaId: Hex): Promise<Manifest | undefined> {
 		try {
 			const ds = await this.dataSourceRegistry.getManifest(owner, schemaId);
@@ -126,7 +129,7 @@ export class ConsumerRole {
 			return undefined;
 		}
 	}
- 
+
 	async getEntry(owner: Address, schemaId: Hex, tag: string): Promise<ManifestEntry> {
 		const manifest = await this.getManifest(owner, schemaId);
 		if (!manifest) throw new Error(`No manifest found for owner ${owner} / schemaId ${schemaId}`);
@@ -134,7 +137,7 @@ export class ConsumerRole {
 		if (!entry) throw new Error(`Entry not found: "${tag}"`);
 		return entry;
 	}
- 
+
 	async isRegistered(
 		owner: Address,
 		schemaId: Hex,
@@ -144,13 +147,13 @@ export class ConsumerRole {
 		const resourceId = this.deriveResourceId(owner, schemaId, tag);
 		return this.settlementRegistry.isRegistered(resourceId, identity.commitment);
 	}
- 
+
 	// ── Private ───────────────────────────────────────────────────────────────
- 
+
 	private deriveResourceId(owner: Address, schemaId: Hex, tag: string): Hex {
 		return SettlementRegistry.deriveResourceId(owner, schemaId, tag);
 	}
- 
+
 	private async awaitRegistration(
 		resourceId: Hex,
 		commitment: bigint,
@@ -166,4 +169,3 @@ export class ConsumerRole {
 		);
 	}
 }
- 

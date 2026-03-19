@@ -15,7 +15,7 @@ export interface EncryptionService {
 	createAuthContext(
 		walletClient: WalletClient,
 		domain: string,
-		nullifierHash: BigInt,
+		nullifierHash: bigint,
 	): Promise<AuthContext>;
 }
 

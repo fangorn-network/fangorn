@@ -110,7 +110,7 @@ describe("Fangorn E2E", () => {
 		let schemaName: string;
 		let agentId: string;
 		let schemaId: Hex;
-		let nullifierHash: BigInt;
+		let nullifierHash: bigint;
 		// smallest nonzero USDC price (0.000001)
 		let price = 1n;
 

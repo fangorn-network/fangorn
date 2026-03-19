@@ -1,12 +1,12 @@
 import { type Hex } from "viem";
 
 // Represents a plaintext field in a schema
-export type PlainField = {
+export interface PlainField {
     "@type": "string" | "number" | "boolean" | "bytes";
-};
+}
 
 // Represents an encrypted field in a schema
-export type EncryptedField = {
+export interface EncryptedField {
     "@type": "encrypted";
     /** Gadget identifier — resolved against the GadgetRegistry at publish time */
     gadget: string;
@@ -15,7 +15,7 @@ export type EncryptedField = {
         cid: string;
         gateway: string;
     };
-};
+}
 
 // export type SchemaOrgField = {
 // 	"@type": "schemaOrg";
@@ -28,7 +28,7 @@ export type FieldDefinition = PlainField | EncryptedField;
 export type SchemaDefinition = Record<string, FieldDefinition>;
 
 // Params for regsitering an agent (using agent0)
-export type RegisterAgentParams = {
+export interface RegisterAgentParams {
     name: string;
     description: string;
     /** Optional A2A agent card URL e.g. https://example.com/.well-known/agentcard.json */
@@ -37,37 +37,37 @@ export type RegisterAgentParams = {
     mcpEndpoint?: string;
     /** Optional ENS name */
     ens?: string;
-};
+}
 
-export type RegisterSchemaParams = {
+export interface RegisterSchemaParams {
     definition: SchemaDefinition;
     agentId: string;
     name: string;
-};
+}
 
-export type RegisteredAgent = {
+export interface RegisteredAgent {
     agentId: string;
-};
+}
 
-export type RegisteredSchema = {
+export interface RegisteredSchema {
     schemaId: Hex;
     schemaCid: string;
     definition: SchemaDefinition;
     name: string;
     agentId: string;
     owner: Hex;
-};
+}
 
-export type SchemaBlobV1 = {
+export interface SchemaBlobV1 {
     version: 1;
     name: string;
     owner: Hex;
     agentId: string;
     definition: SchemaDefinition;
     createdAt: string;
-};
+}
 
-export type SchemaRoleConfig = {
+export interface SchemaRoleConfig {
     chainId: number;
     rpcUrl: string;
     privateKey: Hex;
@@ -76,4 +76,4 @@ export type SchemaRoleConfig = {
     registryOverrides?: Record<number, { IDENTITY: string; REPUTATION: string }>;
     /** Optional — override subgraph URLs per chainId */
     subgraphOverrides?: Record<number, string>;
-};
+}

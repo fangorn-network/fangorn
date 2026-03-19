@@ -7,7 +7,6 @@ import {
 	type Chain,
 	type Hex,
 	type WalletClient,
-	createPublicClient,
 	createWalletClient,
 	http,
 } from "viem";
@@ -25,7 +24,6 @@ import { PinataStorage } from "../providers/storage/pinata/index.js";
 import { LitEncryptionService } from "../modules/encryption/lit.js";
 import { SettlementRegistry } from "../registries/settlement-registry/index.js";
 import { SettledGadget } from "../modules/gadgets/settledGadget.js";
-import { TransactionReceipt } from "ethers";
 import { privateKeyToAccount } from "viem/accounts";
 
 export class TestBed {
@@ -176,7 +174,7 @@ export class TestBed {
 		burnerPrivateKey: Hex,
 		amount: bigint,
 	): Promise<Hex> {
-		const { txHash, resourceId } = await this.delegateeFangorn.consumer.purchase({
+		const { txHash } = await this.delegateeFangorn.consumer.purchase({
 			owner,
 			schemaId,
 			tag,
@@ -204,7 +202,7 @@ export class TestBed {
 		identity: Identity,
 		stealthAddress: Address,
 		callerKey: Hex,
-	): Promise<{ txHash: Hex, nullifier: BigInt }> {
+	): Promise<{ txHash: Hex, nullifier: bigint }> {
 		const { txHash, nullifier } = await this.delegateeFangorn.consumer.claim({
 			owner,
 			schemaId,
@@ -218,7 +216,7 @@ export class TestBed {
 
 	async tryDecrypt(
 		owner: Address,
-		nullifierHash: BigInt,
+		nullifierHash: bigint,
 		stealthSecretKey: Hex,
 		schemaId: Hex,
 		tag: string,

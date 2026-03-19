@@ -22,7 +22,7 @@ export class SettledGadget implements Gadget {
     hookAddress(): Address { return zeroAddress; }
     hookParams(): Hex { return "0x"; }
 
-    async toAccessCondition(): Promise<UnifiedAccessControlCondition[]> {
+    toAccessCondition(): UnifiedAccessControlCondition[] {
         return createAccBuilder()
             .custom({
                 conditionType: "evmContract",
@@ -49,8 +49,8 @@ export class SettledGadget implements Gadget {
             .build();
     }
 
-    async toDescriptor(): Promise<GadgetDescriptor> {
-        const acc = await this.toAccessCondition();
+    toDescriptor(): GadgetDescriptor {
+        const acc = this.toAccessCondition();
         return {
             type: this.type,
             description: "Settlement-gated: SettlementRegistry.isSettled(resourceId, caller)",

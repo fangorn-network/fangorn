@@ -1,5 +1,4 @@
 import { type Address, type Hex } from "viem";
-import { Filedata } from "../../types";
 import { Gadget } from "../../modules/gadgets";
 import { SchemaDefinition } from "../schema/types";
 import { GadgetDescriptor } from "../../modules/gadgets/types";
@@ -8,11 +7,11 @@ import { GadgetDescriptor } from "../../modules/gadgets/types";
  * A field value the publisher wants to store encrypted.
  * The `data` bytes are what get AES-encrypted and threshold-keyed via Lit.
  */
-export type EncryptedFieldInput = {
+export interface EncryptedFieldInput {
 	data: Uint8Array;
 	fileType?: string;
 	extension?: string;
-};
+}
  
 /**
  * A single field value supplied by the publisher.
@@ -30,19 +29,19 @@ export type FieldInput =
  * `tag` uniquely identifies this record within (owner, schemaId) —
  * it maps to the resourceId in the SettlementRegistry.
  */
-export type PublishRecord = {
+export interface PublishRecord {
 	tag: string;
 	fields: Record<string, FieldInput>;
-};
+}
  
 // ── Stored types (written to IPFS manifest) ───────────────────────────────────
  
 /** A resolved encrypted field — what actually gets stored in the manifest entry */
-export type ResolvedEncryptedField = {
+export interface ResolvedEncryptedField {
 	"@type": "encrypted";
 	handle: { cid: string; gateway: string };
 	gadgetDescriptor: GadgetDescriptor;
-};
+}
  
 /** A resolved plain field value — stored as-is */
 export type ResolvedPlainField = string | number | boolean | Uint8Array;
@@ -55,22 +54,22 @@ export type ResolvedField = ResolvedPlainField | ResolvedEncryptedField;
  * pointing to the ciphertext in IPFS and the gadget descriptor describing
  * the access condition.
  */
-export type ManifestEntry = {
+export interface ManifestEntry {
 	tag: string;
 	fields: Record<string, ResolvedField>;
-};
+}
  
 // ── Manifest ──────────────────────────────────────────────────────────────────
  
-export type Manifest = {
+export interface Manifest {
 	version: 1;
 	schemaId: Hex;
 	entries: ManifestEntry[];
-};
+}
  
 // ── Params ────────────────────────────────────────────────────────────────────
  
-export type UploadParams = {
+export interface UploadParams {
 	records: PublishRecord[];
 	/**
 	 * The schema the records must conform to. Required — field-level encryption
@@ -97,14 +96,14 @@ export type UploadParams = {
 		 */
 		overwrite?: boolean;
 	};
-};
+}
  
-export type CommitResult = {
+export interface CommitResult {
 	manifestCid: string;
 	schemaId: Hex;
 	owner: Address;
 	entryCount: number;
-};
+}
 
 // export type UploadParams = {
 //     files: Filedata[];

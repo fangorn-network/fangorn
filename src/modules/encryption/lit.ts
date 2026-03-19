@@ -19,6 +19,7 @@ import type {
 import type { Gadget } from "../gadgets/types.js";
 import type { Filedata } from "../../types/index.js";
 import type { EncryptionService } from "./index.js";
+import { EvmContractAcc } from "@lit-protocol/access-control-conditions";
 
 export class LitEncryptionService implements EncryptionService {
 	constructor(
@@ -33,9 +34,9 @@ export class LitEncryptionService implements EncryptionService {
 
 	async encrypt(file: Filedata, gadget: Gadget): Promise<EncryptedPayload> {
 		const { encryptedData, keyMaterial } = await encryptData(file.data);
-		const acc = await gadget.toAccessCondition();
+		const acc = gadget.toAccessCondition();
 		// the evmContract condition object
-		const rawAcc = (acc as any)[0];
+		const rawAcc = acc[0] as EvmContractAcc;
 
 		const litEncryptedKey = await this.litClient.encrypt({
 			dataToEncrypt: keyMaterial.toString(),
@@ -65,7 +66,7 @@ export class LitEncryptionService implements EncryptionService {
 				dataToEncryptHash: payload.key.dataToEncryptHash,
 			},
 			unifiedAccessControlConditions: payload.acc,
-			authContext: authContext.sessionContext as any,
+			authContext: authContext.sessionContext,
 			chain: this.chainName,
 		});
 

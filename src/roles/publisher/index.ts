@@ -1,5 +1,4 @@
-import { PublicClient, type Address, type Hex, type WalletClient } from "viem";
-import { Filedata, PendingEntry, VaultEntry, VaultManifest } from "../../types";
+import { type Address, type Hex, type WalletClient } from "viem";
 import { Gadget } from "../../modules/gadgets";
 import { FieldDefinition, SchemaDefinition } from "../schema/types";
 import { DataSourceRegistry } from "../../registries/datasource-registry";
@@ -163,7 +162,7 @@ export class PublisherRole {
                     metadata: { name: `${record.tag}:${fieldName}` },
                 });
 
-                const gadgetDescriptor = await gadget.toDescriptor();
+                const gadgetDescriptor = gadget.toDescriptor();
 
                 resolvedFields[fieldName] = {
                     "@type": "encrypted",
@@ -189,10 +188,10 @@ export class PublisherRole {
         for (const [fieldName, fieldDef] of Object.entries(schema)) {
             const value = record.fields[fieldName];
 
-            if (value === undefined || value === null) {
-                errors.push(`Record "${record.tag}": missing required field "${fieldName}"`);
-                continue;
-            }
+            // if (value === undefined || value === null) {
+            //     errors.push(`Record "${record.tag}": missing required field "${fieldName}"`);
+            //     continue;
+            // }
 
             this.validateField(record.tag, fieldName, fieldDef, value, errors);
         }
@@ -241,9 +240,9 @@ export class PublisherRole {
             case "encrypted":
                 if (
                     typeof value !== "object" ||
-                    value === null ||
+                    // value === null ||
                     !("data" in value) ||
-                    !((value as EncryptedFieldInput).data instanceof Uint8Array)
+                    !((value).data instanceof Uint8Array)
                 ) {
                     errors.push(
                         `"${fieldName}" is encrypted — expected EncryptedFieldInput { data: Uint8Array }`,

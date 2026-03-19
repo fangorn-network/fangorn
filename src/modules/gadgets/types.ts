@@ -8,9 +8,9 @@ export interface Gadget {
 	/** ABI-encoded params forwarded to the hook. "0x" = no params. */
 	hookParams(): Hex;
 	/** The ACC baked into the ciphertext at encryption time. Must match what the hook produces. */
-	toAccessCondition(): Promise<UnifiedAccessControlCondition[]>;
+	toAccessCondition(): UnifiedAccessControlCondition[];
 	/** Stored in the VaultManifest entry so consumers/agents know what they're buying. */
-	toDescriptor(): Promise<GadgetDescriptor>;
+	toDescriptor(): GadgetDescriptor;
 }
  
 export interface GadgetDescriptor {

@@ -112,7 +112,7 @@ export class SchemaRole {
     async get(schemaName: string): Promise<RegisteredSchema | undefined> {
         try {
             const record = await this.schemaRegistry.getSchema(schemaName);
-            if (!record?.cid) return undefined;
+            if (!record.cid) return undefined;
 
             
             console.log('found ' + JSON.stringify(record))
@@ -178,7 +178,7 @@ export class SchemaRole {
 
                 case "encrypted": {
                     const asObj = value as Record<string, unknown>;
-                    if (!asObj?.handle || typeof asObj.handle !== "object")
+                    if (!asObj.handle || typeof asObj.handle !== "object")
                         errors.push(
                             `Field "${field}" is encrypted — expected a { handle: { cid, gateway } } shape`,
                         );
