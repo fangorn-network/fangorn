@@ -22,7 +22,6 @@ import {
     type WalletClient,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { Identity } from "@semaphore-protocol/identity";
 import { Group } from "@semaphore-protocol/group";
 import { generateProof, type SemaphoreProof } from "@semaphore-protocol/proof";
 import { arbitrumSepolia } from "viem/chains";
@@ -213,7 +212,7 @@ export class SettlementRegistry {
         const {
             resourceId, stealthAddress,
             merkleTreeDepth, merkleTreeRoot,
-            nullifier, message, points, hookData,
+            nullifier, message, points,
         } = preparedSettle;
 
         const chain = this.walletClient.chain;

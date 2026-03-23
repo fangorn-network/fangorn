@@ -4,7 +4,6 @@ import {
 	parseAbiParameters,
 	type Address,
 	Hex,
-	encodePacked,
 } from "viem";
 
 // String to 32-byte array

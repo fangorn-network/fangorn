@@ -138,7 +138,7 @@ async function resolveSchemaId(fangorn: Fangorn, schemaOrId: string): Promise<He
     if (schemaOrId.startsWith("0x") && schemaOrId.length === 66) {
         return schemaOrId as Hex;
     }
-    // Existence check via name lookup — getSchema throws if not found
+
     try {
         await fangorn.getSchemaRegistry().getSchema(schemaOrId);
     } catch {
@@ -146,8 +146,8 @@ async function resolveSchemaId(fangorn: Fangorn, schemaOrId: string): Promise<He
             `Schema "${schemaOrId}" not found on-chain. Register it with \`fangorn schema register\`.`,
         );
     }
-    // ID derivation must match SchemaRegistry.registerSchema on-chain logic
-    return keccak256(toBytes(schemaOrId)) as Hex;
+
+    return keccak256(toBytes(schemaOrId));
 }
 
 const program = new Command();
@@ -286,7 +286,7 @@ schemaCmd
             const { schemaId, schemaCid } = await fangorn.schema.register({
                 name: schemaName,
                 definition,
-                agentId: "",
+                agentId: datasourceAgentId,
             });
             s.stop();
 
@@ -391,7 +391,9 @@ publishCmd
             s.stop();
 
             note(
-                `Manifest CID: ${result.manifestCid}\nEntries:      ${result.entryCount}\nSchema:       ${result.schemaId}`,
+                `Manifest CID: ${result.manifestCid}\n
+                 Entries:      ${result.entryCount.toString()}\n
+                 Schema:       ${result.schemaId}`,
                 "Upload complete",
             );
             process.exit(0);
@@ -419,7 +421,7 @@ publishCmd
             }
 
             console.log(`Schema:  ${options.schema}`);
-            console.log(`Entries (${manifest.entries.length}):`);
+            console.log(`Entries (${manifest.entries.length.toString()}):`);
             for (const entry of manifest.entries) {
                 console.log(`  - ${entry.tag}`);
             }
@@ -476,7 +478,7 @@ consumeCmd
 
             console.log(`Owner:   ${options.owner}`);
             console.log(`Schema:  ${options.schema}`);
-            console.log(`Entries (${manifest.entries.length}):`);
+            console.log(`Entries (${manifest.entries.length.toString()}):`);
             for (const entry of manifest.entries) {
                 console.log(`  - ${entry.tag}`);
             }
