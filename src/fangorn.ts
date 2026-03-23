@@ -19,7 +19,7 @@ import { SchemaRoleConfig } from "./roles/schema/types.js";
 
 /**
  * Credentials required to enable ERC-8004 agent registration via agent0-sdk.
- * Optional — omit if the caller only needs publisher or consumer functionality.
+ * Optional: omit if the caller only needs publisher or consumer functionality.
  * When omitted, fangorn.schema.register() and fangorn.schema.get() still work;
  * only fangorn.schema.registerAgent() will throw.
  */
@@ -57,8 +57,7 @@ export class Fangorn {
 	}
 
 	/**
-	 * Schema owner role — register agents, register schemas, validate definitions.
-	 * Constructed once on first access.
+	 * Schema owner: register agents, register schemas, validate definitions.
 	 */
 	get schema(): SchemaRole {
 		return this._schema ??= new SchemaRole(
@@ -70,8 +69,7 @@ export class Fangorn {
 	}
 
 	/**
-	 * Publisher role — encrypt, stage, and commit data under a schema.
-	 * Constructed once on first access.
+	 * Publisher: encrypt, stage, and commit data under a schema.
 	 */
 	get publisher(): PublisherRole {
 		return this._publisher ??= new PublisherRole(
@@ -84,8 +82,7 @@ export class Fangorn {
 	}
 
 	/**
-	 * Consumer role — purchase, claim, and decrypt data.
-	 * Constructed once on first access.
+	 * Consumer: purchase, claim, and decrypt data.
 	 */
 	get consumer(): ConsumerRole {
 		return this._consumer ??= new ConsumerRole(
@@ -93,13 +90,15 @@ export class Fangorn {
 			this.ctx.settlementRegistry,
 			this.ctx.storage,
 			this.ctx.encryption,
-			// this.ctx.walletClient,
 			this.ctx.domain,
 		);
 	}
 
 	/**
-	 * Initialize Fangorn.
+	 * Initialize the Fangorn client.
+	 * 
+	 * The Fangorn client provides a central interface through which each namespaced module can be accessed.
+	 * 
 	 *
 	 * @param walletClient  Viem wallet client with a connected account
 	 * @param storage       Storage provider (e.g. PinataStorage)

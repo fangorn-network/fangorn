@@ -27,28 +27,7 @@ import { Group } from "@semaphore-protocol/group";
 import { generateProof, type SemaphoreProof } from "@semaphore-protocol/proof";
 import { arbitrumSepolia } from "viem/chains";
 import { SETTLEMENT_REGISTRY_ABI } from "./abi";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-export interface RegisterParams {
-    resourceId: Hex;
-    identity: Identity;
-    burnerPrivateKey: Hex;           // holds USDC, signs ERC-3009 — never linked to identity
-    paymentRecipient: Address;       // schema owner treasury
-    amount: bigint;
-    relayerPrivateKey?: Hex;           // who submits the tx (irrelevant to privacy)
-    usdcAddress: Address;
-    usdcDomainName: string;        // e.g. "USD Coin"
-    usdcDomainVersion: string;        // e.g. "2"
-}
-
-export interface SettleParams {
-    resourceId: Hex;
-    identity: Identity;
-    stealthAddress: Address;           // EIP-5564 stealth address — receives NFT/timelock
-    hookData?: Hex;               // defaults to abi.encode(stealthAddress, "")
-    callerKey: Hex;               // any wallet — proof is the auth, not msg.sender
-}
+import { TransferWithAuthParams, TransferWithAuthPayload, PrepareSettleParams, PrepareSettleResult, RegisterParams, SettleParams } from "./types";
 
 export class SettlementRegistry {
 
@@ -84,20 +63,18 @@ export class SettlementRegistry {
     }
 
     /**
-     * Pay via ERC-3009 and join the resource's Semaphore group.
-     *
-     * The burner wallet is `from` in the ERC-3009 authorization — it is never
-     * linked to the identity commitment on-chain. The tx submitter (relayer or
-     * burner) is also irrelevant to privacy.
+     * Prepares the EIP-3009 transferWithAuthorization call and signs it w/ an EIP-712 sig
+     * @param params The transferWithAuth params
+     * @returns The payload containing the signed call data
      */
-    async register(params: RegisterParams): Promise<Hex> {
+    async prepareTransferWithAuth(params: TransferWithAuthParams): Promise<TransferWithAuthPayload> {
         const {
-            resourceId, identity, burnerPrivateKey, paymentRecipient,
+            burnerPrivateKey, paymentRecipient,
             amount, usdcAddress, usdcDomainName, usdcDomainVersion,
         } = params;
 
         const chain = this.walletClient.chain;
-        if (!chain) throw new Error("The wallet client must be configured with a well-known chain.")
+        if (!chain) throw new Error("Wallet client must have a chain configured.");
 
         const burner = privateKeyToAccount(burnerPrivateKey);
         const burnerWallet = createWalletClient({
@@ -139,14 +116,39 @@ export class SettlementRegistry {
 
         const { v, r, s } = parseSignature(sig);
 
-        // Submitter can be the relayer, burner, or anyone — doesn't affect privacy
-        const submitter = params.relayerPrivateKey
-            ? createWalletClient({
-                account: privateKeyToAccount(params.relayerPrivateKey),
-                chain,
-                transport: http(chain.rpcUrls.default.http[0]),
-            })
-            : burnerWallet;
+        return {
+            burnerAddress: burner.address,
+            paymentRecipient,
+            amount,
+            validAfter,
+            validBefore,
+            nonce,
+            v: Number(v),
+            r,
+            s,
+        };
+    }
+
+    /**
+     * Submit a payment and register with the specified semaphore group
+     * @param params 
+     * @returns 
+     */
+    async register(params: RegisterParams): Promise<Hex> {
+        const { resourceId, identityCommitment, relayerPrivateKey, preparedRegister } = params;
+        const {
+            burnerAddress, paymentRecipient, amount,
+            validAfter, validBefore, nonce, v, r, s,
+        } = preparedRegister;
+
+        const chain = this.walletClient.chain;
+        if (!chain) throw new Error("Wallet client must have a chain configured.");
+
+        const submitter = createWalletClient({
+            account: privateKeyToAccount(relayerPrivateKey),
+            chain,
+            transport: http(chain.rpcUrls.default.http[0]),
+        });
 
         const hash = await submitter.writeContract({
             address: this.contractAddress,
@@ -154,33 +156,25 @@ export class SettlementRegistry {
             functionName: "register",
             args: [
                 resourceId,
-                identity.commitment,
-                burner.address,
+                identityCommitment,
+                burnerAddress,
                 paymentRecipient,
                 amount,
                 validAfter,
                 validBefore,
                 nonce,
-                Number(v),
+                v,
                 r,
                 s,
             ],
         });
 
         await this.publicClient.waitForTransactionReceipt({ hash });
-        // TODO: receipt validations?
         return hash;
     }
 
-    /**
-     * Phase 2: Generate a ZK proof of group membership and claim access.
-     * Fires the registered hook atomically (NFT mint, timelock, etc.).
-     *
-     * The caller can be any wallet — the Semaphore proof is the auth.
-     */
-    async settle(params: SettleParams): Promise<{ hash: Hex, nullifier: bigint }> {
+    async prepareSettle(params: PrepareSettleParams): Promise<PrepareSettleResult> {
         const { resourceId, identity, stealthAddress } = params;
-        // const chain = this.walletClient.chain!;
 
         const groupId = await this.publicClient.readContract({
             address: this.contractAddress,
@@ -199,37 +193,62 @@ export class SettlementRegistry {
             identity,
             group,
             BigInt(stealthAddress),
-            groupId
+            groupId,
         );
 
-        // TODO: hookData not yet implemented
+        return {
+            resourceId,
+            stealthAddress,
+            merkleTreeDepth: BigInt(proof.merkleTreeDepth),
+            merkleTreeRoot: BigInt(proof.merkleTreeRoot),
+            nullifier: BigInt(proof.nullifier),
+            message: BigInt(proof.message),
+            points: proof.points.map(BigInt) as [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint],
+            hookData: params.hookData ?? "0x",
+        };
+    }
 
-        const account = this.walletClient.account;
-        if (!account) throw new Error("The wallet client must be configured with a valid account.")
+    async settle(params: SettleParams): Promise<{ hash: Hex; nullifier: bigint }> {
+        const { relayerPrivateKey, preparedSettle } = params;
+        const {
+            resourceId, stealthAddress,
+            merkleTreeDepth, merkleTreeRoot,
+            nullifier, message, points, hookData,
+        } = preparedSettle;
 
-        const hash = await this.walletClient.writeContract({
+        const chain = this.walletClient.chain;
+        if (!chain) throw new Error("Wallet client must have a chain configured.");
+
+        const submitter = createWalletClient({
+            account: privateKeyToAccount(relayerPrivateKey),
+            chain,
+            transport: http(chain.rpcUrls.default.http[0]),
+        });
+
+        const hash = await submitter.writeContract({
             address: this.contractAddress,
             abi: SETTLEMENT_REGISTRY_ABI,
             functionName: "settle",
             gas: 8_000_000n,
             args: [
                 resourceId,
-                params.stealthAddress,
-                BigInt(proof.merkleTreeDepth),
-                BigInt(proof.merkleTreeRoot),
-                BigInt(proof.nullifier),
-                BigInt(proof.message),
-                proof.points.map(BigInt) as [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint],
+                stealthAddress,
+                merkleTreeDepth,
+                merkleTreeRoot,
+                nullifier,
+                message,
+                points,
+                // TODO: hooks not yet implemented
                 [],
             ],
             chain: arbitrumSepolia,
-            account
+            account: privateKeyToAccount(relayerPrivateKey),
         });
 
         const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
-        console.log('settlement status ' + receipt.status);
+        console.log("settlement status " + receipt.status);
 
-        return { hash, nullifier: BigInt(proof.nullifier) };
+        return { hash, nullifier };
     }
 
     /**

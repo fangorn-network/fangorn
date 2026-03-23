@@ -7,6 +7,7 @@ import { EncryptionService } from "../../modules/encryption";
 import { ClaimParams, ClaimResult, DecryptParams, PurchaseParams, PurchaseResult } from "./types";
 import { EncryptedPayload } from "../../modules/encryption/types";
 import { Manifest, ManifestEntry, ResolvedEncryptedField } from "../publisher/types";
+import { PrepareSettleParams, PrepareSettleResult, TransferWithAuthParams, TransferWithAuthPayload } from "../../registries/settlement-registry/types";
 
 export class ConsumerRole {
 	constructor(
@@ -19,27 +20,50 @@ export class ConsumerRole {
 	) { }
 
 	/**
-	 * Phase 1: Pay and register a Semaphore identity commitment for a resource.
-	 * The resource is identified by (owner, schemaId, tag) — one resource per record.
-	 * All encrypted fields within a record share the same resource gate.
+	 * Builds the transfer with auth (ERC-3009) and signs it (EIP-712)
+	 * @param params 
+	 * @returns 
 	 */
-	async purchase(params: PurchaseParams): Promise<PurchaseResult> {
+	async prepareRegister(params: TransferWithAuthParams): Promise<TransferWithAuthPayload> {
+		return this.settlementRegistry.prepareTransferWithAuth(params);
+	}
+
+	/**
+	 * Builds the zkp to prove you're in a semaphore group
+	 * @param params 
+	 * @returns 
+	 */
+	async prepareSettle(params: PrepareSettleParams): Promise<PrepareSettleResult> {
+		return this.settlementRegistry.prepareSettle(params);
+	}
+
+	/**
+	 * Purchase the resource and register in the semaphore group (on success)
+	 * @param params 
+	 * @returns 
+	 */
+	async register(params: PurchaseParams): Promise<PurchaseResult> {
 		const resourceId = this.deriveResourceId(params.owner, params.schemaId, params.tag);
 		const txHash = await this.settlementRegistry.register({
 			resourceId,
-			...params.payment,
+			identityCommitment: params.identityCommitment,
+			relayerPrivateKey: params.relayerPrivateKey,
+			preparedRegister: params.preparedRegister,
 		});
 		return { txHash, resourceId };
 	}
 
 	/**
-	 * Phase 2: Prove group membership and claim access to a record.
+	 * Claim access to a resource (prove settlement)
+	 * Must register first. 
+	 * @param params 
+	 * @returns 
 	 */
 	async claim(params: ClaimParams): Promise<ClaimResult> {
 		const resourceId = this.deriveResourceId(params.owner, params.schemaId, params.tag);
 		const { hash, nullifier } = await this.settlementRegistry.settle({
-			resourceId,
-			...params.proof,
+			relayerPrivateKey: params.relayerPrivateKey,
+			preparedSettle: params.preparedSettle,
 		});
 		return { txHash: hash, nullifier, resourceId };
 	}
@@ -148,24 +172,22 @@ export class ConsumerRole {
 		return this.settlementRegistry.isRegistered(resourceId, identity.commitment);
 	}
 
-	// ── Private ───────────────────────────────────────────────────────────────
-
 	private deriveResourceId(owner: Address, schemaId: Hex, tag: string): Hex {
 		return SettlementRegistry.deriveResourceId(owner, schemaId, tag);
 	}
 
-	private async awaitRegistration(
-		resourceId: Hex,
-		commitment: bigint,
-		maxAttempts = 30,
-		intervalMs = 2_000,
-	): Promise<void> {
-		for (let i = 0; i < maxAttempts; i++) {
-			if (await this.settlementRegistry.isRegistered(resourceId, commitment)) return;
-			await new Promise((resolve) => setTimeout(resolve, intervalMs));
-		}
-		throw new Error(
-			`Timed out waiting for identity registration on resource ${resourceId}.`,
-		);
-	}
+	// private async awaitRegistration(
+	// 	resourceId: Hex,
+	// 	commitment: bigint,
+	// 	maxAttempts = 30,
+	// 	intervalMs = 2_000,
+	// ): Promise<void> {
+	// 	for (let i = 0; i < maxAttempts; i++) {
+	// 		if (await this.settlementRegistry.isRegistered(resourceId, commitment)) return;
+	// 		await new Promise((resolve) => setTimeout(resolve, intervalMs));
+	// 	}
+	// 	throw new Error(
+	// 		`Timed out waiting for identity registration on resource ${resourceId}.`,
+	// 	);
+	// }
 }

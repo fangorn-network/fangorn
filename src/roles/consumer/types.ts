@@ -1,22 +1,24 @@
 import { WalletClient, type Address, type Hex } from "viem";
 import { type Identity } from "@semaphore-protocol/identity";
-import { RegisterParams, SettleParams } from "../../registries/settlement-registry";
 import { AuthContext } from "../../modules/encryption";
 import { ManifestEntry } from "../publisher/types";
+import { PrepareSettleResult, RegisterParams, SettleParams, TransferWithAuthPayload } from "../../registries/settlement-registry/types";
 
 export interface PurchaseParams {
-	owner: Address;
-	schemaId: Hex;
-	tag: string;
-	identity: Identity;
-	payment: Omit<RegisterParams, "resourceId">;
+    owner: Address;
+    schemaId: Hex;
+    tag: string;
+    identityCommitment: bigint;
+    relayerPrivateKey: Hex;
+    preparedRegister: TransferWithAuthPayload;
 }
- 
+
 export interface ClaimParams {
-	owner: Address;
-	schemaId: Hex;
-	tag: string;
-	proof: Omit<SettleParams, "resourceId">;
+    owner: Address;
+    schemaId: Hex;
+    tag: string;
+    relayerPrivateKey: Hex;
+    preparedSettle: PrepareSettleResult;
 }
  
 export interface DecryptParams {

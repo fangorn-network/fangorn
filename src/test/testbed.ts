@@ -1,7 +1,3 @@
-/**
- * src/testing/testbed.ts
- */
-
 import {
 	type Address,
 	type Chain,
@@ -25,6 +21,7 @@ import { LitEncryptionService } from "../modules/encryption/lit.js";
 import { SettlementRegistry } from "../registries/settlement-registry/index.js";
 import { SettledGadget } from "../modules/gadgets/settledGadget.js";
 import { privateKeyToAccount } from "viem/accounts";
+import { PrepareSettleResult, TransferWithAuthPayload } from "../registries/settlement-registry/types.js";
 
 export class TestBed {
 	private constructor(
@@ -38,11 +35,21 @@ export class TestBed {
 	) { }
 
 	/**
-	 * @param litActionCid       CIDv0 of the universal Lit action — upload once
-	 *                           via SettledGadget.uploadLitAction(pinataJwt) and
-	 *                           pass the result here.
-	 * @param delegatorPrivateKey  Optional. Enables ERC-8004 agent registration
-	 *                           via agent0-sdk for the schema owner role.
+	 * Init the testbed client
+	 * @param delegatorWalletClient 
+	 * @param delegateeWalletClient 
+	 * @param jwt 
+	 * @param gateway 
+	 * @param dataSourceRegistryContractAddress 
+	 * @param schemaRegistryContractAddress 
+	 * @param settlementRegistryContractAddress 
+	 * @param usdcContractAddress 
+	 * @param usdcDomainName 
+	 * @param rpcUrl 
+	 * @param chain 
+	 * @param caip2 
+	 * @param delegatorPrivateKey 
+	 * @returns The testbed client
 	 */
 	static async init(
 		delegatorWalletClient: WalletClient,
@@ -111,7 +118,7 @@ export class TestBed {
 		);
 	}
 
-	// ── Schema owner (Alice) ──────────────────────────────────────────────────
+	// Schema owner (Alice)
 
 	async registerAgent(params: RegisterAgentParams): Promise<RegisteredAgent> {
 		return this.delegatorFangorn.schema.registerAgent(params);
@@ -130,7 +137,7 @@ export class TestBed {
 		return schemaId;
 	}
 
-	// ── Publisher (Bob) ───────────────────────────────────────────────────────
+	// Publisher (Bob)
 
 	/**
 	 * Upload files encrypted under SettledGadget.
@@ -164,55 +171,73 @@ export class TestBed {
 		return manifestCid;
 	}
 
-	// ── Consumer Phase 1: purchase ────────────────────────────────────────────
+	// Consumer Phase 1: purchase/register
+
+	async prepareRegister(
+		burnerPrivateKey: Hex,
+		paymentRecipient: Address,
+		amount: bigint,
+	): Promise<TransferWithAuthPayload> {
+		return this.delegateeFangorn.consumer.prepareRegister({
+			burnerPrivateKey,
+			paymentRecipient,
+			amount,
+			usdcAddress: this.usdcContractAddress,
+			usdcDomainName: this.usdcDomainName,
+			usdcDomainVersion: "2",
+		});
+	}
 
 	async register(
 		owner: Address,
 		schemaId: Hex,
 		tag: string,
-		identity: Identity,
-		burnerPrivateKey: Hex,
-		amount: bigint,
+		identityCommitment: bigint,
+		relayerPrivateKey: Hex,
+		preparedRegister: TransferWithAuthPayload,
 	): Promise<Hex> {
-		const { txHash } = await this.delegateeFangorn.consumer.purchase({
+		const { txHash } = await this.delegateeFangorn.consumer.register({
 			owner,
 			schemaId,
 			tag,
-			identity,
-			payment: {
-				identity,
-				burnerPrivateKey,
-				paymentRecipient: owner,
-				amount,
-				usdcAddress: this.usdcContractAddress,
-				usdcDomainName: this.usdcDomainName,
-				usdcDomainVersion: "2",
-			},
+			identityCommitment,
+			relayerPrivateKey,
+			preparedRegister,
 		});
-
 		return txHash;
 	}
 
-	// ── Consumer Phase 2: claim ───────────────────────────────────────────────
-
-	async settle(
+	// Consumer Phase 2: claim
+	async prepareSettle(
 		owner: Address,
 		schemaId: Hex,
 		tag: string,
 		identity: Identity,
 		stealthAddress: Address,
-		callerKey: Hex,
-	): Promise<{ txHash: Hex, nullifier: bigint }> {
+	): Promise<PrepareSettleResult> {
+		return this.delegateeFangorn.consumer.prepareSettle({
+			resourceId: SettlementRegistry.deriveResourceId(owner, schemaId, tag),
+			identity,
+			stealthAddress,
+		});
+	}
+
+	async settle(
+		owner: Address,
+		schemaId: Hex,
+		tag: string,
+		relayerPrivateKey: Hex,
+		preparedSettle: PrepareSettleResult,
+	): Promise<{ txHash: Hex; nullifier: bigint }> {
 		const { txHash, nullifier } = await this.delegateeFangorn.consumer.claim({
 			owner,
 			schemaId,
 			tag,
-			proof: { identity, stealthAddress, callerKey },
+			relayerPrivateKey,
+			preparedSettle,
 		});
 		return { txHash, nullifier };
 	}
-
-	// ── Consumer: decrypt ─────────────────────────────────────────────────────
 
 	async tryDecrypt(
 		owner: Address,

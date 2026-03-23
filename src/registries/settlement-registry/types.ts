@@ -4,22 +4,56 @@ import {
 } from "viem";
 import { Identity } from "@semaphore-protocol/identity";
 
+// register 
+export interface TransferWithAuthParams {
+    burnerPrivateKey: Hex;
+    paymentRecipient: Address;
+    amount: bigint;
+    usdcAddress: Address;
+    usdcDomainName: string;
+    usdcDomainVersion: string;
+}
+
+export interface TransferWithAuthPayload {
+    burnerAddress: Address;
+    paymentRecipient: Address;
+    amount: bigint;
+    validAfter: bigint;
+    validBefore: bigint;
+    nonce: Hex;
+    v: number;
+    r: Hex;
+    s: Hex;
+}
+
 export interface RegisterParams {
     resourceId: Hex;
+    identityCommitment: bigint;
+    relayerPrivateKey: Hex;
+    preparedRegister: TransferWithAuthPayload;
+}
+
+// settle
+
+export interface PrepareSettleParams {
+    resourceId: Hex;
     identity: Identity;
-    burnerPrivateKey: Hex;           // holds USDC, signs ERC-3009 — never linked to identity
-    paymentRecipient: Address;       // schema owner treasury
-    amount: bigint;
-    relayerPrivateKey?: Hex;           // who submits the tx (irrelevant to privacy)
-    usdcAddress: Address;
-    usdcDomainName: string;        // e.g. "USD Coin"
-    usdcDomainVersion: string;        // e.g. "2"
+    stealthAddress: Address;
+    hookData?: Hex;
+}
+
+export interface PrepareSettleResult {
+    resourceId: Hex;
+    stealthAddress: Address;
+    merkleTreeDepth: bigint;
+    merkleTreeRoot: bigint;
+    nullifier: bigint;
+    message: bigint;
+    points: [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint];
+    hookData: Hex;
 }
 
 export interface SettleParams {
-    resourceId: Hex;
-    identity: Identity;
-    stealthAddress: Address;           // EIP-5564 stealth address — receives NFT/timelock
-    hookData?: Hex;               // defaults to abi.encode(stealthAddress, "")
-    callerKey: Hex;               // any wallet — proof is the auth, not msg.sender
+    relayerPrivateKey: Hex;
+    preparedSettle: PrepareSettleResult;
 }

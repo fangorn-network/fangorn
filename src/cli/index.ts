@@ -18,7 +18,7 @@ export const selectChain = async () => {
 		message: "Pick your chain.",
 		options: [
 			{ value: "arbitrumSepolia", label: "Arbitrum Sepolia" },
-			{ value: "baseSepolia", label: "Base Sepolia" },
+			// { value: "baseSepolia", label: "Base Sepolia" },
 		],
 	});
 	handleCancel(chainChoice);

@@ -37,26 +37,6 @@ export function hexToField(hex: string): bigint {
 	return BigInt(cleanHex);
 }
 
-export function deriveDatasourceId(name: string, owner: Address): Hex {
-	return keccak256(
-		encodeAbiParameters(parseAbiParameters("string, address"), [name, owner]),
-	);
-}
-
 export function computeSchemaId(name: string): Hex {
     return keccak256(encodeAbiParameters(parseAbiParameters("string"), [name]));
-}
-
-export function computeTagCommitment(
-    owner: Address,
-    tag: string,
-    price: string,
-): bigint {
-    const hash = keccak256(
-        encodePacked(
-            ["address", "string", "string"],
-            [owner, tag, price],
-        ),
-    );
-    return BigInt(hash);
 }
