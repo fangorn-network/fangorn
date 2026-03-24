@@ -1,6 +1,6 @@
-# Fangorn
+# Fangorn SDK
 
-Programmable data.
+Intent Bound Data.
 
 ## Overview
 

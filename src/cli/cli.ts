@@ -101,7 +101,7 @@ async function getFangorn(chain: Chain): Promise<Fangorn> {
     if (_fangorn) return _fangorn;
 
     const cfg = loadConfig();
-    console.log('the rpc uirl  is ' + cfg.cfg.rpcUrl);
+
     const walletClient = createWalletClient({
         account: getAccount(),
         transport: http(cfg.cfg.rpcUrl),
@@ -216,7 +216,7 @@ const schemaCmd = program
 schemaCmd
     .command("register")
     .description("Register an agent identity and/or a schema on-chain")
-    .argument("<n>", "Schema / agent name")
+    .argument("<name>", "Schema / agent name")
     .option("-e, --skip-erc", "Skip ERC-8004 agent registration")
     .action(async (
         name: string,
@@ -302,7 +302,7 @@ schemaCmd
 schemaCmd
     .command("get")
     .description("Fetch a registered schema by name")
-    .argument("<n>", "Schema name (e.g. fangorn.music.v1)")
+    .argument("<name>", "Schema name (e.g. fangorn.music.v1)")
     .option("-c, --chain <chain>", "Chain to use")
     .action(async (name: string, options: { chain: string }) => {
         try {
@@ -327,7 +327,7 @@ schemaCmd
         }
     });
 
-// ─── publish ─────────────────────────────────────────────────────────────────
+// publish
 
 const publishCmd = program
     .command("publish")

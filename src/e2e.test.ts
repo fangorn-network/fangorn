@@ -46,9 +46,9 @@ function makeWallet(key: Hex) {
 
 const publicClient = createPublicClient({ chain: CHAIN, transport: http(RPC_URL) });
 
-async function waitFor(hash: Hex) {
-	return publicClient.waitForTransactionReceipt({ hash });
-}
+// async function waitFor(hash: Hex) {
+// 	return publicClient.waitForTransactionReceipt({ hash });
+// }
 
 const MUSIC_SCHEMA: SchemaDefinition = {
 	title: { "@type": "string" },

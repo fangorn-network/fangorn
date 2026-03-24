@@ -11,6 +11,7 @@ export const SETTLEMENT_REGISTRY_ABI = parseAbi([
     "function getGroupId(bytes32 resource_id) external view returns (uint256)",
     "function getHook(bytes32 resource_id) external view returns (address)",
     "function getOwner(bytes32 resource_id) external view returns (address)",
+    "function getPrice(bytes32 resource_id) external view returns (uint256)",
     "function isRegistered(bytes32 resource_id, uint256 identity_commitment) external view returns (bool)",
     "error AlreadyRegistered()",
     "error AlreadySettled()",

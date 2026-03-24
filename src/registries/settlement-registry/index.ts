@@ -37,8 +37,11 @@ export class SettlementRegistry {
     ) { }
 
     /**
-     * Create a Semaphore group for a resource. Called by the schema owner
-     * once per (schemaId, tag) asset — typically inside Fangorn.commit().
+     * Create a Semaphore group for a resource. Called by the schema owner once per (schemaId, tag) asset.
+     * 
+     * @param resourceId: The hex encoded resource id
+     * @param price     : The USDC price for the resource
+     * @returns The finalized transaction hash.
      */
     async createResource(resourceId: Hex, price: bigint): Promise<Hex> {
 
@@ -56,7 +59,6 @@ export class SettlementRegistry {
             account,
         });
 
-        // TODO: should I output the receipt? the hash isn't really needed...
         await this.publicClient.waitForTransactionReceipt({ hash });
         return hash;
     }
@@ -275,6 +277,11 @@ export class SettlementRegistry {
         });
     }
 
+    /**
+     * Get the semaphore group id for a resource
+     * @param resourceId The resource id
+     * @returns The group id (if it exists), else null
+     */
     async getGroupId(resourceId: Hex): Promise<bigint> {
         return this.publicClient.readContract({
             address: this.contractAddress,
@@ -284,7 +291,21 @@ export class SettlementRegistry {
         });
     }
 
-    // ── Utilities ─────────────────────────────────────────────────────────────
+    /**
+     * Get the price associated with a resource
+     * @param resourceId  The resource id
+     * @returns The price 
+     */
+    async getPrice(resourceId: Hex): Promise<bigint> {
+        return this.publicClient.readContract({
+            address: this.contractAddress,
+            abi: SETTLEMENT_REGISTRY_ABI,
+            functionName: "getPrice",
+            args: [resourceId],
+        });
+    }
+
+    // utils
 
     /**
      * Deterministic resource_id = keccak256(ownerAddress ++ schemaId ++ tag).

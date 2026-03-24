@@ -48,9 +48,9 @@ export const FangornConfig = {
 	// Arbitrum Sepolia config
 	ArbitrumSepolia: {
 		dataSourceRegistryContractAddress:
-			"0x3941c7d50caa56f7f676554bc4e78d77aaf27ebb",
+			"0x5123388e7199a00acf06524a3d477e650d0a6909",
 		schemaRegistryContractAddress: "0x49ab3d52b997e63ad56c91178df48263fd80b2dc",
-		settlementRegistryContractAddress: "0xc3bddddcf640eedbb6386b625ab15366cdebaba9",
+		settlementRegistryContractAddress: "0xb3b8d0b85b91178e6b95a6b2698a26bfbb7d8136",
 		chainName: "arbitrumSepolia",
 		chain: arbitrumSepolia,
 		rpcUrl: "https://arbitrum-sepolia.drpc.org",

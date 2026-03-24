@@ -144,8 +144,8 @@ export class PublisherRole {
         const resolvedFields: Record<string, ResolvedField> = {};
 
         for (const [fieldName, fieldDef] of Object.entries(schema)) {
-            const value = record.fields[fieldName];
-
+            const value = record.fields[fieldName]; 
+            
             if (fieldDef["@type"] === "encrypted") {
                 const input = value as EncryptedFieldInput;
                 const encrypted = await this.encryptionService.encrypt(
