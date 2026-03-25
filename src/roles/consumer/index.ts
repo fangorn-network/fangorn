@@ -9,13 +9,15 @@ import { EncryptedPayload } from "../../modules/encryption/types";
 import { Manifest, ManifestEntry, ResolvedEncryptedField } from "../publisher/types";
 import { PrepareSettleParams, PrepareSettleResult, TransferWithAuthParams, TransferWithAuthPayload } from "../../registries/settlement-registry/types";
 
+/**
+ * The consumer namespace encapsulates all functionality relative to accessing and consuming data.
+ */
 export class ConsumerRole {
 	constructor(
 		private readonly dataSourceRegistry: DataSourceRegistry,
 		private readonly settlementRegistry: SettlementRegistry,
 		private readonly storage: StorageProvider<unknown>,
 		private readonly encryptionService: EncryptionService,
-		// private readonly walletClient: WalletClient,
 		private readonly domain: string,
 	) { }
 
@@ -29,7 +31,7 @@ export class ConsumerRole {
 	}
 
 	/**
-	 * Builds the zkp to prove you're in a semaphore group
+	 * Builds the zkp to prove you're in a semaphore 	 group
 	 * @param params 
 	 * @returns 
 	 */
@@ -175,19 +177,4 @@ export class ConsumerRole {
 	private deriveResourceId(owner: Address, schemaId: Hex, tag: string): Hex {
 		return SettlementRegistry.deriveResourceId(owner, schemaId, tag);
 	}
-
-	// private async awaitRegistration(
-	// 	resourceId: Hex,
-	// 	commitment: bigint,
-	// 	maxAttempts = 30,
-	// 	intervalMs = 2_000,
-	// ): Promise<void> {
-	// 	for (let i = 0; i < maxAttempts; i++) {
-	// 		if (await this.settlementRegistry.isRegistered(resourceId, commitment)) return;
-	// 		await new Promise((resolve) => setTimeout(resolve, intervalMs));
-	// 	}
-	// 	throw new Error(
-	// 		`Timed out waiting for identity registration on resource ${resourceId}.`,
-	// 	);
-	// }
 }

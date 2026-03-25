@@ -1,6 +1,7 @@
 
 import {
 	createPublicClient,
+	createWalletClient,
 	http,
 	type Hex,
 	type PublicClient,
@@ -8,7 +9,7 @@ import {
 } from "viem";
 import { AppConfig, FangornConfig } from "./config.js";
 import type StorageProvider from "./providers/storage/index.js";
-import type { EncryptionService } from "./modules/encryption/index.js";
+import { LitEncryptionService, type EncryptionService } from "./modules/encryption/index.js";
 import { SchemaRole } from "./roles/schema/index.js";
 import { PublisherRole } from "./roles/publisher/index.js";
 import { ConsumerRole } from "./roles/consumer/index.js";
@@ -16,32 +17,16 @@ import { SchemaRegistry } from "./registries/schema-registry/index.js";
 import { DataSourceRegistry } from "./registries/datasource-registry/index.js";
 import { SettlementRegistry } from "./registries/settlement-registry/index.js";
 import { SchemaRoleConfig } from "./roles/schema/types.js";
+import { AgentConfig, EncryptionConfig, FangornContext, FangornCreateOptions, StorageConfig } from "./types/index.js";
+import { privateKeyToAccount } from "viem/accounts";
+import { PinataStorage } from "./providers/storage/index.js";
 
-/**
- * Credentials required to enable ERC-8004 agent registration via agent0-sdk.
- * Optional: omit if the caller only needs publisher or consumer functionality.
- * When omitted, fangorn.schema.register() and fangorn.schema.get() still work;
- * only fangorn.schema.registerAgent() will throw.
- */
-export interface AgentConfig {
-	privateKey: Hex;
-	pinataJwt: string;
-	/** Override ERC-8004 registry addresses per chainId (e.g. for Arbitrum Sepolia) */
-	registryOverrides?: Record<number, { IDENTITY: string; REPUTATION: string }>;
-	/** Override subgraph URLs per chainId */
-	subgraphOverrides?: Record<number, string>;
+function isStorageProvider(s: StorageConfig): s is StorageProvider<unknown> {
+    return typeof (s as any).retrieve === "function";
 }
 
-// initialization context for lazy loading modules
-interface FangornContext {
-	walletClient: WalletClient;
-	storage: StorageProvider<unknown>;
-	encryption: EncryptionService;
-	domain: string;
-	schemaRegistry: SchemaRegistry;
-	dataSourceRegistry: DataSourceRegistry;
-	settlementRegistry: SettlementRegistry;
-	schemaRoleConfig: SchemaRoleConfig | undefined;
+function isEncryptionService(e: EncryptionConfig): e is EncryptionService {
+    return typeof (e as any).encrypt === "function";
 }
 
 export class Fangorn {
@@ -107,15 +92,31 @@ export class Fangorn {
 	 * @param config        Network + contract config. Defaults to ArbitrumSepolia.
 	 * @param agentConfig   Optional. Required only for schema.registerAgent().
 	 */
-	static init(
-		walletClient: WalletClient,
-		storage: StorageProvider<unknown>,
-		encryption: EncryptionService,
-		domain: string,
-		config?: AppConfig,
-		agentConfig?: AgentConfig,
-	): Fangorn {
-		const resolvedConfig = config ?? FangornConfig.ArbitrumSepolia;
+	static async create(options: FangornCreateOptions): Promise<Fangorn> {
+		if (!options.privateKey && !options.walletClient) {
+			throw new Error("Either privateKey or walletClient must be provided");
+		}
+
+		const resolvedConfig = options.config ?? FangornConfig.ArbitrumSepolia;
+
+		const walletClient = options.walletClient ?? createWalletClient({
+			account: privateKeyToAccount(options.privateKey!),
+			chain: resolvedConfig.chain,
+			transport: http(resolvedConfig.rpcUrl),
+		});
+
+		const storage = isStorageProvider(options.storage)
+			? options.storage
+			: new PinataStorage(
+				(options.storage as { pinata: { jwt: string; gateway: string } }).pinata.jwt,
+				(options.storage as { pinata: { jwt: string; gateway: string } }).pinata.gateway,
+			);
+
+		const encryption = isEncryptionService(options.encryption)
+			? options.encryption
+			: await LitEncryptionService.init(resolvedConfig.chainName);
+
+		const domain = options.domain ?? new URL(resolvedConfig.rpcUrl).hostname;
 
 		const publicClient = createPublicClient({
 			transport: http(resolvedConfig.rpcUrl),
@@ -139,14 +140,14 @@ export class Fangorn {
 			walletClient,
 		);
 
-		const schemaRoleConfig: SchemaRoleConfig | undefined = agentConfig
+		const schemaRoleConfig: SchemaRoleConfig | undefined = options.agentConfig
 			? {
-				chainId: 421614,
+				chainId: resolvedConfig.chain.id,
 				rpcUrl: resolvedConfig.rpcUrl,
-				privateKey: agentConfig.privateKey,
-				pinataJwt: agentConfig.pinataJwt,
-				registryOverrides: agentConfig.registryOverrides,
-				subgraphOverrides: agentConfig.subgraphOverrides,
+				privateKey: options.agentConfig.privateKey,
+				pinataJwt: options.agentConfig.pinataJwt,
+				registryOverrides: options.agentConfig.registryOverrides,
+				subgraphOverrides: options.agentConfig.subgraphOverrides,
 			}
 			: undefined;
 
@@ -159,7 +160,12 @@ export class Fangorn {
 			dataSourceRegistry,
 			settlementRegistry,
 			schemaRoleConfig,
+			config: resolvedConfig,
 		});
+	}
+
+	getConfig(): AppConfig {
+		return this.ctx.config;
 	}
 
 	getSchemaRegistry(): SchemaRegistry {

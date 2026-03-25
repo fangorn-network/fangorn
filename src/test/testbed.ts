@@ -8,7 +8,7 @@ import {
 } from "viem";
 import { Identity } from "@semaphore-protocol/identity";
 import { arbitrumSepolia, baseSepolia } from "viem/chains";
-import { Fangorn, type AgentConfig } from "../fangorn.js";
+import { Fangorn } from "../fangorn.js";
 import { type AppConfig } from "../config.js";
 import {
 	type SchemaDefinition,
@@ -22,6 +22,7 @@ import { SettlementRegistry } from "../registries/settlement-registry/index.js";
 import { SettledGadget } from "../modules/gadgets/settledGadget.js";
 import { privateKeyToAccount } from "viem/accounts";
 import { PrepareSettleResult, TransferWithAuthPayload } from "../registries/settlement-registry/types.js";
+import { AgentConfig } from "../types/index.js";
 
 export class TestBed {
 	private constructor(
@@ -83,27 +84,23 @@ export class TestBed {
 			? { privateKey: delegatorPrivateKey, pinataJwt: jwt }
 			: undefined;
 
-		const [delegatorEncryption, delegateeEncryption] = await Promise.all([
-			LitEncryptionService.init(chain),
-			LitEncryptionService.init(chain),
-		]);
-
-		const delegatorFangorn = Fangorn.init(
-			delegatorWalletClient,
-			new PinataStorage(jwt, gateway),
-			delegatorEncryption,
-			"localhost",
+		const delegatorFangorn = await Fangorn.create({
+			privateKey: process.env.DELEGATOR_ETH_PRIVATE_KEY! as Hex,
+			storage: { pinata: { jwt, gateway } },
+			encryption: { lit: true },
 			config,
+			domain: "localhost",
 			agentConfig,
-		);
+		});
 
-		const delegateeFangorn = Fangorn.init(
-			delegateeWalletClient,
-			new PinataStorage(jwt, gateway),
-			delegateeEncryption,
-			"localhost",
+		// using BURNER private key
+		const delegateeFangorn = await Fangorn.create({
+			privateKey: process.env.DELEGATEE_ETH_PRIVATE_KEY! as Hex,
+			storage: { pinata: { jwt, gateway } },
+			encryption: { lit: true },
 			config,
-		);
+			domain: "localhost",
+		});
 
 		if (!delegatorWalletClient.account) throw new Error("Delegator account not found");
 

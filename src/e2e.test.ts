@@ -9,13 +9,23 @@ import { SettlementRegistry } from "./registries/settlement-registry/index.js";
 import { PublishRecord } from "./roles/publisher/types.js";
 
 // TODO
+// EMPTY WALLET 0x7e69fd5bb5aa5971e2541fb40512490fd4c6cac97589f9ce538e521f4815fac8
+// both of the ones below are funded
 const SK = (process.env.DELEGATOR_ETH_PRIVATE_KEY ?? "0xde0e6c1c331fcd8692463d6ffcf20f9f2e1847264f7a3f578cf54f62f05196cb") as Hex;
+// in practice should be generate f using eip 5564?
+const BURNER_SK = (process.env.DELEGATEE_ETH_PRIVATE_KEY ?? "0xcbd236ee5a2fd07e8c9ef9198a23d869b7be792ca1ad76b35a6c67453839aaba") as Hex;
 // setup env vars
 const RPC_URL = process.env.RPC_URL ?? "https://sepolia-rollup.arbitrum.io/rpc";
-const OWNER_KEY = SK
-// TODO: should be separate key
+
+// The owner of the resource (receives USDC, needs ETH)
+const OWNER_KEY = (process.env.DELEGATOR_ETH_PRIVATE_KEY ?? "0xde0e6c1c331fcd8692463d6ffcf20f9f2e1847264f7a3f578cf54f62f05196cb") as Hex;
+// The faciltiator's key (only needs ETH)
+const FACILITATOR_KEY = SK
+// The party who actually wants access to the resource (needs nothing)
 const BUYER_KEY = SK
-const BURNER_KEY = SK
+// an ephemeral burner key ONLY NEEDS USDC
+const BURNER_KEY = BURNER_SK
+
 const PINATA_JWT = process.env.PINATA_JWT ?? "";
 const PINATA_GW = process.env.PINATA_GATEWAY ?? "";
 // Fangorn Contracts
@@ -31,7 +41,7 @@ const CAIP_2 = parseInt(process.env.CAIP2!) ?? 421614;
 const CHAIN = arbitrumSepolia;
 
 // In production derive stealthAddress via EIP-5564; fixed for tests
-const STEALTH_ADDRESS = privateKeyToAccount(SK).address;
+const STEALTH_ADDRESS = privateKeyToAccount(BURNER_SK).address;
 // const STEALTH_ADDRESS = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" as `0x${string}`;
 
 const hasIpfs = !!PINATA_JWT;
@@ -234,7 +244,7 @@ describe("Fangorn E2E", () => {
 						schemaId,
 						tag,
 						buyerIdentity.commitment,
-						BURNER_KEY,
+						FACILITATOR_KEY,
 						transferWithAuthPayload,
 					);
 
@@ -300,7 +310,7 @@ describe("Fangorn E2E", () => {
 					const data = await testbed.tryDecrypt(
 						ownerAddress,
 						nullifierHash,
-						SK,
+						BURNER_KEY,
 						schemaId,
 						tag,
 						ENCRYPTED_FIELD,
