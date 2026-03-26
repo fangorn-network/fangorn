@@ -13,30 +13,23 @@ import {
     createWalletClient,
     type Hex,
     type Address,
-    type Chain,
     http,
-    keccak256,
-    toBytes,
 } from "viem";
 import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from "fs";
-import { basename, extname, join } from "path";
+import { extname, join } from "path";
 import { homedir } from "os";
 import { Identity } from "@semaphore-protocol/identity";
 import "dotenv/config";
 
 import { Fangorn } from "../fangorn.js";
-import { PinataStorage } from "../providers/storage/pinata/index.js";
-import { LitEncryptionService } from "../modules/encryption/lit.js";
-import { AppConfig, FangornConfig, SupportedNetworks } from "../config.js";
-import { SettlementRegistry } from "../registries/settlement-registry/index.js";
 import { SettledGadget } from "../modules/gadgets/settledGadget.js";
 import { getChain, handleCancel, selectChain } from "./index.js";
 import type { SchemaDefinition } from "../roles/schema/index.js";
 import type { PublishRecord } from "../roles/publisher/index.js";
 import { AgentConfig } from "../types/index.js";
-
-// ─── Config ──────────────────────────────────────────────────────────────────
+import { AppConfig, FangornConfig, SupportedNetworks } from "../config.js";
+import { SettlementRegistry } from "../registries/settlement-registry/index.js";
 
 interface StoredConfig {
     privateKey: Hex;
@@ -98,7 +91,7 @@ function getAccount(): PrivateKeyAccount {
     return _account;
 }
 
-async function getFangorn(chain: Chain): Promise<Fangorn> {
+async function getFangorn(): Promise<Fangorn> {
     if (_fangorn) return _fangorn;
 
     const cfg = loadConfig();
@@ -115,23 +108,23 @@ async function getFangorn(chain: Chain): Promise<Fangorn> {
     return _fangorn;
 }
 
-function getMimeType(ext: string): string {
-    const types: Record<string, string> = {
-        ".txt": "text/plain",
-        ".json": "application/json",
-        ".html": "text/html",
-        ".css": "text/css",
-        ".js": "application/javascript",
-        ".png": "image/png",
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".gif": "image/gif",
-        ".pdf": "application/pdf",
-        ".mp3": "audio/mpeg",
-        ".mp4": "video/mp4",
-    };
-    return types[ext.toLowerCase()] ?? "application/octet-stream";
-}
+// function getMimeType(ext: string): string {
+//     const types: Record<string, string> = {
+//         ".txt": "text/plain",
+//         ".json": "application/json",
+//         ".html": "text/html",
+//         ".css": "text/css",
+//         ".js": "application/javascript",
+//         ".png": "image/png",
+//         ".jpg": "image/jpeg",
+//         ".jpeg": "image/jpeg",
+//         ".gif": "image/gif",
+//         ".pdf": "application/pdf",
+//         ".mp3": "audio/mpeg",
+//         ".mp4": "video/mp4",
+//     };
+//     return types[ext.toLowerCase()] ?? "application/octet-stream";
+// }
 
 async function resolveSchemaId(fangorn: Fangorn, schemaName: string): Promise<Hex> {
     // if it is the schema name then we resolve it to the id here
@@ -225,7 +218,7 @@ schemaCmd
             const chain = await selectChain();
             outro(`Selected chain: ${chain.name}`);
 
-            const fangorn = await getFangorn(chain);
+            const fangorn = await getFangorn();
             let datasourceAgentId = "";
             let description = "";
 
@@ -302,10 +295,9 @@ schemaCmd
     .description("Fetch a registered schema by name")
     .argument("<name>", "Schema name (e.g. fangorn.music.v1)")
     .option("-c, --chain <chain>", "Chain to use")
-    .action(async (name: string, options: { chain: string }) => {
+    .action(async (name: string) => {
         try {
-            const chain = getChain(options.chain);
-            const fangorn = await getFangorn(chain);
+            const fangorn = await getFangorn();
             const s = spinner();
 
             s.start(`Fetching schema "${name}"...`);
@@ -344,8 +336,7 @@ publishCmd
         options: { chain: string; schema: string; price: string; overwrite: boolean },
     ) => {
         try {
-            const chain = getChain(options.chain);
-            const fangorn = await getFangorn(chain);
+            const fangorn = await getFangorn();
             const cfg = loadConfig();
             const owner = getAccount().address;
             const price = BigInt(options.price);
@@ -354,24 +345,27 @@ publishCmd
             const schemaId = await resolveSchemaId(fangorn, options.schema);
             const schemaRecord = await fangorn.schema.get(options.schema);
             const schema: SchemaDefinition = schemaRecord?.definition ?? {};
-
             const records: PublishRecord[] = files.flatMap((filepath) => {
                 const data = readFileSync(filepath, 'utf-8');
-                const parsed = JSON.parse(data, (key, value) => {
+                // cast JSON.parse to unknown to satisfy no-unsafe-assignment
+                const parsed = JSON.parse(data, (key, value: unknown) => {
                     if (key === 'data') {
                         if (Array.isArray(value)) {
                             return new Uint8Array(value.map(v => Number(v)));
                         }
+                        // 2. Narrow the type for Object.values to satisfy no-unsafe-argument
                         if (typeof value === 'object' && value !== null) {
-                            return new Uint8Array(Object.values(value).map(v => Number(v)));
+                            const obj = value as Record<string, unknown>;
+                            return new Uint8Array(Object.values(obj).map(v => Number(v)));
                         }
                     }
                     return value;
-                });
-                return Array.isArray(parsed) ? parsed : [parsed];
-            });
+                }) as unknown; // Cast the result of parse to unknown
 
-            console.log(JSON.stringify(records[0]))
+                // use an array cast to satisfy no-unsafe-return
+                const results = Array.isArray(parsed) ? (parsed as PublishRecord[]) : ([parsed] as PublishRecord[]);
+                return results;
+            });
 
             s.start("Encrypting and publishing...");
             const result = await fangorn.publisher.upload(
@@ -415,8 +409,7 @@ publishCmd
     .option("-c, --chain <chain>", "Chain to use")
     .action(async (options: { chain: string; schema: string }) => {
         try {
-            const chain = getChain(options.chain);
-            const fangorn = await getFangorn(chain);
+            const fangorn = await getFangorn();
             const schemaId = await resolveSchemaId(fangorn, options.schema);
             const manifest = await fangorn.publisher.getManifest(schemaId);
 
@@ -445,8 +438,7 @@ publishCmd
     .option("-c, --chain <chain>", "Chain to use")
     .action(async (tag: string, options: { chain: string; schema: string }) => {
         try {
-            const chain = getChain(options.chain);
-            const fangorn = await getFangorn(chain);
+            const fangorn = await getFangorn();
             const schemaId = await resolveSchemaId(fangorn, options.schema);
             const entry = await fangorn.publisher.getEntry(schemaId, tag);
             note(JSON.stringify(entry, null, 2), `Entry: ${tag}`);
@@ -471,8 +463,7 @@ consumeCmd
     .option("-c, --chain <chain>", "Chain to use")
     .action(async (options: { chain: string; schema: string; owner: Address }) => {
         try {
-            const chain = getChain(options.chain);
-            const fangorn = await getFangorn(chain);
+            const fangorn = await getFangorn();
             const schemaId = await resolveSchemaId(fangorn, options.schema);
             const manifest = await fangorn.consumer.getManifest(options.owner, schemaId);
 
@@ -503,8 +494,7 @@ consumeCmd
     .option("-c, --chain <chain>", "Chain to use")
     .action(async (tag: string, options: { chain: string; schema: string; owner: Address }) => {
         try {
-            const chain = getChain(options.chain);
-            const fangorn = await getFangorn(chain);
+            const fangorn = await getFangorn();
             const schemaId = await resolveSchemaId(fangorn, options.schema);
             const entry = await fangorn.consumer.getEntry(options.owner, schemaId, tag);
             note(JSON.stringify(entry, null, 2), `Entry: ${tag}`);
@@ -537,8 +527,7 @@ consumeCmd
         options: { chain: string; schema: string; burnerKey: Hex; amount: string; usdc: Address },
     ) => {
         try {
-            const chain = getChain(options.chain);
-            const fangorn = await getFangorn(chain);
+            const fangorn = await getFangorn();
             const schemaId = await resolveSchemaId(fangorn, options.schema);
             const relayerKey = loadConfig().privateKey;
             const s = spinner();
@@ -608,8 +597,7 @@ consumeCmd
         options: { chain: string; schema: string; identity: string; stealth: Address },
     ) => {
         try {
-            const chain = getChain(options.chain);
-            const fangorn = await getFangorn(chain);
+            const fangorn = await getFangorn();
             const schemaId = await resolveSchemaId(fangorn, options.schema);
             const relayerKey = loadConfig().privateKey;
             const identity = new Identity(options.identity);
@@ -685,7 +673,7 @@ consumeCmd
     ) => {
         try {
             const chain = getChain(options.chain);
-            const fangorn = await getFangorn(chain);
+            const fangorn = await getFangorn();
             const schemaId = await resolveSchemaId(fangorn, options.schema);
             const s = spinner();
 
@@ -738,8 +726,7 @@ program
         try {
             const self = getAccount().address;
             const owner = options.owner ?? self;
-            const chain = getChain(options.chain);
-            const fangorn = await getFangorn(chain);
+            const fangorn = await getFangorn();
             const schemaId = await resolveSchemaId(fangorn, options.schema);
             const ds = await fangorn.getDatasourceRegistry().getManifest(owner, schemaId);
 

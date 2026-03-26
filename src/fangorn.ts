@@ -17,16 +17,16 @@ import { SchemaRegistry } from "./registries/schema-registry/index.js";
 import { DataSourceRegistry } from "./registries/datasource-registry/index.js";
 import { SettlementRegistry } from "./registries/settlement-registry/index.js";
 import { SchemaRoleConfig } from "./roles/schema/types.js";
-import { AgentConfig, EncryptionConfig, FangornContext, FangornCreateOptions, StorageConfig } from "./types/index.js";
+import { EncryptionConfig, FangornContext, FangornCreateOptions, StorageConfig } from "./types/index.js";
 import { privateKeyToAccount } from "viem/accounts";
 import { PinataStorage } from "./providers/storage/index.js";
 
 function isStorageProvider(s: StorageConfig): s is StorageProvider<unknown> {
-    return typeof (s as any).retrieve === "function";
+    return typeof (s as StorageProvider<unknown>).retrieve === "function";
 }
 
 function isEncryptionService(e: EncryptionConfig): e is EncryptionService {
-    return typeof (e as any).encrypt === "function";
+    return typeof (e as EncryptionService).encrypt === "function";
 }
 
 export class Fangorn {
@@ -100,7 +100,7 @@ export class Fangorn {
 		const resolvedConfig = options.config ?? FangornConfig.ArbitrumSepolia;
 
 		const walletClient = options.walletClient ?? createWalletClient({
-			account: privateKeyToAccount(options.privateKey!),
+			account: privateKeyToAccount(options.privateKey ?? "0x0"),
 			chain: resolvedConfig.chain,
 			transport: http(resolvedConfig.rpcUrl),
 		});

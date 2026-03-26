@@ -59,7 +59,7 @@ export interface ManifestEntry {
 	fields: Record<string, ResolvedField>;
 }
  
-// ── Manifest ──────────────────────────────────────────────────────────────────
+// Manifest
  
 export interface Manifest {
 	version: 1;
@@ -67,7 +67,7 @@ export interface Manifest {
 	entries: ManifestEntry[];
 }
  
-// ── Params ────────────────────────────────────────────────────────────────────
+// Params
  
 export interface UploadParams {
 	records: PublishRecord[];

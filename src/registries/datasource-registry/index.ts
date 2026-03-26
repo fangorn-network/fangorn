@@ -4,7 +4,6 @@ import {
     type Address,
     type Hash,
     type Hex,
-    parseEventLogs,
 } from "viem";
 import { DS_REGISTRY_ABI } from "./abi.js";
 
@@ -71,21 +70,8 @@ export class DataSourceRegistry {
             chain,
             account,
         });
-        const receipt = await this.waitForTransaction(hash);
-        const logs = parseEventLogs({
-            abi: DS_REGISTRY_ABI,
-            eventName: "ManifestPublished",
-            logs: receipt.logs,
-        });
-
-        // TODO: could be either ManifestPublished OR ManifestUpdated
-        // if (logs.length === 0) {
-        //     throw new Error("publishManifest: ManifestPublished event not found in receipt");
-        // }
-        
-        // const event = logs[0];
-        
-        // const version = event.args.version;
+        await this.waitForTransaction(hash);
+        // TODO use tx receipt events to verify the result
         return hash;
     }
 

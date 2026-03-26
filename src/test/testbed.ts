@@ -16,8 +16,6 @@ import {
 	type RegisteredAgent,
 } from "../roles/schema/index.js";
 import { type PublishRecord } from "../roles/publisher/index.js";
-import { PinataStorage } from "../providers/storage/pinata/index.js";
-import { LitEncryptionService } from "../modules/encryption/lit.js";
 import { SettlementRegistry } from "../registries/settlement-registry/index.js";
 import { SettledGadget } from "../modules/gadgets/settledGadget.js";
 import { privateKeyToAccount } from "viem/accounts";
@@ -85,7 +83,7 @@ export class TestBed {
 			: undefined;
 
 		const delegatorFangorn = await Fangorn.create({
-			privateKey: process.env.DELEGATOR_ETH_PRIVATE_KEY! as Hex,
+			privateKey: (process.env.DELEGATOR_ETH_PRIVATE_KEY ?? "0x0") as Hex,
 			storage: { pinata: { jwt, gateway } },
 			encryption: { lit: true },
 			config,
@@ -93,9 +91,8 @@ export class TestBed {
 			agentConfig,
 		});
 
-		// using BURNER private key
 		const delegateeFangorn = await Fangorn.create({
-			privateKey: process.env.DELEGATEE_ETH_PRIVATE_KEY! as Hex,
+			privateKey: (process.env.DELEGATEE_ETH_PRIVATE_KEY ?? "0x0") as Hex,
 			storage: { pinata: { jwt, gateway } },
 			encryption: { lit: true },
 			config,

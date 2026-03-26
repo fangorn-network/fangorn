@@ -93,7 +93,7 @@ export class SchemaRole {
      * Fetch a registered schema. Accepts either a schema name or a bytes32 id.
      * Returns undefined if not registered.
      */
-    async get(nameOrId: string | Hex): Promise<RegisteredSchema | undefined> {
+    async get(nameOrId: string): Promise<RegisteredSchema | undefined> {
         try {
             // Resolve id upfront so we can return it without a TODO placeholder
             const schemaId = await this.schemaRegistry.schemaId(

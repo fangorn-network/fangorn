@@ -77,7 +77,7 @@ export class SchemaRegistry {
     /// Update the spec CID and agent ID for an existing schema (owner only).
     /// Accepts either a name (resolved to id) or a raw bytes32 id.
     async updateSchema(
-        nameOrId: string | Hex,
+        nameOrId: string,
         newSpecCid: string,
         newAgentId: string,
     ): Promise<Hash> {
@@ -96,7 +96,7 @@ export class SchemaRegistry {
     }
 
     /// Get the full schema details. Accepts either a name or a raw bytes32 id.
-    async getSchema(nameOrId: string | Hex): Promise<Schema> {
+    async getSchema(nameOrId: string): Promise<Schema> {
         const id = await this.resolveId(nameOrId);
         const [specCid, agentId] = await Promise.all([
             this.publicClient.readContract({
@@ -116,7 +116,7 @@ export class SchemaRegistry {
     }
 
     /// Check whether a schema exists. Accepts either a name or a raw bytes32 id.
-    async schemaExists(nameOrId: string | Hex): Promise<boolean> {
+    async schemaExists(nameOrId: string): Promise<boolean> {
         const id = await this.resolveId(nameOrId);
         return this.publicClient.readContract({
             address: this.contractAddress,
@@ -132,7 +132,7 @@ export class SchemaRegistry {
 
     /// Resolve a name or pre-computed bytes32 id.
     /// If the caller already has the id, no RPC call is made.
-    private async resolveId(nameOrId: string | Hex): Promise<Hex> {
+    private async resolveId(nameOrId: string): Promise<Hex> {
         if (isBytes32Hex(nameOrId)) return nameOrId;
         return this.schemaId(nameOrId);
     }
