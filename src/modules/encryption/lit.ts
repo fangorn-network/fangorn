@@ -4,9 +4,10 @@ import {
 	LitActionResource,
 	LitPKPResource,
 } from "@lit-protocol/auth-helpers";
-import { createLitClient, LitClient } from "@lit-protocol/lit-client";
+import { createLitClient, type LitClient } from "@lit-protocol/lit-client";
 import { createAuthManager, storagePlugins } from "@lit-protocol/auth";
-import { WalletClient } from "viem";
+import { type WalletClient } from "viem";
+import { nagaDev } from "@lit-protocol/networks";
 
 import { encryptData, decryptData } from "./aes.js";
 import type {
@@ -17,60 +18,29 @@ import type {
 } from "./types.js";
 import type { Gadget } from "../gadgets/types.js";
 import type { Filedata } from "../../types/index.js";
-import { EncryptionService } from "./index.js";
-import { nagaDev } from "@lit-protocol/networks";
-
-const createDecryptLitActionCode = (chainName: string) => `(async () => {
-    try {
-        const decryptedContent = await Lit.Actions.decryptAndCombine({
-            accessControlConditions: jsParams.accessControlConditions,
-            ciphertext: jsParams.ciphertext,
-            dataToEncryptHash: jsParams.dataToEncryptHash,
-            authSig: jsParams.authSig,
-            chain: "${chainName}",
-        });
-        Lit.Actions.setResponse({
-            response: decryptedContent,
-            success: true,
-        });
-    } catch (error) {
-        Lit.Actions.setResponse({
-            response: error.message,
-            success: false,
-        });
-    }
-})();`;
-
-export interface LitEncryptionServiceConfig {
-	chainName: string;
-}
+import type { EncryptionService } from "./index.js";
+import { EvmContractAcc } from "@lit-protocol/access-control-conditions";
 
 export class LitEncryptionService implements EncryptionService {
 	constructor(
-		private litClient: LitClient,
-		private chainName: string,
-	) {}
+		private readonly litClient: LitClient,
+		private readonly chainName: string,
+	) { }
 
-	public static async init(chain: string): Promise<LitEncryptionService> {
-		const litclient = await createLitClient({ network: nagaDev });
-		return new LitEncryptionService(litclient, chain);
+	static async init(chain: string): Promise<LitEncryptionService> {
+		const litClient = await createLitClient({ network: nagaDev });
+		return new LitEncryptionService(litClient, chain);
 	}
 
-	/**
-	 * Encrypt filedata under the given gadget
-	 * @param file The filedata to encrypt
-	 * @param gadget The gadget to use
-	 * @returns The ciphertext bundle
-	 */
 	async encrypt(file: Filedata, gadget: Gadget): Promise<EncryptedPayload> {
-		// local AES encryption
 		const { encryptedData, keyMaterial } = await encryptData(file.data);
-		// get ACC from gadget
-		const acc = await gadget.toAccessCondition();
-		// encrypt key with Lit
+		const acc = gadget.toAccessCondition();
+		// the evmContract condition object
+		const rawAcc = acc[0] as EvmContractAcc;
+
 		const litEncryptedKey = await this.litClient.encrypt({
 			dataToEncrypt: keyMaterial.toString(),
-			unifiedAccessControlConditions: acc,
+			evmContractConditions: [rawAcc],
 			chain: this.chainName,
 		});
 
@@ -80,41 +50,29 @@ export class LitEncryptionService implements EncryptionService {
 				ciphertext: litEncryptedKey.ciphertext,
 				dataToEncryptHash: litEncryptedKey.dataToEncryptHash,
 			},
-			acc,
-			litAction: gadget.toLitAction(),
+			acc: [rawAcc],
 		};
 	}
 
-	/**
-	 * Attempt to decrypt some encrypted data
-	 * @param payload The encrytped bundle to recover
-	 * @param authContext The authorization context
-	 * @returns The decrytped output (on success), else empty
-	 */
 	async decrypt(
 		payload: EncryptedPayload,
 		authContext: AuthContextWrapper,
 	): Promise<DecryptedPayload> {
-		// execute Lit action to recover key
-		const result = await this.litClient.executeJs({
-		    code: createDecryptLitActionCode(authContext.chainName),
-		    authContext: authContext.sessionContext,
-		    jsParams: {
-		        accessControlConditions: payload.acc,
-		        ciphertext: payload.key.ciphertext,
-		        dataToEncryptHash: payload.key.dataToEncryptHash,
-		        authSig: authContext.authSig,
-		    },
-		} as Parameters<LitClient["executeJs"]>[0]);
+		console.log("authSig address:", authContext.authSig.address);
 
-		// TODO: error handling
-		const key = this.parseKeyResponse(
-			result.response as string,
-		) as Uint8Array<ArrayBuffer>;
+		const result = await this.litClient.decrypt({
+			data: {
+				ciphertext: payload.key.ciphertext,
+				dataToEncryptHash: payload.key.dataToEncryptHash,
+			},
+			unifiedAccessControlConditions: payload.acc,
+			authContext: authContext.sessionContext,
+			chain: this.chainName,
+		});
 
-		// local AES decryption
+		const decryptedString = new TextDecoder().decode(result.decryptedData);
+		const key = new Uint8Array(decryptedString.split(",").map(n => parseInt(n.trim(), 10)));
 		const data = await decryptData(payload.data, key);
-
 		return { data };
 	}
 
@@ -122,28 +80,26 @@ export class LitEncryptionService implements EncryptionService {
 		walletClient: WalletClient,
 		domain: string,
 	): Promise<AuthContextWrapper> {
-		const isWindowUndefined = typeof window === "undefined";
-		const account = isWindowUndefined ? walletClient.account : walletClient;
+		const isNode = typeof window === "undefined";
+		const account = isNode ? walletClient.account : walletClient;
 
-		if (!account) throw new Error("Error, no account found in wallet client")
-		if (!walletClient.chain) throw new Error("No chain found in wallet client.")
-		// load the auth context
-		const authManager = isWindowUndefined
-			? // node.js support
-				createAuthManager({
-					storage: storagePlugins.localStorageNode({
-						appName: "fangorn",
-						networkName: "naga-dev",
-						storagePath: "./lit-auth-storage",
-					}),
-				})
-			: // browser support
-				createAuthManager({
-					storage: storagePlugins.localStorage({
-						appName: "fangorn",
-						networkName: "naga-dev",
-					}),
-				});
+		if (!account) throw new Error("No account found in wallet client");
+		if (!walletClient.chain) throw new Error("No chain found in wallet client");
+
+		const authManager = isNode
+			? createAuthManager({
+				storage: storagePlugins.localStorageNode({
+					appName: "fangorn",
+					networkName: "naga-dev",
+					storagePath: "./lit-auth-storage",
+				}),
+			})
+			: createAuthManager({
+				storage: storagePlugins.localStorage({
+					appName: "fangorn",
+					networkName: "naga-dev",
+				}),
+			});
 
 		const sessionContext = await authManager.createEoaAuthContext({
 			litClient: this.litClient,
@@ -160,7 +116,6 @@ export class LitEncryptionService implements EncryptionService {
 			},
 		});
 
-		// Create direct auth sig
 		const authSig = await this.createAuthSig(walletClient, domain);
 
 		return { authSig, sessionContext, chainName: walletClient.chain.name };
@@ -171,7 +126,6 @@ export class LitEncryptionService implements EncryptionService {
 		domain: string,
 	): Promise<AuthSig> {
 		const account = walletClient.account;
-
 		if (!account) throw new Error("No account found in wallet client");
 
 		const resources = [
@@ -192,7 +146,7 @@ export class LitEncryptionService implements EncryptionService {
 		const siweMessage = await createSiweMessage({
 			walletAddress: account.address,
 			domain,
-			statement: "Decrypt data",
+			statement: "Decrypt data.",
 			uri: `https://${domain}`,
 			version: "1",
 			chainId: 1,
@@ -214,7 +168,6 @@ export class LitEncryptionService implements EncryptionService {
 		};
 	}
 
-	// parse the aes key from the response string
 	private parseKeyResponse(response: string): Uint8Array {
 		return Uint8Array.from(
 			response.replace(/^[^\d]+/, "").split(","),

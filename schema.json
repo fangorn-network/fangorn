@@ -1,32 +1,3 @@
 {
-  "name": "MusicTrack",
-  "version": "0.1.0",
-  "description": "A pay-per-listen song/track with encrypted audio delivery via IPFS",
-  "fields": {
-    "title": {
-      "type": "string",
-      "visibility": "public"
-    },
-    "artist": {
-      "type": "string",
-      "visibility": "public"
-    },
-    "genre": {
-      "type": "string",
-      "visibility": "public"
-    },
-    "duration_seconds": {
-      "type": "uint32",
-      "visibility": "public"
-    },
-    "cover_art_url": {
-      "type": "string",
-      "visibility": "public"
-    },
-    "audio_cid": {
-      "type": "string",
-      "visibility": "public",
-      "description": "IPFS CID of the encrypted audio ciphertext"
-    }
-  }
+    
 }

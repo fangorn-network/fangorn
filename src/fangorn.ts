@@ -1,256 +1,192 @@
-import { Address, createPublicClient, Hex, http, PublicClient, WalletClient } from "viem";
-import { DataSourceRegistry } from "./interface/datasource-registry/dataSourceRegistry.js";
-import { Filedata, PendingEntry, VaultEntry, VaultManifest } from "./types/index.js";
-import StorageProvider from "./providers/storage/index.js";
+
+import {
+	createPublicClient,
+	createWalletClient,
+	http,
+	type Hex,
+	type PublicClient,
+	type WalletClient,
+} from "viem";
 import { AppConfig, FangornConfig } from "./config.js";
-import { AuthContext, EncryptionService } from "./modules/encryption/index.js";
-import { Gadget } from "./modules/gadgets/types.js";
-import { EncryptedPayload } from "./modules/encryption/types.js";
-import { SchemaRegistry } from "./interface/schema-registry/index.js";
+import type StorageProvider from "./providers/storage/index.js";
+import { LitEncryptionService, type EncryptionService } from "./modules/encryption/index.js";
+import { SchemaRole } from "./roles/schema/index.js";
+import { PublisherRole } from "./roles/publisher/index.js";
+import { ConsumerRole } from "./roles/consumer/index.js";
+import { SchemaRegistry } from "./registries/schema-registry/index.js";
+import { DataSourceRegistry } from "./registries/datasource-registry/index.js";
+import { SettlementRegistry } from "./registries/settlement-registry/index.js";
+import { SchemaRoleConfig } from "./roles/schema/types.js";
+import { EncryptionConfig, FangornContext, FangornCreateOptions, StorageConfig } from "./types/index.js";
+import { privateKeyToAccount } from "viem/accounts";
+import { PinataStorage } from "./providers/storage/index.js";
+
+function isStorageProvider(s: StorageConfig): s is StorageProvider<unknown> {
+    return typeof (s as StorageProvider<unknown>).retrieve === "function";
+}
+
+function isEncryptionService(e: EncryptionConfig): e is EncryptionService {
+    return typeof (e as EncryptionService).encrypt === "function";
+}
 
 export class Fangorn {
-    private pendingEntries = new Map<string, PendingEntry>();
+	private readonly ctx: FangornContext;
 
-    constructor(
-        private dataSourceRegistry: DataSourceRegistry,
-        private schemaRegistry: SchemaRegistry,
-        private walletClient: WalletClient,
-        private storage: StorageProvider<unknown>,
-        private encryptionService: EncryptionService,
-        private domain: string,
-    ) {}
+	// Backing fields (null until first access)
+	private _schema: SchemaRole | null = null;
+	private _publisher: PublisherRole | null = null;
+	private _consumer: ConsumerRole | null = null;
 
-    public static init(
-        walletClient: WalletClient,
-        storage: StorageProvider<unknown>,
-        encryptionService: EncryptionService,
-        domain: string,
-        config?: AppConfig,
-    ): Fangorn {
-        const resolvedConfig = config ?? FangornConfig.ArbitrumSepolia;
+	private constructor(ctx: FangornContext) {
+		this.ctx = ctx;
+	}
 
-        const publicClient = createPublicClient({
-            transport: http(resolvedConfig.rpcUrl),
-        }) as PublicClient;
+	/**
+	 * Schema owner: register agents, register schemas, validate definitions.
+	 */
+	get schema(): SchemaRole {
+		return this._schema ??= new SchemaRole(
+			this.ctx.schemaRegistry,
+			this.ctx.storage,
+			this.ctx.walletClient,
+			this.ctx.schemaRoleConfig,
+		);
+	}
 
-        const dataSourceRegistry = new DataSourceRegistry(
-            resolvedConfig.dataSourceRegistryContractAddress,
-            publicClient,
-            walletClient,
-        );
+	/**
+	 * Publisher: encrypt, stage, and commit data under a schema.
+	 */
+	get publisher(): PublisherRole {
+		return this._publisher ??= new PublisherRole(
+			this.ctx.dataSourceRegistry,
+			this.ctx.settlementRegistry,
+			this.ctx.storage,
+			this.ctx.encryption,
+			this.ctx.walletClient,
+		);
+	}
 
-        const schemaRegistry = new SchemaRegistry(
-            resolvedConfig.schemaRegistryContractAddress,
-            publicClient,
-            walletClient,
-        );
+	/**
+	 * Consumer: purchase, claim, and decrypt data.
+	 */
+	get consumer(): ConsumerRole {
+		return this._consumer ??= new ConsumerRole(
+			this.ctx.dataSourceRegistry,
+			this.ctx.settlementRegistry,
+			this.ctx.storage,
+			this.ctx.encryption,
+			this.ctx.domain,
+		);
+	}
 
-        return new Fangorn(
-            dataSourceRegistry,
-            schemaRegistry,
-            walletClient,
-            storage,
-            encryptionService,
-            domain,
-        );
-    }
+	/**
+	 * Initialize the Fangorn client.
+	 * 
+	 * The Fangorn client provides a central interface through which each namespaced module can be accessed.
+	 * 
+	 *
+	 * @param walletClient  Viem wallet client with a connected account
+	 * @param storage       Storage provider (e.g. PinataStorage)
+	 * @param encryption    Encryption service (e.g. LitEncryptionService)
+	 * @param domain        EIP-712 signing domain — must match the encryption service
+	 * @param config        Network + contract config. Defaults to ArbitrumSepolia.
+	 * @param agentConfig   Optional. Required only for schema.registerAgent().
+	 */
+	static async create(options: FangornCreateOptions): Promise<Fangorn> {
+		if (!options.privateKey && !options.walletClient) {
+			throw new Error("Either privateKey or walletClient must be provided");
+		}
 
-    // -------------------------------------------------------------------------
-    // Upload / staging
-    // -------------------------------------------------------------------------
+		const resolvedConfig = options.config ?? FangornConfig.ArbitrumSepolia;
 
-    /**
-     * Upload files and publish a manifest under a specific schema.
-     * Loads and merges the existing manifest for that schema unless overwrite is true.
-     */
-    async upload(
-        filedata: Filedata[],
-        gadgetFactory: (file: Filedata) => Gadget | Promise<Gadget>,
-        schemaId: Hex,
-        overwrite?: boolean,
-    ): Promise<string> {
-        const account = this.walletClient.account;
-        if (!account) throw new Error("No account found in wallet client");
+		const walletClient = options.walletClient ?? createWalletClient({
+			account: privateKeyToAccount(options.privateKey ?? "0x0"),
+			chain: resolvedConfig.chain,
+			transport: http(resolvedConfig.rpcUrl),
+		});
 
-        if (!overwrite) {
-            try {
-                const existing = await this.dataSourceRegistry.getManifest(account.address, schemaId);
-                if (existing.manifestCid) {
-                    const oldManifest = await this.fetchManifest(existing.manifestCid);
-                    this.loadManifest(oldManifest);
-                    try {
-                        await this.storage.delete(existing.manifestCid);
-                    } catch (e) {
-                        console.warn("Failed to unpin old manifest:", e);
-                    }
-                }
-            } catch {
-                // no existing manifest for this schema, first publish
-            }
-    }
+		const storage = isStorageProvider(options.storage)
+			? options.storage
+			: new PinataStorage(
+				(options.storage as { pinata: { jwt: string; gateway: string } }).pinata.jwt,
+				(options.storage as { pinata: { jwt: string; gateway: string } }).pinata.gateway,
+			);
 
-        for (const file of filedata) {
-            const gadget = await gadgetFactory(file);
-            await this.addFile(file, gadget);
-        }
+		const encryption = isEncryptionService(options.encryption)
+			? options.encryption
+			: await LitEncryptionService.init(resolvedConfig.chainName);
 
-        return await this.commit(schemaId);
-    }
+		const domain = options.domain ?? new URL(resolvedConfig.rpcUrl).hostname;
 
-    /**
-     * Encrypt and stage a single file.
-     * Call commit() after staging all files.
-     */
-    async addFile(file: Filedata, gadget: Gadget): Promise<{ cid: string }> {
-        const account = this.walletClient.account;
-        if (!account?.address) throw new Error("Wallet not connected");
+		const publicClient = createPublicClient({
+			transport: http(resolvedConfig.rpcUrl),
+		}) as PublicClient;
 
-        const encrypted = await this.encryptionService.encrypt(file, gadget);
-        const cid = await this.storage.store(encrypted, {
-            metadata: { name: file.tag },
-        });
+		const schemaRegistry = new SchemaRegistry(
+			resolvedConfig.schemaRegistryContractAddress,
+			publicClient,
+			walletClient,
+		);
 
-        const gadgetDescriptor = await gadget.toDescriptor();
+		const dataSourceRegistry = new DataSourceRegistry(
+			resolvedConfig.dataSourceRegistryContractAddress,
+			publicClient,
+			walletClient,
+		);
 
-        this.pendingEntries.set(file.tag, {
-            tag: file.tag,
-            cid,
-            extension: file.extension,
-            fileType: file.fileType,
-            gadgetDescriptor,
-        });
+		const settlementRegistry = new SettlementRegistry(
+			resolvedConfig.settlementRegistryContractAddress,
+			publicClient,
+			walletClient,
+		);
 
-        return { cid };
-    }
+		const schemaRoleConfig: SchemaRoleConfig | undefined = options.agentConfig
+			? {
+				chainId: resolvedConfig.chain.id,
+				rpcUrl: resolvedConfig.rpcUrl,
+				privateKey: options.agentConfig.privateKey,
+				pinataJwt: options.agentConfig.pinataJwt,
+				registryOverrides: options.agentConfig.registryOverrides,
+				subgraphOverrides: options.agentConfig.subgraphOverrides,
+			}
+			: undefined;
 
-    /**
-     * Remove a staged file before committing.
-     */
-    removeFile(tag: string): boolean {
-        return this.pendingEntries.delete(tag);
-    }
+		return new Fangorn({
+			walletClient,
+			storage,
+			encryption,
+			domain,
+			schemaRegistry,
+			dataSourceRegistry,
+			settlementRegistry,
+			schemaRoleConfig,
+			config: resolvedConfig,
+		});
+	}
 
-    /**
-     * Serialize staged files into a manifest, pin it, and publish on-chain under the given schema.
-     */
-    async commit(schemaId: Hex): Promise<string> {
-        if (this.pendingEntries.size === 0) {
-            throw new Error("No files to commit");
-        }
+	getConfig(): AppConfig {
+		return this.ctx.config;
+	}
 
-        const entries = Array.from(this.pendingEntries.values());
+	getSchemaRegistry(): SchemaRegistry {
+		return this.ctx.schemaRegistry;
+	}
 
-        const manifest: VaultManifest = {
-            version: 1,
-            entries: entries.map((e, i) => ({
-                tag: e.tag,
-                cid: e.cid,
-                index: i,
-                extension: e.extension,
-                fileType: e.fileType,
-                gadgetDescriptor: e.gadgetDescriptor,
-            })),
-            tree: [],
-        };
+	getDatasourceRegistry(): DataSourceRegistry {
+		return this.ctx.dataSourceRegistry;
+	}
 
-        const manifestCid = await this.storage.store(manifest, {
-            metadata: { name: "manifest" },
-        });
+	getSettlementRegistry(): SettlementRegistry {
+		return this.ctx.settlementRegistry;
+	}
 
-        await this.dataSourceRegistry.publishManifest(manifestCid, schemaId);
+	getWalletClient(): WalletClient {
+		return this.ctx.walletClient;
+	}
 
-        this.pendingEntries.clear();
-        return manifestCid;
-    }
-
-    // -------------------------------------------------------------------------
-    // Read operations
-    // -------------------------------------------------------------------------
-
-    /**
-     * Decrypt a file from an owner's manifest under a specific schema, by tag.
-     */
-    async decryptFile(
-        owner: Address,
-        schemaId: Hex,
-        tag: string,
-        authContext?: AuthContext,
-    ): Promise<Uint8Array> {
-        const manifest = await this.getManifest(owner, schemaId);
-        if (!manifest) throw new Error("No manifest found for owner + schema");
-
-        const entry = manifest.entries.find((e: VaultEntry) => e.tag === tag);
-        if (!entry) throw new Error(`Entry not found: ${tag}`);
-
-        const encrypted = await this.storage.retrieve(entry.cid) as EncryptedPayload;
-
-        const resolvedAuthContext =
-            authContext ??
-            (await this.encryptionService.createAuthContext(this.walletClient, this.domain));
-
-        const decrypted = await this.encryptionService.decrypt(encrypted, resolvedAuthContext);
-        return decrypted.data;
-    }
-
-    /**
-     * Fetch and deserialize the manifest for a given (owner, schemaId) pair.
-     */
-    async getManifest(owner: Address, schemaId: Hex): Promise<VaultManifest | undefined> {
-        try {
-            const ds = await this.dataSourceRegistry.getManifest(owner, schemaId);
-            if (!ds.manifestCid || ds.manifestCid === "") return undefined;
-            return await this.fetchManifest(ds.manifestCid);
-        } catch {
-            return undefined;
-        }
-    }
-
-    /**
-     * Get a specific entry from an owner's manifest under a schema, by tag.
-     */
-    async getEntry(owner: Address, schemaId: Hex, tag: string): Promise<VaultEntry> {
-        const manifest = await this.getManifest(owner, schemaId);
-        if (!manifest) throw new Error("No manifest found for owner + schema");
-        const entry = manifest.entries.find((e) => e.tag === tag);
-        if (!entry) throw new Error(`Entry not found: ${tag}`);
-        return entry;
-    }
-
-    getAddress(): Hex {
-        const account = this.walletClient.account;
-        if (!account?.address) throw new Error("Wallet not connected");
-        return account.address;
-    }
-
-    async fetchManifest(cid: string): Promise<VaultManifest> {
-        return (await this.storage.retrieve(cid)) as VaultManifest;
-    }
-
-    registry(): DataSourceRegistry {
-        return this.dataSourceRegistry;
-    }
-
-    getSchemaRegistry(): SchemaRegistry {
-        return this.schemaRegistry;
-    }
-
-    getWalletClient(): WalletClient {
-        return this.walletClient;
-    }
-
-    // -------------------------------------------------------------------------
-    // Helpers
-    // -------------------------------------------------------------------------
-
-    private loadManifest(oldManifest: VaultManifest): void {
-        for (const entry of oldManifest.entries) {
-            this.pendingEntries.set(entry.tag, {
-                tag: entry.tag,
-                cid: entry.cid,
-                extension: entry.extension,
-                fileType: entry.fileType,
-                gadgetDescriptor: entry.gadgetDescriptor,
-            });
-        }
-    }
+	getAddress(): Hex {
+		const address = this.ctx.walletClient.account?.address;
+		if (!address) throw new Error("No account connected to wallet client");
+		return address;
+	}
 }

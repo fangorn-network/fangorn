@@ -7,31 +7,29 @@ import {
     confirm,
     select,
     note,
-    spinner
+    spinner,
 } from "@clack/prompts";
-import { createWalletClient, Hex, http, Address, Chain } from "viem";
-import { privateKeyToAccount, PrivateKeyAccount } from "viem/accounts";
-import { Fangorn } from "../fangorn.js";
-import { Filedata } from "../types/index.js";
-import "dotenv/config";
-import { PinataStorage } from "../providers/storage/index.js";
-import { AppConfig, FangornConfig, SupportedNetworks } from "../config.js";
-import { LitEncryptionService } from "../modules/encryption/lit.js";
-import { computeSchemaId, computeTagCommitment, fieldToHex } from "../utils/index.js";
-import { agentCardBuilder, AgentCardBuilder } from "../builders/a2aCardBuilder.js";
-import { SDK } from "agent0-sdk";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import { basename, extname, join } from "path";
+import {
+    createWalletClient,
+    type Hex,
+    type Address,
+    http,
+} from "viem";
+import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from "fs";
+import { extname, join } from "path";
 import { homedir } from "os";
-import { getChain, handleCancel, parseGadgetArg, selectChain } from "./index.js";
-import { GADGET_REGISTRY, selectGadget } from "./registry.js";
+import { Identity } from "@semaphore-protocol/identity";
+import "dotenv/config";
 
-interface Config {
-    jwt: string;
-    gateway: string;
-    privateKey: Hex;
-    cfg: AppConfig;
-}
+import { Fangorn } from "../fangorn.js";
+import { SettledGadget } from "../modules/gadgets/settledGadget.js";
+import { getChain, handleCancel, selectChain } from "./index.js";
+import type { SchemaDefinition } from "../roles/schema/index.js";
+import type { PublishRecord } from "../roles/publisher/index.js";
+import { AgentConfig } from "../types/index.js";
+import { AppConfig, FangornConfig, SupportedNetworks } from "../config.js";
+import { SettlementRegistry } from "../registries/settlement-registry/index.js";
 
 interface StoredConfig {
     privateKey: Hex;
@@ -40,12 +38,27 @@ interface StoredConfig {
     chainName: string;
 }
 
+interface Config {
+    privateKey: Hex;
+    jwt: string;
+    gateway: string;
+    cfg: AppConfig;
+}
+
 const CONFIG_DIR = join(homedir(), ".fangorn");
 const CONFIG_PATH = join(CONFIG_DIR, "config.json");
 
 let _config: Config | null = null;
 let _account: PrivateKeyAccount | null = null;
 let _fangorn: Fangorn | null = null;
+
+function buildConfig({ privateKey, jwt, gateway, chainName }: StoredConfig): Config {
+    let cfg: AppConfig = FangornConfig.BaseSepolia;
+    if (chainName === SupportedNetworks.ArbitrumSepolia.name) {
+        cfg = FangornConfig.ArbitrumSepolia;
+    }
+    return { privateKey, jwt, gateway, cfg };
+}
 
 function loadConfig(): Config {
     if (_config) return _config;
@@ -61,35 +74,15 @@ function loadConfig(): Config {
     }
 
     if (existsSync(CONFIG_PATH)) {
-        const stored: StoredConfig = JSON.parse(readFileSync(CONFIG_PATH, "utf-8")) as StoredConfig;
+        const stored = JSON.parse(readFileSync(CONFIG_PATH, "utf-8")) as StoredConfig;
         _config = buildConfig(stored);
         return _config;
     }
 
     throw new Error(
-        "No configuration found. Run `fangorn init` to set up your credentials, " +
-        "or set DELEGATOR_ETH_PRIVATE_KEY, PINATA_JWT, PINATA_GATEWAY, and CHAIN_NAME env vars.",
+        "No configuration found. Run `fangorn init` or set " +
+        "DELEGATOR_ETH_PRIVATE_KEY, PINATA_JWT, PINATA_GATEWAY, CHAIN_NAME env vars.",
     );
-}
-
-function buildConfig({ privateKey, jwt, gateway, chainName }: StoredConfig): Config {
-    let cfg: AppConfig = FangornConfig.BaseSepolia;
-    if (chainName === SupportedNetworks.ArbitrumSepolia.name) {
-        cfg = FangornConfig.ArbitrumSepolia;
-    }
-    return { privateKey, jwt, gateway, cfg };
-}
-
-async function resolveSchemaId(fangorn: Fangorn, schemaOrId: string): Promise<Hex> {
-    if (schemaOrId.startsWith("0x") && schemaOrId.length === 66) {
-        return schemaOrId as Hex;
-    }
-    const id = computeSchemaId(schemaOrId);
-    const exists = await fangorn.getSchemaRegistry().schemaExists(id);
-    if (!exists) {
-        throw new Error(`Schema "${schemaOrId}" not found on-chain. Register it first with \`fangorn register\`.`);
-    }
-    return id;
 }
 
 function getAccount(): PrivateKeyAccount {
@@ -98,31 +91,60 @@ function getAccount(): PrivateKeyAccount {
     return _account;
 }
 
-async function getFangorn(chain: Chain): Promise<Fangorn> {
+async function getFangorn(): Promise<Fangorn> {
     if (_fangorn) return _fangorn;
 
     const cfg = loadConfig();
-    const walletClient = createWalletClient({
-        account: getAccount(),
-        transport: http(cfg.cfg.rpcUrl),
-        chain,
+    const agentConfig: AgentConfig = { privateKey: cfg.privateKey, pinataJwt: cfg.jwt };
+
+    _fangorn = await Fangorn.create({
+        privateKey: cfg.privateKey,
+        storage: { pinata: { jwt: cfg.jwt, gateway: cfg.gateway } },
+        encryption: { lit: true },
+        domain: "localhost",
+        config: cfg.cfg,
+        agentConfig
     });
-
-    const domain = process.env.DOMAIN ?? "localhost:3000";
-    const storage = new PinataStorage(cfg.jwt, cfg.gateway);
-    const encryptionService = await LitEncryptionService.init(cfg.cfg.chainName);
-
-    _fangorn = Fangorn.init(walletClient, storage, encryptionService, domain, cfg.cfg);
     return _fangorn;
 }
 
+// function getMimeType(ext: string): string {
+//     const types: Record<string, string> = {
+//         ".txt": "text/plain",
+//         ".json": "application/json",
+//         ".html": "text/html",
+//         ".css": "text/css",
+//         ".js": "application/javascript",
+//         ".png": "image/png",
+//         ".jpg": "image/jpeg",
+//         ".jpeg": "image/jpeg",
+//         ".gif": "image/gif",
+//         ".pdf": "application/pdf",
+//         ".mp3": "audio/mpeg",
+//         ".mp4": "video/mp4",
+//     };
+//     return types[ext.toLowerCase()] ?? "application/octet-stream";
+// }
+
+async function resolveSchemaId(fangorn: Fangorn, schemaName: string): Promise<Hex> {
+    // if it is the schema name then we resolve it to the id here
+    try {
+        return await fangorn.getSchemaRegistry().schemaId(
+            typeof schemaName === "string" && !/^0x[0-9a-fA-F]{64}$/.test(schemaName)
+                ? schemaName
+                : schemaName as Hex
+        );
+    } catch {
+        throw new Error(
+            `Schema "${schemaName}" not found on-chain. Register it with \`fangorn schema register\`.`,
+        );
+    }
+}
+
 const program = new Command();
-program.name("Fangorn").description("CLI for Fangorn").version("0.0.2");
+program.name("fangorn").description("Fangorn Network CLI").version("0.1.0");
 
-// -----------------------------------------------------------------------------
-// init
-// -----------------------------------------------------------------------------
-
+// initialize the CLI 
 program
     .command("init")
     .description("Configure your Fangorn credentials")
@@ -130,10 +152,10 @@ program
         intro("Fangorn Setup");
 
         const privateKey = await text({
-            message: "Your wallet private key (stored locally, never transmitted):",
+            message: "Wallet private key (stored locally, never transmitted):",
             placeholder: "0x...",
             validate: (v) => {
-                if (!v) return "Private key does not exist";
+                if (!v) return "Required";
                 if (!v.startsWith("0x") || v.length !== 66)
                     return "Must be a valid 0x-prefixed 32-byte hex key";
             },
@@ -176,497 +198,547 @@ program
         outro(`Config saved to ${CONFIG_PATH}`);
     });
 
-// -----------------------------------------------------------------------------
-// register (schema + ERC-8004 only)
-// -----------------------------------------------------------------------------
+// schema
+const schemaCmd = program
+    .command("schema")
+    .description("Schema registry operations");
 
-program
+// Register an (optional) agent (ERC-8004) and a schema associated wiht it
+schemaCmd
     .command("register")
-    .description("Register a schema and ERC-8004 agent identity.")
-    .argument("<name>", "Name of the schema / agent")
-    .option("-s, --skip-card", "Skip agent card creation")
-    .option("-e, --skip-erc", "Skip ERC-8004 registration")
-    .option("-z, --skip-schema", "Skip schema registry")
-    .action(async (name: string, options: { skipCard: boolean; skipErc: boolean; skipSchema?: boolean }) => {
+    .description("Register an agent identity and/or a schema on-chain")
+    .argument("<name>", "Schema / agent name")
+    .option("-e, --skip-erc", "Skip ERC-8004 agent registration")
+    .action(async (
+        name: string,
+        options: { skipErc?: boolean; skipSchema?: boolean },
+    ) => {
         try {
             intro("Chain selection");
             const chain = await selectChain();
-            outro(`Selected chain ${chain.name}`);
+            outro(`Selected chain: ${chain.name}`);
 
-            let createAgentCard = !options.skipCard;
-            let erc8004Registration = !options.skipErc;
+            const fangorn = await getFangorn();
+            let datasourceAgentId = "";
             let description = "";
-            const s = spinner();
-            let datasourceAgentId: string | undefined;
 
-            // --- Agent Card ---
-            if (createAgentCard) {
-                intro(`Agent Card Creation for ${chain.name}`);
-                while (createAgentCard) {
-                    const builder: AgentCardBuilder = agentCardBuilder();
-                    builder.name(name);
+            // ERC-8004
+            if (!options.skipErc) {
+                intro("ERC-8004 Agent Registration");
 
-                    description = (await text({ message: "Description:" })) as string;
-                    handleCancel(description);
-                    builder.description(description);
-
-                    const version = await text({ message: "Agent Version:", placeholder: "1.0.0" });
-                    handleCancel(version);
-                    builder.version(version as string);
-
-                    const url = await text({ message: "Base URL:", placeholder: "https://example.com" });
-                    handleCancel(url);
-                    builder.url(url as string);
-
-                    const provider = await text({ message: "Organization name:" });
-                    handleCancel(provider);
-                    const providerUrl = await text({ message: "Provider URL:" });
-                    handleCancel(providerUrl);
-                    builder.provider(provider as string, providerUrl as string);
-
-                    let addSkill = true;
-                    while (addSkill) {
-                        const id = await text({ message: "Skill ID:" });
-                        handleCancel(id);
-                        const skillName = await text({ message: "Skill name:" });
-                        handleCancel(skillName);
-                        const skillDescription = await text({ message: "Skill description:" });
-                        handleCancel(skillDescription);
-                        const tagsString = await text({ message: "Tags (comma-separated):" });
-                        handleCancel(tagsString);
-                        const tagsArray = (tagsString as string).replaceAll(" ", "").split(",");
-                        builder.addSkill(id as string, skillName as string, skillDescription as string, tagsArray);
-                        addSkill = (await confirm({ message: "Add another skill?" })) as boolean;
-                        handleCancel(addSkill);
-                    }
-
-                    const agentCard = builder.build();
-                    note(JSON.stringify(agentCard, null, 2), "Your agent card:");
-                    const ok = (await confirm({ message: "Does everything look correct?" })) as boolean;
-                    handleCancel(ok);
-                    createAgentCard = !ok;
-                }
-                outro("Agent Card Creation complete.");
-            }
-
-            // --- ERC-8004 ---
-            const cfg = loadConfig();
-            let agent0Sdk: SDK;
-
-            const ipfsOrHttp = (await select({
-                message: "Choose your registration flow",
-                options: [
-                    { value: "ipfs", label: "IPFS (Pinata)" },
-                    { value: "http", label: "HTTP" },
-                ],
-            })) as string;
-            handleCancel(ipfsOrHttp);
-
-            if (chain.id === 421614) {
-                const registryOverrides = {
-                    421614: {
-                        IDENTITY: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
-                        REPUTATION: "0x8004B663056A597Dffe9eCcC1965A193B7388713",
-                    },
-                };
-                const subgraphOverrides = {
-                    421614: "https://api.studio.thegraph.com/query/1742225/erc-8004-arbitrum-sepolia/version/latest",
-                };
-                agent0Sdk = new SDK({
-                    chainId: 421614,
-                    rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
-                    subgraphUrl: subgraphOverrides[421614],
-                    registryOverrides,
-                    subgraphOverrides,
-                    ...(ipfsOrHttp === "ipfs" ? { ipfs: "pinata", pinataJwt: cfg.jwt } : {}),
-                    privateKey: cfg.privateKey,
-                });
-            } else {
-                agent0Sdk = new SDK({
-                    chainId: chain.id,
-                    rpcUrl: chain.rpcUrls.default.http[0],
-                    ...(ipfsOrHttp === "ipfs" ? { ipfs: "pinata", pinataJwt: cfg.jwt } : {}),
-                    privateKey: cfg.privateKey,
-                });
-            }
-
-            let agent;
-            while (erc8004Registration) {
-                if (!description) {
-                    description = (await text({ message: "Description:" })) as string;
-                    handleCancel(description);
-                } else {
-                    const reuse = (await confirm({ message: "Re-use description from agent card?" })) as boolean;
-                    handleCancel(reuse);
-                    if (!reuse) {
-                        description = (await text({ message: "Description:" })) as string;
-                        handleCancel(description);
-                    }
-                }
-
-                agent = agent0Sdk.createAgent(name, description);
-
-                const agentCardAvailable = (await confirm({ message: "Does your agent have an agent card?" })) as boolean;
-                handleCancel(agentCardAvailable);
-                if (agentCardAvailable) {
-                    const loc = (await text({ message: "Agent card URL:", placeholder: "https://example.com/.well-known/agentcard.json" })) as string;
-                    handleCancel(loc);
-                    s.start("Fetching agent card");
-                    await agent.setA2A(loc);
-                    s.stop("Agent card fetched");
-                }
-
-                const mcpAvailable = (await confirm({ message: "Does your agent have an MCP endpoint?" })) as boolean;
-                handleCancel(mcpAvailable);
-                if (mcpAvailable) {
-                    const endpoint = (await text({ message: "MCP endpoint:", placeholder: "https://example.com/mcp" })) as string;
-                    handleCancel(endpoint);
-                    s.start("Fetching MCP tools");
-                    await agent.setMCP(endpoint);
-                    s.stop("MCP tools fetched");
-                }
-
-                const ensAvailable = (await confirm({ message: "Does your agent have an ENS?" })) as boolean;
-                handleCancel(ensAvailable);
-                if (ensAvailable) {
-                    const ens = (await text({ message: "ENS:", placeholder: "myagent.eth" })) as string;
-                    handleCancel(ens);
-                    agent.setENS(ens);
-                }
-
-                agent.setActive(true);
-                agent.setX402Support(true);
-
-                note(JSON.stringify(agent.getRegistrationFile(), null, 2), "Your ERC-8004 registration:");
-
-                const ok = (await confirm({ message: "Does everything look correct?" })) as boolean;
-                handleCancel(ok);
-
-                if (ok) {
-                    erc8004Registration = false;
-                    if (ipfsOrHttp === "http") {
-                        note(JSON.stringify(agent.getRegistrationFile()), "Your Registration File");
-                    } else {
-                        s.start("Registering with ERC-8004 registry");
-                        const regTx = await agent.registerIPFS();
-                        s.stop();
-                        s.start("Waiting for confirmation");
-                        const { result: registrationFile } = await regTx.waitConfirmed();
-                        s.stop();
-                        datasourceAgentId = registrationFile.agentId ?? "agentId wasn't found";
-                        note(`Agent registered with ID: ${datasourceAgentId}`);
-                    }
-                }
-            }
-            outro(`Agent Registration complete for ${chain.name}`);
-
-            // --- Schema Registry ---
-            if (!options.skipSchema) {
-                intro("Schema Registration");
-
-                const schemaFilePath = (await text({
-                    message: "Path to your JSON schema file:",
-                    placeholder: "./schema.json",
-                    validate: (v) => {
-                        if (!v) return "Required";
-                        if (!existsSync(v)) return `File not found: ${v}`;
-                        if (extname(v).toLowerCase() !== ".json") return "Must be a .json file";
-                    },
-                })) as string;
-                handleCancel(schemaFilePath);
-
-                const schemaName = (await text({
-                    message: "Schema name (e.g. fangorn.music.v1):",
-                    placeholder: "fangorn.myapp.v1",
-                    validate: (v) => { if (!v) return "Required"; },
-                })) as string;
-                handleCancel(schemaName);
-
-                // Parse and pretty-print so the user can confirm what they're registering
-                let schemaJson: unknown;
-                try {
-                    schemaJson = JSON.parse(readFileSync(schemaFilePath, "utf-8"));
-                } catch {
-                    throw new Error(`Failed to parse ${schemaFilePath} as JSON`);
-                }
-                note(JSON.stringify(schemaJson, null, 2), "Schema file contents:");
-
-                const ok = (await confirm({ message: "Upload and register this schema?" })) as boolean;
-                handleCancel(ok);
-                if (!ok) {
-                    outro("Schema registration skipped.");
-                    process.exit(0);
-                }
-
-                const cfg = loadConfig();
-                const storage = new PinataStorage(cfg.jwt, cfg.gateway);
+                description = (await text({ message: "Agent description:" })) as string;
+                handleCancel(description);
 
                 const s = spinner();
-                s.start("Uploading schema to IPFS...");
-                const specCid = await storage.store(schemaJson, {
-                    metadata: `${schemaName}.schema.json`,
-                });
-
-                s.stop(`Schema uploaded: ${specCid}`);
-
-                const fangorn = await getFangorn(chain);
-                s.start("Registering schema on-chain...");
-                const { schemaId } = await fangorn.getSchemaRegistry().registerSchema(
-                    schemaName,
-                    specCid,
-                    datasourceAgentId ?? "",
-                );
+                s.start("Registering agent...");
+                const { agentId } = await fangorn.schema.registerAgent({ name, description });
                 s.stop();
 
-                note(
-                    `Schema ID: ${schemaId}\nSpec CID:  ${specCid}`,
-                    "Schema registered",
-                );
+                datasourceAgentId = agentId;
+                note(`Agent ID: ${agentId}`, "ERC-8004 registered");
+                outro("Agent Registration complete.");
             }
+
+            // Schema Registry
+            intro("Schema Registration");
+
+            const schemaFilePath = (await text({
+                message: "Path to your JSON schema file:",
+                placeholder: "./schema.json",
+                validate: (v) => {
+                    if (!v) return "Required";
+                    if (!existsSync(v)) return `File not found: ${v}`;
+                    if (extname(v).toLowerCase() !== ".json") return "Must be a .json file";
+                },
+            })) as string;
+            handleCancel(schemaFilePath);
+
+            const schemaName = (await text({
+                message: "Schema name (e.g. fangorn.music.v1):",
+                placeholder: "fangorn.myapp.v1",
+                validate: (v) => { if (!v) return "Required"; },
+            })) as string;
+            handleCancel(schemaName);
+
+            let definition: SchemaDefinition;
+            try {
+                definition = JSON.parse(readFileSync(schemaFilePath, "utf-8")) as SchemaDefinition;
+            } catch {
+                throw new Error(`Failed to parse ${schemaFilePath} as JSON`);
+            }
+
+            note(JSON.stringify(definition, null, 2), "Schema definition:");
+            const ok = (await confirm({ message: "Register this schema?" })) as boolean;
+            handleCancel(ok);
+            if (!ok) { outro("Cancelled."); process.exit(0); }
+
+            const s = spinner();
+            s.start("Registering schema");
+            const { schemaId, schemaCid } = await fangorn.schema.register({
+                name: schemaName,
+                definition,
+                agentId: datasourceAgentId,
+            });
+            s.stop();
+
+            note(`Schema ID: ${schemaId}\nCID:       ${schemaCid}`, "Schema registered");
 
             process.exit(0);
         } catch (err) {
-            console.error("Failed to register:", (err as Error).message);
+            console.error("Failed:", (err as Error).message);
             process.exit(1);
         }
     });
 
-// -----------------------------------------------------------------------------
-// upload
-// -----------------------------------------------------------------------------
-
-program
-    .command("upload")
-    .description("Upload file(s) to your data source")
-    .argument("<files...>", "File path(s) to upload")
-    .requiredOption("-s, --schema-id <schemaOrId>", "Schema name (e.g. fangorn.music.v1) or ID (bytes32 hex)")
-    .option("-c, --chain <chain>", "Chain to use (arbitrumSepolia or baseSepolia)")
-    .option("-g, --gadget <type(args)>", "Gadget to use (e.g. Payment(0.000001))")
-    .option("-o, --overwrite", "Overwrite existing manifest contents")
-    .action(async (files: string[], options: { chain: string; gadget?: string; schemaId: Hex; overwrite?: boolean }) => {
+schemaCmd
+    .command("get")
+    .description("Fetch a registered schema by name")
+    .argument("<name>", "Schema name (e.g. fangorn.music.v1)")
+    .option("-c, --chain <chain>", "Chain to use")
+    .action(async (name: string) => {
         try {
-            const owner = getAccount().address;
-            const chain = getChain(options.chain);
-            const fangorn = await getFangorn(chain);
+            const fangorn = await getFangorn();
+            const s = spinner();
 
-            // Resolve schema name → ID if not already a bytes32 hex
-            let schemaId: Hex;
-            if (options.schemaId.startsWith("0x") && options.schemaId.length === 66) {
-                schemaId = options.schemaId;
-            } else {
-                const s = spinner();
-                s.start(`Resolving schema "${options.schemaId}"...`);
-                const exists = await fangorn.getSchemaRegistry().schemaExists(
-                    computeSchemaId(options.schemaId)
-                );
-                if (!exists) {
-                    s.stop();
-                    throw new Error(`Schema "${options.schemaId}" not found on-chain. Register it first with \`fangorn register\`.`);
-                }
-                schemaId = computeSchemaId(options.schemaId);
-                s.stop(`Resolved: ${schemaId}`);
+            s.start(`Fetching schema "${name}"...`);
+            const schema = await fangorn.schema.get(name);
+            s.stop();
+
+            if (!schema) {
+                console.log(`Schema "${name}" not found.`);
+                process.exit(1);
             }
 
-            const filedata: Filedata[] = files.map((filepath) => {
-                const data = readFileSync(filepath);
-                const tag = basename(filepath);
-                const extension = extname(filepath);
-                return {
-                    tag,
-                    data: data.toString("base64"),
-                    extension,
-                    fileType: getMimeType(extension),
-                };
+            note(JSON.stringify(schema, null, 2), `Schema: ${name}`);
+            process.exit(0);
+        } catch (err) {
+            console.error("Failed:", (err as Error).message);
+            process.exit(1);
+        }
+    });
+
+// publish
+
+const publishCmd = program
+    .command("publish")
+    .description("Publisher operations");
+
+publishCmd
+    .command("upload")
+    .description("Encrypt and publish file(s) under a schema")
+    .argument("<files...>", "File path(s) to upload")
+    .requiredOption("-s, --schema <schemaOrId>", "Schema name or bytes32 ID (e.g. 0x...)")
+    .option("-c, --chain <chain>", "Chain to use")
+    .option("-p, --price <USDC>", "Resource price in USDC", "0")
+    .option("-o, --overwrite", "If true, overwrite any existing data", false)
+    .action(async (
+        files: string[],
+        options: { chain: string; schema: string; price: string; overwrite: boolean },
+    ) => {
+        try {
+            const fangorn = await getFangorn();
+            const cfg = loadConfig();
+            const owner = getAccount().address;
+            const price = BigInt(options.price);
+            const s = spinner();
+
+            const schemaId = await resolveSchemaId(fangorn, options.schema);
+            const schemaRecord = await fangorn.schema.get(options.schema);
+            const schema: SchemaDefinition = schemaRecord?.definition ?? {};
+            const records: PublishRecord[] = files.flatMap((filepath) => {
+                const data = readFileSync(filepath, 'utf-8');
+                // cast JSON.parse to unknown to satisfy no-unsafe-assignment
+                const parsed = JSON.parse(data, (key, value: unknown) => {
+                    if (key === 'data') {
+                        if (Array.isArray(value)) {
+                            return new Uint8Array(value.map(v => Number(v)));
+                        }
+                        // 2. Narrow the type for Object.values to satisfy no-unsafe-argument
+                        if (typeof value === 'object' && value !== null) {
+                            const obj = value as Record<string, unknown>;
+                            return new Uint8Array(Object.values(obj).map(v => Number(v)));
+                        }
+                    }
+                    return value;
+                }) as unknown; // Cast the result of parse to unknown
+
+                // use an array cast to satisfy no-unsafe-return
+                const results = Array.isArray(parsed) ? (parsed as PublishRecord[]) : ([parsed] as PublishRecord[]);
+                return results;
             });
 
-            const cid = await fangorn.upload(
-                filedata,
-                async (file) => {
-                    if (options.gadget) {
-                        const { type, args } = parseGadgetArg(options.gadget);
-                        if (!(type in GADGET_REGISTRY))
-                            throw new Error(`Unknown gadget type: ${type}`);
-                        const def = GADGET_REGISTRY[type as keyof typeof GADGET_REGISTRY];
-
-                        const params: Record<string, unknown> = {};
-                        def.argSchema.forEach((key, i) => { params[key] = args[i]; });
-
-                        const commitment = computeTagCommitment(owner, file.tag, args[0] ?? "0");
-                        params.commitment = fieldToHex(commitment);
-                        params.chainName = options.chain;
-                        params.settlementTrackerContractAddress =
-                            options.chain === "arbitrumSepolia"
-                                ? "0x7c6ae9eb3398234eb69b2f3acfae69065505ff69"
-                                : "0x708751829f5f5f584da4142b62cd5cc9235c8a18";
-                        params.pinataJwt = loadConfig().jwt;
-                        return def.build(params);
-                    }
-                    return selectGadget(owner, file.tag, "0");
+            s.start("Encrypting and publishing...");
+            const result = await fangorn.publisher.upload(
+                {
+                    records,
+                    schema,
+                    schemaId,
+                    gateway: cfg.gateway,
+                    options: { overwrite: options.overwrite },
+                    gadgetFactory: (tag) => {
+                        return new SettledGadget({
+                            resourceId: SettlementRegistry.deriveResourceId(owner, schemaId, tag),
+                            settlementRegistryAddress: cfg.cfg.settlementRegistryContractAddress,
+                            chainName: cfg.cfg.chainName,
+                            pinataJwt: cfg.jwt,
+                        }
+                        )
+                    },
                 },
-                schemaId,
-                !!options.overwrite,
+                price,
             );
+            s.stop();
 
-            console.log(`Upload complete! Manifest CID: ${cid}`);
+            note(
+                `Manifest CID: ${result.manifestCid}\n
+                 Entries:      ${result.entryCount.toString()}\n
+                 Schema:       ${result.schemaId}`,
+                "Upload complete",
+            );
             process.exit(0);
         } catch (err) {
-            console.error("Failed to upload:", (err as Error).message);
+            console.error("Failed:", (err as Error).message);
             process.exit(1);
         }
     });
 
-// -----------------------------------------------------------------------------
-// list
-// -----------------------------------------------------------------------------
-
-program
+publishCmd
     .command("list")
-    .description("List contents of a manifest under a schema")
-    .requiredOption("-s, --schema-id <schemaId>", "Schema ID (bytes32 hex)")
-    .option("-c, --chain <chain>", "Chain to use (arbitrumSepolia or baseSepolia)")
-    .option("--owner <address>", "Owner address (defaults to your own)")
-    .action(async (options: { chain: string; schemaId: Hex; owner?: Address }) => {
+    .description("List your manifest entries for a schema")
+    .requiredOption("-s, --schema <schemaOrId>", "Schema name or bytes32 ID")
+    .option("-c, --chain <chain>", "Chain to use")
+    .action(async (options: { chain: string; schema: string }) => {
         try {
-            const self = getAccount().address;
-            const owner = options.owner ?? self;
-            const chain = getChain(options.chain);
-            const fangorn = await getFangorn(chain);
-            const schemaId = await resolveSchemaId(fangorn, options.schemaId);
-            const manifest = await fangorn.getManifest(owner, schemaId);
+            const fangorn = await getFangorn();
+            const schemaId = await resolveSchemaId(fangorn, options.schema);
+            const manifest = await fangorn.publisher.getManifest(schemaId);
 
             if (!manifest) {
-                console.log("No manifest found for this owner + schema.");
-                console.log("Upload data with `fangorn upload <file> --schema-id <id>`");
+                console.log("No manifest found. Upload with `fangorn publish upload <files> -s <schema>`.");
                 process.exit(0);
             }
 
-            console.log(`Owner:    ${owner}`);
-            console.log(`Schema:   ${options.schemaId}`);
-            console.log(`Entries (${String(manifest.entries.length)}):`);
+            console.log(`Schema:  ${options.schema}`);
+            console.log(`Entries (${manifest.entries.length.toString()}):`);
             for (const entry of manifest.entries) {
-                console.log(
-                    `  - ${entry.tag} | gadget: ${JSON.stringify(entry.gadgetDescriptor)} | cid: ${entry.cid}`,
-                );
+                console.log(`  - ${entry.tag}`);
             }
             process.exit(0);
         } catch (err) {
-            console.error("Failed to list:", (err as Error).message);
+            console.error("Failed:", (err as Error).message);
             process.exit(1);
         }
     });
 
-// -----------------------------------------------------------------------------
-// info
-// -----------------------------------------------------------------------------
-
-program
-    .command("info")
-    .description("Get data source info from the contract for a given schema")
-    .requiredOption("-s, --schema-id <schemaId>", "Schema ID (bytes32 hex)")
-    .option("-c, --chain <chain>", "Chain to use (arbitrumSepolia or baseSepolia)")
-    .option("--owner <address>", "Owner address (defaults to your own)")
-    .action(async (options: { chain: string; schemaId: Hex; owner?: Address }) => {
-        try {
-            const self = getAccount().address;
-            const owner = options.owner ?? self;
-            const chain = getChain(options.chain);
-            const fangorn = await getFangorn(chain);
-            const schemaId = await resolveSchemaId(fangorn, options.schemaId);
-            const ds = await fangorn.registry().getManifest(owner, schemaId);
-
-            console.log(`Owner:        ${owner}`);
-            console.log(`Schema ID:    ${options.schemaId}`);
-            console.log(`Version:      ${String(ds.version)}`);
-            console.log(`Manifest CID: ${ds.manifestCid || "No manifest yet — upload with `fangorn upload <file> --schema-id <id>`"}`);
-            process.exit(0);
-        } catch (err) {
-            console.error("Failed to get info:", (err as Error).message);
-            process.exit(1);
-        }
-    });
-
-// -----------------------------------------------------------------------------
-// entry
-// -----------------------------------------------------------------------------
-
-program
+publishCmd
     .command("entry")
-    .description("Get info about a specific entry by tag")
-    .argument("<tag>", "File tag")
-    .requiredOption("-s, --schema-id <schemaId>", "Schema ID (bytes32 hex)")
-    .option("--owner <address>", "Owner address (defaults to your own)")
-    .option("-c, --chain <chain>", "Chain to use (arbitrumSepolia or baseSepolia)")
-    .action(async (tag: string, options: { chain: string; schemaId: Hex; owner?: Address }) => {
+    .description("Show details for one of your manifest entries")
+    .argument("<tag>", "Entry tag")
+    .requiredOption("-s, --schema <schemaOrId>", "Schema name or bytes32 ID")
+    .option("-c, --chain <chain>", "Chain to use")
+    .action(async (tag: string, options: { chain: string; schema: string }) => {
         try {
-            const self = getAccount().address;
-            const owner = options.owner ?? self;
-            const chain = getChain(options.chain);
-            const fangorn = await getFangorn(chain);
-            const schemaId = await resolveSchemaId(fangorn, options.schemaId);
-            const entry = await fangorn.getEntry(owner, schemaId, tag);
-
-            console.log(`Entry:              ${tag}`);
-            console.log(`  CID:              ${entry.cid}`);
-            console.log(`  Gadget Descriptor: ${JSON.stringify(entry.gadgetDescriptor)}`);
+            const fangorn = await getFangorn();
+            const schemaId = await resolveSchemaId(fangorn, options.schema);
+            const entry = await fangorn.publisher.getEntry(schemaId, tag);
+            note(JSON.stringify(entry, null, 2), `Entry: ${tag}`);
             process.exit(0);
         } catch (err) {
-            console.error("Failed to get entry:", (err as Error).message);
+            console.error("Failed:", (err as Error).message);
             process.exit(1);
         }
     });
 
-// -----------------------------------------------------------------------------
-// decrypt
-// -----------------------------------------------------------------------------
+// ─── consume ─────────────────────────────────────────────────────────────────
 
-program
+const consumeCmd = program
+    .command("consume")
+    .description("Consumer operations");
+
+consumeCmd
+    .command("list")
+    .description("List a publisher's manifest entries")
+    .requiredOption("-s, --schema <schemaOrId>", "Schema name or bytes32 ID")
+    .requiredOption("--owner <address>", "Publisher address")
+    .option("-c, --chain <chain>", "Chain to use")
+    .action(async (options: { chain: string; schema: string; owner: Address }) => {
+        try {
+            const fangorn = await getFangorn();
+            const schemaId = await resolveSchemaId(fangorn, options.schema);
+            const manifest = await fangorn.consumer.getManifest(options.owner, schemaId);
+
+            if (!manifest) {
+                console.log("No manifest found.");
+                process.exit(0);
+            }
+
+            console.log(`Owner:   ${options.owner}`);
+            console.log(`Schema:  ${options.schema}`);
+            console.log(`Entries (${manifest.entries.length.toString()}):`);
+            for (const entry of manifest.entries) {
+                console.log(`  - ${entry.tag}`);
+            }
+            process.exit(0);
+        } catch (err) {
+            console.error("Failed:", (err as Error).message);
+            process.exit(1);
+        }
+    });
+
+consumeCmd
+    .command("entry")
+    .description("Show a publisher's manifest entry")
+    .argument("<tag>", "Entry tag")
+    .requiredOption("-s, --schema <schemaOrId>", "Schema name or bytes32 ID")
+    .requiredOption("--owner <address>", "Publisher address")
+    .option("-c, --chain <chain>", "Chain to use")
+    .action(async (tag: string, options: { chain: string; schema: string; owner: Address }) => {
+        try {
+            const fangorn = await getFangorn();
+            const schemaId = await resolveSchemaId(fangorn, options.schema);
+            const entry = await fangorn.consumer.getEntry(options.owner, schemaId, tag);
+            note(JSON.stringify(entry, null, 2), `Entry: ${tag}`);
+            process.exit(0);
+        } catch (err) {
+            console.error("Failed:", (err as Error).message);
+            process.exit(1);
+        }
+    });
+
+/**
+ * consume purchase
+ *
+ * Phase 1 — sign ERC-3009 authorization + join Semaphore group.
+ * Prints the identity export string; user must save it for `claim` + `decrypt`.
+ */
+consumeCmd
+    .command("purchase")
+    .description("Phase 1: pay and join the access group")
+    .argument("<owner>", "Publisher address")
+    .argument("<tag>", "Entry tag")
+    .requiredOption("-s, --schema <schemaOrId>", "Schema name or bytes32 ID")
+    .requiredOption("--burner-key <hex>", "Burner wallet private key (pays USDC)")
+    .requiredOption("--amount <usdc>", "USDC amount in smallest unit")
+    .requiredOption("--usdc <address>", "USDC contract address")
+    .option("-c, --chain <chain>", "Chain to use")
+    .action(async (
+        owner: Address,
+        tag: string,
+        options: { chain: string; schema: string; burnerKey: Hex; amount: string; usdc: Address },
+    ) => {
+        try {
+            const fangorn = await getFangorn();
+            const schemaId = await resolveSchemaId(fangorn, options.schema);
+            const relayerKey = loadConfig().privateKey;
+            const s = spinner();
+
+            const identity = new Identity();
+
+            s.start("Preparing ERC-3009 authorization...");
+            const preparedRegister = await fangorn.consumer.prepareRegister({
+                burnerPrivateKey: options.burnerKey,
+                paymentRecipient: owner,
+                amount: BigInt(options.amount),
+                usdcAddress: options.usdc,
+                usdcDomainName: "USD Coin",
+                usdcDomainVersion: "2",
+            });
+            s.stop();
+
+            s.start("Submitting registration...");
+            const { txHash } = await fangorn.consumer.register({
+                owner,
+                schemaId,
+                tag,
+                identityCommitment: identity.commitment,
+                relayerPrivateKey: relayerKey,
+                preparedRegister,
+            });
+            s.stop();
+
+            note(
+                [
+                    `Tx:        ${txHash}`,
+                    ``,
+                    `Save this identity string — required for claim and decrypt:`,
+                    ``,
+                    `  ${identity.export()}`,
+                    ``,
+                    `Next: fangorn consume claim ${owner} ${tag} -s ${options.schema} \\`,
+                    `        --identity '<above>' --stealth <your-stealth-address>`,
+                ].join("\n"),
+                "Purchase complete ✓",
+            );
+            process.exit(0);
+        } catch (err) {
+            console.error("Failed:", (err as Error).message);
+            process.exit(1);
+        }
+    });
+
+/**
+ * consume claim
+ *
+ * Phase 2 — generate Groth16 ZK proof of group membership and fire the
+ * SettlementRegistry hook. Prints the nullifier for use in `decrypt`.
+ */
+consumeCmd
+    .command("claim")
+    .description("Phase 2: prove membership and claim access")
+    .argument("<owner>", "Publisher address")
+    .argument("<tag>", "Entry tag")
+    .requiredOption("-s, --schema <schemaOrId>", "Schema name or bytes32 ID")
+    .requiredOption("--identity <string>", "Exported identity from `consume purchase`")
+    .requiredOption("--stealth <address>", "Stealth address to receive the access token")
+    .option("-c, --chain <chain>", "Chain to use")
+    .action(async (
+        owner: Address,
+        tag: string,
+        options: { chain: string; schema: string; identity: string; stealth: Address },
+    ) => {
+        try {
+            const fangorn = await getFangorn();
+            const schemaId = await resolveSchemaId(fangorn, options.schema);
+            const relayerKey = loadConfig().privateKey;
+            const identity = new Identity(options.identity);
+            const s = spinner();
+
+            s.start("Generating ZK proof...");
+            const preparedSettle = await fangorn.consumer.prepareSettle({
+                resourceId: SettlementRegistry.deriveResourceId(owner, schemaId, tag),
+                identity,
+                stealthAddress: options.stealth,
+            });
+            s.stop();
+
+            s.start("Submitting settlement...");
+            const { txHash, nullifier } = await fangorn.consumer.claim({
+                owner,
+                schemaId,
+                tag,
+                relayerPrivateKey: relayerKey,
+                preparedSettle,
+            });
+            s.stop();
+
+            note(
+                [
+                    `Tx:        ${txHash}`,
+                    `Nullifier: ${nullifier.toString()}`,
+                    ``,
+                    `Next: fangorn consume decrypt ${owner} ${tag} -s ${options.schema} \\`,
+                    `        -f <field> --nullifier ${nullifier.toString()} --stealth-key <key> -o out.mp3`,
+                ].join("\n"),
+                "Claim complete ✓",
+            );
+            process.exit(0);
+        } catch (err) {
+            console.error("Failed:", (err as Error).message);
+            process.exit(1);
+        }
+    });
+
+/**
+ * consume decrypt
+ *
+ * Decrypt a field after a completed purchase + claim cycle.
+ * The stealth wallet is used to create the Lit auth context.
+ */
+consumeCmd
     .command("decrypt")
-    .description("Decrypt a file from a data source")
-    .argument("<owner>", "Owner address of the data source")
-    .argument("<tag>", "File tag")
-    .requiredOption("-s, --schema-id <schemaId>", "Schema ID (bytes32 hex)")
-    .option("-c, --chain <chain>", "Chain to use (arbitrumSepolia or baseSepolia)")
-    .option("-o, --output <path>", "Output file path")
-    .action(async (owner: Address, tag: string, options: { chain: string; schemaId: Hex; output?: string }) => {
+    .description("Decrypt a field after purchase and claim")
+    .argument("<owner>", "Publisher address")
+    .argument("<tag>", "Entry tag")
+    .requiredOption("-s, --schema <schemaOrId>", "Schema name or bytes32 ID")
+    .requiredOption("-f, --field <field>", "Field name to decrypt")
+    .requiredOption("--nullifier <bigint>", "Nullifier from `consume claim`")
+    .requiredOption("--stealth-key <hex>", "Private key of the stealth address")
+    .option("--identity <string>", "Exported identity (required unless --skip-settlement-check)")
+    .option("--skip-settlement-check", "Skip on-chain registration verification")
+    .option("-c, --chain <chain>", "Chain to use")
+    .option("-o, --output <path>", "Write output to file (defaults to stdout)")
+    .action(async (
+        owner: Address,
+        tag: string,
+        options: {
+            chain: string;
+            schema: string;
+            field: string;
+            nullifier: string;
+            stealthKey: Hex;
+            identity?: string;
+            skipSettlementCheck?: boolean;
+            output?: string;
+        },
+    ) => {
         try {
             const chain = getChain(options.chain);
-            const fangorn = await getFangorn(chain);
-            const schemaId = await resolveSchemaId(fangorn, options.schemaId);
-            const decrypted = await fangorn.decryptFile(owner, schemaId, tag);
+            const fangorn = await getFangorn();
+            const schemaId = await resolveSchemaId(fangorn, options.schema);
+            const s = spinner();
+
+            const walletClient = createWalletClient({
+                account: privateKeyToAccount(options.stealthKey),
+                chain,
+                transport: http(loadConfig().cfg.rpcUrl),
+            });
+
+            const identity = options.identity ? new Identity(options.identity) : undefined;
+
+            s.start("Decrypting...");
+            const decrypted = await fangorn.consumer.decrypt({
+                owner,
+                walletClient,
+                schemaId,
+                nullifierHash: BigInt(options.nullifier),
+                tag,
+                field: options.field,
+                identity,
+                skipSettlementCheck: !!options.skipSettlementCheck,
+            });
+            s.stop();
 
             if (options.output) {
                 writeFileSync(options.output, Buffer.from(decrypted));
-                console.log(`Decrypted file saved to: ${options.output}`);
+                console.log(`Saved to: ${options.output}`);
             } else {
-                const buf = Buffer.from(decrypted);
-                process.stdout.write(atob(buf.toString()));
+                process.stdout.write(Buffer.from(decrypted));
                 process.stdout.write("\n");
             }
             process.exit(0);
         } catch (err) {
-            console.error("Failed to decrypt:", (err as Error).message);
+            console.error("Failed:", (err as Error).message);
             process.exit(1);
         }
     });
 
-// -----------------------------------------------------------------------------
+// ─── datasource ──────────────────────────────────────────────────────────────
 
-function getMimeType(ext: string): string {
-    const types: Record<string, string> = {
-        ".txt": "text/plain",
-        ".json": "application/json",
-        ".html": "text/html",
-        ".css": "text/css",
-        ".js": "application/javascript",
-        ".png": "image/png",
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".gif": "image/gif",
-        ".pdf": "application/pdf",
-        ".mp3": "audio/mpeg",
-        ".mp4": "video/mp4",
-    };
-    return types[ext.toLowerCase()] || "application/octet-stream";
-}
+program
+    .command("datasource")
+    .description("Data source registry queries")
+    .command("info")
+    .description("Show on-chain manifest info for an owner + schema")
+    .requiredOption("-s, --schema <schemaOrId>", "Schema name or bytes32 ID")
+    .option("-c, --chain <chain>", "Chain to use")
+    .option("--owner <address>", "Owner address (defaults to your own)")
+    .action(async (options: { chain: string; schema: string; owner?: Address }) => {
+        try {
+            const self = getAccount().address;
+            const owner = options.owner ?? self;
+            const fangorn = await getFangorn();
+            const schemaId = await resolveSchemaId(fangorn, options.schema);
+            const ds = await fangorn.getDatasourceRegistry().getManifest(owner, schemaId);
+
+            console.log(`Owner:        ${owner}`);
+            console.log(`Schema ID:    ${schemaId}`);
+            console.log(`Version:      ${String(ds.version)}`);
+            console.log(`Manifest CID: ${ds.manifestCid || "(none yet)"}`);
+            process.exit(0);
+        } catch (err) {
+            console.error("Failed:", (err as Error).message);
+            process.exit(1);
+        }
+    });
 
 program.parse();

@@ -1,3 +1,5 @@
+export * from './testbed.js'
+
 /**
  * Uploads any data to IPFS via Pinata
  */

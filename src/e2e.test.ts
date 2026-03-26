@@ -1,186 +1,381 @@
-import { beforeAll, describe, it, expect } from "vitest";
-import {
-    Account,
-    createPublicClient,
-    createWalletClient,
-    Hex,
-    http,
-    WalletClient,
-    type Address,
-} from "viem";
+import { describe, it, expect, beforeAll } from "vitest";
+import { createPublicClient, createWalletClient, http, parseUnits, type Address, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { deployContract } from "./deployContract.js";
-import { TestBed } from "./test/testbed.js";
-import { arbitrumSepolia, baseSepolia } from "viem/chains";
-import { DataSourceRegistry } from "./interface/datasource-registry/dataSourceRegistry.js";
+import { arbitrumSepolia } from "viem/chains";
+import { Identity } from "@semaphore-protocol/identity";
+import { TestBed } from "./test/index.js";
+import { SchemaDefinition } from "./roles/schema/types.js";
+import { SettlementRegistry } from "./registries/settlement-registry/index.js";
+import { PublishRecord } from "./roles/publisher/types.js";
 
-const getEnv = (key: string) => {
-    const value = process.env[key];
-    if (!value) throw new Error(`Environment variable ${key} is not set`);
-    return value;
+// TODO
+// EMPTY WALLET 0x7e69fd5bb5aa5971e2541fb40512490fd4c6cac97589f9ce538e521f4815fac8
+// both of the ones below are funded
+const SK = (process.env.DELEGATOR_ETH_PRIVATE_KEY ?? "0xde0e6c1c331fcd8692463d6ffcf20f9f2e1847264f7a3f578cf54f62f05196cb") as Hex;
+// in practice should be generate f using eip 5564?
+const BURNER_SK = (process.env.DELEGATEE_ETH_PRIVATE_KEY ?? "0xcbd236ee5a2fd07e8c9ef9198a23d869b7be792ca1ad76b35a6c67453839aaba") as Hex;
+// setup env vars
+const RPC_URL = process.env.RPC_URL ?? "https://sepolia-rollup.arbitrum.io/rpc";
+
+// The owner of the resource (receives USDC, needs ETH)
+const OWNER_KEY = (process.env.DELEGATOR_ETH_PRIVATE_KEY ?? "0xde0e6c1c331fcd8692463d6ffcf20f9f2e1847264f7a3f578cf54f62f05196cb") as Hex;
+// The faciltiator's key (only needs ETH)
+const FACILITATOR_KEY = SK
+// The party who actually wants access to the resource (needs nothing)
+const BUYER_KEY = SK
+// an ephemeral burner key ONLY NEEDS USDC
+const BURNER_KEY = BURNER_SK
+
+const PINATA_JWT = process.env.PINATA_JWT ?? "";
+const PINATA_GW = process.env.PINATA_GATEWAY ?? "";
+// Fangorn Contracts
+const SETTLEMENT_REGISTRY_ADDRESS = (process.env.SETTLEMENT_REGISTRY_ADDRESS ?? "0x7c261c222beaa4f866e7f33de7704906d1245a2a") as Address;
+const DATA_SOURCE_REGISTRY_ADDRESS = (process.env.DATA_SOURCE_REGISTRY_ADDRESS ?? "0x3941c7d50caa56f7f676554bc4e78d77aaf27ebb") as Address;
+const SCHEMA_REGISTRY_ADDRESS = (process.env.SCHEMA_REGISTRY_ADDRESS ?? "0x49ab3d52b997e63ad56c91178df48263fd80b2dc") as Address;
+// USDC setup
+const USDC_ADDRESS = (process.env.USDC_ADDRESS ?? "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d") as Address;
+const USDC_AMOUNT = 1n;
+const USDC_DOMAIN = "USD Coin";
+const CAIP_2 = parseInt(process.env.CAIP2!) ?? 421614;
+
+const CHAIN = arbitrumSepolia;
+
+// In production derive stealthAddress via EIP-5564; fixed for tests
+const STEALTH_ADDRESS = privateKeyToAccount(BURNER_SK).address;
+// const STEALTH_ADDRESS = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" as `0x${string}`;
+
+const hasIpfs = !!PINATA_JWT;
+
+function makeWallet(key: Hex) {
+	return createWalletClient({
+		account: privateKeyToAccount(key),
+		chain: CHAIN,
+		transport: http(RPC_URL),
+	});
+}
+
+const publicClient = createPublicClient({ chain: CHAIN, transport: http(RPC_URL) });
+
+// async function waitFor(hash: Hex) {
+// 	return publicClient.waitForTransactionReceipt({ hash });
+// }
+
+const MUSIC_SCHEMA: SchemaDefinition = {
+	title: { "@type": "string" },
+	artist: { "@type": "string" },
+	audio: { "@type": "encrypted", gadget: "settled" },
 };
 
-describe("Fangorn basic encryption works", () => {
-    let jwt: string;
-    let gateway: string;
+const ENCRYPTED_FIELD = "audio";
+const PINATA_GATEWAY = process.env.PINATA_GW ?? "https://gateway.pinata.cloud";
 
-    let delegatorAccount: Account;
-    let delegateeAccount: Account;
-    let delegatorWalletClient: WalletClient;
-    let delegateeWalletClient: WalletClient;
+const TEST_RECORDS: PublishRecord[] = [
+		{
+			tag: "track-01",
+			fields: {
+				title: "Track One",
+				artist: "Alice",
+				audio: { data: new Uint8Array([1, 2, 3, 4, 5]), fileType: "audio/mp3" },
+			},
+		},
+	{
+		tag: "track-02",
+		fields: {
+			title: "Track Two",
+			artist: "Alice",
+			audio: { data: new Uint8Array([6, 7, 8, 9, 10]), fileType: "audio/mp3" },
+		},
+	},
+];
 
-    let usdcContractAddress: Address;
-    let dataSourceRegistryAddress: Address;
-    let schemaRegistryAddress: Address;
-    let settlementTrackerAddress: Address;
+describe("Fangorn E2E", () => {
+	let testbed: TestBed;
+	let ownerAddress: Address;
 
-    let rpcUrl: string;
-    let chainName: string;
-    let usdcDomainName: string;
-    let caip2: number;
+	beforeAll(async () => {
+		testbed = await TestBed.init(
+			makeWallet(OWNER_KEY),
+			makeWallet(BUYER_KEY),
+			PINATA_JWT,
+			PINATA_GW,
+			DATA_SOURCE_REGISTRY_ADDRESS,
+			SCHEMA_REGISTRY_ADDRESS,
+			SETTLEMENT_REGISTRY_ADDRESS,
+			USDC_ADDRESS,
+			USDC_DOMAIN,
+			RPC_URL,
+			"arbitrumSepolia",
+			CHAIN.id,
+			OWNER_KEY,   // ← enables agent0-sdk / ERC-8004 for schema owner role
+		);
 
-    let testSchemaId: Hex;
-    let testbed: TestBed;
+		ownerAddress = privateKeyToAccount(OWNER_KEY).address;
+	});
 
-    beforeAll(async () => {
-        chainName = process.env.CHAIN_NAME!;
-        if (!chainName) throw new Error("CHAIN_NAME required");
+	// 1. Schema owner: register agent
 
-        usdcDomainName = chainName === "arbitrumSepolia" ? "USD Coin" : "USDC";
-        const chain = usdcDomainName === "USDC" ? baseSepolia : arbitrumSepolia;
+	describe.skipIf(!hasIpfs)("Alice — schema owner", () => {
+		let schemaName: string;
+		let agentId: string;
+		let schemaId: Hex;
+		let nullifierHash: bigint;
+		// smallest nonzero USDC price (0.000001)
+		let price = 1n;
 
-        rpcUrl = process.env.CHAIN_RPC_URL!;
-        if (!rpcUrl) throw new Error("CHAIN_RPC_URL required");
+		// it("registers an ERC-8004 agent identity", async () => {
+		// 	const result = await testbed.registerAgent({
+		// 		name: "Fangorn Music Curator",
+		// 		description: "Discovers and curates encrypted music datasources",
+		// 		// a2aUrl and mcpEndpoint omitted — not required for tests
+		// 	});
 
-        jwt = process.env.PINATA_JWT!;
-        if (!jwt) throw new Error("PINATA_JWT required");
+		// 	expect(result.agentId).toBeTruthy();
+		// 	agentId = result.agentId;
+		// });
 
-        gateway = process.env.PINATA_GATEWAY!;
-        if (!gateway) throw new Error("PINATA_GATEWAY required");
+		it("registers a schema on-chain", async () => {
+			schemaName = `fangorn.music.v1.${Date.now()}`
+			// todo: register agent
+			agentId = ""
+			schemaId = await testbed.registerSchema(
+				schemaName,
+				MUSIC_SCHEMA,
+				agentId,
+			);
 
-        caip2 = parseInt(process.env.CAIP2!);
-        if (!caip2) throw new Error("CAIP2 required");
+			expect(schemaId).toMatch(/^0x[0-9a-f]{64}$/i);
+		}, 30_000); // 30s timeout to wait for pinata
 
-        delegatorAccount = privateKeyToAccount(getEnv("DELEGATOR_ETH_PRIVATE_KEY") as Hex);
-        delegatorWalletClient = createWalletClient({ account: delegatorAccount, transport: http(rpcUrl), chain });
+		it("can fetch the registered schema by id", async () => {
+			const schema = await testbed
+				.getDelegatorFangorn()
+				.schema.get(schemaName);
 
-        delegateeAccount = privateKeyToAccount(getEnv("DELEGATEE_ETH_PRIVATE_KEY") as Hex);
-        delegateeWalletClient = createWalletClient({ account: delegateeAccount, transport: http(rpcUrl), chain });
+			expect(schema).toBeDefined();
+			expect(schema!.definition).toMatchObject(MUSIC_SCHEMA);
+			expect(schema!.agentId).toBe(agentId);
+			expect(schema!.owner.toLowerCase()).toBe(ownerAddress.toLowerCase());
+		});
 
-        usdcContractAddress = process.env.USDC_CONTRACT_ADDRESS! as Address;
+		describe("Publisher", () => {
+			it("uploads multiple files and publishes a manifest", async () => {
+				const manifestCid = await testbed.fileUpload(
+					TEST_RECORDS,
+					MUSIC_SCHEMA,
+					schemaId,
+					PINATA_GATEWAY,
+					price
+				);
 
-        schemaRegistryAddress = process.env.SCHEMA_REGISTRY_ADDR! as Address;
-        if (!schemaRegistryAddress) {
-            console.log("Deploying SchemaRegistry...");
-            const deployment = await deployContract({ account: delegatorAccount, contractName: "SchemaRegistry", constructorArgs: [], chain });
-            schemaRegistryAddress = deployment.address;
-            console.log("SchemaRegistry deployed at:", schemaRegistryAddress);
-        }
+				expect(manifestCid).toBeTruthy();
+			}, 60_000); // Lit action IPFS upload on first call so we need to wait for pinata
 
-        dataSourceRegistryAddress = process.env.DS_REGISTRY_ADDR! as Address;
-        if (!dataSourceRegistryAddress) {
-            console.log("Deploying DataSourceRegistry...");
-            const deployment = await deployContract({ account: delegatorAccount, contractName: "DSRegistry", constructorArgs: [], chain });
-            dataSourceRegistryAddress = deployment.address;
-            console.log("DataSourceRegistry deployed at:", dataSourceRegistryAddress);
+			it("manifest exists on-chain after upload", async () => {
+				const exists = await testbed.checkManifestExists(ownerAddress, schemaId);
+				expect(exists).toBe(true);
+			});
 
-            console.log("Initializing DataSourceRegistry with SchemaRegistry...");
-            const publicClient = createPublicClient({ transport: http(rpcUrl) });
-            const dsRegistry = new DataSourceRegistry(dataSourceRegistryAddress, publicClient, delegatorWalletClient);
-            await dsRegistry.initialize(schemaRegistryAddress);
-            console.log("DataSourceRegistry initialized");
-        }
+			it("both entries are present in the manifest", async () => {
+				for (const record of TEST_RECORDS) {
+					const exists = await testbed.checkEntryExists(ownerAddress, schemaId, record.tag);
+					expect(exists).toBe(true);
+				}
+			});
 
-        settlementTrackerAddress = process.env.SETTLEMENT_TRACKER_ADDR! as Address;
-        if (!settlementTrackerAddress) {
-            console.log("Deploying SettlementTracker...");
-            const deployment = await deployContract({ account: delegatorAccount, contractName: "SettlementTracker", constructorArgs: [usdcContractAddress], chain });
-            settlementTrackerAddress = deployment.address;
-            console.log("SettlementTracker deployed at:", settlementTrackerAddress);
-        }
+			// it("owner can decrypt their own data without settlement", async () => {
+			// 	for (const record of TEST_RECORDS) {
+			// 		const data = await testbed.tryDecryptDelegator(ownerAddress, schemaId, record.tag, ENCRYPTED_FIELD);
+			// 		expect(data).toBeInstanceOf(Uint8Array);
+			// 		expect(data.length).toBeGreaterThan(0);
+			// 	}
+			// });
 
-        console.log(`DataSourceRegistry: ${dataSourceRegistryAddress}`);
-        console.log(`SchemaRegistry:     ${schemaRegistryAddress}`);
-        console.log(`SettlementTracker:  ${settlementTrackerAddress}`);
+			describe("Consumer", () => {
+				let buyerIdentity: Identity;
+				const tag = TEST_RECORDS[0].tag;
 
-        testbed = await TestBed.init(
-            delegatorWalletClient,
-            delegateeWalletClient,
-            jwt,
-            gateway,
-            dataSourceRegistryAddress,
-            schemaRegistryAddress,
-            usdcContractAddress,
-            rpcUrl,
-            chainName,
-            "arbitrumSepolia",
-            caip2,
-        );
+				beforeAll(() => {
+					buyerIdentity = new Identity();
+				});
 
-        console.log("Registering test schema...");
-        testSchemaId = await testbed.registerSchema(
-            `fangorn.test.v1.${getRandomIntInclusive(0, 999999)}`,
-            "bafy...test-schema-spec",
-            "test-agent-id",
-        );
-        console.log("Test schema registered:", testSchemaId);
-    }, 120_000);
+				it("cannot decrypt before purchasing", async () => {
+					// no nullifier
+					await expect(
+						testbed.tryDecrypt(
+							ownerAddress,
+							0n,
+							SK,
+							schemaId, tag,
+							ENCRYPTED_FIELD,
+							RPC_URL,
+							buyerIdentity,
+							true
+						),
+					).rejects.toThrow("not registered");
+				});
 
-    it("should publish a manifest and succeed to decrypt when predicates are satisfied for basic acc", async () => {
-        const tag = "test_" + getRandomIntInclusive(0, 101010101);
-        const manifest = [{
-            tag,
-            data: "Hello, Fangorn!",
-            extension: ".txt",
-            fileType: "text/plain",
-        }];
+				it("cannot decrypt when identity is missing and settlement is required", async () => {
+					await expect(
+						testbed.tryDecrypt(
+							ownerAddress, 0n,
+							SK,
+							schemaId, 
+							tag,
+							ENCRYPTED_FIELD,
+							RPC_URL,
+							undefined,
+							true
+						),
+					).rejects.toThrow("identity is required");
+				});
 
-        await testbed.fileUploadEmptyWallet(manifest, testSchemaId);
+				it("Phase 1: purchase - joins the Semaphore group", async () => {
 
-        expect(await testbed.checkManifestExists(delegatorAccount.address, testSchemaId)).toBe(true);
-        expect(await testbed.checkEntryExists(delegatorAccount.address, testSchemaId, tag)).toBe(true);
+					// prepare register 
+					const transferWithAuthPayload = await testbed.prepareRegister(
+						BURNER_KEY,
+						ownerAddress,
+						USDC_AMOUNT
+					);
 
-        await new Promise((resolve) => setTimeout(resolve, 4_000));
+					const txHash = await testbed.register(
+						ownerAddress,
+						schemaId,
+						tag,
+						buyerIdentity.commitment,
+						FACILITATOR_KEY,
+						transferWithAuthPayload,
+					);
 
-        const output = await testbed.tryDecrypt(delegatorAccount.address, testSchemaId, tag);
-        expect(new TextDecoder().decode(output)).toBe(manifest[0].data);
-        console.log("Decryption succeeded!");
+					expect(txHash).toMatch(/^0x[0-9a-f]{64}$/i);
+					const registered = await testbed
+						.getSettlementRegistry()
+						.isRegistered(
+							SettlementRegistry.deriveResourceId(ownerAddress, schemaId, tag),
+							buyerIdentity.commitment,
+						);
+					expect(registered).toBe(true);
+				}, 30_000);
 
-        let didFail = false;
-        try {
-            await testbed.tryDecryptDelegator(delegatorAccount.address, testSchemaId, tag);
-        } catch {
-            didFail = true;
-        }
-        expect(didFail).toBe(true);
-    }, 120_000);
+				// TODO
+				// it("Phase 1: reverts on double registration with same identity", async () => {
+				// 	await expect(
+				// 		testbed.register(ownerAddress, schemaId, tag, buyerIdentity, BURNER_KEY, USDC_AMOUNT),
+				// 	).rejects.toThrow();
+				// });
 
-    it("should publish a manifest and succeed to decrypt when payment is settled", async () => {
-        const tag = "test_" + getRandomIntInclusive(101010101, 111111111);
-        const filedata = {
-            tag,
-            data: "Hello, Fangorn!",
-            extension: ".txt",
-            fileType: "text/plain",
-        };
-        const price = "0";
+				it("Phase 2: claim - proves membership and fires access hook", async () => {
+					// prepare settle
+					const payload = await testbed.prepareSettle(
+						ownerAddress,
+						schemaId,
+						tag,
+						buyerIdentity,
+						STEALTH_ADDRESS
+					);
 
-        await testbed.fileUploadPaymentGadget(filedata, price, settlementTrackerAddress, jwt, testSchemaId);
+					// settle
+					const { txHash, nullifier } = await testbed.settle(
+						ownerAddress,
+						schemaId,
+						tag,
+						SK,
+						payload
+					);
+					nullifierHash = nullifier;
+					expect(txHash).toMatch(/^0x[0-9a-f]{64}$/i);
+					// verify that the settlement is true
+					const resourceId = SettlementRegistry.deriveResourceId(ownerAddress, schemaId, tag);
+					const isSettled = await testbed.getDelegateeFangorn().getSettlementRegistry()
+						.isSettled(STEALTH_ADDRESS, resourceId);
 
-        expect(await testbed.checkEntryExists(delegatorAccount.address, testSchemaId, tag)).toBe(true);
-        console.log("Encrypted data under payment settlement condition");
+					expect(isSettled).toBe(true);
+				});
 
-        console.log("Submitting payment...");
-        await testbed.payForFile(delegatorAccount.address, tag, price, usdcDomainName, settlementTrackerAddress, delegatorWalletClient, rpcUrl);
+				// it("Phase 2: reverts on double-settle (nullifier already used)", async () => {
+				// 	await expect(
+				// 		testbed.settle(ownerAddress, schemaId, tag, buyerIdentity, STEALTH_ADDRESS, BUYER_KEY),
+				// 	).rejects.toThrow();
+				// });
 
-        const output = await testbed.tryDecryptDelegator(delegatorAccount.address, testSchemaId, tag);
-        expect(new TextDecoder().decode(output)).toBe(filedata.data);
-        console.log("Decryption succeeded!");
-    }, 120_000);
+				// it("Phase 2: reverts if identity was never registered", async () => {
+				// 	const stranger = new Identity();
+				// 	await expect(
+				// 		testbed.settle(ownerAddress, schemaId, tag, stranger, STEALTH_ADDRESS, BUYER_KEY),
+				// 	).rejects.toThrow();
+				// });
+
+				it("decrypt — buyer can read the file after full settlement", async () => {
+					const data = await testbed.tryDecrypt(
+						ownerAddress,
+						nullifierHash,
+						BURNER_KEY,
+						schemaId,
+						tag,
+						ENCRYPTED_FIELD,
+						RPC_URL,
+						buyerIdentity,
+						true,
+					);
+					expect(data).toBeInstanceOf(Uint8Array);
+					expect(data.length).toBeGreaterThan(0);
+				}, 30_000);
+
+				// it("a second buyer can independently purchase and decrypt", async () => {
+				// 		const identity2 = new Identity();
+
+				// 		await testbed.register(
+				// 			ownerAddress, schemaId, tag, identity2, BURNER_KEY, USDC_AMOUNT,
+				// 		);
+
+				// 		await testbed.settle(
+				// 			ownerAddress, schemaId, tag, identity2, STEALTH_ADDRESS, BUYER_KEY,
+				// 		);
+
+				// 		// q: idt this works: need a new nullifier
+				// 		const data = await testbed.tryDecrypt(
+				// 			ownerAddress, nullifierHash, schemaId, tag, ENCRYPTED_FIELD, identity2, true,
+				// 		);
+				// 		expect(data).toBeInstanceOf(Uint8Array);
+				// 		expect(data.length).toBeGreaterThan(0);
+				// 	}, 30_000);
+			});
+		});
+	});
+
+	// ── deriveResourceId (no IPFS required) ──────────────────────────────────
+
+	// describe("SettlementRegistry.deriveResourceId", () => {
+	// 	const STUB_SCHEMA_ID = "0x0000000000000000000000000000000000000000000000000000000000000001" as Hex;
+	// 	const TAG = "derive-test";
+
+	// 	it("is deterministic for the same (owner, schemaId, tag)", () => {
+	// 		const a = SettlementRegistry.deriveResourceId(ownerAddress, STUB_SCHEMA_ID, TAG);
+	// 		const b = SettlementRegistry.deriveResourceId(ownerAddress, STUB_SCHEMA_ID, TAG);
+	// 		expect(a).toBe(b);
+	// 	});
+
+	// 	it("differs for different tags", () => {
+	// 		const a = SettlementRegistry.deriveResourceId(ownerAddress, STUB_SCHEMA_ID, "tag-a");
+	// 		const b = SettlementRegistry.deriveResourceId(ownerAddress, STUB_SCHEMA_ID, "tag-b");
+	// 		expect(a).not.toBe(b);
+	// 	});
+
+	// 	it("differs for different schemaIds", () => {
+	// 		const schemaA = "0x0000000000000000000000000000000000000000000000000000000000000001" as Hex;
+	// 		const schemaB = "0x0000000000000000000000000000000000000000000000000000000000000002" as Hex;
+	// 		const a = SettlementRegistry.deriveResourceId(ownerAddress, schemaA, TAG);
+	// 		const b = SettlementRegistry.deriveResourceId(ownerAddress, schemaB, TAG);
+	// 		expect(a).not.toBe(b);
+	// 	});
+
+	// 	it("differs for different owners", () => {
+	// 		// Use hardcoded addresses so this pure unit test never depends on env vars
+	// 		const addr1 = "0x0000000000000000000000000000000000000001" as Address;
+	// 		const addr2 = "0x0000000000000000000000000000000000000002" as Address;
+	// 		const a = SettlementRegistry.deriveResourceId(addr1, STUB_SCHEMA_ID, TAG);
+	// 		const b = SettlementRegistry.deriveResourceId(addr2, STUB_SCHEMA_ID, TAG);
+	// 		expect(a).not.toBe(b);
+	// 	});
+	// });
 });
-
-function getRandomIntInclusive(min: number, max: number) {
-    min = Math.ceil(min);
-    max = Math.floor(max);
-    return Math.floor(Math.random() * (max - min + 1)) + min;
-}

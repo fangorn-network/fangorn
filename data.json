@@ -1,0 +1,36 @@
+[
+    {
+        "tag": "track1",
+        "fields": {
+            "title": "The Defiance of Anthropomorphic Sea Mammals",
+            "artist": "Fred & Carrie",
+            "audio": {
+                "data": [
+                    1,
+                    0,
+                    0,
+                    0,
+                    0
+                ],
+                "fileType": "audio/mp3"
+            }
+        }
+    },
+    {
+        "tag": "track2",
+        "fields": {
+            "title": "I Never Liked Digging Holes",
+            "artist": "Stanley Yelnats",
+            "audio": {
+                "data": [
+                    2,
+                    0,
+                    0,
+                    0,
+                    0
+                ],
+                "fileType": "audio/mp3"
+            }
+        }
+    }
+]
