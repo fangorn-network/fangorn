@@ -191,7 +191,7 @@ export class Fangorn {
 			config: resolvedConfig,
 		});
 	}
-	p
+
 	getConfig(): AppConfig {
 		return this.ctx.config;
 	}

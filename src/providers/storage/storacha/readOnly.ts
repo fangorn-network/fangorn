@@ -1,9 +1,9 @@
 import StorageProvider from "..";
 
 export class ReadOnlyStorachaStorage implements StorageProvider<unknown> {
-    async store(_data: unknown): Promise<string> {
-        throw new Error("ReadOnlyStorachaStorage cannot store data");
-    }
+    // async store(_data: unknown): Promise<string> {
+    //     throw new Error("ReadOnlyStorachaStorage cannot store data");
+    // }
 
     async retrieve(cid: string): Promise<unknown> {
         const url = `https://${cid}.ipfs.w3s.link`;
@@ -19,7 +19,7 @@ export class ReadOnlyStorachaStorage implements StorageProvider<unknown> {
         });
     }
 
-    async delete(_cid: string): Promise<void> {
-        throw new Error("ReadOnlyStorachaStorage cannot delete data");
-    }
+//     async delete(_cid: string): Promise<void> {
+//         throw new Error("ReadOnlyStorachaStorage cannot delete data");
+//     }
 }
