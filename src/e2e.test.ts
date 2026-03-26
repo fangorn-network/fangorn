@@ -54,7 +54,7 @@ function makeWallet(key: Hex) {
 	});
 }
 
-const publicClient = createPublicClient({ chain: CHAIN, transport: http(RPC_URL) });
+// const publicClient = createPublicClient({ chain: CHAIN, transport: http(RPC_URL) });
 
 // async function waitFor(hash: Hex) {
 // 	return publicClient.waitForTransactionReceipt({ hash });

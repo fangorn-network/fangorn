@@ -20,13 +20,46 @@ import { SchemaRoleConfig } from "./roles/schema/types.js";
 import { EncryptionConfig, FangornContext, FangornCreateOptions, StorageConfig } from "./types/index.js";
 import { privateKeyToAccount } from "viem/accounts";
 import { PinataStorage } from "./providers/storage/index.js";
-
-function isStorageProvider(s: StorageConfig): s is StorageProvider<unknown> {
-    return typeof (s as StorageProvider<unknown>).retrieve === "function";
-}
+import { StorachaStorage } from "./providers/storage/storacha/index.js";
+import { ReadOnlyStorachaStorage } from "./providers/storage/storacha/readOnly.js";
 
 function isEncryptionService(e: EncryptionConfig): e is EncryptionService {
-    return typeof (e as EncryptionService).encrypt === "function";
+	return typeof (e as EncryptionService).encrypt === "function";
+}
+
+function isStorageProvider(s: StorageConfig): s is StorageProvider<unknown> {
+	return typeof (s as StorageProvider<unknown>).retrieve === "function";
+}
+
+function isPinataConfig(s: StorageConfig): s is { pinata: { jwt: string; gateway: string } } {
+	return "pinata" in (s as object);
+}
+
+function isStorachaConfig(s: StorageConfig): s is { storacha: { email: string } } {
+    return "storacha" in (s as object);
+}
+ 
+function isStorachaReadOnly(s: { storacha: { email: string } | { readOnly: true } }): s is { storacha: { readOnly: true } } {
+    return "readOnly" in s.storacha;
+}
+ 
+async function resolveStorage(
+    storage: StorageConfig,
+): Promise<StorageProvider<unknown>> {
+    if (isStorageProvider(storage)) return storage;
+    if (isPinataConfig(storage)) {
+        return new PinataStorage(storage.pinata.jwt, storage.pinata.gateway);
+    }
+    if (isStorachaConfig(storage)) {
+        if (isStorachaReadOnly(storage)) {
+            return new ReadOnlyStorachaStorage();
+        }
+        return StorachaStorage.create(storage.storacha.email);
+    }
+    throw new Error(
+        "Invalid storage config: must be a StorageProvider instance, " +
+        "a { pinata } object, or a { storacha } object.",
+    );
 }
 
 export class Fangorn {
@@ -105,12 +138,7 @@ export class Fangorn {
 			transport: http(resolvedConfig.rpcUrl),
 		});
 
-		const storage = isStorageProvider(options.storage)
-			? options.storage
-			: new PinataStorage(
-				(options.storage as { pinata: { jwt: string; gateway: string } }).pinata.jwt,
-				(options.storage as { pinata: { jwt: string; gateway: string } }).pinata.gateway,
-			);
+		const storage = await resolveStorage(options.storage);
 
 		const encryption = isEncryptionService(options.encryption)
 			? options.encryption
@@ -163,7 +191,7 @@ export class Fangorn {
 			config: resolvedConfig,
 		});
 	}
-
+	p
 	getConfig(): AppConfig {
 		return this.ctx.config;
 	}

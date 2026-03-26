@@ -84,7 +84,7 @@ export class TestBed {
 
 		const delegatorFangorn = await Fangorn.create({
 			privateKey: (process.env.DELEGATOR_ETH_PRIVATE_KEY ?? "0x0") as Hex,
-			storage: { pinata: { jwt, gateway } },
+			storage: { storacha: { "email": "driemworks@fangorn.network" } },
 			encryption: { lit: true },
 			config,
 			domain: "localhost",
@@ -93,7 +93,7 @@ export class TestBed {
 
 		const delegateeFangorn = await Fangorn.create({
 			privateKey: (process.env.DELEGATEE_ETH_PRIVATE_KEY ?? "0x0") as Hex,
-			storage: { pinata: { jwt, gateway } },
+			storage: { storacha: { "readOnly": true } },
 			encryption: { lit: true },
 			config,
 			domain: "localhost",

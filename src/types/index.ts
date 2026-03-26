@@ -62,8 +62,11 @@ export interface FangornContext {
 }
 
 export type StorageConfig =
-	| { pinata: { jwt: string; gateway: string } }
-	| StorageProvider<unknown>;
+    | { pinata: { jwt: string; gateway: string } }
+    | { storacha: { email: string } }
+    | { storacha: { readOnly: true } }
+    | StorageProvider<unknown>;
+ 
 
 export type EncryptionConfig =
 	| { lit: true }
