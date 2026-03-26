@@ -27,31 +27,17 @@ export class SchemaRole {
             })
             : null;
     }
-    
+
     /**
      * Register an agent identity via the agent0-sdk / ERC-8004.
-     *
-     * Creates the agent, attaches optional A2A card / MCP endpoint / ENS,
-     * then pins and registers on-chain. Returns .
-     * 
-     * @params params
-     * @returns the resulting agentId
      */
     async registerAgent(params: RegisterAgentParams): Promise<RegisteredAgent> {
         const sdk = this.requireAgent0();
         const agent = sdk.createAgent(params.name, params.description);
 
-        if (params.a2aUrl) {
-            await agent.setA2A(params.a2aUrl);
-        }
-
-        if (params.mcpEndpoint) {
-            await agent.setMCP(params.mcpEndpoint);
-        }
-
-        if (params.ens) {
-            agent.setENS(params.ens);
-        }
+        if (params.a2aUrl) await agent.setA2A(params.a2aUrl);
+        if (params.mcpEndpoint) await agent.setMCP(params.mcpEndpoint);
+        if (params.ens) agent.setENS(params.ens);
 
         agent.setActive(true);
         agent.setX402Support(true);
@@ -70,8 +56,6 @@ export class SchemaRole {
      *
      * Uploads a versioned schema blob to IPFS (definition + metadata), then
      * calls SchemaRegistry.registerSchema(name, schemaCid, agentId).
-     * 
-     * @returns The registered schema data
      */
     async register(params: RegisterSchemaParams): Promise<RegisteredSchema> {
         const owner = this.requireAccount();
@@ -106,22 +90,25 @@ export class SchemaRole {
     }
 
     /**
-     * Fetch a registered schema by its on-chain schema name.
-     * Returns undefined if the schemaId is not registered.
+     * Fetch a registered schema. Accepts either a schema name or a bytes32 id.
+     * Returns undefined if not registered.
      */
-    async get(schemaName: string): Promise<RegisteredSchema | undefined> {
+    async get(nameOrId: string | Hex): Promise<RegisteredSchema | undefined> {
         try {
-            const record = await this.schemaRegistry.getSchema(schemaName);
+            // Resolve id upfront so we can return it without a TODO placeholder
+            const schemaId = await this.schemaRegistry.schemaId(
+                typeof nameOrId === "string" && !/^0x[0-9a-fA-F]{64}$/.test(nameOrId)
+                    ? nameOrId
+                    : nameOrId as Hex
+            );
+
+            const record = await this.schemaRegistry.getSchema(nameOrId);
             if (!record.cid) return undefined;
-
-            
-            console.log('found ' + JSON.stringify(record))
-
 
             const blob = (await this.storage.retrieve(record.cid)) as SchemaBlobV1;
 
             return {
-                schemaId: "0xTODO",
+                schemaId,
                 schemaCid: record.cid,
                 definition: blob.definition,
                 name: blob.name,
@@ -129,7 +116,7 @@ export class SchemaRole {
                 owner: blob.owner,
             };
         } catch (e) {
-            console.error(e)
+            console.error(e);
             return undefined;
         }
     }
@@ -139,8 +126,8 @@ export class SchemaRole {
      *
      * Shallow type-level check — catches missing fields and type mismatches
      * before a publisher wastes gas on a bad commit. Encrypted fields require
-     * a `handle` object to be present; ciphertext validity is enforced by the
-     * encryption service at upload time.
+     * a `handle` object; ciphertext validity is enforced by the encryption
+     * service at upload time.
      *
      * Returns a list of validation errors, or an empty array if valid.
      */
@@ -160,22 +147,18 @@ export class SchemaRole {
                     if (typeof value !== "string")
                         errors.push(`Field "${field}" must be a string, got ${typeof value}`);
                     break;
-
                 case "number":
                     if (typeof value !== "number")
                         errors.push(`Field "${field}" must be a number, got ${typeof value}`);
                     break;
-
                 case "boolean":
                     if (typeof value !== "boolean")
                         errors.push(`Field "${field}" must be a boolean, got ${typeof value}`);
                     break;
-
                 case "bytes":
                     if (!(value instanceof Uint8Array) && !ArrayBuffer.isView(value))
                         errors.push(`Field "${field}" must be bytes (Uint8Array)`);
                     break;
-
                 case "encrypted": {
                     const asObj = value as Record<string, unknown>;
                     if (!asObj.handle || typeof asObj.handle !== "object")
@@ -195,7 +178,6 @@ export class SchemaRole {
         if (!address) throw new Error("No account connected to wallet client");
         return address;
     }
-
 
     private requireAgent0(): SDK {
         if (!this.agent0) {

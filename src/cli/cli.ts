@@ -25,7 +25,7 @@ import { homedir } from "os";
 import { Identity } from "@semaphore-protocol/identity";
 import "dotenv/config";
 
-import { Fangorn, type AgentConfig } from "../fangorn.js";
+import { Fangorn } from "../fangorn.js";
 import { PinataStorage } from "../providers/storage/pinata/index.js";
 import { LitEncryptionService } from "../modules/encryption/lit.js";
 import { AppConfig, FangornConfig, SupportedNetworks } from "../config.js";
@@ -34,6 +34,7 @@ import { SettledGadget } from "../modules/gadgets/settledGadget.js";
 import { getChain, handleCancel, selectChain } from "./index.js";
 import type { SchemaDefinition } from "../roles/schema/index.js";
 import type { PublishRecord } from "../roles/publisher/index.js";
+import { AgentConfig } from "../types/index.js";
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -101,18 +102,16 @@ async function getFangorn(chain: Chain): Promise<Fangorn> {
     if (_fangorn) return _fangorn;
 
     const cfg = loadConfig();
-
-    const walletClient = createWalletClient({
-        account: getAccount(),
-        transport: http(cfg.cfg.rpcUrl),
-        chain,
-    });
-
-    const storage = new PinataStorage(cfg.jwt, cfg.gateway);
-    const encryptionService = await LitEncryptionService.init(cfg.cfg.chainName);
     const agentConfig: AgentConfig = { privateKey: cfg.privateKey, pinataJwt: cfg.jwt };
 
-    _fangorn = Fangorn.init(walletClient, storage, encryptionService, "localhost", cfg.cfg, agentConfig);
+    _fangorn = await Fangorn.create({
+        privateKey: cfg.privateKey,
+        storage: { pinata: { jwt: cfg.jwt, gateway: cfg.gateway } },
+        encryption: { lit: true },
+        domain: "localhost",
+        config: cfg.cfg,
+        agentConfig
+    });
     return _fangorn;
 }
 
@@ -134,20 +133,19 @@ function getMimeType(ext: string): string {
     return types[ext.toLowerCase()] ?? "application/octet-stream";
 }
 
-async function resolveSchemaId(fangorn: Fangorn, schemaOrId: string): Promise<Hex> {
-    if (schemaOrId.startsWith("0x") && schemaOrId.length === 66) {
-        return schemaOrId as Hex;
-    }
-
+async function resolveSchemaId(fangorn: Fangorn, schemaName: string): Promise<Hex> {
+    // if it is the schema name then we resolve it to the id here
     try {
-        await fangorn.getSchemaRegistry().getSchema(schemaOrId);
+        return await fangorn.getSchemaRegistry().schemaId(
+            typeof schemaName === "string" && !/^0x[0-9a-fA-F]{64}$/.test(schemaName)
+                ? schemaName
+                : schemaName as Hex
+        );
     } catch {
         throw new Error(
-            `Schema "${schemaOrId}" not found on-chain. Register it with \`fangorn schema register\`.`,
+            `Schema "${schemaName}" not found on-chain. Register it with \`fangorn schema register\`.`,
         );
     }
-
-    return keccak256(toBytes(schemaOrId));
 }
 
 const program = new Command();
@@ -337,12 +335,13 @@ publishCmd
     .command("upload")
     .description("Encrypt and publish file(s) under a schema")
     .argument("<files...>", "File path(s) to upload")
-    .requiredOption("-s, --schema <schemaOrId>", "Schema name or bytes32 ID")
+    .requiredOption("-s, --schema <schemaOrId>", "Schema name or bytes32 ID (e.g. 0x...)")
     .option("-c, --chain <chain>", "Chain to use")
-    .option("-p, --price <wei>", "Resource price in wei", "0")
+    .option("-p, --price <USDC>", "Resource price in USDC", "0")
+    .option("-o, --overwrite", "If true, overwrite any existing data", false)
     .action(async (
         files: string[],
-        options: { chain: string; schema: string; price: string },
+        options: { chain: string; schema: string; price: string; overwrite: boolean },
     ) => {
         try {
             const chain = getChain(options.chain);
@@ -356,21 +355,23 @@ publishCmd
             const schemaRecord = await fangorn.schema.get(options.schema);
             const schema: SchemaDefinition = schemaRecord?.definition ?? {};
 
-            const records: PublishRecord[] = files.map((filepath) => {
-                const data = readFileSync(filepath);
-                const tag = basename(filepath);
-                const ext = extname(filepath);
-                return {
-                    tag,
-                    fields: {
-                        content: {
-                            data: new Uint8Array(data),
-                            extension: ext,
-                            fileType: getMimeType(ext),
-                        },
-                    },
-                };
+            const records: PublishRecord[] = files.flatMap((filepath) => {
+                const data = readFileSync(filepath, 'utf-8');
+                const parsed = JSON.parse(data, (key, value) => {
+                    if (key === 'data') {
+                        if (Array.isArray(value)) {
+                            return new Uint8Array(value.map(v => Number(v)));
+                        }
+                        if (typeof value === 'object' && value !== null) {
+                            return new Uint8Array(Object.values(value).map(v => Number(v)));
+                        }
+                    }
+                    return value;
+                });
+                return Array.isArray(parsed) ? parsed : [parsed];
             });
+
+            console.log(JSON.stringify(records[0]))
 
             s.start("Encrypting and publishing...");
             const result = await fangorn.publisher.upload(
@@ -379,12 +380,16 @@ publishCmd
                     schema,
                     schemaId,
                     gateway: cfg.gateway,
-                    gadgetFactory: (tag) => new SettledGadget({
-                        resourceId: SettlementRegistry.deriveResourceId(owner, schemaId, tag),
-                        settlementRegistryAddress: cfg.cfg.settlementRegistryContractAddress,
-                        chainName: cfg.cfg.chainName,
-                        pinataJwt: cfg.jwt,
-                    }),
+                    options: { overwrite: options.overwrite },
+                    gadgetFactory: (tag) => {
+                        return new SettledGadget({
+                            resourceId: SettlementRegistry.deriveResourceId(owner, schemaId, tag),
+                            settlementRegistryAddress: cfg.cfg.settlementRegistryContractAddress,
+                            chainName: cfg.cfg.chainName,
+                            pinataJwt: cfg.jwt,
+                        }
+                        )
+                    },
                 },
                 price,
             );

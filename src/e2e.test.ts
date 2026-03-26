@@ -70,14 +70,14 @@ const ENCRYPTED_FIELD = "audio";
 const PINATA_GATEWAY = process.env.PINATA_GW ?? "https://gateway.pinata.cloud";
 
 const TEST_RECORDS: PublishRecord[] = [
-	{
-		tag: "track-01",
-		fields: {
-			title: "Track One",
-			artist: "Alice",
-			audio: { data: new Uint8Array([1, 2, 3, 4, 5]), fileType: "audio/mp3" },
+		{
+			tag: "track-01",
+			fields: {
+				title: "Track One",
+				artist: "Alice",
+				audio: { data: new Uint8Array([1, 2, 3, 4, 5]), fileType: "audio/mp3" },
+			},
 		},
-	},
 	{
 		tag: "track-02",
 		fields: {
@@ -87,8 +87,6 @@ const TEST_RECORDS: PublishRecord[] = [
 		},
 	},
 ];
-
-// ── Suite ─────────────────────────────────────────────────────────────────────
 
 describe("Fangorn E2E", () => {
 	let testbed: TestBed;
@@ -221,7 +219,8 @@ describe("Fangorn E2E", () => {
 						testbed.tryDecrypt(
 							ownerAddress, 0n,
 							SK,
-							schemaId, tag,
+							schemaId, 
+							tag,
 							ENCRYPTED_FIELD,
 							RPC_URL,
 							undefined,

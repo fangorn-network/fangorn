@@ -308,14 +308,14 @@ export class SettlementRegistry {
     // utils
 
     /**
-     * Deterministic resource_id = keccak256(ownerAddress ++ schemaId ++ tag).
-     * Matches the hash_concat logic in the Rust contract.
+     * Deterministic resource_id = keccak256(ownerAddress ++ schemaName ++ tag).
+     * This can be implemented in any way as long as owner/schema/tag produces a unique output
      */
-    static deriveResourceId(owner: Address, schemaId: Hex, tag: string): Hex {
+    static deriveResourceId(owner: Address, schemaName: string, tag: string): Hex {
         return keccak256(
             encodePacked(
-                ["address", "bytes32", "bytes"],
-                [owner, schemaId, `0x${Buffer.from(tag).toString("hex")}`],
+                ["address", "string", "string"],
+                [owner, schemaName, tag],
             ),
         );
     }

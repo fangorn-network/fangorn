@@ -21,12 +21,13 @@ export class PublisherRole {
     ) { }
 
     /**
-     * Full pipeline: validate records against the schema, encrypt encrypted
+     * Encrypt and Upload data with Fangorn
+     * Validate records against the schema, encrypt encrypted
      * fields, stage all resolved entries, then commit to IPFS + on-chain.
      *
      * Each encrypted field within a record is stored as a separate IPFS object
      * (the ciphertext). The manifest entry stores the handle (CID + gateway)
-     * alongside the plain fields — consumers can read plain fields freely and
+     * alongside the plain fields. Consumers can read plain fields freely and
      * only need to purchase + decrypt for encrypted fields.
      */
     async upload(params: UploadParams, price: bigint): Promise<CommitResult> {
@@ -38,6 +39,7 @@ export class PublisherRole {
         }
 
         for (const record of records) {
+            console.log('validating ' + JSON.stringify(records[0]))
             this.validateRecord(record, schema);
             const gadget = await gadgetFactory(record.tag);
             const entry = await this.resolveRecord(record, schema, gadget, gateway);
@@ -81,6 +83,7 @@ export class PublisherRole {
         const entries = Array.from(this.pendingEntries.values());
 
         for (const entry of entries) {
+
             const resourceId = SettlementRegistry.deriveResourceId(owner, schemaId, entry.tag);
             try {
                 await this.settlementRegistry.createResource(resourceId, price);
@@ -119,8 +122,6 @@ export class PublisherRole {
         if (!entry) throw new Error(`Entry not found: "${tag}"`);
         return entry;
     }
-
-    // ── Private ───────────────────────────────────────────────────────────────
 
     private requireAccount(): Address {
         const address = this.walletClient.account?.address;
@@ -170,7 +171,7 @@ export class PublisherRole {
                     gadgetDescriptor,
                 } satisfies ResolvedEncryptedField;
             } else {
-                // plain — store as-is
+                // plain -> no change
                 resolvedFields[fieldName] = value as ResolvedPlainField;
             }
         }
@@ -239,10 +240,7 @@ export class PublisherRole {
                 break;
             case "encrypted":
                 if (
-                    typeof value !== "object" ||
-                    // value === null ||
-                    !("data" in value) ||
-                    !((value).data instanceof Uint8Array)
+                    typeof value !== "object" || !("data" in value) || !((value).data instanceof Uint8Array)
                 ) {
                     errors.push(
                         `"${fieldName}" is encrypted — expected EncryptedFieldInput { data: Uint8Array }`,
@@ -254,7 +252,7 @@ export class PublisherRole {
 
     /**
      * Load the existing manifest into pending entries for merge behaviour.
-     * Unpins the old manifest CID — it will be replaced on commit().
+     * Unpins the old manifest CID - it will be replaced on commit().
      */
     private async loadExistingManifest(owner: Address, schemaId: Hex): Promise<void> {
         try {
@@ -272,7 +270,7 @@ export class PublisherRole {
                 console.warn(`Failed to unpin old manifest ${ds.manifestCid}:`, e);
             }
         } catch {
-            // No existing manifest — first publish, fine.
+            // No existing manifest (first publish)
         }
     }
 }

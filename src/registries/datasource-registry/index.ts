@@ -61,7 +61,7 @@ export class DataSourceRegistry {
     async publishManifest(
         manifestCid: string,
         schemaId: Hex,
-    ): Promise<{ hash: Hash; version: bigint }> {
+    ): Promise<Hash> {
         const { chain, account } = this.getWriteConfig();
         const hash = await this.walletClient.writeContract({
             address: this.contractAddress,
@@ -78,14 +78,15 @@ export class DataSourceRegistry {
             logs: receipt.logs,
         });
 
-        if (logs.length === 0) {
-            throw new Error("publishManifest: ManifestPublished event not found in receipt");
-        }
+        // TODO: could be either ManifestPublished OR ManifestUpdated
+        // if (logs.length === 0) {
+        //     throw new Error("publishManifest: ManifestPublished event not found in receipt");
+        // }
         
-        const event = logs[0];
+        // const event = logs[0];
         
-        const version = event.args.version;
-        return { hash, version };
+        // const version = event.args.version;
+        return hash;
     }
 
     /// Get the manifest CID and version for a given (owner, schemaId) pair.
