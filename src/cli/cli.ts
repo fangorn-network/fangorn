@@ -31,18 +31,28 @@ import { AgentConfig } from "../types/index.js";
 import { AppConfig, FangornConfig, SupportedNetworks } from "../config.js";
 import { SettlementRegistry } from "../registries/settlement-registry/index.js";
 
+// ─── Config types ─────────────────────────────────────────────────────────────
+
+type StorageProvider = "pinata" | "storacha";
+
 interface StoredConfig {
     privateKey: Hex;
-    jwt: string;
-    gateway: string;
     chainName: string;
+    storage: StorageProvider;
+    // Pinata
+    jwt?: string;
+    gateway?: string;
+    // Storacha
+    storachaEmail?: string;
 }
 
 interface Config {
     privateKey: Hex;
-    jwt: string;
-    gateway: string;
     cfg: AppConfig;
+    storage: StorageProvider;
+    jwt?: string;
+    gateway?: string;
+    storachaEmail?: string;
 }
 
 const CONFIG_DIR = join(homedir(), ".fangorn");
@@ -52,25 +62,40 @@ let _config: Config | null = null;
 let _account: PrivateKeyAccount | null = null;
 let _fangorn: Fangorn | null = null;
 
-function buildConfig({ privateKey, jwt, gateway, chainName }: StoredConfig): Config {
+function buildConfig(stored: StoredConfig): Config {
     let cfg: AppConfig = FangornConfig.BaseSepolia;
-    if (chainName === SupportedNetworks.ArbitrumSepolia.name) {
+    if (stored.chainName === SupportedNetworks.ArbitrumSepolia.name) {
         cfg = FangornConfig.ArbitrumSepolia;
     }
-    return { privateKey, jwt, gateway, cfg };
+    return {
+        privateKey: stored.privateKey,
+        cfg,
+        storage: stored.storage,
+        jwt: stored.jwt,
+        gateway: stored.gateway,
+        storachaEmail: stored.storachaEmail,
+    };
 }
 
 function loadConfig(): Config {
     if (_config) return _config;
 
+    // Env var path — Pinata only for backwards compat
     const privateKey = process.env.DELEGATOR_ETH_PRIVATE_KEY;
     const jwt = process.env.PINATA_JWT;
     const gateway = process.env.PINATA_GATEWAY;
     const chainName = process.env.CHAIN_NAME;
+    const storachaEmail = process.env.STORACHA_EMAIL;
 
-    if (privateKey && jwt && gateway && chainName) {
-        _config = buildConfig({ privateKey: privateKey as Hex, jwt, gateway, chainName });
-        return _config;
+    if (privateKey && chainName) {
+        if (jwt && gateway) {
+            _config = buildConfig({ privateKey: privateKey as Hex, chainName, storage: "pinata", jwt, gateway });
+            return _config;
+        }
+        if (storachaEmail) {
+            _config = buildConfig({ privateKey: privateKey as Hex, chainName, storage: "storacha", storachaEmail });
+            return _config;
+        }
     }
 
     if (existsSync(CONFIG_PATH)) {
@@ -80,8 +105,9 @@ function loadConfig(): Config {
     }
 
     throw new Error(
-        "No configuration found. Run `fangorn init` or set " +
-        "DELEGATOR_ETH_PRIVATE_KEY, PINATA_JWT, PINATA_GATEWAY, CHAIN_NAME env vars.",
+        "No configuration found. Run `fangorn init` or set the required env vars.\n" +
+        "  Pinata:   DELEGATOR_ETH_PRIVATE_KEY, PINATA_JWT, PINATA_GATEWAY, CHAIN_NAME\n" +
+        "  Storacha: DELEGATOR_ETH_PRIVATE_KEY, STORACHA_EMAIL, CHAIN_NAME",
     );
 }
 
@@ -95,39 +121,26 @@ async function getFangorn(): Promise<Fangorn> {
     if (_fangorn) return _fangorn;
 
     const cfg = loadConfig();
-    const agentConfig: AgentConfig = { privateKey: cfg.privateKey, pinataJwt: cfg.jwt };
+    const agentConfig: AgentConfig = { privateKey: cfg.privateKey, pinataJwt: cfg.jwt ?? "" };
+
+    // TODO: CLI defaults to empty strings if storage has been misconfigured
+    // this will cause errors later on, so we should probably fail early here.
+    const storage = cfg.storage === "storacha"
+        ? { storacha: { email: cfg.storachaEmail ?? "" } }
+        : { pinata: { jwt: cfg.jwt ?? "", gateway: cfg.gateway ?? "" } };
 
     _fangorn = await Fangorn.create({
         privateKey: cfg.privateKey,
-        storage: { pinata: { jwt: cfg.jwt, gateway: cfg.gateway } },
+        storage,
         encryption: { lit: true },
         domain: "localhost",
         config: cfg.cfg,
-        agentConfig
+        agentConfig,
     });
     return _fangorn;
 }
 
-// function getMimeType(ext: string): string {
-//     const types: Record<string, string> = {
-//         ".txt": "text/plain",
-//         ".json": "application/json",
-//         ".html": "text/html",
-//         ".css": "text/css",
-//         ".js": "application/javascript",
-//         ".png": "image/png",
-//         ".jpg": "image/jpeg",
-//         ".jpeg": "image/jpeg",
-//         ".gif": "image/gif",
-//         ".pdf": "application/pdf",
-//         ".mp3": "audio/mpeg",
-//         ".mp4": "video/mp4",
-//     };
-//     return types[ext.toLowerCase()] ?? "application/octet-stream";
-// }
-
 async function resolveSchemaId(fangorn: Fangorn, schemaName: string): Promise<Hex> {
-    // if it is the schema name then we resolve it to the id here
     try {
         return await fangorn.getSchemaRegistry().schemaId(
             typeof schemaName === "string" && !/^0x[0-9a-fA-F]{64}$/.test(schemaName)
@@ -141,10 +154,11 @@ async function resolveSchemaId(fangorn: Fangorn, schemaName: string): Promise<He
     }
 }
 
+// ─── CLI ──────────────────────────────────────────────────────────────────────
+
 const program = new Command();
 program.name("fangorn").description("Fangorn Network CLI").version("0.1.0");
 
-// initialize the CLI 
 program
     .command("init")
     .description("Configure your Fangorn credentials")
@@ -162,19 +176,6 @@ program
         });
         handleCancel(privateKey);
 
-        const jwt = await text({
-            message: "Pinata JWT:",
-            validate: (v) => { if (!v) return "Required"; },
-        });
-        handleCancel(jwt);
-
-        const gateway = await text({
-            message: "Pinata Gateway URL:",
-            placeholder: "https://your-gateway.mypinata.cloud",
-            validate: (v) => { if (!v) return "Required"; },
-        });
-        handleCancel(gateway);
-
         const chainName = await select({
             message: "Default chain:",
             options: [
@@ -184,12 +185,47 @@ program
         });
         handleCancel(chainName);
 
+        const storageChoice = await select({
+            message: "Storage provider:",
+            options: [
+                { value: "pinata",   label: "Pinata" },
+                { value: "storacha", label: "Storacha" },
+            ],
+        });
+        handleCancel(storageChoice);
+
         const stored: StoredConfig = {
             privateKey: privateKey as Hex,
-            jwt: jwt as string,
-            gateway: gateway as string,
             chainName: chainName as string,
+            storage: storageChoice as StorageProvider,
         };
+
+        if (storageChoice === "pinata") {
+            const jwt = await text({
+                message: "Pinata JWT:",
+                validate: (v) => { if (!v) return "Required"; },
+            });
+            handleCancel(jwt);
+
+            const gateway = await text({
+                message: "Pinata Gateway URL:",
+                placeholder: "https://your-gateway.mypinata.cloud",
+                validate: (v) => { if (!v) return "Required"; },
+            });
+            handleCancel(gateway);
+
+            stored.jwt = jwt as string;
+            stored.gateway = gateway as string;
+        } else {
+            const storachaEmail = await text({
+                message: "Storacha email:",
+                placeholder: "you@example.com",
+                validate: (v) => { if (!v) return "Required"; },
+            });
+            handleCancel(storachaEmail);
+
+            stored.storachaEmail = storachaEmail as string;
+        }
 
         if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true });
         writeFileSync(CONFIG_PATH, JSON.stringify(stored, null, 2), "utf-8");
@@ -198,12 +234,12 @@ program
         outro(`Config saved to ${CONFIG_PATH}`);
     });
 
-// schema
+// ─── schema ───────────────────────────────────────────────────────────────────
+
 const schemaCmd = program
     .command("schema")
     .description("Schema registry operations");
 
-// Register an (optional) agent (ERC-8004) and a schema associated wiht it
 schemaCmd
     .command("register")
     .description("Register an agent identity and/or a schema on-chain")
@@ -222,7 +258,6 @@ schemaCmd
             let datasourceAgentId = "";
             let description = "";
 
-            // ERC-8004
             if (!options.skipErc) {
                 intro("ERC-8004 Agent Registration");
 
@@ -239,7 +274,6 @@ schemaCmd
                 outro("Agent Registration complete.");
             }
 
-            // Schema Registry
             intro("Schema Registration");
 
             const schemaFilePath = (await text({
@@ -282,7 +316,6 @@ schemaCmd
             s.stop();
 
             note(`Schema ID: ${schemaId}\nCID:       ${schemaCid}`, "Schema registered");
-
             process.exit(0);
         } catch (err) {
             console.error("Failed:", (err as Error).message);
@@ -317,7 +350,7 @@ schemaCmd
         }
     });
 
-// publish
+// ─── publish ──────────────────────────────────────────────────────────────────
 
 const publishCmd = program
     .command("publish")
@@ -346,26 +379,24 @@ publishCmd
             const schemaRecord = await fangorn.schema.get(options.schema);
             const schema: SchemaDefinition = schemaRecord?.definition ?? {};
             const records: PublishRecord[] = files.flatMap((filepath) => {
-                const data = readFileSync(filepath, 'utf-8');
-                // cast JSON.parse to unknown to satisfy no-unsafe-assignment
+                const data = readFileSync(filepath, "utf-8");
                 const parsed = JSON.parse(data, (key, value: unknown) => {
-                    if (key === 'data') {
+                    if (key === "data") {
                         if (Array.isArray(value)) {
                             return new Uint8Array(value.map(v => Number(v)));
                         }
-                        // 2. Narrow the type for Object.values to satisfy no-unsafe-argument
-                        if (typeof value === 'object' && value !== null) {
+                        if (typeof value === "object" && value !== null) {
                             const obj = value as Record<string, unknown>;
                             return new Uint8Array(Object.values(obj).map(v => Number(v)));
                         }
                     }
                     return value;
-                }) as unknown; // Cast the result of parse to unknown
-
-                // use an array cast to satisfy no-unsafe-return
+                }) as unknown;
                 const results = Array.isArray(parsed) ? (parsed as PublishRecord[]) : ([parsed] as PublishRecord[]);
                 return results;
             });
+
+            const gateway = cfg.storage === "pinata" ? (cfg.gateway ?? "") : "";
 
             s.start("Encrypting and publishing...");
             const result = await fangorn.publisher.upload(
@@ -373,26 +404,23 @@ publishCmd
                     records,
                     schema,
                     schemaId,
-                    gateway: cfg.gateway,
+                    gateway,
                     options: { overwrite: options.overwrite },
-                    gadgetFactory: (tag) => {
-                        return new SettledGadget({
-                            resourceId: SettlementRegistry.deriveResourceId(owner, schemaId, tag),
-                            settlementRegistryAddress: cfg.cfg.settlementRegistryContractAddress,
-                            chainName: cfg.cfg.chainName,
-                            pinataJwt: cfg.jwt,
-                        }
-                        )
-                    },
+                    gadgetFactory: (tag) => new SettledGadget({
+                        resourceId: SettlementRegistry.deriveResourceId(owner, schemaId, tag),
+                        settlementRegistryAddress: cfg.cfg.settlementRegistryContractAddress,
+                        chainName: cfg.cfg.chainName,
+                        pinataJwt: cfg.jwt ?? "",
+                    }),
                 },
                 price,
             );
             s.stop();
 
             note(
-                `Manifest CID: ${result.manifestCid}\n
-                 Entries:      ${result.entryCount.toString()}\n
-                 Schema:       ${result.schemaId}`,
+                `Manifest CID: ${result.manifestCid}\n` +
+                `Entries:      ${result.entryCount.toString()}\n` +
+                `Schema:       ${result.schemaId}`,
                 "Upload complete",
             );
             process.exit(0);
@@ -449,7 +477,7 @@ publishCmd
         }
     });
 
-// ─── consume ─────────────────────────────────────────────────────────────────
+// ─── consume ──────────────────────────────────────────────────────────────────
 
 const consumeCmd = program
     .command("consume")
@@ -712,7 +740,7 @@ consumeCmd
         }
     });
 
-// ─── datasource ──────────────────────────────────────────────────────────────
+// ─── datasource ───────────────────────────────────────────────────────────────
 
 program
     .command("datasource")

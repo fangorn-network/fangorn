@@ -2,7 +2,7 @@ import { type Address, type Hex } from "viem";
 import { type Identity } from "@semaphore-protocol/identity";
 import { DataSourceRegistry } from "../../registries/datasource-registry";
 import { SettlementRegistry } from "../../registries/settlement-registry";
-import StorageProvider from "../../providers/storage";
+import { ReadableStorage } from "../../providers/storage";
 import { EncryptionService } from "../../modules/encryption";
 import { ClaimParams, ClaimResult, DecryptParams, PurchaseParams, PurchaseResult } from "./types";
 import { EncryptedPayload } from "../../modules/encryption/types";
@@ -14,9 +14,9 @@ import { PrepareSettleParams, PrepareSettleResult, TransferWithAuthParams, Trans
  */
 export class ConsumerRole {
 	constructor(
-		private readonly dataSourceRegistry: DataSourceRegistry,
+	private readonly dataSourceRegistry: DataSourceRegistry,
 		private readonly settlementRegistry: SettlementRegistry,
-		private readonly storage: StorageProvider<unknown>,
+		private readonly storage: ReadableStorage<unknown>,
 		private readonly encryptionService: EncryptionService,
 		private readonly domain: string,
 	) { }
@@ -129,22 +129,6 @@ export class ConsumerRole {
 		const decrypted = await this.encryptionService.decrypt(encrypted, authContext);
 		return decrypted.data;
 	}
-
-	// /**
-	//  * Convenience: purchase → await confirmation → claim → decrypt a field.
-	//  * For agent/script flows that can block on each step.
-	//  */
-	// async access(params: AccessParams): Promise<AccessResult> {
-	// 	const { owner, schemaId, tag, field, identity, payment, proof, authContext } = params;
-
-	// 	const { resourceId } = await this.purchase({ owner, schemaId, tag, identity, payment });
-	// 	await this.awaitRegistration(resourceId, identity.commitment);
-	// 	await this.claim({ owner, schemaId, tag, proof });
-	// 	const data = await this.decrypt({ owner, schemaId, tag, field, identity, authContext });
-	// 	const entry = await this.getEntry(owner, schemaId, tag);
-
-	// 	return { data, resourceId, entry };
-	// }
 
 	async getManifest(owner: Address, schemaId: Hex): Promise<Manifest | undefined> {
 		try {

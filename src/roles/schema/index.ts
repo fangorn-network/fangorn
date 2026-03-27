@@ -1,7 +1,7 @@
 import { type Hex, type WalletClient } from "viem";
 import { SDK } from "agent0-sdk";
 import { SchemaRegistry } from "../../registries/schema-registry";
-import StorageProvider from "../../providers/storage";
+import { WritableStorage } from "../../providers/storage";
 import { RegisterAgentParams, RegisteredAgent, RegisteredSchema, RegisterSchemaParams, SchemaBlobV1, SchemaDefinition, SchemaRoleConfig } from "./types";
 
 export * from './types';
@@ -11,7 +11,7 @@ export class SchemaRole {
 
     constructor(
         private readonly schemaRegistry: SchemaRegistry,
-        private readonly storage: StorageProvider<unknown>,
+        private readonly storage: WritableStorage<unknown>,
         private readonly walletClient: WalletClient,
         config?: SchemaRoleConfig,
     ) {

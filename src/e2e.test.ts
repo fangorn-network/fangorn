@@ -42,8 +42,6 @@ const CHAIN = arbitrumSepolia;
 
 // In production derive stealthAddress via EIP-5564; fixed for tests
 const STEALTH_ADDRESS = privateKeyToAccount(BURNER_SK).address;
-// const STEALTH_ADDRESS = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" as `0x${string}`;
-
 const hasIpfs = !!PINATA_JWT;
 
 function makeWallet(key: Hex) {
@@ -53,12 +51,6 @@ function makeWallet(key: Hex) {
 		transport: http(RPC_URL),
 	});
 }
-
-const publicClient = createPublicClient({ chain: CHAIN, transport: http(RPC_URL) });
-
-// async function waitFor(hash: Hex) {
-// 	return publicClient.waitForTransactionReceipt({ hash });
-// }
 
 const MUSIC_SCHEMA: SchemaDefinition = {
 	title: { "@type": "string" },

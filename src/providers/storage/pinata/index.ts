@@ -1,7 +1,7 @@
 import { PinataSDK } from "pinata";
-import StorageProvider from "..";
+import { WritableStorage } from "..";
 
-export class PinataStorage implements StorageProvider<unknown> {
+export class PinataStorage implements WritableStorage<unknown> {
 	private pinata: PinataSDK;
 	private gateway: string;
 
