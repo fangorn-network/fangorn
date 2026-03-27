@@ -6,6 +6,7 @@ import { WritableStorage } from "../../providers/storage";
 import { EncryptionService } from "../../modules/encryption";
 import { CommitResult, EncryptedFieldInput, FieldInput, Manifest, ManifestEntry, PublishRecord, ResolvedEncryptedField, ResolvedField, ResolvedPlainField, UploadParams } from "./types";
 import { SettlementRegistry } from "../../registries/settlement-registry";
+import { from } from "@storacha/client/principal/ed25519";
 
 export * from './types';
 
@@ -34,10 +35,11 @@ export class PublisherRole {
         const { records, schema, schemaId, gadgetFactory, gateway, options } = params;
         const owner = this.requireAccount();
 
-        if (!options?.overwrite) {
-            await this.loadExistingManifest(owner, schemaId);
-        }
+        // if (!options?.overwrite) {
+        //     await this.loadExistingManifest(owner, schemaId);
+        // }
 
+        // we only need to validate new records 
         for (const record of records) {
             console.log('validating ' + JSON.stringify(records[0]))
             this.validateRecord(record, schema);
@@ -46,7 +48,7 @@ export class PublisherRole {
             this.pendingEntries.set(record.tag, entry);
         }
 
-        return this.commit(schemaId, price);
+        return this.commit(schemaId, price, options?.overwrite ?? false);
     }
 
     /**
@@ -72,25 +74,38 @@ export class PublisherRole {
     /**
      * Serialize all staged entries into a manifest, create SettlementRegistry
      * resources for each entry, pin the manifest to IPFS, and publish on-chain.
+     * 
+     * @param schemaId: The unique id of the schema
+     * @param price: The USDC price required to register with the sempaphore group
+     * @param overwrite: If true, overwrite manifest data, else append (default: false)
+     * 
      */
-    async commit(schemaId: Hex, price: bigint): Promise<CommitResult> {
+    async commit(schemaId: Hex, price: bigint, overwrite: boolean): Promise<CommitResult> {
         const owner = this.requireAccount();
 
         if (this.pendingEntries.size === 0) {
-            throw new Error("Nothing to commit — stage at least one record");
+            throw new Error("Nothing to commit. Stage at least one record.");
         }
 
-        const entries = Array.from(this.pendingEntries.values());
+        let entries = Array.from(this.pendingEntries.values());
 
         for (const entry of entries) {
-
             const resourceId = SettlementRegistry.deriveResourceId(owner, schemaId, entry.tag);
             try {
                 await this.settlementRegistry.createResource(resourceId, price);
             } catch (e: unknown) {
                 const msg = e instanceof Error ? e.message : String(e);
-                if (!msg.includes("ResourceAlreadyExists") && !msg.includes("AlreadyExists")) throw e;
+                if (!msg.includes("ResourceAlreadyExists")
+                    && !msg.includes("AlreadyExists"))
+                    console.warn("Failed to create the resource: already exists!");
             }
+        }
+
+        // enrich the entries with exist manifest items
+        if (!overwrite) {
+            const existingEntriesMap = await this.loadExistingManifest(owner, schemaId);
+            const vals = existingEntriesMap.values();
+            entries = [...Array.from(vals), ...entries]
         }
 
         const manifest: Manifest = { version: 1, schemaId, entries };
@@ -145,8 +160,8 @@ export class PublisherRole {
         const resolvedFields: Record<string, ResolvedField> = {};
 
         for (const [fieldName, fieldDef] of Object.entries(schema)) {
-            const value = record.fields[fieldName]; 
-            
+            const value = record.fields[fieldName];
+
             if (fieldDef["@type"] === "encrypted") {
                 const input = value as EncryptedFieldInput;
                 const encrypted = await this.encryptionService.encrypt(
@@ -252,25 +267,34 @@ export class PublisherRole {
 
     /**
      * Load the existing manifest into pending entries for merge behaviour.
-     * Unpins the old manifest CID - it will be replaced on commit().
+     * Unpins the old manifest CID
      */
-    private async loadExistingManifest(owner: Address, schemaId: Hex): Promise<void> {
+    private async loadExistingManifest(
+        owner: Address,
+        schemaId: Hex
+    ): Promise<Map<string, ManifestEntry>> {
+        let entries = new Map<string, ManifestEntry>();
+
         try {
             const ds = await this.dataSourceRegistry.getManifest(owner, schemaId);
-            if (!ds.manifestCid) return;
+            if (!ds.manifestCid) return entries;
 
             const manifest = (await this.storage.retrieve(ds.manifestCid)) as Manifest;
             for (const entry of manifest.entries) {
-                this.pendingEntries.set(entry.tag, entry);
+                entries.set(entry.tag, entry);
             }
 
             try {
                 await this.storage.delete(ds.manifestCid);
             } catch (e) {
                 console.warn(`Failed to unpin old manifest ${ds.manifestCid}:`, e);
+            } finally {
+                return entries;
             }
         } catch {
             // No existing manifest (first publish)
+        } finally {
+            return entries;
         }
     }
 }

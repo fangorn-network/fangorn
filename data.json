@@ -1,29 +1,12 @@
 [
     {
-        "tag": "track1",
+        "tag": "track4",
         "fields": {
-            "title": "The Defiance of Anthropomorphic Sea Mammals",
-            "artist": "Fred & Carrie",
+            "title": "That Boy Ain't Right",
+            "artist": "Theo Cappucino",
             "audio": {
                 "data": [
-                    1,
-                    0,
-                    0,
-                    0,
-                    0
-                ],
-                "fileType": "audio/mp3"
-            }
-        }
-    },
-    {
-        "tag": "track2",
-        "fields": {
-            "title": "I Never Liked Digging Holes",
-            "artist": "Stanley Yelnats",
-            "audio": {
-                "data": [
-                    2,
+                    4,
                     0,
                     0,
                     0,

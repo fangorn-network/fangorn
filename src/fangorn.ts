@@ -21,17 +21,10 @@ import { PinataStorage, ReadableStorage, WritableStorage } from "./providers/sto
 import { StorachaStorage } from "./providers/storage/storacha/index.js";
 import { ReadOnlyStorachaStorage } from "./providers/storage/storacha/readOnly.js";
 
-// ── Encryption ────────────────────────────────────────────────────────────────
-
+// Module resolution
 function isEncryptionService(e: EncryptionConfig): e is EncryptionService {
 	return typeof (e as EncryptionService).encrypt === "function";
 }
-
-// ── Storage resolution ────────────────────────────────────────────────────────
-
-// function isStorageProvider(s: StorageConfig): s is StorageProvider<unknown> {
-// 	return typeof (s as StorageProvider<unknown>).retrieve === "function";
-// }
 
 function isPinataConfig(s: StorageConfig): s is { pinata: { jwt: string; gateway: string } } {
 	return "pinata" in (s as object);
@@ -50,7 +43,6 @@ function isWritable(s: ReadableStorage<unknown>): s is WritableStorage<unknown> 
 }
 
 async function resolveStorage(storage: StorageConfig): Promise<ReadableStorage<unknown>> {
-	// if (isStorageProvider(storage)) return storage;
 	if (isPinataConfig(storage)) return new PinataStorage(storage.pinata.jwt, storage.pinata.gateway);
 	if (isStorachaReadOnly(storage)) return new ReadOnlyStorachaStorage();
 	if (isStorachaConfig(storage)) return StorachaStorage.create(storage.storacha.email);
@@ -59,8 +51,6 @@ async function resolveStorage(storage: StorageConfig): Promise<ReadableStorage<u
 		"a { pinata } object, or a { storacha } object.",
 	);
 }
-
-// ── Fangorn ───────────────────────────────────────────────────────────────────
 
 export class Fangorn {
 	private readonly ctx: FangornContext;
@@ -79,7 +69,7 @@ export class Fangorn {
 	 */
 	get schema(): SchemaRole {
 		if (!isWritable(this.ctx.storage)) {
-			throw new Error("fangorn.schema requires writable storage — use { storacha: { email } } or { pinata: { ... } }");
+			throw new Error("fangorn.schema requires writable storage. Use { storacha: { email } } or { pinata: { ... } }");
 		}
 		return this._schema ??= new SchemaRole(
 			this.ctx.schemaRegistry,
@@ -95,7 +85,7 @@ export class Fangorn {
 	 */
 	get publisher(): PublisherRole {
 		if (!isWritable(this.ctx.storage)) {
-			throw new Error("fangorn.publisher requires writable storage — use { storacha: { email } } or { pinata: { ... } }");
+			throw new Error("fangorn.publisher requires writable storage. Use { storacha: { email } } or { pinata: { ... } }");
 		}
 		return this._publisher ??= new PublisherRole(
 			this.ctx.dataSourceRegistry,
