@@ -123,9 +123,11 @@ async function getFangorn(): Promise<Fangorn> {
     const cfg = loadConfig();
     const agentConfig: AgentConfig = { privateKey: cfg.privateKey, pinataJwt: cfg.jwt ?? "" };
 
+    // TODO: CLI defaults to empty strings if storage has been misconfigured
+    // this will cause errors later on, so we should probably fail early here.
     const storage = cfg.storage === "storacha"
-        ? { storacha: { email: cfg.storachaEmail! } }
-        : { pinata: { jwt: cfg.jwt!, gateway: cfg.gateway! } };
+        ? { storacha: { email: cfg.storachaEmail ?? "" } }
+        : { pinata: { jwt: cfg.jwt ?? "", gateway: cfg.gateway ?? "" } };
 
     _fangorn = await Fangorn.create({
         privateKey: cfg.privateKey,
@@ -394,7 +396,7 @@ publishCmd
                 return results;
             });
 
-            const gateway = cfg.storage === "pinata" ? cfg.gateway! : "";
+            const gateway = cfg.storage === "pinata" ? (cfg.gateway ?? "") : "";
 
             s.start("Encrypting and publishing...");
             const result = await fangorn.publisher.upload(

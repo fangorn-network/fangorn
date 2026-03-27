@@ -6,7 +6,6 @@ import { WritableStorage } from "../../providers/storage";
 import { EncryptionService } from "../../modules/encryption";
 import { CommitResult, EncryptedFieldInput, FieldInput, Manifest, ManifestEntry, PublishRecord, ResolvedEncryptedField, ResolvedField, ResolvedPlainField, UploadParams } from "./types";
 import { SettlementRegistry } from "../../registries/settlement-registry";
-import { from } from "@storacha/client/principal/ed25519";
 
 export * from './types';
 
@@ -33,11 +32,6 @@ export class PublisherRole {
      */
     async upload(params: UploadParams, price: bigint): Promise<CommitResult> {
         const { records, schema, schemaId, gadgetFactory, gateway, options } = params;
-        const owner = this.requireAccount();
-
-        // if (!options?.overwrite) {
-        //     await this.loadExistingManifest(owner, schemaId);
-        // }
 
         // we only need to validate new records 
         for (const record of records) {
@@ -273,7 +267,7 @@ export class PublisherRole {
         owner: Address,
         schemaId: Hex
     ): Promise<Map<string, ManifestEntry>> {
-        let entries = new Map<string, ManifestEntry>();
+        const entries = new Map<string, ManifestEntry>();
 
         try {
             const ds = await this.dataSourceRegistry.getManifest(owner, schemaId);
@@ -288,13 +282,10 @@ export class PublisherRole {
                 await this.storage.delete(ds.manifestCid);
             } catch (e) {
                 console.warn(`Failed to unpin old manifest ${ds.manifestCid}:`, e);
-            } finally {
-                return entries;
             }
         } catch {
             // No existing manifest (first publish)
-        } finally {
-            return entries;
         }
+        return entries;
     }
 }
