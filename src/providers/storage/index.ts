@@ -1,7 +1,18 @@
 export * from "./pinata/index.js";
 
-export default interface StorageProvider<T> {
-	store?(data: T, metadata?: Record<string, unknown>): Promise<string>;
+/**
+ * Read-only storage (e.g. for a consuming party)
+ * Does not require any authentication
+ */
+export interface ReadableStorage<T> {
 	retrieve(cid: string): Promise<T>;
-	delete?(cid: string): Promise<void>;
+}
+
+/**
+ * Read/Write storage
+ * (Likely) Requires authentication.
+ */
+export interface WritableStorage<T> extends ReadableStorage<T> {
+	store(data: T, metadata?: Record<string, unknown>): Promise<string>;
+	delete(cid: string): Promise<void>;
 }

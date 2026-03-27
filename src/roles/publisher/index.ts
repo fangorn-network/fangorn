@@ -2,7 +2,7 @@ import { type Address, type Hex, type WalletClient } from "viem";
 import { Gadget } from "../../modules/gadgets";
 import { FieldDefinition, SchemaDefinition } from "../schema/types";
 import { DataSourceRegistry } from "../../registries/datasource-registry";
-import StorageProvider from "../../providers/storage";
+import { WritableStorage } from "../../providers/storage";
 import { EncryptionService } from "../../modules/encryption";
 import { CommitResult, EncryptedFieldInput, FieldInput, Manifest, ManifestEntry, PublishRecord, ResolvedEncryptedField, ResolvedField, ResolvedPlainField, UploadParams } from "./types";
 import { SettlementRegistry } from "../../registries/settlement-registry";
@@ -15,7 +15,7 @@ export class PublisherRole {
     constructor(
         private readonly dataSourceRegistry: DataSourceRegistry,
         private readonly settlementRegistry: SettlementRegistry,
-        private readonly storage: StorageProvider<unknown>,
+        private readonly storage: WritableStorage<unknown>,
         private readonly encryptionService: EncryptionService,
         private readonly walletClient: WalletClient,
     ) { }

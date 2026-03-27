@@ -1,8 +1,9 @@
 import { create } from "@storacha/client";
-import type StorageProvider from "..";
+// import type StorageProvider from "..";
 import type { Client, EmailAddress, UnknownLink } from "@storacha/client/types";
+import { WritableStorage } from "..";
 
-export class StorachaStorage implements StorageProvider<unknown> {
+export class StorachaStorage implements WritableStorage<unknown> {
 	private client: Client;
 
 	private constructor(client: Client) {

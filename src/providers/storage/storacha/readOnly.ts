@@ -1,6 +1,6 @@
-import StorageProvider from "..";
+import { ReadableStorage } from "..";
 
-export class ReadOnlyStorachaStorage implements StorageProvider<unknown> {
+export class ReadOnlyStorachaStorage implements ReadableStorage<unknown> {
     // async store(_data: unknown): Promise<string> {
     //     throw new Error("ReadOnlyStorachaStorage cannot store data");
     // }

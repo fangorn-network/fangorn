@@ -2,7 +2,7 @@ import { Hex, WalletClient } from "viem";
 import { AppConfig } from "../config";
 import { EncryptionService } from "../modules/encryption";
 import { GadgetDescriptor } from "../modules/gadgets/types";
-import StorageProvider from "../providers/storage";
+import { ReadableStorage, WritableStorage } from "../providers/storage";
 import { SchemaRegistry } from "../registries/schema-registry";
 import { DataSourceRegistry } from "../registries/datasource-registry";
 import { SettlementRegistry } from "../registries/settlement-registry";
@@ -52,7 +52,7 @@ export interface AgentConfig {
 export interface FangornContext {
 	config: AppConfig;
 	walletClient: WalletClient;
-	storage: StorageProvider<unknown>;
+	storage: ReadableStorage<unknown> | WritableStorage<unknown>;
 	encryption: EncryptionService;
 	domain: string;
 	schemaRegistry: SchemaRegistry;
@@ -61,11 +61,12 @@ export interface FangornContext {
 	schemaRoleConfig: SchemaRoleConfig | undefined;
 }
 
+// read-only by default
 export type StorageConfig =
     | { pinata: { jwt: string; gateway: string } }
     | { storacha: { email: string } }
     | { storacha: { readOnly: true } }
-    | StorageProvider<unknown>;
+    | ReadableStorage<unknown>;
  
 
 export type EncryptionConfig =

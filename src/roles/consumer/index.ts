@@ -2,7 +2,7 @@ import { type Address, type Hex } from "viem";
 import { type Identity } from "@semaphore-protocol/identity";
 import { DataSourceRegistry } from "../../registries/datasource-registry";
 import { SettlementRegistry } from "../../registries/settlement-registry";
-import StorageProvider from "../../providers/storage";
+import { ReadableStorage } from "../../providers/storage";
 import { EncryptionService } from "../../modules/encryption";
 import { ClaimParams, ClaimResult, DecryptParams, PurchaseParams, PurchaseResult } from "./types";
 import { EncryptedPayload } from "../../modules/encryption/types";
@@ -14,9 +14,9 @@ import { PrepareSettleParams, PrepareSettleResult, TransferWithAuthParams, Trans
  */
 export class ConsumerRole {
 	constructor(
-		private readonly dataSourceRegistry: DataSourceRegistry,
+	private readonly dataSourceRegistry: DataSourceRegistry,
 		private readonly settlementRegistry: SettlementRegistry,
-		private readonly storage: StorageProvider<unknown>,
+		private readonly storage: ReadableStorage<unknown>,
 		private readonly encryptionService: EncryptionService,
 		private readonly domain: string,
 	) { }
