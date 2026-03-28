@@ -8,3 +8,5 @@ ignore
 **/out
 **/target/
 **/cache
+data.json
+schema.json
