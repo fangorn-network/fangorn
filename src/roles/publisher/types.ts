@@ -82,7 +82,7 @@ export interface UploadParams {
 	 * fields. All encrypted fields within a record share the same gadget —
 	 * and therefore the same resourceId and access condition.
 	 */
-	gadgetFactory: (tag: string) => Gadget | Promise<Gadget>;
+	gadgetFactory?: (tag: string) => Gadget | Promise<Gadget>;
 	/**
 	 * IPFS gateway URL written into each encrypted field handle so consumers
 	 * can retrieve ciphertexts without knowing the storage provider.

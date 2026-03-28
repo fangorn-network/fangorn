@@ -93,6 +93,7 @@ export class Fangorn {
 			this.ctx.storage,
 			this.ctx.encryption,
 			this.ctx.walletClient,
+			this.ctx.config
 		);
 	}
 
@@ -110,6 +111,11 @@ export class Fangorn {
 		);
 	}
 
+	/**
+	 * Create a new Fangorn instance
+	 * @param options 
+	 * @returns 
+	 */
 	static async create(options: FangornCreateOptions): Promise<Fangorn> {
 		if (!options.privateKey && !options.walletClient) {
 			throw new Error("Either privateKey or walletClient must be provided");

@@ -6,6 +6,8 @@ import { WritableStorage } from "../../providers/storage";
 import { EncryptionService } from "../../modules/encryption";
 import { CommitResult, EncryptedFieldInput, FieldInput, Manifest, ManifestEntry, PublishRecord, ResolvedEncryptedField, ResolvedField, ResolvedPlainField, UploadParams } from "./types";
 import { SettlementRegistry } from "../../registries/settlement-registry";
+import { makeSettledGadgetFactory } from "../../modules/gadgets/settledGadget";
+import { AppConfig } from "../../config";
 
 export * from './types';
 
@@ -18,6 +20,7 @@ export class PublisherRole {
         private readonly storage: WritableStorage<unknown>,
         private readonly encryptionService: EncryptionService,
         private readonly walletClient: WalletClient,
+        private readonly config: AppConfig,
     ) { }
 
     /**
@@ -30,14 +33,37 @@ export class PublisherRole {
      * alongside the plain fields. Consumers can read plain fields freely and
      * only need to purchase + decrypt for encrypted fields.
      */
-    async upload(params: UploadParams, price: bigint): Promise<CommitResult> {
-        const { records, schema, schemaId, gadgetFactory, gateway, options } = params;
+    async upload(
+        params: UploadParams,
+        price: bigint
+    ): Promise<CommitResult> {
+        const { records, schema, schemaId, gateway, options } = params;
+
+        // default to settled gadget
+        const gadgetFactory = params.gadgetFactory ?? ((tag: string) => {
+            const resourceId = SettlementRegistry.deriveResourceId(
+                this.walletClient!.account!.address, 
+                schemaId, 
+                tag
+            );
+            return makeSettledGadgetFactory(this.config)(resourceId);
+        });
 
         // we only need to validate new records 
         for (const record of records) {
-            console.log('validating ' + JSON.stringify(records[0]))
+            // ensure schema validity
             this.validateRecord(record, schema);
-            const gadget = await gadgetFactory(record.tag);
+            // instantiate the gadget
+            // get resourceId
+            const resourceId = SettlementRegistry.deriveResourceId(
+                // TODO: UNSAFE
+                this.walletClient!.account!.address,
+                schemaId,
+                record.tag
+            );
+            // build the gadget
+            const gadget = await gadgetFactory(resourceId);
+            // process encrypted fields
             const entry = await this.resolveRecord(record, schema, gadget, gateway);
             this.pendingEntries.set(record.tag, entry);
         }
@@ -45,10 +71,6 @@ export class PublisherRole {
         return this.commit(schemaId, price, options?.overwrite ?? false);
     }
 
-    /**
-     * Stage a pre-resolved entry manually (advanced use).
-     * Prefer upload() for the standard flow.
-     */
     stage(entry: ManifestEntry): void {
         this.pendingEntries.set(entry.tag, entry);
     }

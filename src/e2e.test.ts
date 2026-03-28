@@ -52,11 +52,12 @@ function makeWallet(key: Hex) {
 	});
 }
 
-const MUSIC_SCHEMA: SchemaDefinition = {
+const MUSIC_SCHEMA: SchemaDefinition = 
+{
 	title: { "@type": "string" },
 	artist: { "@type": "string" },
-	audio: { "@type": "encrypted", gadget: "settled" },
-};
+	audio: { "@type": "encrypted", gadget: "settled" }
+}
 
 const ENCRYPTED_FIELD = "audio";
 const PINATA_GATEWAY = process.env.PINATA_GW ?? "https://gateway.pinata.cloud";
@@ -87,9 +88,6 @@ describe("Fangorn E2E", () => {
 	beforeAll(async () => {
 		testbed = await TestBed.init(
 			makeWallet(OWNER_KEY),
-			makeWallet(BUYER_KEY),
-			PINATA_JWT,
-			PINATA_GW,
 			DATA_SOURCE_REGISTRY_ADDRESS,
 			SCHEMA_REGISTRY_ADDRESS,
 			SETTLEMENT_REGISTRY_ADDRESS,
@@ -98,7 +96,6 @@ describe("Fangorn E2E", () => {
 			RPC_URL,
 			"arbitrumSepolia",
 			CHAIN.id,
-			OWNER_KEY,   // ← enables agent0-sdk / ERC-8004 for schema owner role
 		);
 
 		ownerAddress = privateKeyToAccount(OWNER_KEY).address;

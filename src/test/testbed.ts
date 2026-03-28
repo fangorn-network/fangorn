@@ -17,7 +17,6 @@ import {
 } from "../roles/schema/index.js";
 import { type PublishRecord } from "../roles/publisher/index.js";
 import { SettlementRegistry } from "../registries/settlement-registry/index.js";
-import { SettledGadget } from "../modules/gadgets/settledGadget.js";
 import { privateKeyToAccount } from "viem/accounts";
 import { PrepareSettleResult, TransferWithAuthPayload } from "../registries/settlement-registry/types.js";
 import { AgentConfig } from "../types/index.js";
@@ -27,10 +26,8 @@ export class TestBed {
 		private readonly delegatorAddress: Address,
 		private readonly delegatorFangorn: Fangorn,
 		private readonly delegateeFangorn: Fangorn,
-		private readonly config: AppConfig,
 		private readonly usdcContractAddress: Address,
 		private readonly usdcDomainName: string,
-		private readonly pinataJwt: string,
 	) { }
 
 	/**
@@ -52,9 +49,6 @@ export class TestBed {
 	 */
 	static async init(
 		delegatorWalletClient: WalletClient,
-		delegateeWalletClient: WalletClient,
-		jwt: string,
-		gateway: string,
 		dataSourceRegistryContractAddress: Hex,
 		schemaRegistryContractAddress: Hex,
 		settlementRegistryContractAddress: Hex,
@@ -63,7 +57,6 @@ export class TestBed {
 		rpcUrl: string,
 		chain: string,
 		caip2: number,
-		delegatorPrivateKey?: Hex,
 	): Promise<TestBed> {
 		let chainImpl: Chain = arbitrumSepolia;
 		if (chain === "baseSepolia") chainImpl = baseSepolia;
@@ -78,13 +71,18 @@ export class TestBed {
 			caip2,
 		};
 
-		const agentConfig: AgentConfig | undefined = delegatorPrivateKey
-			? { privateKey: delegatorPrivateKey, pinataJwt: jwt }
-			: undefined;
+		const agentConfig = undefined;
+		// : AgentConfig | undefined = delegatorPrivateKey
+		// 	? { privateKey: delegatorPrivateKey, pinataJwt: jwt }
+		// 	: undefined;
 
 		const delegatorFangorn = await Fangorn.create({
 			privateKey: (process.env.DELEGATOR_ETH_PRIVATE_KEY ?? "0x0") as Hex,
-			storage: { storacha: { "email": "driemworks@fangorn.network" } },
+			storage: {
+				storacha: {
+					"email": process.env.TEST_EMAIL_ADDR! 
+				}
+			},
 			encryption: { lit: true },
 			config,
 			domain: "localhost",
@@ -93,7 +91,9 @@ export class TestBed {
 
 		const delegateeFangorn = await Fangorn.create({
 			privateKey: (process.env.DELEGATEE_ETH_PRIVATE_KEY ?? "0x0") as Hex,
-			storage: { storacha: { "readOnly": true } },
+			storage: {
+				storacha: { "readOnly": true }
+			},
 			encryption: { lit: true },
 			config,
 			domain: "localhost",
@@ -105,10 +105,8 @@ export class TestBed {
 			delegatorWalletClient.account.address,
 			delegatorFangorn,
 			delegateeFangorn,
-			config,
 			usdcContractAddress,
 			usdcDomainName,
-			jwt,
 		);
 	}
 
@@ -154,12 +152,6 @@ export class TestBed {
 			schema,
 			schemaId,
 			gateway,
-			gadgetFactory: (tag) => new SettledGadget({
-				resourceId: SettlementRegistry.deriveResourceId(owner, schemaId, tag),
-				settlementRegistryAddress: this.config.settlementRegistryContractAddress,
-				chainName: this.config.chainName,
-				pinataJwt: this.pinataJwt,
-			}),
 		}, price);
 
 		return manifestCid;

@@ -188,7 +188,7 @@ program
         const storageChoice = await select({
             message: "Storage provider:",
             options: [
-                { value: "pinata",   label: "Pinata" },
+                { value: "pinata", label: "Pinata" },
                 { value: "storacha", label: "Storacha" },
             ],
         });
@@ -405,13 +405,7 @@ publishCmd
                     schema,
                     schemaId,
                     gateway,
-                    options: { overwrite: options.overwrite },
-                    gadgetFactory: (tag) => new SettledGadget({
-                        resourceId: SettlementRegistry.deriveResourceId(owner, schemaId, tag),
-                        settlementRegistryAddress: cfg.cfg.settlementRegistryContractAddress,
-                        chainName: cfg.cfg.chainName,
-                        pinataJwt: cfg.jwt ?? "",
-                    }),
+                    options: { overwrite: options.overwrite }
                 },
                 price,
             );
