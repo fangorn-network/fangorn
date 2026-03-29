@@ -23,7 +23,6 @@ import { Identity } from "@semaphore-protocol/identity";
 import "dotenv/config";
 
 import { Fangorn } from "../fangorn.js";
-import { SettledGadget } from "../modules/gadgets/settledGadget.js";
 import { getChain, handleCancel, selectChain } from "./index.js";
 import type { SchemaDefinition } from "../roles/schema/index.js";
 import type { PublishRecord } from "../roles/publisher/index.js";
@@ -188,7 +187,7 @@ program
         const storageChoice = await select({
             message: "Storage provider:",
             options: [
-                { value: "pinata",   label: "Pinata" },
+                { value: "pinata", label: "Pinata" },
                 { value: "storacha", label: "Storacha" },
             ],
         });
@@ -371,7 +370,6 @@ publishCmd
         try {
             const fangorn = await getFangorn();
             const cfg = loadConfig();
-            const owner = getAccount().address;
             const price = BigInt(options.price);
             const s = spinner();
 
@@ -405,13 +403,7 @@ publishCmd
                     schema,
                     schemaId,
                     gateway,
-                    options: { overwrite: options.overwrite },
-                    gadgetFactory: (tag) => new SettledGadget({
-                        resourceId: SettlementRegistry.deriveResourceId(owner, schemaId, tag),
-                        settlementRegistryAddress: cfg.cfg.settlementRegistryContractAddress,
-                        chainName: cfg.cfg.chainName,
-                        pinataJwt: cfg.jwt ?? "",
-                    }),
+                    options: { overwrite: options.overwrite }
                 },
                 price,
             );
