@@ -18,8 +18,7 @@ import {
 import { type PublishRecord } from "../roles/publisher/index.js";
 import { SettlementRegistry } from "../registries/settlement-registry/index.js";
 import { privateKeyToAccount } from "viem/accounts";
-import { PrepareSettleResult, TransferWithAuthPayload } from "../registries/settlement-registry/types.js";
-import { AgentConfig } from "../types/index.js";
+import { PrepareSettleResult, TransferWithAuthPayload } from "../registries/settlement-registry/types.js"; 
 
 export class TestBed {
 	private constructor(
@@ -80,7 +79,7 @@ export class TestBed {
 			privateKey: (process.env.DELEGATOR_ETH_PRIVATE_KEY ?? "0x0") as Hex,
 			storage: {
 				storacha: {
-					"email": process.env.TEST_EMAIL_ADDR! 
+					"email": process.env.TEST_EMAIL_ADDR ?? ""
 				}
 			},
 			encryption: { lit: true },
@@ -145,8 +144,6 @@ export class TestBed {
 		gateway: string,
 		price: bigint,
 	): Promise<string> {
-		const owner = this.delegatorFangorn.getAddress();
-
 		const { manifestCid } = await this.delegatorFangorn.publisher.upload({
 			records,
 			schema,

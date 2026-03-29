@@ -23,7 +23,6 @@ import { Identity } from "@semaphore-protocol/identity";
 import "dotenv/config";
 
 import { Fangorn } from "../fangorn.js";
-import { SettledGadget } from "../modules/gadgets/settledGadget.js";
 import { getChain, handleCancel, selectChain } from "./index.js";
 import type { SchemaDefinition } from "../roles/schema/index.js";
 import type { PublishRecord } from "../roles/publisher/index.js";
@@ -371,7 +370,6 @@ publishCmd
         try {
             const fangorn = await getFangorn();
             const cfg = loadConfig();
-            const owner = getAccount().address;
             const price = BigInt(options.price);
             const s = spinner();
 

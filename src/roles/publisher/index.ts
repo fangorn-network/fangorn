@@ -39,15 +39,18 @@ export class PublisherRole {
     ): Promise<CommitResult> {
         const { records, schema, schemaId, gateway, options } = params;
 
+        const address = this.requireAccount();
         // default to settled gadget
         const gadgetFactory = params.gadgetFactory ?? ((tag: string) => {
             const resourceId = SettlementRegistry.deriveResourceId(
-                this.walletClient!.account!.address, 
+                address, 
                 schemaId, 
                 tag
             );
             return makeSettledGadgetFactory(this.config)(resourceId);
         });
+
+        // this.walletClient.account.address,
 
         // we only need to validate new records 
         for (const record of records) {
@@ -56,8 +59,7 @@ export class PublisherRole {
             // instantiate the gadget
             // get resourceId
             const resourceId = SettlementRegistry.deriveResourceId(
-                // TODO: UNSAFE
-                this.walletClient!.account!.address,
+                address,
                 schemaId,
                 record.tag
             );
