@@ -12,19 +12,6 @@ export interface SettledGadgetParams {
     chainName: string;
 }
 
-/**
- * Build a new default gadget from the given config
- * @param config : AppConfig
- * @returns the configured gadget
- */
-export function makeSettledGadgetFactory(config: AppConfig) {
-    return (resourceId: Hex): SettledGadget => new SettledGadget({
-        resourceId,
-        settlementRegistryAddress: config.settlementRegistryContractAddress,
-        chainName: config.chainName,
-    })
-}
-
 export class SettledGadget implements Gadget {
     readonly type = "settled";
 
