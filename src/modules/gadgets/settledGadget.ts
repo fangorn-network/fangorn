@@ -1,7 +1,6 @@
 import { createAccBuilder, type UnifiedAccessControlCondition } from "@lit-protocol/access-control-conditions";
 import { type Address, type Hex, zeroAddress } from "viem";
 import { type Gadget, type GadgetDescriptor } from "./types.js";
-import { AppConfig } from "../../config.js";
 
 export interface SettledGadgetParams {
     /** keccak256(owner, schemaId, tag) — derived at upload time */

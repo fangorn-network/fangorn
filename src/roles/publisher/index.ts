@@ -6,8 +6,8 @@ import { WritableStorage } from "../../providers/storage";
 import { EncryptionService } from "../../modules/encryption";
 import { CommitResult, EncryptedFieldInput, FieldInput, Manifest, ManifestEntry, PublishRecord, ResolvedEncryptedField, ResolvedField, ResolvedPlainField, UploadParams } from "./types";
 import { SettlementRegistry } from "../../registries/settlement-registry";
-import { makeSettledGadgetFactory, SettledGadget } from "../../modules/gadgets/settledGadget";
 import { AppConfig } from "../../config";
+import { SettledGadget } from "../../modules/gadgets/settledGadget";
 
 export * from './types';
 
@@ -66,7 +66,7 @@ export class PublisherRole {
                 record.tag
             );
             console.log('using resource Id' + resourceId)
-            const gadget = await gadgetFactory(record.tag);
+            const gadget = gadgetFactory(record.tag);
             // process encrypted fields
             const entry = await this.resolveRecord(record, schema, gadget, gateway);
             this.pendingEntries.set(record.tag, entry);
