@@ -6,8 +6,8 @@ import { WritableStorage } from "../../providers/storage";
 import { EncryptionService } from "../../modules/encryption";
 import { CommitResult, EncryptedFieldInput, FieldInput, Manifest, ManifestEntry, PublishRecord, ResolvedEncryptedField, ResolvedField, ResolvedPlainField, UploadParams } from "./types";
 import { SettlementRegistry } from "../../registries/settlement-registry";
-import { makeSettledGadgetFactory } from "../../modules/gadgets/settledGadget";
 import { AppConfig } from "../../config";
+import { SettledGadget } from "../../modules/gadgets/settledGadget";
 
 export * from './types';
 
@@ -41,16 +41,18 @@ export class PublisherRole {
 
         const address = this.requireAccount();
         // default to settled gadget
-        const gadgetFactory = params.gadgetFactory ?? ((tag: string) => {
+        const gadgetFactory = (tag: string) => {
             const resourceId = SettlementRegistry.deriveResourceId(
-                address, 
-                schemaId, 
+                address,
+                schemaId,
                 tag
             );
-            return makeSettledGadgetFactory(this.config)(resourceId);
-        });
-
-        // this.walletClient.account.address,
+            return new SettledGadget({
+                resourceId,
+                settlementRegistryAddress: this.config.settlementRegistryContractAddress,
+                chainName: this.config.chainName,
+            })
+        }
 
         // we only need to validate new records 
         for (const record of records) {
@@ -63,8 +65,8 @@ export class PublisherRole {
                 schemaId,
                 record.tag
             );
-            // build the gadget
-            const gadget = await gadgetFactory(resourceId);
+            console.log('using resource Id' + resourceId)
+            const gadget = gadgetFactory(record.tag);
             // process encrypted fields
             const entry = await this.resolveRecord(record, schema, gadget, gateway);
             this.pendingEntries.set(record.tag, entry);

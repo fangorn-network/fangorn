@@ -1,55 +1,54 @@
 import { type Hex, type WalletClient } from "viem";
-import { SDK } from "agent0-sdk";
 import { SchemaRegistry } from "../../registries/schema-registry";
 import { WritableStorage } from "../../providers/storage";
-import { RegisterAgentParams, RegisteredAgent, RegisteredSchema, RegisterSchemaParams, SchemaBlobV1, SchemaDefinition, SchemaRoleConfig } from "./types";
+import { RegisteredSchema, RegisterSchemaParams, SchemaBlobV1, SchemaDefinition } from "./types";
 
 export * from './types';
 
 export class SchemaRole {
-    private readonly agent0: SDK | null;
+    // private readonly agent0: SDK | null;
 
     constructor(
         private readonly schemaRegistry: SchemaRegistry,
         private readonly storage: WritableStorage<unknown>,
         private readonly walletClient: WalletClient,
-        config?: SchemaRoleConfig,
+        // config?: SchemaRoleConfig,
     ) {
-        this.agent0 = config
-            ? new SDK({
-                chainId: config.chainId,
-                rpcUrl: config.rpcUrl,
-                privateKey: config.privateKey,
-                ipfs: "pinata",
-                pinataJwt: config.pinataJwt,
-                ...(config.registryOverrides && { registryOverrides: config.registryOverrides }),
-                ...(config.subgraphOverrides && { subgraphOverrides: config.subgraphOverrides }),
-            })
-            : null;
+        // this.agent0 = config
+        //     ? new SDK({
+        //         chainId: config.chainId,
+        //         rpcUrl: config.rpcUrl,
+        //         privateKey: config.privateKey,
+        //         ipfs: "pinata",
+        //         pinataJwt: config.pinataJwt,
+        //         ...(config.registryOverrides && { registryOverrides: config.registryOverrides }),
+        //         ...(config.subgraphOverrides && { subgraphOverrides: config.subgraphOverrides }),
+        //     })
+        //     : null;
     }
 
-    /**
-     * Register an agent identity via the agent0-sdk / ERC-8004.
-     */
-    async registerAgent(params: RegisterAgentParams): Promise<RegisteredAgent> {
-        const sdk = this.requireAgent0();
-        const agent = sdk.createAgent(params.name, params.description);
+    // /**
+    //  * Register an agent identity via the agent0-sdk / ERC-8004.
+    //  */
+    // async registerAgent(params: RegisterAgentParams): Promise<RegisteredAgent> {
+    //     const sdk = this.requireAgent0();
+    //     const agent = sdk.createAgent(params.name, params.description);
 
-        if (params.a2aUrl) await agent.setA2A(params.a2aUrl);
-        if (params.mcpEndpoint) await agent.setMCP(params.mcpEndpoint);
-        if (params.ens) agent.setENS(params.ens);
+    //     if (params.a2aUrl) await agent.setA2A(params.a2aUrl);
+    //     if (params.mcpEndpoint) await agent.setMCP(params.mcpEndpoint);
+    //     if (params.ens) agent.setENS(params.ens);
 
-        agent.setActive(true);
-        agent.setX402Support(true);
+    //     agent.setActive(true);
+    //     agent.setX402Support(true);
 
-        const regTx = await agent.registerIPFS();
-        const { result: registrationFile } = await regTx.waitConfirmed();
+    //     const regTx = await agent.registerIPFS();
+    //     const { result: registrationFile } = await regTx.waitConfirmed();
 
-        const agentId = registrationFile.agentId;
-        if (!agentId) throw new Error("ERC-8004 registration did not return an agentId");
+    //     const agentId = registrationFile.agentId;
+    //     if (!agentId) throw new Error("ERC-8004 registration did not return an agentId");
 
-        return { agentId };
-    }
+    //     return { agentId };
+    // }
 
     /**
      * Register a schema on-chain, tied to an existing agent identity.
@@ -179,13 +178,13 @@ export class SchemaRole {
         return address;
     }
 
-    private requireAgent0(): SDK {
-        if (!this.agent0) {
-            throw new Error(
-                "registerAgent() requires AgentConfig (privateKey + pinataJwt). " +
-                "Pass agentConfig to Fangorn.init() to enable ERC-8004 registration.",
-            );
-        }
-        return this.agent0;
-    }
+    // private requireAgent0(): SDK {
+    //     if (!this.agent0) {
+    //         throw new Error(
+    //             "registerAgent() requires AgentConfig (privateKey + pinataJwt). " +
+    //             "Pass agentConfig to Fangorn.init() to enable ERC-8004 registration.",
+    //         );
+    //     }
+    //     return this.agent0;
+    // }
 }

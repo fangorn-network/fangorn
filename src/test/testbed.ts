@@ -10,11 +10,7 @@ import { Identity } from "@semaphore-protocol/identity";
 import { arbitrumSepolia, baseSepolia } from "viem/chains";
 import { Fangorn } from "../fangorn.js";
 import { type AppConfig } from "../config.js";
-import {
-	type SchemaDefinition,
-	type RegisterAgentParams,
-	type RegisteredAgent,
-} from "../roles/schema/index.js";
+import { type SchemaDefinition } from "../roles/schema/index.js";
 import { type PublishRecord } from "../roles/publisher/index.js";
 import { SettlementRegistry } from "../registries/settlement-registry/index.js";
 import { privateKeyToAccount } from "viem/accounts";
@@ -111,9 +107,9 @@ export class TestBed {
 
 	// Schema owner (Alice)
 
-	async registerAgent(params: RegisterAgentParams): Promise<RegisteredAgent> {
-		return this.delegatorFangorn.schema.registerAgent(params);
-	}
+	// async registerAgent(params: RegisterAgentParams): Promise<RegisteredAgent> {
+	// 	return this.delegatorFangorn.schema.registerAgent(params);
+	// }
 
 	async registerSchema(
 		name: string,

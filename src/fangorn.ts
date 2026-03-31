@@ -75,7 +75,6 @@ export class Fangorn {
 			this.ctx.schemaRegistry,
 			this.ctx.storage,
 			this.ctx.walletClient,
-			this.ctx.schemaRoleConfig,
 		);
 	}
 
