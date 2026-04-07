@@ -57,11 +57,18 @@ export class DataSourceRegistry {
 
     /// Publish or re-publish a manifest under a specific schema.
     /// schemaId must be non-zero and must exist in the SchemaRegistry.
-    async publishManifest(
-        manifestCid: string,
-        schemaId: Hex,
-    ): Promise<Hash> {
+    async publishManifest(manifestCid: string, schemaId: Hex, gas?: bigint): Promise<Hash> {
         const { chain, account } = this.getWriteConfig();
+        const gasLimit = await this.estimateGas(
+            () => this.publicClient.estimateContractGas({
+                address: this.contractAddress,
+                abi: DS_REGISTRY_ABI,
+                functionName: "publishManifest",
+                args: [manifestCid, schemaId],
+                account,
+            }),
+            gas,
+        );
         const hash = await this.walletClient.writeContract({
             address: this.contractAddress,
             abi: DS_REGISTRY_ABI,
@@ -69,9 +76,9 @@ export class DataSourceRegistry {
             args: [manifestCid, schemaId],
             chain,
             account,
+            gas: gasLimit,
         });
         await this.waitForTransaction(hash);
-        // TODO use tx receipt events to verify the result
         return hash;
     }
 
@@ -106,5 +113,11 @@ export class DataSourceRegistry {
 
     async waitForTransaction(hash: Hash) {
         return this.publicClient.waitForTransactionReceipt({ hash });
+    }
+
+    private async estimateGas(fn: () => Promise<bigint>, override?: bigint): Promise<bigint> {
+        if (override !== undefined) return override;
+        const estimated = await fn();
+        return (estimated * 130n) / 100n;
     }
 }

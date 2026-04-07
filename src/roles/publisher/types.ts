@@ -82,6 +82,10 @@ export interface UploadParams {
 	 */
 	gadgetFactory?: (tag: string) => Gadget | Promise<Gadget>;
 	/**
+	 * Configurable gas for sending the call
+	 */
+	gas?: bigint;
+	/**
 	 * IPFS gateway URL written into each encrypted field handle so consumers
 	 * can retrieve ciphertexts without knowing the storage provider.
 	 */
