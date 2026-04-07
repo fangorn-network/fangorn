@@ -68,6 +68,7 @@ export class TestBed {
 			chain: chainImpl,
 			rpcUrl,
 			caip2,
+			ipfsGateway: "https://gateway.pinata.cloud",
 		};
 
 		const agentConfig = undefined;
@@ -89,11 +90,9 @@ export class TestBed {
 			agentConfig,
 		});
 
+		// readonly by default
 		const delegateeFangorn = await Fangorn.create({
 			privateKey: (process.env.DELEGATEE_ETH_PRIVATE_KEY ?? "0x0") as Hex,
-			storage: {
-				storacha: { "readOnly": true }
-			},
 			encryption: { lit: true },
 			config,
 			domain: "localhost",

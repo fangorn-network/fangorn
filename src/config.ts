@@ -42,6 +42,8 @@ export interface AppConfig {
 	rpcUrl: string;
 	// the caip2 id
 	caip2: number;
+	// A public IPFS gateway that we can read from
+	ipfsGateway: string;
 }
 
 export const FangornConfig = {
@@ -55,6 +57,7 @@ export const FangornConfig = {
 		chain: arbitrumSepolia,
 		rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
 		caip2: 421614,
+		ipfsGateway: 'https://ipfs.io'
 	} satisfies AppConfig,
 	// Base Sepolia config (incomplete :| do not use)
 	BaseSepolia: {
@@ -67,5 +70,6 @@ export const FangornConfig = {
 		chain: baseSepolia,
 		rpcUrl: "https://sepolia.base.org",
 		caip2: 84532,
+		ipfsGateway: 'https://ipfs.io'
 	} satisfies AppConfig
 }

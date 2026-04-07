@@ -2,7 +2,7 @@ import { type Address, type Hex, type WalletClient } from "viem";
 import { Gadget } from "../../modules/gadgets";
 import { FieldDefinition, SchemaDefinition } from "../schema/types";
 import { DataSourceRegistry } from "../../registries/datasource-registry";
-import { WritableStorage } from "../../providers/storage";
+import { PinningService, retrieveByCid } from "../../providers/storage";
 import { EncryptionService } from "../../modules/encryption";
 import { CommitResult, EncryptedFieldInput, FieldInput, Manifest, ManifestEntry, PublishRecord, ResolvedEncryptedField, ResolvedField, ResolvedPlainField, UploadParams } from "./types";
 import { SettlementRegistry } from "../../registries/settlement-registry";
@@ -14,58 +14,43 @@ export * from './types';
 
 export class PublisherRole {
 
-    // in-mem cache for bulk uploads
     private pendingEntries = new Map<string, ManifestEntry>();
-
-    // an in-memory cache for holding schema definitions as needed
     private readonly schemaCache = new Map<string, Promise<{ schema: SchemaDefinition; schemaId: Hex }>>();
 
     constructor(
         private readonly dataSourceRegistry: DataSourceRegistry,
         private readonly settlementRegistry: SettlementRegistry,
         private readonly schemaRegistry: SchemaRegistry,
-        private readonly storage: WritableStorage<unknown>,
+        private readonly storage: PinningService,
         private readonly encryptionService: EncryptionService,
         private readonly walletClient: WalletClient,
         private readonly config: AppConfig,
     ) { }
 
     /**
-     * Encrypt and Upload data with Fangorn
-     * Validate records against the schema, encrypt encrypted
-     * fields, stage all resolved entries, then commit to IPFS + on-chain.
+     * Encrypt and upload data with Fangorn.
+     * Validates records against the schema, encrypts encrypted fields,
+     * stages all resolved entries, then commits to IPFS + on-chain.
      *
      * Each encrypted field within a record is stored as a separate IPFS object
      * (the ciphertext). The manifest entry stores the handle (CID + gateway)
-     * alongside the plain fields. Consumers can read plain fields freely and
+     * alongside plain fields. Consumers can read plain fields freely and
      * only need to purchase + decrypt for encrypted fields.
      */
-    async upload(
-        params: UploadParams,
-        price: bigint
-    ): Promise<CommitResult> {
+    async upload(params: UploadParams, price: bigint): Promise<CommitResult> {
         const { records, schemaName, gateway, options } = params;
 
         const address = this.requireAccount();
         const { schema, schemaId } = await this.resolveSchema(schemaName);
 
-        console.log('got the schemaId ' + schemaId)
-        console.log('got the schema ' + JSON.stringify(schema))
-
         const gadgetFactory = params.gadgetFactory ?? ((resourceId: Hex) => {
             return makeSettledGadgetFactory(this.config)(resourceId);
         });
 
-
         for (const record of records) {
             this.validateRecord(record, schema);
 
-            const resourceId = SettlementRegistry.deriveResourceId(
-                address,
-                schemaId,
-                record.tag
-            );
-
+            const resourceId = SettlementRegistry.deriveResourceId(address, schemaId, record.tag);
             const gadget = await gadgetFactory(resourceId);
             const entry = await this.resolveRecord(record, schema, gadget, gateway);
             this.pendingEntries.set(record.tag, entry);
@@ -93,11 +78,6 @@ export class PublisherRole {
     /**
      * Serialize all staged entries into a manifest, create SettlementRegistry
      * resources for each entry, pin the manifest to IPFS, and publish on-chain.
-     * 
-     * @param schemaId: The unique id of the schema
-     * @param price: The USDC price required to register with the sempaphore group
-     * @param overwrite: If true, overwrite manifest data, else append (default: false)
-     * 
      */
     async commit(schemaId: Hex, price: bigint, overwrite: boolean): Promise<CommitResult> {
         const owner = this.requireAccount();
@@ -114,17 +94,14 @@ export class PublisherRole {
                 await this.settlementRegistry.createResource(resourceId, price);
             } catch (e: unknown) {
                 const msg = e instanceof Error ? e.message : String(e);
-                if (!msg.includes("ResourceAlreadyExists")
-                    && !msg.includes("AlreadyExists"))
+                if (!msg.includes("ResourceAlreadyExists") && !msg.includes("AlreadyExists"))
                     console.warn("Failed to create the resource: already exists!");
             }
         }
 
-        // enrich the entries with exist manifest items
         if (!overwrite) {
             const existingEntriesMap = await this.loadExistingManifest(owner, schemaId);
-            const vals = existingEntriesMap.values();
-            entries = [...Array.from(vals), ...entries]
+            entries = [...Array.from(existingEntriesMap.values()), ...entries];
         }
 
         const manifest: Manifest = { version: 1, schemaId, entries };
@@ -143,7 +120,7 @@ export class PublisherRole {
         try {
             const ds = await this.dataSourceRegistry.getManifest(owner, schemaId);
             if (!ds.manifestCid || ds.manifestCid === "") return undefined;
-            return (await this.storage.retrieve(ds.manifestCid)) as Manifest;
+            return retrieveByCid<Manifest>(ds.manifestCid, this.config.ipfsGateway);
         } catch {
             return undefined;
         }
@@ -164,21 +141,21 @@ export class PublisherRole {
     }
 
     /**
-     * Resolve the schema def and id by name
-     * @param name The name of the schema
-     * @returns The schema and id if they exist
+     * Resolve the schema definition and id by name, with in-memory caching.
+     * Schema resolution is concurrent-safe — parallel calls for the same name
+     * share a single in-flight promise.
      */
     private resolveSchema(name: string): Promise<{ schema: SchemaDefinition; schemaId: Hex }> {
         if (!this.schemaCache.has(name)) {
             const p = Promise.all([
-                this.schemaRegistry.getSchema(name),   // { cid, agentId, name }
-                this.schemaRegistry.schemaId(name),    // Hex
+                this.schemaRegistry.getSchema(name),
+                this.schemaRegistry.schemaId(name),
             ])
                 .then(async ([{ cid }, schemaId]) => {
-                    const registered = await this.storage.retrieve(cid) as {
-                        definition: SchemaDefinition;
-                        [key: string]: unknown;
-                    };
+                    const registered = await retrieveByCid<{ definition: SchemaDefinition }>(
+                        cid,
+                        this.config.ipfsGateway,
+                    );
                     return { schema: registered.definition, schemaId };
                 })
                 .catch(err => {
@@ -195,7 +172,8 @@ export class PublisherRole {
      * Resolve a PublishRecord into a ManifestEntry by processing each field
      * according to the schema definition:
      *   - plain fields are stored as-is
-     *   - encrypted fields are AES+Lit encrypted, pinned to IPFS, and replaced with a handle + gadgetDescriptor
+     *   - encrypted fields are encrypted, pinned to IPFS, and replaced
+     *     with a handle + gadgetDescriptor
      */
     private async resolveRecord(
         record: PublishRecord,
@@ -224,15 +202,12 @@ export class PublisherRole {
                     metadata: { name: `${record.tag}:${fieldName}` },
                 });
 
-                const gadgetDescriptor = gadget.toDescriptor();
-
                 resolvedFields[fieldName] = {
                     "@type": "encrypted",
                     handle: { cid, gateway },
-                    gadgetDescriptor,
+                    gadgetDescriptor: gadget.toDescriptor(),
                 } satisfies ResolvedEncryptedField;
             } else {
-                // plain -> no change
                 resolvedFields[fieldName] = value as ResolvedPlainField;
             }
         }
@@ -242,28 +217,17 @@ export class PublisherRole {
 
     /**
      * Validate that a record's fields match the schema before touching IPFS.
-     * Catches type mismatches and missing required fields early.
      */
     private validateRecord(record: PublishRecord, schema: SchemaDefinition): void {
         const errors: string[] = [];
 
         for (const [fieldName, fieldDef] of Object.entries(schema)) {
-            const value = record.fields[fieldName];
-
-            // if (value === undefined || value === null) {
-            //     errors.push(`Record "${record.tag}": missing required field "${fieldName}"`);
-            //     continue;
-            // }
-
-            this.validateField(record.tag, fieldName, fieldDef, value, errors);
+            this.validateField(record.tag, fieldName, fieldDef, record.fields[fieldName], errors);
         }
 
-        // Warn on extra fields not in schema (not an error — schema is open)
         for (const fieldName of Object.keys(record.fields)) {
             if (!(fieldName in schema)) {
-                console.warn(
-                    `Record "${record.tag}": field "${fieldName}" is not in the schema and will be ignored`,
-                );
+                console.warn(`Record "${record.tag}": field "${fieldName}" is not in the schema and will be ignored`);
             }
         }
 
@@ -300,32 +264,23 @@ export class PublisherRole {
                     errors.push(`"${fieldName}" must be Uint8Array`);
                 break;
             case "encrypted":
-                if (
-                    typeof value !== "object" || !("data" in value) || !((value).data instanceof Uint8Array)
-                ) {
-                    errors.push(
-                        `"${fieldName}" is encrypted — expected EncryptedFieldInput { data: Uint8Array }`,
-                    );
-                }
+                if (typeof value !== "object" || !("data" in value) || !(value.data instanceof Uint8Array))
+                    errors.push(`"${fieldName}" is encrypted — expected EncryptedFieldInput { data: Uint8Array }`);
                 break;
         }
     }
 
     /**
-     * Load the existing manifest into pending entries for merge behaviour.
-     * Unpins the old manifest CID
+     * Load the existing manifest for merge behaviour and unpin the old CID.
      */
-    private async loadExistingManifest(
-        owner: Address,
-        schemaId: Hex
-    ): Promise<Map<string, ManifestEntry>> {
+    private async loadExistingManifest(owner: Address, schemaId: Hex): Promise<Map<string, ManifestEntry>> {
         const entries = new Map<string, ManifestEntry>();
 
         try {
             const ds = await this.dataSourceRegistry.getManifest(owner, schemaId);
             if (!ds.manifestCid) return entries;
 
-            const manifest = (await this.storage.retrieve(ds.manifestCid)) as Manifest;
+            const manifest = await retrieveByCid<Manifest>(ds.manifestCid, this.config.ipfsGateway);
             for (const entry of manifest.entries) {
                 entries.set(entry.tag, entry);
             }
@@ -336,8 +291,9 @@ export class PublisherRole {
                 console.warn(`Failed to unpin old manifest ${ds.manifestCid}:`, e);
             }
         } catch {
-            // No existing manifest (first publish)
+            // No existing manifest — first publish
         }
+
         return entries;
     }
 }

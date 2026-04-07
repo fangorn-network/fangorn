@@ -144,7 +144,7 @@ describe("Fangorn E2E", () => {
 			expect(schema!.definition).toMatchObject(MUSIC_SCHEMA);
 			expect(schema!.agentId).toBe(agentId);
 			expect(schema!.owner.toLowerCase()).toBe(ownerAddress.toLowerCase());
-		});
+		}, 30_000);
 
 		describe("Publisher", () => {
 			it("uploads multiple files and publishes a manifest", async () => {
@@ -168,7 +168,7 @@ describe("Fangorn E2E", () => {
 					const exists = await testbed.checkEntryExists(ownerAddress, schemaId, record.tag);
 					expect(exists).toBe(true);
 				}
-			});
+			}, 30_000);
 
 			// it("owner can decrypt their own data without settlement", async () => {
 			// 	for (const record of TEST_RECORDS) {
