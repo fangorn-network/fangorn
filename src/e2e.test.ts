@@ -150,8 +150,7 @@ describe("Fangorn E2E", () => {
 			it("uploads multiple files and publishes a manifest", async () => {
 				const manifestCid = await testbed.fileUpload(
 					TEST_RECORDS,
-					MUSIC_SCHEMA,
-					schemaId,
+					schemaName,
 					PINATA_GATEWAY,
 					price
 				);

@@ -78,8 +78,9 @@ export class TestBed {
 		const delegatorFangorn = await Fangorn.create({
 			privateKey: (process.env.DELEGATOR_ETH_PRIVATE_KEY ?? "0x0") as Hex,
 			storage: {
-				storacha: {
-					"email": process.env.TEST_EMAIL_ADDR ?? ""
+				pinata: {
+					jwt: process.env.PINATA_JWT ?? "",
+					gateway: process.env.PINATA_GATEWAY ?? ""
 				}
 			},
 			encryption: { lit: true },
@@ -139,15 +140,13 @@ export class TestBed {
 	 */
 	async fileUpload(
 		records: PublishRecord[],
-		schema: SchemaDefinition,
-		schemaId: Hex,
+		schemaName: string,
 		gateway: string,
 		price: bigint,
 	): Promise<string> {
 		const { manifestCid } = await this.delegatorFangorn.publisher.upload({
 			records,
-			schema,
-			schemaId,
+			schemaName,
 			gateway,
 		}, price);
 

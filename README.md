@@ -123,11 +123,11 @@ const fangorn = await Fangorn.create({
 
 **Storage options:**
 
-| Config | Mode |
-|---|---|
-| `{ pinata: { jwt, gateway } }` | Read + write |
-| `{ storacha: { email } }` | Read + write |
-| `{ storacha: { readOnly: true } }` | Read only |
+| Config                             | Mode         |
+| ---------------------------------- | ------------ |
+| `{ pinata: { jwt, gateway } }`     | Read + write |
+| `{ storacha: { email } }`          | Read + write |
+| `{ storacha: { readOnly: true } }` | Read only    |
 
 ### Schemas
 
@@ -210,22 +210,15 @@ import { SettlementRegistry } from "@fangorn-network/sdk/registries";
 
 const owner = fangorn.getAddress();
 
+// Default gadget = payment settled
 await fangorn.publisher.upload(
   {
     records: [
       { tag: "track1", field: "audio", data: audioBytes, extension: ".mp3", fileType: "audio/mpeg" },
       { tag: "track1", field: "cover", data: imageBytes, extension: ".png", fileType: "image/png" },
     ],
-    schema: schemaDefinition,
-    schemaId,
+    schemaName: 'schema.name.v1'
     gateway: "https://your-gateway.mypinata.cloud",
-    gadgetFactory: (tag) =>
-      new SettledGadget({
-        resourceId: SettlementRegistry.deriveResourceId(owner, schemaId, tag),
-        settlementRegistryAddress: FangornConfig.ArbitrumSepolia.settlementRegistryContractAddress,
-        chainName: "arbitrumSepolia",
-        pinataJwt: "...",
-      }),
   },
   1n, // price in smallest USDC units
 );
@@ -313,8 +306,8 @@ const plaintext = await fangorn.consumer.decrypt({
 
 Gadgets define the access control condition baked into encryption. Built-in gadgets:
 
-| Gadget | Condition |
-|---|---|
+| Gadget          | Condition                                           |
+| --------------- | --------------------------------------------------- |
 | `SettledGadget` | Caller must complete a USDC payment + ZK claim flow |
 
 More coming soon ;)
@@ -327,10 +320,10 @@ See the [gadgets](./src/modules/gadgets/README.md) docs for details on implement
 
 ### Arbitrum Sepolia
 
-| Contract | Address |
-|---|---|
+| Contract            | Address                                      |
+| ------------------- | -------------------------------------------- |
 | DataSource Registry | `0x3941c7d50caa56f7f676554bc4e78d77aaf27ebb` |
-| Schema Registry | `0x49ab3d52b997e63ad56c91178df48263fd80b2dc` |
+| Schema Registry     | `0x49ab3d52b997e63ad56c91178df48263fd80b2dc` |
 | Settlement Registry | `0x4536881306ee355c2f18ae81658771c4488139a3` |
 
 ---
@@ -354,19 +347,19 @@ pnpm test:e2e
 
 Required variables:
 
-| Variable | Description |
-|---|---|
+| Variable                    | Description                               |
+| --------------------------- | ----------------------------------------- |
 | `DELEGATOR_ETH_PRIVATE_KEY` | Publisher private key (needs testnet ETH) |
-| `DELEGATEE_ETH_PRIVATE_KEY` | Consumer private key |
-| `PINATA_JWT` | Pinata API JWT |
-| `PINATA_GATEWAY` | Pinata gateway URL |
-| `CHAIN_NAME` | `arbitrumSepolia` |
-| `CAIP2` | `421614` |
-| `CHAIN_RPC_URL` | RPC endpoint |
-| `USDC_CONTRACT_ADDRESS` | USDC contract address |
-| `DS_REGISTRY_ADDR` | DataSourceRegistry address |
-| `SCHEMA_REGISTRY_ADDR` | SchemaRegistry address |
-| `SETTLEMENT_TRACKER_ADDR` | SettlementTracker address |
+| `DELEGATEE_ETH_PRIVATE_KEY` | Consumer private key                      |
+| `PINATA_JWT`                | Pinata API JWT                            |
+| `PINATA_GATEWAY`            | Pinata gateway URL                        |
+| `CHAIN_NAME`                | `arbitrumSepolia`                         |
+| `CAIP2`                     | `421614`                                  |
+| `CHAIN_RPC_URL`             | RPC endpoint                              |
+| `USDC_CONTRACT_ADDRESS`     | USDC contract address                     |
+| `DS_REGISTRY_ADDR`          | DataSourceRegistry address                |
+| `SCHEMA_REGISTRY_ADDR`      | SchemaRegistry address                    |
+| `SETTLEMENT_TRACKER_ADDR`   | SettlementTracker address                 |
 
 Sample `.env` for Arbitrum Sepolia:
 

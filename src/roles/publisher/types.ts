@@ -71,12 +71,10 @@ export interface Manifest {
  
 export interface UploadParams {
 	records: PublishRecord[];
-	/**
-	 * The schema the records must conform to. Required — field-level encryption
-	 * decisions are driven by the schema definition.
+	/* 
+	 * The unique name of the schema the records must conform to. 
 	 */
-	schema: SchemaDefinition;
-	schemaId: Hex;
+	schemaName: string;
 	/**
 	 * Called once per record to produce the gadget for that record's encrypted
 	 * fields. All encrypted fields within a record share the same gadget —

@@ -8,15 +8,22 @@ import { CommitResult, EncryptedFieldInput, FieldInput, Manifest, ManifestEntry,
 import { SettlementRegistry } from "../../registries/settlement-registry";
 import { makeSettledGadgetFactory } from "../../modules/gadgets/settledGadget";
 import { AppConfig } from "../../config";
+import { SchemaRegistry } from "../../registries/schema-registry";
 
 export * from './types';
 
 export class PublisherRole {
+
+    // in-mem cache for bulk uploads
     private pendingEntries = new Map<string, ManifestEntry>();
+
+    // an in-memory cache for holding schema definitions as needed
+    private readonly schemaCache = new Map<string, Promise<{ schema: SchemaDefinition; schemaId: Hex }>>();
 
     constructor(
         private readonly dataSourceRegistry: DataSourceRegistry,
         private readonly settlementRegistry: SettlementRegistry,
+        private readonly schemaRegistry: SchemaRegistry,
         private readonly storage: WritableStorage<unknown>,
         private readonly encryptionService: EncryptionService,
         private readonly walletClient: WalletClient,
@@ -37,35 +44,29 @@ export class PublisherRole {
         params: UploadParams,
         price: bigint
     ): Promise<CommitResult> {
-        const { records, schema, schemaId, gateway, options } = params;
+        const { records, schemaName, gateway, options } = params;
 
         const address = this.requireAccount();
-        // default to settled gadget
-        const gadgetFactory = params.gadgetFactory ?? ((tag: string) => {
-            const resourceId = SettlementRegistry.deriveResourceId(
-                address, 
-                schemaId, 
-                tag
-            );
+        const { schema, schemaId } = await this.resolveSchema(schemaName);
+
+        console.log('got the schemaId ' + schemaId)
+        console.log('got the schema ' + JSON.stringify(schema))
+
+        const gadgetFactory = params.gadgetFactory ?? ((resourceId: Hex) => {
             return makeSettledGadgetFactory(this.config)(resourceId);
         });
 
-        // this.walletClient.account.address,
 
-        // we only need to validate new records 
         for (const record of records) {
-            // ensure schema validity
             this.validateRecord(record, schema);
-            // instantiate the gadget
-            // get resourceId
+
             const resourceId = SettlementRegistry.deriveResourceId(
                 address,
                 schemaId,
                 record.tag
             );
-            // build the gadget
+
             const gadget = await gadgetFactory(resourceId);
-            // process encrypted fields
             const entry = await this.resolveRecord(record, schema, gadget, gateway);
             this.pendingEntries.set(record.tag, entry);
         }
@@ -163,11 +164,38 @@ export class PublisherRole {
     }
 
     /**
+     * Resolve the schema def and id by name
+     * @param name The name of the schema
+     * @returns The schema and id if they exist
+     */
+    private resolveSchema(name: string): Promise<{ schema: SchemaDefinition; schemaId: Hex }> {
+        if (!this.schemaCache.has(name)) {
+            const p = Promise.all([
+                this.schemaRegistry.getSchema(name),   // { cid, agentId, name }
+                this.schemaRegistry.schemaId(name),    // Hex
+            ])
+                .then(async ([{ cid }, schemaId]) => {
+                    const registered = await this.storage.retrieve(cid) as {
+                        definition: SchemaDefinition;
+                        [key: string]: unknown;
+                    };
+                    return { schema: registered.definition, schemaId };
+                })
+                .catch(err => {
+                    this.schemaCache.delete(name);
+                    throw err;
+                });
+
+            this.schemaCache.set(name, p);
+        }
+        return this.schemaCache.get(name)!;
+    }
+
+    /**
      * Resolve a PublishRecord into a ManifestEntry by processing each field
      * according to the schema definition:
      *   - plain fields are stored as-is
-     *   - encrypted fields are AES+Lit encrypted, pinned to IPFS, and replaced
-     *     with a handle + gadgetDescriptor
+     *   - encrypted fields are AES+Lit encrypted, pinned to IPFS, and replaced with a handle + gadgetDescriptor
      */
     private async resolveRecord(
         record: PublishRecord,
