@@ -81,7 +81,7 @@ export class LitEncryptionService implements EncryptionService {
 		domain: string,
 	): Promise<AuthContextWrapper> {
 		const isNode = typeof window === "undefined";
-		const account = isNode ? walletClient.account : walletClient;
+		const account = walletClient.account;
 
 		if (!account) throw new Error("No account found in wallet client");
 		if (!walletClient.chain) throw new Error("No chain found in wallet client");

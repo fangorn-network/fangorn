@@ -33,7 +33,7 @@ function isPinataConfig(s: StorageConfig): s is { pinata: { jwt: string; gateway
 async function resolveStorage(storage?: StorageConfig): Promise<PinningService | undefined> {
 	if (!storage) return undefined;
 	if (isPinataConfig(storage)) return new PinataStorage(storage.pinata.jwt, storage.pinata.gateway);
-	throw new Error("Invalid storage config: must be { pinata: { jwt, gateway } }.");
+	throw new Error(`Invalid storage config: must be { pinata: { jwt, gateway } }, but was ${JSON.stringify(storage)}`);
 }
 
 export class Fangorn {

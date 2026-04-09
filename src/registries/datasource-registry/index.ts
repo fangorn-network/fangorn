@@ -69,6 +69,8 @@ export class DataSourceRegistry {
             }),
             gas,
         );
+        const fees = await this.publicClient.estimateFeesPerGas()
+
         const hash = await this.walletClient.writeContract({
             address: this.contractAddress,
             abi: DS_REGISTRY_ABI,
@@ -77,7 +79,9 @@ export class DataSourceRegistry {
             chain,
             account,
             gas: gasLimit,
-        });
+            maxFeePerGas: fees.maxFeePerGas * 3n,
+            maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
+        })
         await this.waitForTransaction(hash);
         return hash;
     }
