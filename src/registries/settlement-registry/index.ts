@@ -70,24 +70,24 @@ export class SettlementRegistry {
      */
     async prepareTransferWithAuth(params: TransferWithAuthParams): Promise<TransferWithAuthPayload> {
         const {
-            burnerPrivateKey, paymentRecipient,
-            amount, usdcAddress, usdcDomainName, usdcDomainVersion,
+            paymentRecipient, amount, usdcAddress, usdcDomainName, usdcDomainVersion,
         } = params;
 
-        const chain = this.walletClient.chain;
+        const walletClient = params.walletClient ?? this.walletClient
+
+        const chain = walletClient.chain;
         if (!chain) throw new Error("Wallet client must have a chain configured.");
 
-        const burner = privateKeyToAccount(burnerPrivateKey);
-        const burnerWallet = createWalletClient({
-            account: burner, chain, transport: http(chain.rpcUrls.default.http[0]),
-        });
+        const account = walletClient.account;
+        if (!account) throw new Error("Wallet clietn must have an account configured.")
 
         const validAfter = 0n;
         const validBefore = BigInt(Math.floor(Date.now() / 1000) + 3600);
         const nonceBytes = crypto.getRandomValues(new Uint8Array(32));
         const nonce: Hex = `0x${Array.from(nonceBytes).map(b => b.toString(16).padStart(2, "0")).join("")}`;
 
-        const sig = await burnerWallet.signTypedData({
+        const sig = await walletClient.signTypedData({
+            account,
             domain: {
                 name: usdcDomainName,
                 version: usdcDomainVersion,
@@ -106,7 +106,7 @@ export class SettlementRegistry {
             },
             primaryType: "TransferWithAuthorization",
             message: {
-                from: burner.address,
+                from: account.address,
                 to: paymentRecipient,
                 value: amount,
                 validAfter,
@@ -114,11 +114,11 @@ export class SettlementRegistry {
                 nonce,
             },
         });
-
         const { v, r, s } = parseSignature(sig);
 
         return {
-            burnerAddress: burner.address,
+            // TODO: unsafe
+            sender: account!.address,
             paymentRecipient,
             amount,
             validAfter,
@@ -138,7 +138,7 @@ export class SettlementRegistry {
     async register(params: RegisterParams): Promise<Hex> {
         const { resourceId, identityCommitment, relayerPrivateKey, preparedRegister } = params;
         const {
-            burnerAddress, paymentRecipient, amount,
+            sender, paymentRecipient, amount,
             validAfter, validBefore, nonce, v, r, s,
         } = preparedRegister;
 
@@ -158,7 +158,7 @@ export class SettlementRegistry {
             args: [
                 resourceId,
                 identityCommitment,
-                burnerAddress,
+                sender,
                 paymentRecipient,
                 amount,
                 validAfter,

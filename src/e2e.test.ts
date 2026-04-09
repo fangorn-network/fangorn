@@ -161,7 +161,7 @@ describe("Fangorn E2E", () => {
 			it("manifest exists on-chain after upload", async () => {
 				const exists = await testbed.checkManifestExists(ownerAddress, schemaId);
 				expect(exists).toBe(true);
-			});
+			}, 30_000);
 
 			it("both entries are present in the manifest", async () => {
 				for (const record of TEST_RECORDS) {

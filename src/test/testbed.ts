@@ -153,14 +153,19 @@ export class TestBed {
 	}
 
 	// Consumer Phase 1: purchase/register
-
 	async prepareRegister(
 		burnerPrivateKey: Hex,
 		paymentRecipient: Address,
 		amount: bigint,
 	): Promise<TransferWithAuthPayload> {
+		const walletClient = createWalletClient({
+			account: privateKeyToAccount(burnerPrivateKey),
+			chain: arbitrumSepolia,
+			transport: http(process.env.RPC_URL ?? ""),
+		});
+
 		return this.delegateeFangorn.consumer.prepareRegister({
-			burnerPrivateKey,
+			walletClient,
 			paymentRecipient,
 			amount,
 			usdcAddress: this.usdcContractAddress,
