@@ -28,14 +28,14 @@ export class PublisherRole {
     ) { }
 
     /**
-     * Encrypt and upload data with Fangorn.
-     * Validates records against the schema, encrypts encrypted fields,
-     * stages all resolved entries, then commits to IPFS + on-chain.
+     * Encrypt and upload schema-conformant data
+     * Validates records against the schema, encrypts fields as required,
+     * stages all resolved entries, then commits to IPFS and publishes onchain.
      *
      * Each encrypted field within a record is stored as a separate IPFS object
-     * (the ciphertext). The manifest entry stores the handle (CID + gateway)
+     * (the ciphertext). The manifest entry stores the handle (CID and gateway)
      * alongside plain fields. Consumers can read plain fields freely and
-     * only need to purchase + decrypt for encrypted fields.
+     * only need to purchase and decrypt for encrypted fields.
      */
     async upload(params: UploadParams, price: bigint): Promise<CommitResult> {
         const { records, schemaName, gateway, options } = params;

@@ -19,7 +19,7 @@ import { EncryptionConfig, FangornContext, FangornCreateOptions, StorageConfig }
 import { privateKeyToAccount } from "viem/accounts";
 import { PinataStorage, PinningService } from "./providers/storage/index.js";
 
-const DEFAULT_IPFS_GATEWAY = "https://gateway.pinata.cloud";
+const DEFAULT_IPFS_GATEWAY = "https://ipfs.io";
 
 // Module resolution
 function isEncryptionService(e: EncryptionConfig): e is EncryptionService {
@@ -94,6 +94,11 @@ export class Fangorn {
 		);
 	}
 
+	/**
+	 * Create a new Fangorn instance
+	 * @param options 
+	 * @returns 
+	 */
 	static async create(options: FangornCreateOptions): Promise<Fangorn> {
 		if (!options.privateKey && !options.walletClient) {
 			throw new Error("Either privateKey or walletClient must be provided");
