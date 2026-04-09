@@ -167,14 +167,4 @@ export class LitEncryptionService implements EncryptionService {
 			address: account.address,
 		};
 	}
-
-	private parseKeyResponse(response: string): Uint8Array {
-		return Uint8Array.from(
-			response.replace(/^[^\d]+/, "").split(","),
-			(entry) => {
-				const val = parseInt(entry.trim(), 10);
-				return isNaN(val) ? 0 : val;
-			},
-		);
-	}
 }
