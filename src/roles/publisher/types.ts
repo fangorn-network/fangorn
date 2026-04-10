@@ -1,6 +1,5 @@
 import { type Address, type Hex } from "viem";
 import { Gadget } from "../../modules/gadgets";
-import { SchemaDefinition } from "../schema/types";
 import { GadgetDescriptor } from "../../modules/gadgets/types";
 
 /**

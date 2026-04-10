@@ -1,7 +1,7 @@
 import { type Hex, type WalletClient } from "viem";
 import { SchemaRegistry } from "../../registries/schema-registry";
 import { PinningService, retrieveByCid } from "../../providers/storage";
-import { RegisterAgentParams, RegisteredAgent, RegisteredSchema, RegisterSchemaParams, SchemaBlobV1, SchemaDefinition, SchemaRoleConfig } from "./types";
+import { RegisteredSchema, RegisterSchemaParams, SchemaBlobV1, SchemaDefinition } from "./types";
 
 export * from './types';
 
@@ -13,7 +13,6 @@ export class SchemaRole {
         private readonly storage: PinningService,
         private readonly walletClient: WalletClient,
         private readonly ipfsGateway: string,
-        config?: SchemaRoleConfig,
     ) {
         // this.agent0 = config
         //     ? new SDK({

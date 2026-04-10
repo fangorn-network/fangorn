@@ -17,7 +17,6 @@ const REGISTRY_ADDRESS: Address = "0x8888888888888888888888888888888888888888";
 
 const MOCK_TX_HASH: Hex = "0xaabbccdd00000000000000000000000000000000000000000000000000000000";
 const MOCK_RESOURCE_ID: Hex = "0xdeadbeef00000000000000000000000000000000000000000000000000000000";
-const MOCK_SCHEMA_ID: Hex = "0xcafebabe00000000000000000000000000000000000000000000000000000000";
 const MOCK_RELAYER_KEY: Hex = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 const MOCK_GROUP_ID = 42n;
 const MOCK_IDENTITY_COMMITMENT = 12345678901234567890n;
@@ -36,12 +35,12 @@ const MOCK_PROOF = {
 // ---------------------------------------------------------------------------
 
 vi.mock("@semaphore-protocol/proof", () => ({
-    generateProof: vi.fn(async () => MOCK_PROOF),
+    generateProof: vi.fn(() => MOCK_PROOF),
 }));
 
 vi.mock("@semaphore-protocol/group", () => {
     class Group {
-        addMember(_member: string) { }
+        addMember() { /* mock */ }
     }
     return { Group };
 });
@@ -121,39 +120,6 @@ describe("SettlementRegistry", () => {
         vi.clearAllMocks();
         mockRelayerWriteContract.mockResolvedValue(MOCK_TX_HASH);
     });
-
-    // // -------------------------------------------------------------------------
-    // describe("deriveResourceId (static)", () => {
-    //     it("returns a 32-byte hex string", () => {
-    //         const id = DataSourceRegistry.deriveResourceId(OWNER_ADDRESS, MOCK_SCHEMA_ID, "track-001");
-    //         expect(id).toMatch(/^0x[0-9a-fA-F]{64}$/);
-    //     });
-
-    //     it("is deterministic", () => {
-    //         const a = DataSourceRegistry.deriveResourceId(OWNER_ADDRESS, MOCK_SCHEMA_ID, "track-001");
-    //         const b = DataSourceRegistry.deriveResourceId(OWNER_ADDRESS, MOCK_SCHEMA_ID, "track-001");
-    //         expect(a).toBe(b);
-    //     });
-
-    //     it("produces different ids for different names", () => {
-    //         const a = DataSourceRegistry.deriveResourceId(OWNER_ADDRESS, MOCK_SCHEMA_ID, "track-001");
-    //         const b = DataSourceRegistry.deriveResourceId(OWNER_ADDRESS, MOCK_SCHEMA_ID, "track-002");
-    //         expect(a).not.toBe(b);
-    //     });
-
-    //     it("produces different ids for different schema ids", () => {
-    //         const otherSchema: Hex = "0xbebebebe00000000000000000000000000000000000000000000000000000000";
-    //         const a = DataSourceRegistry.deriveResourceId(OWNER_ADDRESS, MOCK_SCHEMA_ID, "track-001");
-    //         const b = DataSourceRegistry.deriveResourceId(OWNER_ADDRESS, otherSchema, "track-001");
-    //         expect(a).not.toBe(b);
-    //     });
-
-    //     it("produces different ids for different owners", () => {
-    //         const a = DataSourceRegistry.deriveResourceId(OWNER_ADDRESS, MOCK_SCHEMA_ID, "track-001");
-    //         const b = DataSourceRegistry.deriveResourceId(OTHER_ADDRESS, MOCK_SCHEMA_ID, "track-001");
-    //         expect(a).not.toBe(b);
-    //     });
-    // });
 
     // -------------------------------------------------------------------------
     describe("setRegistry", () => {

@@ -10,7 +10,7 @@ export class PinataStorage implements PinningService {
 
     async store(data: unknown, metadata?: Record<string, unknown>): Promise<string> {
         const content = serialize(data);
-        const file = new File([content], (metadata?.name as string) ?? "file", {
+        const file = new File([content], (metadata ?? { name: "file" }).name as string, {
             type: "text/plain",
         });
         const upload = await this.pinata.upload.public.file(file, { metadata });

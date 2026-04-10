@@ -6,8 +6,6 @@ import type { Address, Hash, Hex } from "viem";
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
 const CONTRACT_ADDRESS: Address         = "0x1111111111111111111111111111111111111111";
-const SCHEMA_REGISTRY_ADDRESS: Address  = "0x2222222222222222222222222222222222222222";
-const SETTLEMENT_REGISTRY_ADDRESS: Address = "0x4444444444444444444444444444444444444444";
 const OWNER_ADDRESS: Address            = "0x3333333333333333333333333333333333333333";
 
 const MOCK_SCHEMA_ID: Hex  = "0xdeadbeef00000000000000000000000000000000000000000000000000000000";
@@ -158,7 +156,7 @@ describe("DataSourceRegistry", () => {
             const clients = makeClients({
                 readContractImpl: (args: unknown) => {
                     const { functionName } = args as { functionName: string };
-                    callOrder.push(functionName as string);
+                    callOrder.push(functionName);
                     return functionName === "get" ? MOCK_CID : 1n;
                 },
             });
@@ -258,7 +256,6 @@ describe("DataSourceRegistry", () => {
 
     describe("resourceIdLocal", () => {
         it("matches the contract derivation: keccak256(owner ++ schema_id ++ keccak256(name))", () => {
-            const registry = makeRegistry();
             const nameHash = keccak256(new TextEncoder().encode(MOCK_NAME) as Uint8Array<ArrayBuffer>);
             const expected = keccak256(
                 encodePacked(
@@ -271,14 +268,13 @@ describe("DataSourceRegistry", () => {
         });
 
         it("produces different ids for different names", () => {
-            const registry = makeRegistry();
+            
             const a = DataSourceRegistry.resourceIdLocal(OWNER_ADDRESS, MOCK_SCHEMA_ID, "track-1");
             const b = DataSourceRegistry.resourceIdLocal(OWNER_ADDRESS, MOCK_SCHEMA_ID, "track-2");
             expect(a).not.toBe(b);
         });
 
         it("produces different ids for different schemas", () => {
-            const registry = makeRegistry();
             const schemaB: Hex = "0xbebebebe00000000000000000000000000000000000000000000000000000000";
             const a = DataSourceRegistry.resourceIdLocal(OWNER_ADDRESS, MOCK_SCHEMA_ID, MOCK_NAME);
             const b = DataSourceRegistry.resourceIdLocal(OWNER_ADDRESS, schemaB, MOCK_NAME);
@@ -286,14 +282,12 @@ describe("DataSourceRegistry", () => {
         });
 
         it("is deterministic", () => {
-            const registry = makeRegistry();
             expect(DataSourceRegistry.resourceIdLocal(OWNER_ADDRESS, MOCK_SCHEMA_ID, MOCK_NAME))
                 .toBe(DataSourceRegistry.resourceIdLocal(OWNER_ADDRESS, MOCK_SCHEMA_ID, MOCK_NAME));
         });
 
         it("makes no RPC calls", () => {
             const clients = makeClients();
-            const registry = makeRegistry(clients);
             DataSourceRegistry.resourceIdLocal(OWNER_ADDRESS, MOCK_SCHEMA_ID, MOCK_NAME);
             expect(clients.publicClient.readContract).not.toHaveBeenCalled();
         });

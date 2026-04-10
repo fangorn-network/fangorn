@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { SchemaRegistry } from "./index.js";
 import type { Address, Hash, Hex } from "viem";
 
@@ -311,7 +311,7 @@ describe("SchemaRegistry", () => {
             const { registry, publicClient } = makeRegistry({
                 readContractImpl: (args: unknown) => {
                     const { functionName } = args as { functionName: string };
-                    callOrder.push(functionName as string);
+                    callOrder.push(functionName);
                     if (functionName === "schemaId") return MOCK_SCHEMA_ID;
                     if (functionName === "getSchemaSpec") return MOCK_SPEC_CID;
                     if (functionName === "getSchemaAgent") return MOCK_AGENT_ID;

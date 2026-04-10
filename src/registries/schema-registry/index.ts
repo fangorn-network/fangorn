@@ -50,7 +50,7 @@ export class SchemaRegistry {
             abi: SCHEMA_REGISTRY_ABI,
             functionName: "schemaId",
             args: [name],
-        }) as Promise<Hex>;
+        });
     }
 
     // ── Writes ────────────────────────────────────────────────────────────────
@@ -68,7 +68,7 @@ export class SchemaRegistry {
             functionName: "registerSchema",
             args: [name, specCid, agentId],
             account,
-        }).then(r => r.result as Hex);
+        }).then(r => r.result);
 
         const hash = await this.walletClient.writeContract({
             address: this.contractAddress,
@@ -127,25 +127,25 @@ export class SchemaRegistry {
                 abi: SCHEMA_REGISTRY_ABI,
                 functionName: "getSchemaSpec",
                 args: [id],
-            }) as Promise<string>,
+            }),
             this.publicClient.readContract({
                 address: this.contractAddress,
                 abi: SCHEMA_REGISTRY_ABI,
                 functionName: "getSchemaAgent",
                 args: [id],
-            }) as Promise<string>,
+            }),
             this.publicClient.readContract({
                 address: this.contractAddress,
                 abi: SCHEMA_REGISTRY_ABI,
                 functionName: "getSchemaName",
                 args: [id],
-            }) as Promise<string>,
+            }),
             this.publicClient.readContract({
                 address: this.contractAddress,
                 abi: SCHEMA_REGISTRY_ABI,
                 functionName: "getSchemaOwner",
                 args: [id],
-            }) as Promise<Address>,
+            }),
         ]);
         return { name, specCid, agentId, owner };
     }
@@ -157,7 +157,7 @@ export class SchemaRegistry {
             abi: SCHEMA_REGISTRY_ABI,
             functionName: "schemaExists",
             args: [id],
-        }) as Promise<boolean>;
+        });
     }
 
     async hasPublishers(nameOrId: string): Promise<boolean> {
@@ -167,7 +167,7 @@ export class SchemaRegistry {
             abi: SCHEMA_REGISTRY_ABI,
             functionName: "hasPublishers",
             args: [id],
-        }) as Promise<boolean>;
+        });
     }
 
     async isPublisher(nameOrId: string, publisher: Address): Promise<boolean> {
@@ -177,7 +177,7 @@ export class SchemaRegistry {
             abi: SCHEMA_REGISTRY_ABI,
             functionName: "isPublisher",
             args: [id, publisher],
-        }) as Promise<boolean>;
+        });
     }
 
     async getPublisherCount(nameOrId: string): Promise<bigint> {
@@ -187,7 +187,7 @@ export class SchemaRegistry {
             abi: SCHEMA_REGISTRY_ABI,
             functionName: "getPublisherCount",
             args: [id],
-        }) as Promise<bigint>;
+        });
     }
 
     async waitForTransaction(hash: Hash) {

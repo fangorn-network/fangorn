@@ -1,8 +1,6 @@
 import {
     createWalletClient,
     http,
-    encodePacked,
-    keccak256,
     parseSignature,
     type Address,
     type Hex,
@@ -12,7 +10,6 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import { Group } from "@semaphore-protocol/group";
 import { generateProof, type SemaphoreProof } from "@semaphore-protocol/proof";
-import { arbitrumSepolia } from "viem/chains";
 import { SETTLEMENT_REGISTRY_ABI } from "./abi";
 import {
     TransferWithAuthParams,
@@ -288,7 +285,7 @@ export class SettlementRegistry {
             transport: http(chain.rpcUrls.default.http[0]),
         });
 
-        const hookBytes = hookData && hookData !== "0x"
+        const hookBytes = hookData !== "0x"
             ? Array.from(Buffer.from(hookData.slice(2), "hex"))
             : [];
 

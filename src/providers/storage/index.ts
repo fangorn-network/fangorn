@@ -34,14 +34,14 @@ export function serialize(data: unknown): string {
 	});
 }
 
-export function deserialize<T>(text: string): T {
-	return JSON.parse(text, (key, value: unknown) => {
-		for (const reviver of REVIVERS) {
-			const result = reviver(key, value);
-			if (result !== value) return result;
-		}
-		return value;
-	}) as T;
+export function deserialize(text: string): unknown {
+    return JSON.parse(text, (key, value: unknown) => {
+        for (const reviver of REVIVERS) {
+            const result = reviver(key, value);
+            if (result !== value) return result;
+        }
+        return value;
+    });
 }
 
 /**
@@ -54,11 +54,11 @@ export async function retrieveByCid<T>(
 ): Promise<T> {
 	const url = `${gateway.replace(/\/$/, "")}/ipfs/${cid}`;
 	const controller = new AbortController();
-	const timeout = setTimeout(() => controller.abort(), 10_000);
+	const timeout = setTimeout(() => { controller.abort(); }, 10_000);
 	try {
 		const res = await fetch(url, { signal: controller.signal });
 		if (!res.ok) throw new Error(`Failed to retrieve ${cid}: ${res.statusText}`);
-		return deserialize<T>(await res.text());
+		return deserialize(await res.text()) as T;
 	} catch (err) {
 		if ((err as Error).name === "AbortError") {
 			throw new Error(`Timed out retrieving ${cid} from ${url}`);

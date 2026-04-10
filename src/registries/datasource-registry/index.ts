@@ -84,20 +84,19 @@ export class DataSourceRegistry {
 
     /// Get the manifest CID and metadata for a given (owner, schemaId, name) triple.
     async get(owner: Address, schemaId: Hex, name: string): Promise<DataSource> {
-        const nameHash = this.hashName(name);
         const [manifestCid, version] = await Promise.all([
             this.publicClient.readContract({
                 address: this.contractAddress,
                 abi: DS_REGISTRY_ABI,
                 functionName: "get",
                 args: [owner, schemaId, name],
-            }) as Promise<string>,
+            }),
             this.publicClient.readContract({
                 address: this.contractAddress,
                 abi: DS_REGISTRY_ABI,
                 functionName: "getVersion",
                 args: [owner, schemaId, name],
-            }) as Promise<bigint>,
+            }),
         ]);
         return { manifestCid, name, schemaId, version };
     }
@@ -114,7 +113,7 @@ export class DataSourceRegistry {
             abi: DS_REGISTRY_ABI,
             functionName: "getByHash",
             args: [owner, schemaId, nameHash],
-        }) as Promise<string>;
+        });
     }
 
     /// Recover the original name string from a name_hash.
@@ -128,7 +127,7 @@ export class DataSourceRegistry {
             abi: DS_REGISTRY_ABI,
             functionName: "getName",
             args: [owner, schemaId, nameHash],
-        }) as Promise<string>;
+        });
     }
 
     async getVersion(owner: Address, schemaId: Hex, name: string): Promise<bigint> {
@@ -137,7 +136,7 @@ export class DataSourceRegistry {
             abi: DS_REGISTRY_ABI,
             functionName: "getVersion",
             args: [owner, schemaId, name],
-        }) as Promise<bigint>;
+        });
     }
 
     /// Derive the resource_id (Semaphore group id) via contract call.
@@ -147,7 +146,7 @@ export class DataSourceRegistry {
             abi: DS_REGISTRY_ABI,
             functionName: "resourceId",
             args: [owner, schemaId, name],
-        }) as Promise<Hex>;
+        });
     }
 
     /// Derive the resource_id client-side without an RPC call.

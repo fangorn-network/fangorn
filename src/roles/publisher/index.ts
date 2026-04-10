@@ -16,7 +16,6 @@ import {
     ResolvedPlainField,
     UploadParams,
 } from "./types";
-import { SettlementRegistry } from "../../registries/settlement-registry";
 import { AppConfig } from "../../config";
 import { SchemaRegistry } from "../../registries/schema-registry";
 import { SettledGadget } from "../../modules/gadgets/settledGadget";
@@ -136,7 +135,7 @@ export class PublisherRole {
         try {
             const ds = await this.dataSourceRegistry.get(owner, schemaId, name);
             if (!ds.manifestCid || ds.manifestCid === "") return undefined;
-            return retrieveByCid<Manifest>(ds.manifestCid, this.config.ipfsGateway);
+            return await retrieveByCid<Manifest>(ds.manifestCid, this.config.ipfsGateway);
         } catch {
             return undefined;
         }
@@ -175,14 +174,17 @@ export class PublisherRole {
                     );
                     return { schema: registered.definition, schemaId };
                 })
-                .catch(err => {
+                .catch((err: unknown) => {
                     this.schemaCache.delete(name);
                     throw err;
                 });
 
             this.schemaCache.set(name, p);
         }
-        return this.schemaCache.get(name)!;
+
+        const cached = this.schemaCache.get(name);
+        if (!cached) throw new Error(`Schema not found in cache: ${name}`);
+        return cached;
     }
 
     /**

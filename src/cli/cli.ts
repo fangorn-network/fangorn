@@ -88,9 +88,9 @@ function loadConfig(): Config {
 
         _config = {
             privateKey: privateKey as Hex,
-            cfg: resolveAppConfig(chainName!),
-            pinataJwt: pinataJwt!,
-            pinataGateway: pinataGateway!,
+            cfg: resolveAppConfig(chainName ?? ""),
+            pinataJwt: pinataJwt ?? "",
+            pinataGateway: pinataGateway ?? "",
         };
         return _config;
     }
@@ -228,10 +228,10 @@ schemaCmd
     .command("register")
     .description("Register an agent identity and/or a schema on-chain")
     .argument("<name>", "Schema / agent name")
-    .option("-e, --skip-erc", "Skip ERC-8004 agent registration")
+    // .option("-e, --skip-erc", "Skip ERC-8004 agent registration")
     .action(async (
         name: string,
-        options: { skipErc?: boolean },
+        // options: { skipErc?: boolean },
     ) => {
         try {
             intro("Chain selection");
@@ -239,13 +239,13 @@ schemaCmd
             outro(`Selected chain: ${chain.name}`);
 
             const fangorn = await getFangorn();
-            let datasourceAgentId = "";
+            const datasourceAgentId = "";
 
             // if (!options.skipErc) {
             //     intro("ERC-8004 Agent Registration");
 
-                const description = (await text({ message: "Agent description:" })) as string;
-                handleCancel(description);
+                // const description = (await text({ message: "Agent description:" })) as string;
+                // handleCancel(description);
 
             //     const s = spinner();
             //     s.start("Registering agent...");
@@ -270,11 +270,12 @@ schemaCmd
             })) as string;
             handleCancel(schemaFilePath);
 
-            const schemaName = (await text({
-                message: "Schema name (e.g. fangorn.music.v1):",
-                placeholder: "fangorn.myapp.v1",
-                validate: (v) => { if (!v) return "Required"; },
-            })) as string;
+            const schemaName = name;
+            // (await text({
+            //     message: "Schema name (e.g. fangorn.music.v1):",
+            //     placeholder: "fangorn.myapp.v1",
+            //     validate: (v) => { if (!v) return "Required"; },
+            // })) as string;
             handleCancel(schemaName);
 
             let definition: SchemaDefinition;

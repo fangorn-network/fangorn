@@ -129,7 +129,7 @@ export class ConsumerRole {
         try {
             const ds = await this.dataSourceRegistry.get(owner, schemaId, name);
             if (!ds.manifestCid || ds.manifestCid === "") return undefined;
-            return retrieveByCid<Manifest>(ds.manifestCid, this.ipfsGateway);
+            return await retrieveByCid<Manifest>(ds.manifestCid, this.ipfsGateway);
         } catch {
             return undefined;
         }
