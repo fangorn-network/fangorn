@@ -219,8 +219,7 @@ program
         outro(`Config saved to ${CONFIG_PATH}`);
     });
 
-// ─── schema ───────────────────────────────────────────────────────────────────
-
+// schema
 const schemaCmd = program
     .command("schema")
     .description("Schema registry operations");
@@ -242,21 +241,21 @@ schemaCmd
             const fangorn = await getFangorn();
             let datasourceAgentId = "";
 
-            if (!options.skipErc) {
-                intro("ERC-8004 Agent Registration");
+            // if (!options.skipErc) {
+            //     intro("ERC-8004 Agent Registration");
 
                 const description = (await text({ message: "Agent description:" })) as string;
                 handleCancel(description);
 
-                const s = spinner();
-                s.start("Registering agent...");
-                const { agentId } = await fangorn.schema.registerAgent({ name, description });
-                s.stop();
+            //     const s = spinner();
+            //     s.start("Registering agent...");
+            //     const { agentId } = await fangorn.schema.registerAgent({ name, description });
+            //     s.stop();
 
-                datasourceAgentId = agentId;
-                note(`Agent ID: ${agentId}`, "ERC-8004 registered");
-                outro("Agent Registration complete.");
-            }
+            //     datasourceAgentId = agentId;
+            //     note(`Agent ID: ${agentId}`, "ERC-8004 registered");
+            //     outro("Agent Registration complete.");
+            // }
 
             intro("Schema Registration");
 
@@ -333,8 +332,7 @@ schemaCmd
         }
     });
 
-// ─── publish ──────────────────────────────────────────────────────────────────
-
+// publish
 const publishCmd = program
     .command("publish")
     .description("Publisher operations");

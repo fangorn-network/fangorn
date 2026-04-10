@@ -1,7 +1,6 @@
 import { createAccBuilder, type UnifiedAccessControlCondition } from "@lit-protocol/access-control-conditions";
 import { type Address, type Hex, zeroAddress } from "viem";
 import { type Gadget, type GadgetDescriptor } from "./types.js";
-import { AppConfig } from "../../config.js";
 
 export interface SettledGadgetParams {
     /** keccak256(owner, schemaId, tag) — derived at upload time */
@@ -10,19 +9,6 @@ export interface SettledGadgetParams {
     settlementRegistryAddress: Address;
     /** "arbitrumSepolia" | "baseSepolia" */
     chainName: string;
-}
-
-/**
- * Build a new default gadget from the given config
- * @param config : AppConfig
- * @returns the configured gadget
- */
-export function makeSettledGadgetFactory(config: AppConfig) {
-    return (resourceId: Hex): SettledGadget => new SettledGadget({
-        resourceId,
-        settlementRegistryAddress: config.settlementRegistryContractAddress,
-        chainName: config.chainName,
-    })
 }
 
 export class SettledGadget implements Gadget {

@@ -17,9 +17,9 @@ import {
     UploadParams,
 } from "./types";
 import { SettlementRegistry } from "../../registries/settlement-registry";
-import { makeSettledGadgetFactory } from "../../modules/gadgets/settledGadget";
 import { AppConfig } from "../../config";
 import { SchemaRegistry } from "../../registries/schema-registry";
+import { SettledGadget } from "../../modules/gadgets/settledGadget";
 
 export * from './types';
 
@@ -54,15 +54,25 @@ export class PublisherRole {
         const address = this.requireAccount();
         const { schema, schemaId } = await this.resolveSchema(schemaName);
 
-        const gadgetFactory = params.gadgetFactory ?? ((resourceId: Hex) => {
-            return makeSettledGadgetFactory(this.config)(resourceId);
-        });
+        // default to settled gadget
+        const gadgetFactory = (name: string) => {
+            const resourceId = DataSourceRegistry.resourceIdLocal(
+                address,
+                schemaId,
+                name
+            );
+            return new SettledGadget({
+                resourceId,
+                settlementRegistryAddress: this.config.settlementRegistryContractAddress,
+                chainName: this.config.chainName,
+            })
+        }
 
+        // we only need to validate new records 
         for (const record of records) {
             this.validateRecord(record, schema);
-
-            const resourceId = DataSourceRegistry.resourceIdLocal(address, schemaId, record.name);
-            const gadget = await gadgetFactory(resourceId);
+            const gadget = gadgetFactory(record.name);
+            // process encrypted fields
             const entry = await this.resolveRecord(record, schema, gadget, gateway);
             this.pendingEntries.set(record.name, entry);
         }
