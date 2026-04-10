@@ -4,14 +4,14 @@ import {
     type Address,
     type Hash,
     type Hex,
-    parseEventLogs,
 } from "viem";
 import { SCHEMA_REGISTRY_ABI } from "./abi";
 
 export interface Schema {
     name: string;
-    cid: string;
+    specCid: string;
     agentId: string;
+    owner: Address;
 }
 
 export class SchemaRegistry {
@@ -42,23 +42,34 @@ export class SchemaRegistry {
         return this.contractAddress;
     }
 
-    /// Derive the deterministic bytes32 id for a schema name (pure, no RPC call)
+    // ── Schema id ─────────────────────────────────────────────────────────────
+
     async schemaId(name: string): Promise<Hex> {
         return this.publicClient.readContract({
             address: this.contractAddress,
             abi: SCHEMA_REGISTRY_ABI,
             functionName: "schemaId",
             args: [name],
-        });
+        }) as Promise<Hex>;
     }
 
-    /// Register a new schema, returns its deterministic bytes32 id
+    // ── Writes ────────────────────────────────────────────────────────────────
+
     async registerSchema(
         name: string,
         specCid: string,
         agentId: string,
     ): Promise<{ hash: Hash; schemaId: Hex }> {
         const { chain, account } = this.getWriteConfig();
+
+        const schemaId = await this.publicClient.simulateContract({
+            address: this.contractAddress,
+            abi: SCHEMA_REGISTRY_ABI,
+            functionName: "registerSchema",
+            args: [name, specCid, agentId],
+            account,
+        }).then(r => r.result as Hex);
+
         const hash = await this.walletClient.writeContract({
             address: this.contractAddress,
             abi: SCHEMA_REGISTRY_ABI,
@@ -67,15 +78,11 @@ export class SchemaRegistry {
             chain,
             account,
         });
-        const receipt = await this.waitForTransaction(hash);
-        const logs = parseEventLogs({ abi: SCHEMA_REGISTRY_ABI, logs: receipt.logs });
-        const event = logs.find((log) => log.eventName === "SchemaRegistered");
-        const schemaId = (event?.args as { id: Hex }).id;
+
+        await this.waitForTransaction(hash);
         return { hash, schemaId };
     }
 
-    /// Update the spec CID and agent ID for an existing schema (owner only).
-    /// Accepts either a name (resolved to id) or a raw bytes32 id.
     async updateSchema(
         nameOrId: string,
         newSpecCid: string,
@@ -95,27 +102,54 @@ export class SchemaRegistry {
         return hash;
     }
 
-    /// Get the full schema details. Accepts either a name or a raw bytes32 id.
+    async deleteSchema(nameOrId: string): Promise<Hash> {
+        const { chain, account } = this.getWriteConfig();
+        const id = await this.resolveId(nameOrId);
+        const hash = await this.walletClient.writeContract({
+            address: this.contractAddress,
+            abi: SCHEMA_REGISTRY_ABI,
+            functionName: "deleteSchema",
+            args: [id],
+            chain,
+            account,
+        });
+        await this.waitForTransaction(hash);
+        return hash;
+    }
+
+    // ── Reads ─────────────────────────────────────────────────────────────────
+
     async getSchema(nameOrId: string): Promise<Schema> {
         const id = await this.resolveId(nameOrId);
-        const [specCid, agentId] = await Promise.all([
+        const [specCid, agentId, name, owner] = await Promise.all([
             this.publicClient.readContract({
                 address: this.contractAddress,
                 abi: SCHEMA_REGISTRY_ABI,
                 functionName: "getSchemaSpec",
                 args: [id],
-            }),
+            }) as Promise<string>,
             this.publicClient.readContract({
                 address: this.contractAddress,
                 abi: SCHEMA_REGISTRY_ABI,
                 functionName: "getSchemaAgent",
                 args: [id],
-            }),
+            }) as Promise<string>,
+            this.publicClient.readContract({
+                address: this.contractAddress,
+                abi: SCHEMA_REGISTRY_ABI,
+                functionName: "getSchemaName",
+                args: [id],
+            }) as Promise<string>,
+            this.publicClient.readContract({
+                address: this.contractAddress,
+                abi: SCHEMA_REGISTRY_ABI,
+                functionName: "getSchemaOwner",
+                args: [id],
+            }) as Promise<Address>,
         ]);
-        return { name: typeof nameOrId === "string" ? nameOrId : id, cid: specCid, agentId };
+        return { name, specCid, agentId, owner };
     }
 
-    /// Check whether a schema exists. Accepts either a name or a raw bytes32 id.
     async schemaExists(nameOrId: string): Promise<boolean> {
         const id = await this.resolveId(nameOrId);
         return this.publicClient.readContract({
@@ -123,22 +157,51 @@ export class SchemaRegistry {
             abi: SCHEMA_REGISTRY_ABI,
             functionName: "schemaExists",
             args: [id],
-        });
+        }) as Promise<boolean>;
+    }
+
+    async hasPublishers(nameOrId: string): Promise<boolean> {
+        const id = await this.resolveId(nameOrId);
+        return this.publicClient.readContract({
+            address: this.contractAddress,
+            abi: SCHEMA_REGISTRY_ABI,
+            functionName: "hasPublishers",
+            args: [id],
+        }) as Promise<boolean>;
+    }
+
+    async isPublisher(nameOrId: string, publisher: Address): Promise<boolean> {
+        const id = await this.resolveId(nameOrId);
+        return this.publicClient.readContract({
+            address: this.contractAddress,
+            abi: SCHEMA_REGISTRY_ABI,
+            functionName: "isPublisher",
+            args: [id, publisher],
+        }) as Promise<boolean>;
+    }
+
+    async getPublisherCount(nameOrId: string): Promise<bigint> {
+        const id = await this.resolveId(nameOrId);
+        return this.publicClient.readContract({
+            address: this.contractAddress,
+            abi: SCHEMA_REGISTRY_ABI,
+            functionName: "getPublisherCount",
+            args: [id],
+        }) as Promise<bigint>;
     }
 
     async waitForTransaction(hash: Hash) {
         return this.publicClient.waitForTransactionReceipt({ hash });
     }
 
-    /// Resolve a name or pre-computed bytes32 id.
-    /// If the caller already has the id, no RPC call is made.
+    // ── Internal ──────────────────────────────────────────────────────────────
+
     private async resolveId(nameOrId: string): Promise<Hex> {
-        if (isBytes32Hex(nameOrId)) return nameOrId;
+        if (isBytes32Hex(nameOrId)) return nameOrId as Hex;
         return this.schemaId(nameOrId);
     }
 }
 
-/// True if the value looks like a 32-byte hex string (already an id).
-function isBytes32Hex(value: string): value is Hex {
+function isBytes32Hex(value: string): boolean {
     return /^0x[0-9a-fA-F]{64}$/.test(value);
 }

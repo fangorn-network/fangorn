@@ -26,11 +26,11 @@ export type FieldInput =
  
 /**
  * One schema-conformant record to publish.
- * `tag` uniquely identifies this record within (owner, schemaId) —
+ * `name` uniquely identifies this record within (owner, schemaId) —
  * it maps to the resourceId in the SettlementRegistry.
  */
 export interface PublishRecord {
-	tag: string;
+	name: string;
 	fields: Record<string, FieldInput>;
 }
  
@@ -55,7 +55,7 @@ export type ResolvedField = ResolvedPlainField | ResolvedEncryptedField;
  * the access condition.
  */
 export interface ManifestEntry {
-	tag: string;
+	name: string;
 	fields: Record<string, ResolvedField>;
 }
  

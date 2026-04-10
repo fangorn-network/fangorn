@@ -7,7 +7,7 @@ import { PrepareSettleResult, RegisterParams, SettleParams, TransferWithAuthPayl
 export interface PurchaseParams {
     owner: Address;
     schemaId: Hex;
-    tag: string;
+    name: string;
     identityCommitment: bigint;
     relayerPrivateKey: Hex;
     preparedRegister: TransferWithAuthPayload;
@@ -16,7 +16,7 @@ export interface PurchaseParams {
 export interface ClaimParams {
     owner: Address;
     schemaId: Hex;
-    tag: string;
+    name: string;
     relayerPrivateKey: Hex;
     preparedSettle: PrepareSettleResult;
 }
@@ -27,7 +27,7 @@ export interface DecryptParams {
 	schemaId: Hex;
 	nullifierHash: bigint;
 	/** The record tag — maps to the resourceId */
-	tag: string;
+	name: string;
 	/** The specific encrypted field within the record to decrypt */
 	field: string;
 	identity?: Identity;
@@ -42,7 +42,7 @@ export interface DecryptParams {
 export interface AccessParams {
 	owner: Address;
 	schemaId: Hex;
-	tag: string;
+	name: string;
 	/** The encrypted field to decrypt after settling */
 	field: string;
 	identity: Identity;

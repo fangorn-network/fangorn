@@ -1,25 +1,362 @@
-import { parseAbi } from "viem";
+export const SETTLEMENT_REGISTRY_ABI = [
+    {
+        "inputs": [],
+        "name": "AlreadyRegistered",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "AlreadySettled",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "GroupCreationFailed",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "HookFailed",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "IncorrectPaymentAmount",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "NotAdmin",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "NotAuthorizedRegistry",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "NotResourceOwner",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "ResourceNotFound",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "TransferFailed",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "VerificationFailed",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "resource_id",
+                "type": "bytes32"
+            },
+            {
+                "internalType": "uint256",
+                "name": "price",
+                "type": "uint256"
+            },
+            {
+                "internalType": "address",
+                "name": "owner",
+                "type": "address"
+            }
+        ],
+        "name": "createResource",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "resource_id",
+                "type": "bytes32"
+            }
+        ],
+        "name": "getGroupId",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "resource_id",
+                "type": "bytes32"
+            }
+        ],
+        "name": "getOwner",
+        "outputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "resource_id",
+                "type": "bytes32"
+            }
+        ],
+        "name": "getPrice",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "resource_id",
+                "type": "bytes32"
+            },
+            {
+                "internalType": "uint256",
+                "name": "identity_commitment",
+                "type": "uint256"
+            }
+        ],
+        "name": "isRegistered",
+        "outputs": [
+            {
+                "internalType": "bool",
+                "name": "",
+                "type": "bool"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "stealth_address",
+                "type": "address"
+            },
+            {
+                "internalType": "bytes32",
+                "name": "resource_id",
+                "type": "bytes32"
+            }
+        ],
+        "name": "isSettled",
+        "outputs": [
+            {
+                "internalType": "bool",
+                "name": "",
+                "type": "bool"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "resource_id",
+                "type": "bytes32"
+            },
+            {
+                "internalType": "uint256",
+                "name": "identity_commitment",
+                "type": "uint256"
+            },
+            {
+                "internalType": "address",
+                "name": "from",
+                "type": "address"
+            },
+            {
+                "internalType": "address",
+                "name": "to",
+                "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "amount",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "valid_after",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "valid_before",
+                "type": "uint256"
+            },
+            {
+                "internalType": "bytes32",
+                "name": "nonce",
+                "type": "bytes32"
+            },
+            {
+                "internalType": "uint8",
+                "name": "v",
+                "type": "uint8"
+            },
+            {
+                "internalType": "bytes32",
+                "name": "r",
+                "type": "bytes32"
+            },
+            {
+                "internalType": "bytes32",
+                "name": "s",
+                "type": "bytes32"
+            }
+        ],
+        "name": "register",
+        "outputs": [],
+        "stateMutability": "payable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "resource_id",
+                "type": "bytes32"
+            },
+            {
+                "internalType": "address",
+                "name": "hook",
+                "type": "address"
+            }
+        ],
+        "name": "registerHook",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "registry",
+                "type": "address"
+            },
+            {
+                "internalType": "bool",
+                "name": "authorized",
+                "type": "bool"
+            }
+        ],
+        "name": "setRegistry",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "resource_id",
+                "type": "bytes32"
+            },
+            {
+                "internalType": "address",
+                "name": "stealth_address",
+                "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "merkle_tree_depth",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "merkle_tree_root",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "nullifier",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "message",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256[8]",
+                "name": "points",
+                "type": "uint256[8]"
+            },
+            {
+                "internalType": "uint8[]",
+                "name": "hook_data",
+                "type": "uint8[]"
+            }
+        ],
+        "name": "settle",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "resource_id",
+                "type": "bytes32"
+            },
+            {
+                "internalType": "uint256",
+                "name": "price",
+                "type": "uint256"
+            },
+            {
+                "internalType": "address",
+                "name": "owner",
+                "type": "address"
+            }
+        ],
+        "name": "updatePrice",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    }
+] as const;
 
-export const SETTLEMENT_REGISTRY_ABI = parseAbi([
-    "function createResource(bytes32 resource_id, uint256 price) external returns (uint256)",
-    "function addSeedMember(bytes32 resource_id) external",
-    "function updatePrice(bytes32 resource_id, uint256 price) external",
-    "function registerHook(bytes32 resource_id, address hook) external",
-    "function register(bytes32 resource_id, uint256 identity_commitment, address from, address to, uint256 amount, uint256 valid_after, uint256 valid_before, bytes32 nonce, uint8 v, bytes32 r, bytes32 s) external payable",
-    "function settle(bytes32 resource_id, address stealth_address, uint256 merkle_tree_depth, uint256 merkle_tree_root, uint256 nullifier, uint256 message, uint256[8] calldata points, uint8[] memory hook_data) external",
-    "function isSettled(address stealth_address, bytes32 resource_id) external view returns (bool)",
-    "function getGroupId(bytes32 resource_id) external view returns (uint256)",
-    "function getHook(bytes32 resource_id) external view returns (address)",
-    "function getOwner(bytes32 resource_id) external view returns (address)",
-    "function getPrice(bytes32 resource_id) external view returns (uint256)",
-    "function isRegistered(bytes32 resource_id, uint256 identity_commitment) external view returns (bool)",
-    "error AlreadyRegistered()",
-    "error AlreadySettled()",
-    "error IncorrectPaymentAmount()",
-    "error TransferFailed()",
-    "error VerificationFailed()",
-    "error NotResourceOwner()",
-    "error ResourceNotFound()",
-    "error HookFailed()",
-    "error GroupCreationFailed()"
-]);

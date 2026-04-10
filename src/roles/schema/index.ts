@@ -103,13 +103,13 @@ export class SchemaRole {
             );
 
             const record = await this.schemaRegistry.getSchema(nameOrId);
-            if (!record.cid) return undefined;
+            if (!record.specCid) return undefined;
 
-            const blob = await retrieveByCid<SchemaBlobV1>(record.cid, this.ipfsGateway);
+            const blob = await retrieveByCid<SchemaBlobV1>(record.specCid, this.ipfsGateway);
 
             return {
                 schemaId,
-                schemaCid: record.cid,
+                schemaCid: record.specCid,
                 definition: blob.definition,
                 name: blob.name,
                 agentId: blob.agentId,

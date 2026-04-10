@@ -1,15 +1,286 @@
-import { parseAbi } from "viem";
-
-export const SCHEMA_REGISTRY_ABI = parseAbi([
-    "function schemaId(string calldata name) external view returns (bytes32)",
-    "function registerSchema(string calldata name, string calldata spec_cid, string calldata agent_id) external returns (bytes32)",
-    "function updateSchema(bytes32 id, string calldata new_spec_cid, string calldata new_agent_id) external",
-    "function getSchemaSpec(bytes32 id) external view returns (string memory)",
-    "function getSchemaAgent(bytes32 id) external view returns (string memory)",
-    "function schemaExists(bytes32 id) external view returns (bool)",
-    "event SchemaRegistered(bytes32 indexed id, address indexed owner, string name, string spec_cid, string agent_id)",
-    "event SchemaUpdated(bytes32 indexed id, string new_spec_cid, string new_agent_id)",
-    "error NotOwner()",
-    "error SchemaNotFound()",
-    "error SchemaAlreadyExists()",
-]);
+export const SCHEMA_REGISTRY_ABI = [
+    {
+        "inputs": [],
+        "name": "NotDataSourceRegistry",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "NotOwner",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "SchemaAlreadyExists",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "SchemaInUse",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "SchemaNotFound",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "schema_id",
+                "type": "bytes32"
+            },
+            {
+                "internalType": "address",
+                "name": "publisher",
+                "type": "address"
+            }
+        ],
+        "name": "addPublisher",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "id",
+                "type": "bytes32"
+            }
+        ],
+        "name": "deleteSchema",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "schema_id",
+                "type": "bytes32"
+            }
+        ],
+        "name": "getPublisherCount",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "id",
+                "type": "bytes32"
+            }
+        ],
+        "name": "getSchemaAgent",
+        "outputs": [
+            {
+                "internalType": "string",
+                "name": "",
+                "type": "string"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "id",
+                "type": "bytes32"
+            }
+        ],
+        "name": "getSchemaName",
+        "outputs": [
+            {
+                "internalType": "string",
+                "name": "",
+                "type": "string"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "id",
+                "type": "bytes32"
+            }
+        ],
+        "name": "getSchemaOwner",
+        "outputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "id",
+                "type": "bytes32"
+            }
+        ],
+        "name": "getSchemaSpec",
+        "outputs": [
+            {
+                "internalType": "string",
+                "name": "",
+                "type": "string"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "schema_id",
+                "type": "bytes32"
+            }
+        ],
+        "name": "hasPublishers",
+        "outputs": [
+            {
+                "internalType": "bool",
+                "name": "",
+                "type": "bool"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "schema_id",
+                "type": "bytes32"
+            },
+            {
+                "internalType": "address",
+                "name": "publisher",
+                "type": "address"
+            }
+        ],
+        "name": "isPublisher",
+        "outputs": [
+            {
+                "internalType": "bool",
+                "name": "",
+                "type": "bool"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "string",
+                "name": "name",
+                "type": "string"
+            },
+            {
+                "internalType": "string",
+                "name": "spec_cid",
+                "type": "string"
+            },
+            {
+                "internalType": "string",
+                "name": "agent_id",
+                "type": "string"
+            }
+        ],
+        "name": "registerSchema",
+        "outputs": [
+            {
+                "internalType": "bytes32",
+                "name": "",
+                "type": "bytes32"
+            }
+        ],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "id",
+                "type": "bytes32"
+            }
+        ],
+        "name": "schemaExists",
+        "outputs": [
+            {
+                "internalType": "bool",
+                "name": "",
+                "type": "bool"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "string",
+                "name": "name",
+                "type": "string"
+            }
+        ],
+        "name": "schemaId",
+        "outputs": [
+            {
+                "internalType": "bytes32",
+                "name": "",
+                "type": "bytes32"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "id",
+                "type": "bytes32"
+            },
+            {
+                "internalType": "string",
+                "name": "new_spec_cid",
+                "type": "string"
+            },
+            {
+                "internalType": "string",
+                "name": "new_agent_id",
+                "type": "string"
+            }
+        ],
+        "name": "updateSchema",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    }
+] as const;

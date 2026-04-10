@@ -4,13 +4,25 @@ import { DataSourceRegistry } from "../../registries/datasource-registry";
 import { SettlementRegistry } from "../../registries/settlement-registry";
 import { retrieveByCid } from "../../providers/storage";
 import { EncryptionService } from "../../modules/encryption";
-import { ClaimParams, ClaimResult, DecryptParams, PurchaseParams, PurchaseResult } from "./types";
+import {
+    ClaimParams,
+    ClaimResult,
+    DecryptParams,
+    PurchaseParams,
+    PurchaseResult,
+} from "./types";
 import { EncryptedPayload } from "../../modules/encryption/types";
 import { Manifest, ManifestEntry, ResolvedEncryptedField } from "../publisher/types";
-import { PrepareSettleParams, PrepareSettleResult, TransferWithAuthParams, TransferWithAuthPayload } from "../../registries/settlement-registry/types";
+import {
+    PrepareSettleParams,
+    PrepareSettleResult,
+    TransferWithAuthParams,
+    TransferWithAuthPayload,
+} from "../../registries/settlement-registry/types";
 
 /**
- * The consumer namespace encapsulates all functionality relative to accessing and consuming data.
+ * The consumer namespace encapsulates all functionality relative to
+ * accessing and consuming data.
  */
 export class ConsumerRole {
     constructor(
@@ -21,6 +33,8 @@ export class ConsumerRole {
         private readonly ipfsGateway: string,
     ) { }
 
+    // ── Phase 1 prep ──────────────────────────────────────────────────────────
+
     async prepareRegister(params: TransferWithAuthParams): Promise<TransferWithAuthPayload> {
         return this.settlementRegistry.prepareTransferWithAuth(params);
     }
@@ -29,8 +43,10 @@ export class ConsumerRole {
         return this.settlementRegistry.prepareSettle(params);
     }
 
+    // ── Phase 1 — pay + join group ────────────────────────────────────────────
+
     async register(params: PurchaseParams): Promise<PurchaseResult> {
-        const resourceId = this.deriveResourceId(params.owner, params.schemaId, params.tag);
+        const resourceId = this.deriveResourceId(params.owner, params.schemaId, params.name);
         const txHash = await this.settlementRegistry.register({
             resourceId,
             identityCommitment: params.identityCommitment,
@@ -40,8 +56,10 @@ export class ConsumerRole {
         return { txHash, resourceId };
     }
 
+    // ── Phase 2 — prove + claim ───────────────────────────────────────────────
+
     async claim(params: ClaimParams): Promise<ClaimResult> {
-        const resourceId = this.deriveResourceId(params.owner, params.schemaId, params.tag);
+        const resourceId = this.deriveResourceId(params.owner, params.schemaId, params.name);
         const { hash, nullifier } = await this.settlementRegistry.settle({
             relayerPrivateKey: params.relayerPrivateKey,
             preparedSettle: params.preparedSettle,
@@ -49,17 +67,19 @@ export class ConsumerRole {
         return { txHash: hash, nullifier, resourceId };
     }
 
+    // ── Data access ───────────────────────────────────────────────────────────
+
     /**
      * Decrypt a specific encrypted field within a record.
      *
      * One purchase + claim unlocks ALL encrypted fields in the record —
-     * the resource is at the record (tag) level, not the field level.
+     * the resource is at the record (name) level, not the field level.
      * This method can be called once per encrypted field without re-purchasing.
      *
      * Plain fields can be read freely via getEntry() without any of this.
      */
     async decrypt(params: DecryptParams): Promise<Uint8Array> {
-        const resourceId = this.deriveResourceId(params.owner, params.schemaId, params.tag);
+        const resourceId = this.deriveResourceId(params.owner, params.schemaId, params.name);
 
         if (!params.skipSettlementCheck) {
             if (!params.identity) {
@@ -75,12 +95,12 @@ export class ConsumerRole {
             if (!registered) {
                 throw new Error(
                     `Access denied: identity not registered for resource ${resourceId}. ` +
-                    `Call purchase() and wait for confirmation before decrypting.`,
+                    `Call register() and wait for confirmation before decrypting.`,
                 );
             }
         }
 
-        const entry = await this.getEntry(params.owner, params.schemaId, params.tag);
+        const entry = await this.getEntry(params.owner, params.schemaId, params.name);
         const fieldValue = entry.fields[params.field];
 
         if (!fieldValue || typeof fieldValue !== "object") {
@@ -105,9 +125,9 @@ export class ConsumerRole {
         return decrypted.data;
     }
 
-    async getManifest(owner: Address, schemaId: Hex): Promise<Manifest | undefined> {
+    async getManifest(owner: Address, schemaId: Hex, name: string): Promise<Manifest | undefined> {
         try {
-            const ds = await this.dataSourceRegistry.getManifest(owner, schemaId);
+            const ds = await this.dataSourceRegistry.get(owner, schemaId, name);
             if (!ds.manifestCid || ds.manifestCid === "") return undefined;
             return retrieveByCid<Manifest>(ds.manifestCid, this.ipfsGateway);
         } catch {
@@ -115,25 +135,29 @@ export class ConsumerRole {
         }
     }
 
-    async getEntry(owner: Address, schemaId: Hex, tag: string): Promise<ManifestEntry> {
-        const manifest = await this.getManifest(owner, schemaId);
-        if (!manifest) throw new Error(`No manifest found for owner ${owner} / schemaId ${schemaId}`);
-        const entry = manifest.entries.find((e) => e.tag === tag);
-        if (!entry) throw new Error(`Entry not found: "${tag}"`);
+    async getEntry(owner: Address, schemaId: Hex, name: string): Promise<ManifestEntry> {
+        const manifest = await this.getManifest(owner, schemaId, name);
+        if (!manifest) {
+            throw new Error(`No manifest found for owner ${owner} / schemaId ${schemaId} / name ${name}`);
+        }
+        const entry = manifest.entries.find((e) => e.name === name);
+        if (!entry) throw new Error(`Entry not found: "${name}"`);
         return entry;
     }
 
     async isRegistered(
         owner: Address,
         schemaId: Hex,
-        tag: string,
+        name: string,
         identity: Identity,
     ): Promise<boolean> {
-        const resourceId = this.deriveResourceId(owner, schemaId, tag);
+        const resourceId = this.deriveResourceId(owner, schemaId, name);
         return this.settlementRegistry.isRegistered(resourceId, identity.commitment);
     }
 
-    private deriveResourceId(owner: Address, schemaId: Hex, tag: string): Hex {
-        return SettlementRegistry.deriveResourceId(owner, schemaId, tag);
+    // ── Internal ──────────────────────────────────────────────────────────────
+
+    private deriveResourceId(owner: Address, schemaId: Hex, name: string): Hex {
+        return DataSourceRegistry.resourceIdLocal(owner, schemaId, name);
     }
 }

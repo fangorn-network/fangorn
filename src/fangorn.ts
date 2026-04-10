@@ -72,7 +72,6 @@ export class Fangorn {
 		}
 		return this._publisher ??= new PublisherRole(
 			this.ctx.dataSourceRegistry,
-			this.ctx.settlementRegistry,
 			this.ctx.schemaRegistry,
 			this.ctx.storage,
 			this.ctx.encryption,
