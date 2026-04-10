@@ -399,32 +399,33 @@ publishCmd
         }
     });
 
-publishCmd
-    .command("list")
-    .description("List your manifest entries for a schema")
-    .requiredOption("-s, --schema <schemaName>", "Schema name or bytes32 ID")
-    .action(async (options: { schema: string }) => {
-        try {
-            const fangorn = await getFangorn();
-            const schemaId = await resolveSchemaId(fangorn, options.schema);
-            const manifest = await fangorn.publisher.getManifest(schemaId, options.schema);
+// TODO: This should query the subgraph
+// publishCmd
+//     .command("list")
+//     .description("List your manifest entries for a schema")
+//     .requiredOption("-s, --schema <schemaName>", "Schema name or bytes32 ID")
+//     .action(async (options: { schema: string }) => {
+//         try {
+//             const fangorn = await getFangorn();
+//             const schemaId = await resolveSchemaId(fangorn, options.schema);
+//             const manifest = await fangorn.publisher.getManifest(schemaId, options.schema);
 
-            if (!manifest) {
-                log.warn("No manifest found. Upload with `fangorn publish upload <files> -s <schema>`.");
-                process.exit(0);
-            }
+//             if (!manifest) {
+//                 log.warn("No manifest found. Upload with `fangorn publish upload <files> -s <schema>`.");
+//                 process.exit(0);
+//             }
 
-            console.log(`Schema:  ${options.schema}`);
-            console.log(`Entries (${manifest.entries.length.toString()}):`);
-            for (const entry of manifest.entries) {
-                console.log(`  - ${entry.name}`);
-            }
-            process.exit(0);
-        } catch (err) {
-            console.error("Failed:", (err as Error).message);
-            process.exit(1);
-        }
-    });
+//             console.log(`Schema:  ${options.schema}`);
+//             console.log(`Entries (${manifest.entries.length.toString()}):`);
+//             for (const entry of manifest.entries) {
+//                 console.log(`  - ${entry.name}`);
+//             }
+//             process.exit(0);
+//         } catch (err) {
+//             console.error("Failed:", (err as Error).message);
+//             process.exit(1);
+//         }
+//     });
 
 publishCmd
     .command("entry")
