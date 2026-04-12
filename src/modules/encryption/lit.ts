@@ -81,7 +81,7 @@ export class LitEncryptionService implements EncryptionService {
 		domain: string,
 	): Promise<AuthContextWrapper> {
 		const isNode = typeof window === "undefined";
-		const account = isNode ? walletClient.account : walletClient;
+		const account = walletClient.account;
 
 		if (!account) throw new Error("No account found in wallet client");
 		if (!walletClient.chain) throw new Error("No chain found in wallet client");
@@ -166,15 +166,5 @@ export class LitEncryptionService implements EncryptionService {
 			signedMessage: siweMessage,
 			address: account.address,
 		};
-	}
-
-	private parseKeyResponse(response: string): Uint8Array {
-		return Uint8Array.from(
-			response.replace(/^[^\d]+/, "").split(","),
-			(entry) => {
-				const val = parseInt(entry.trim(), 10);
-				return isNaN(val) ? 0 : val;
-			},
-		);
 	}
 }

@@ -1,6 +1,5 @@
 import { type Address, type Hex } from "viem";
 import { Gadget } from "../../modules/gadgets";
-import { SchemaDefinition } from "../schema/types";
 import { GadgetDescriptor } from "../../modules/gadgets/types";
 
 /**
@@ -26,11 +25,11 @@ export type FieldInput =
  
 /**
  * One schema-conformant record to publish.
- * `tag` uniquely identifies this record within (owner, schemaId) —
+ * `name` uniquely identifies this record within (owner, schemaId) —
  * it maps to the resourceId in the SettlementRegistry.
  */
 export interface PublishRecord {
-	tag: string;
+	name: string;
 	fields: Record<string, FieldInput>;
 }
  
@@ -55,7 +54,7 @@ export type ResolvedField = ResolvedPlainField | ResolvedEncryptedField;
  * the access condition.
  */
 export interface ManifestEntry {
-	tag: string;
+	name: string;
 	fields: Record<string, ResolvedField>;
 }
  
@@ -71,18 +70,20 @@ export interface Manifest {
  
 export interface UploadParams {
 	records: PublishRecord[];
-	/**
-	 * The schema the records must conform to. Required — field-level encryption
-	 * decisions are driven by the schema definition.
+	/* 
+	 * The unique name of the schema the records must conform to. 
 	 */
-	schema: SchemaDefinition;
-	schemaId: Hex;
+	schemaName: string;
 	/**
 	 * Called once per record to produce the gadget for that record's encrypted
 	 * fields. All encrypted fields within a record share the same gadget —
 	 * and therefore the same resourceId and access condition.
 	 */
 	gadgetFactory?: (tag: string) => Gadget | Promise<Gadget>;
+	/**
+	 * Configurable gas for sending the call
+	 */
+	gas?: bigint;
 	/**
 	 * IPFS gateway URL written into each encrypted field handle so consumers
 	 * can retrieve ciphertexts without knowing the storage provider.

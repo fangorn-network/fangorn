@@ -1,6 +1,6 @@
 import { type Hex, type WalletClient } from "viem";
 import { SchemaRegistry } from "../../registries/schema-registry";
-import { WritableStorage } from "../../providers/storage";
+import { PinningService, retrieveByCid } from "../../providers/storage";
 import { RegisteredSchema, RegisterSchemaParams, SchemaBlobV1, SchemaDefinition } from "./types";
 
 export * from './types';
@@ -10,9 +10,9 @@ export class SchemaRole {
 
     constructor(
         private readonly schemaRegistry: SchemaRegistry,
-        private readonly storage: WritableStorage<unknown>,
+        private readonly storage: PinningService,
         private readonly walletClient: WalletClient,
-        // config?: SchemaRoleConfig,
+        private readonly ipfsGateway: string,
     ) {
         // this.agent0 = config
         //     ? new SDK({
@@ -94,7 +94,6 @@ export class SchemaRole {
      */
     async get(nameOrId: string): Promise<RegisteredSchema | undefined> {
         try {
-            // Resolve id upfront so we can return it without a TODO placeholder
             const schemaId = await this.schemaRegistry.schemaId(
                 typeof nameOrId === "string" && !/^0x[0-9a-fA-F]{64}$/.test(nameOrId)
                     ? nameOrId
@@ -102,13 +101,13 @@ export class SchemaRole {
             );
 
             const record = await this.schemaRegistry.getSchema(nameOrId);
-            if (!record.cid) return undefined;
+            if (!record.specCid) return undefined;
 
-            const blob = (await this.storage.retrieve(record.cid)) as SchemaBlobV1;
+            const blob = await retrieveByCid<SchemaBlobV1>(record.specCid, this.ipfsGateway);
 
             return {
                 schemaId,
-                schemaCid: record.cid,
+                schemaCid: record.specCid,
                 definition: blob.definition,
                 name: blob.name,
                 agentId: blob.agentId,

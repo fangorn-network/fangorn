@@ -17,9 +17,9 @@ import { SettlementRegistry } from "./registries/settlement-registry/index.js";
 import { SchemaRoleConfig } from "./roles/schema/types.js";
 import { EncryptionConfig, FangornContext, FangornCreateOptions, StorageConfig } from "./types/index.js";
 import { privateKeyToAccount } from "viem/accounts";
-import { PinataStorage, ReadableStorage, WritableStorage } from "./providers/storage/index.js";
-import { StorachaStorage } from "./providers/storage/storacha/index.js";
-import { ReadOnlyStorachaStorage } from "./providers/storage/storacha/readOnly.js";
+import { PinataStorage, PinningService } from "./providers/storage/index.js";
+
+const DEFAULT_IPFS_GATEWAY = "https://ipfs.io";
 
 // Module resolution
 function isEncryptionService(e: EncryptionConfig): e is EncryptionService {
@@ -30,26 +30,10 @@ function isPinataConfig(s: StorageConfig): s is { pinata: { jwt: string; gateway
 	return "pinata" in (s as object);
 }
 
-function isStorachaReadOnly(s: StorageConfig): boolean {
-	return "storacha" in (s as object) && "readOnly" in ((s as { storacha: object }).storacha);
-}
-
-function isStorachaConfig(s: StorageConfig): s is { storacha: { email: string } } {
-	return "storacha" in (s as object) && "email" in ((s as { storacha: object }).storacha);
-}
-
-function isWritable(s: ReadableStorage<unknown>): s is WritableStorage<unknown> {
-	return "store" in s && "delete" in s;
-}
-
-async function resolveStorage(storage: StorageConfig): Promise<ReadableStorage<unknown>> {
+function resolveStorage(storage?: StorageConfig): PinningService | undefined {
+	if (!storage) return undefined;
 	if (isPinataConfig(storage)) return new PinataStorage(storage.pinata.jwt, storage.pinata.gateway);
-	if (isStorachaReadOnly(storage)) return new ReadOnlyStorachaStorage();
-	if (isStorachaConfig(storage)) return StorachaStorage.create(storage.storacha.email);
-	throw new Error(
-		"Invalid storage config: must be a StorageProvider instance, " +
-		"a { pinata } object, or a { storacha } object.",
-	);
+	throw new Error(`Invalid storage config: must be { pinata: { jwt, gateway } }, but was ${JSON.stringify(storage)}`);
 }
 
 export class Fangorn {
@@ -65,48 +49,46 @@ export class Fangorn {
 
 	/**
 	 * Schema owner: register agents, register schemas, validate definitions.
-	 * Requires writable storage.
 	 */
 	get schema(): SchemaRole {
-		if (!isWritable(this.ctx.storage)) {
-			throw new Error("fangorn.schema requires writable storage. Use { storacha: { email } } or { pinata: { ... } }");
+		if (!this.ctx.storage) {
+			throw new Error("fangorn.schema requires storage. Pass { pinata: { ... } } to Fangorn.create()");
 		}
 		return this._schema ??= new SchemaRole(
 			this.ctx.schemaRegistry,
 			this.ctx.storage,
 			this.ctx.walletClient,
+			this.ctx.ipfsGateway,
 		);
 	}
 
 	/**
 	 * Publisher: encrypt, stage, and commit data under a schema.
-	 * Requires writable storage.
 	 */
 	get publisher(): PublisherRole {
-		if (!isWritable(this.ctx.storage)) {
-			throw new Error("fangorn.publisher requires writable storage. Use { storacha: { email } } or { pinata: { ... } }");
+		if (!this.ctx.storage) {
+			throw new Error("fangorn.publisher requires storage. Pass { pinata: { ... } } to Fangorn.create()");
 		}
 		return this._publisher ??= new PublisherRole(
 			this.ctx.dataSourceRegistry,
-			this.ctx.settlementRegistry,
+			this.ctx.schemaRegistry,
 			this.ctx.storage,
 			this.ctx.encryption,
 			this.ctx.walletClient,
-			this.ctx.config
+			this.ctx.config,
 		);
 	}
 
 	/**
 	 * Consumer: purchase, claim, and decrypt data.
-	 * Works with both readable and writable storage.
 	 */
 	get consumer(): ConsumerRole {
 		return this._consumer ??= new ConsumerRole(
 			this.ctx.dataSourceRegistry,
 			this.ctx.settlementRegistry,
-			this.ctx.storage,
 			this.ctx.encryption,
 			this.ctx.domain,
+			this.ctx.ipfsGateway,
 		);
 	}
 
@@ -128,13 +110,15 @@ export class Fangorn {
 			transport: http(resolvedConfig.rpcUrl),
 		});
 
-		const storage = await resolveStorage(options.storage);
+		const storage = resolveStorage(options.storage);
 
 		const encryption = isEncryptionService(options.encryption)
 			? options.encryption
 			: await LitEncryptionService.init(resolvedConfig.chainName);
 
 		const domain = options.domain ?? new URL(resolvedConfig.rpcUrl).hostname;
+
+		const ipfsGateway = options.ipfsGateway ?? DEFAULT_IPFS_GATEWAY;
 
 		const publicClient = createPublicClient({
 			transport: http(resolvedConfig.rpcUrl),
@@ -174,6 +158,7 @@ export class Fangorn {
 			storage,
 			encryption,
 			domain,
+			ipfsGateway,
 			schemaRegistry,
 			dataSourceRegistry,
 			settlementRegistry,

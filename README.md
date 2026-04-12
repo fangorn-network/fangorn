@@ -2,7 +2,7 @@
 
 Intent-bound encrypted data for the agentic web.
 
-Fangorn lets you publish data encrypted under programmable access conditions — called **gadgets** — so it can only be decrypted by a party that satisfies them. Data is organized by **schemas**, enabling agent-based discovery across any number of publishers.
+Fangorn lets you publish data encrypted under programmable access conditions using **gadgets**. A gadget defines an NP-relation that must must be provably satisfied in order to recover the plaintext (decrypt). Data is organized by **schemas**, enabling agent-based discovery across any number of publishers.
 
 ## Supported Networks
 
@@ -123,11 +123,10 @@ const fangorn = await Fangorn.create({
 
 **Storage options:**
 
-| Config | Mode |
-|---|---|
+| Config                         | Mode         |
+| ------------------------------ | ------------ |
 | `{ pinata: { jwt, gateway } }` | Read + write |
-| `{ storacha: { email } }` | Read + write |
-| `{ storacha: { readOnly: true } }` | Read only |
+| undefined                      | Read only    |
 
 ### Schemas
 
@@ -210,22 +209,15 @@ import { SettlementRegistry } from "@fangorn-network/sdk/registries";
 
 const owner = fangorn.getAddress();
 
+// Default gadget = payment settled
 await fangorn.publisher.upload(
   {
     records: [
       { tag: "track1", field: "audio", data: audioBytes, extension: ".mp3", fileType: "audio/mpeg" },
       { tag: "track1", field: "cover", data: imageBytes, extension: ".png", fileType: "image/png" },
     ],
-    schema: schemaDefinition,
-    schemaId,
+    schemaName: 'schema.name.v1'
     gateway: "https://your-gateway.mypinata.cloud",
-    gadgetFactory: (tag) =>
-      new SettledGadget({
-        resourceId: SettlementRegistry.deriveResourceId(owner, schemaId, tag),
-        settlementRegistryAddress: FangornConfig.ArbitrumSepolia.settlementRegistryContractAddress,
-        chainName: "arbitrumSepolia",
-        pinataJwt: "...",
-      }),
   },
   1n, // price in smallest USDC units
 );
@@ -242,7 +234,7 @@ const identity = new Identity();
 
 // Sign ERC-3009 authorization with the burner wallet
 const preparedRegister = await fangorn.consumer.prepareRegister({
-  burnerPrivateKey: "0x...",
+  walletClient,
   paymentRecipient: ownerAddress,
   amount: 1n,
   usdcAddress: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
@@ -313,8 +305,8 @@ const plaintext = await fangorn.consumer.decrypt({
 
 Gadgets define the access control condition baked into encryption. Built-in gadgets:
 
-| Gadget | Condition |
-|---|---|
+| Gadget          | Condition                                           |
+| --------------- | --------------------------------------------------- |
 | `SettledGadget` | Caller must complete a USDC payment + ZK claim flow |
 
 More coming soon ;)
@@ -327,11 +319,11 @@ See the [gadgets](./src/modules/gadgets/README.md) docs for details on implement
 
 ### Arbitrum Sepolia
 
-| Contract | Address |
-|---|---|
-| DataSource Registry | `0x3941c7d50caa56f7f676554bc4e78d77aaf27ebb` |
-| Schema Registry | `0x49ab3d52b997e63ad56c91178df48263fd80b2dc` |
-| Settlement Registry | `0x4536881306ee355c2f18ae81658771c4488139a3` |
+| Contract            | Address                                      |
+| ------------------- | -------------------------------------------- |
+| DataSource Registry | `0xdb82c131a9d51f6e7695e744bb2bd7774cbb224c` |
+| Schema Registry     | `0x35b67934f9c75bfef6ff3f4d61ff406d81420066` |
+| Settlement Registry | `0x6aff8212e126ed3232958fd228bc58a202b8f590` |
 
 ---
 
@@ -354,19 +346,19 @@ pnpm test:e2e
 
 Required variables:
 
-| Variable | Description |
-|---|---|
-| `DELEGATOR_ETH_PRIVATE_KEY` | Publisher private key (needs testnet ETH) |
-| `DELEGATEE_ETH_PRIVATE_KEY` | Consumer private key |
-| `PINATA_JWT` | Pinata API JWT |
-| `PINATA_GATEWAY` | Pinata gateway URL |
-| `CHAIN_NAME` | `arbitrumSepolia` |
-| `CAIP2` | `421614` |
-| `CHAIN_RPC_URL` | RPC endpoint |
-| `USDC_CONTRACT_ADDRESS` | USDC contract address |
-| `DS_REGISTRY_ADDR` | DataSourceRegistry address |
-| `SCHEMA_REGISTRY_ADDR` | SchemaRegistry address |
-| `SETTLEMENT_TRACKER_ADDR` | SettlementTracker address |
+| Variable                       | Description                               |
+| ------------------------------ | ----------------------------------------- |
+| `DELEGATOR_ETH_PRIVATE_KEY`    | Publisher private key (needs testnet ETH) |
+| `DELEGATEE_ETH_PRIVATE_KEY`    | Consumer private key                      |
+| `PINATA_JWT`                   | Pinata API JWT                            |
+| `PINATA_GATEWAY`               | Pinata gateway URL                        |
+| `CHAIN_NAME`                   | `arbitrumSepolia`                         |
+| `CAIP2`                        | `421614`                                  |
+| `CHAIN_RPC_URL`                | RPC endpoint                              |
+| `USDC_CONTRACT_ADDRESS`        | USDC contract address                     |
+| `DATA_SOURCE_REGISTRY_ADDRESS` | DataSourceRegistry address                |
+| `SCHEMA_REGISTRY_ADDRESS`      | SchemaRegistry address                    |
+| `SETTLEMENT_REGISTRY_ADDRESS`  | SettlementTracker address                 |
 
 Sample `.env` for Arbitrum Sepolia:
 
@@ -375,14 +367,19 @@ CHAIN_NAME=arbitrumSepolia
 CAIP2=421614
 CHAIN_RPC_URL=https://sepolia-rollup.arbitrum.io/rpc
 USDC_CONTRACT_ADDRESS=0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d
-DS_REGISTRY_ADDR=0x6fb3579bfd504cce85b923db335dfc096d912478
-SCHEMA_REGISTRY_ADDR=0x49ab3d52b997e63ad56c91178df48263fd80b2dc
-SETTLEMENT_TRACKER_ADDR=0x7c6ae9eb3398234eb69b2f3acfae69065505ff69
+SETTLEMENT_REGISTRY_ADDRESS=0x6aff8212e126ed3232958fd228bc58a202b8f590
+SCHEMA_REGISTRY_ADDRESS=0x35b67934f9c75bfef6ff3f4d61ff406d81420066
+DATA_SOURCE_REGISTRY_ADDRESS=0xdb82c131a9d51f6e7695e744bb2bd7774cbb224c
 ```
 
 E2E tests deploy any contracts not defined in `.env`, register a test schema, publish manifests, and verify the full purchase → claim → decrypt cycle end-to-end.
 
 ---
+
+## Limitations/Future Work
+
+- Schema validation is **client-side** only, meaning there is no on-chain validation at all, instead operating on a 'trust me' basis. This will be addressed in the future.
+- Schema validation only works with Uint8Array inputs currently. 
 
 ## License
 

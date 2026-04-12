@@ -1,20 +1,6 @@
-/**
- *
- * SDK wrapper for the on-chain SettlementRegistry Stylus contract.
- *
- * Responsible for:
- *   - createResource(): owner calls once per (schemaId, tag) asset
- *   - register():       buyer pays + joins Semaphore group
- *   - settle():         buyer proves membership + fires hook (NFT/timelock)
- *   - isSettled():      access check — used to gate decryptFile()
- *   - deriveResourceId(): deterministic (owner, schemaId, tag) → bytes32
- */
-
 import {
     createWalletClient,
     http,
-    encodePacked,
-    keccak256,
     parseSignature,
     type Address,
     type Hex,
@@ -24,9 +10,15 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import { Group } from "@semaphore-protocol/group";
 import { generateProof, type SemaphoreProof } from "@semaphore-protocol/proof";
-import { arbitrumSepolia } from "viem/chains";
 import { SETTLEMENT_REGISTRY_ABI } from "./abi";
-import { TransferWithAuthParams, TransferWithAuthPayload, PrepareSettleParams, PrepareSettleResult, RegisterParams, SettleParams } from "./types";
+import {
+    TransferWithAuthParams,
+    TransferWithAuthPayload,
+    PrepareSettleParams,
+    PrepareSettleResult,
+    RegisterParams,
+    SettleParams,
+} from "./types";
 
 export class SettlementRegistry {
 
@@ -36,58 +28,122 @@ export class SettlementRegistry {
         private readonly walletClient: WalletClient,
     ) { }
 
-    /**
-     * Create a Semaphore group for a resource. Called by the schema owner once per (schemaId, tag) asset.
-     * 
-     * @param resourceId: The hex encoded resource id
-     * @param price     : The USDC price for the resource
-     * @returns The finalized transaction hash.
-     */
-    async createResource(resourceId: Hex, price: bigint): Promise<Hex> {
-
+    private getAccount() {
         const account = this.walletClient.account;
-        if (!account) {
-            throw new Error("The wallet client must have an account configured");
-        }
+        if (!account) throw new Error("Wallet client must have an account configured");
+        return account;
+    }
 
+    private getChain() {
+        const chain = this.walletClient.chain;
+        if (!chain) throw new Error("Wallet client must have a chain configured");
+        return chain;
+    }
+
+    // ── Admin ─────────────────────────────────────────────────────────────────
+
+    /**
+     * Authorize or revoke a DataSourceRegistry contract.
+     * Only callable by the contract admin.
+     */
+    async setRegistry(registry: Address, authorized: boolean): Promise<Hex> {
+        const account = this.getAccount();
+        const hash = await this.walletClient.writeContract({
+            address: this.contractAddress,
+            abi: SETTLEMENT_REGISTRY_ABI,
+            functionName: "setRegistry",
+            args: [registry, authorized],
+            chain: this.getChain(),
+            account,
+        });
+        await this.publicClient.waitForTransactionReceipt({ hash });
+        return hash;
+    }
+
+    // ── Registry-only (called via DataSourceRegistry) ─────────────────────────
+    //
+    // These are normally invoked by the authorized DataSourceRegistry contract,
+    // not directly by the SDK. Exposed here for testing and admin tooling.
+
+    /**
+     * Create a Semaphore group for a resource.
+     * In production this is called by the DataSourceRegistry, which passes
+     * the publisher wallet as `owner`. Direct calls require the caller to
+     * be an authorized registry.
+     */
+    async createResource(resourceId: Hex, price: bigint, owner: Address): Promise<Hex> {
+        const account = this.getAccount();
         const hash = await this.walletClient.writeContract({
             address: this.contractAddress,
             abi: SETTLEMENT_REGISTRY_ABI,
             functionName: "createResource",
-            args: [resourceId, price],
-            chain: arbitrumSepolia,
+            args: [resourceId, price, owner],
+            chain: this.getChain(),
             account,
         });
-
         await this.publicClient.waitForTransactionReceipt({ hash });
         return hash;
     }
 
     /**
-     * Prepares the EIP-3009 transferWithAuthorization call and signs it w/ an EIP-712 sig
-     * @param params The transferWithAuth params
-     * @returns The payload containing the signed call data
+     * Update the price for a resource.
+     * In production this is called by the DataSourceRegistry.
+     */
+    async updatePrice(resourceId: Hex, price: bigint, owner: Address): Promise<Hex> {
+        const account = this.getAccount();
+        const hash = await this.walletClient.writeContract({
+            address: this.contractAddress,
+            abi: SETTLEMENT_REGISTRY_ABI,
+            functionName: "updatePrice",
+            args: [resourceId, price, owner],
+            chain: this.getChain(),
+            account,
+        });
+        await this.publicClient.waitForTransactionReceipt({ hash });
+        return hash;
+    }
+
+    // ── Direct wallet calls ───────────────────────────────────────────────────
+
+    /**
+     * Register a hook contract for a resource.
+     * Called directly by the publisher wallet (msg.sender must be resource owner).
+     */
+    async registerHook(resourceId: Hex, hook: Address): Promise<Hex> {
+        const account = this.getAccount();
+        const hash = await this.walletClient.writeContract({
+            address: this.contractAddress,
+            abi: SETTLEMENT_REGISTRY_ABI,
+            functionName: "registerHook",
+            args: [resourceId, hook],
+            chain: this.getChain(),
+            account,
+        });
+        await this.publicClient.waitForTransactionReceipt({ hash });
+        return hash;
+    }
+
+    /**
+     * Prepare the EIP-3009 transferWithAuthorization signature.
      */
     async prepareTransferWithAuth(params: TransferWithAuthParams): Promise<TransferWithAuthPayload> {
         const {
-            burnerPrivateKey, paymentRecipient,
-            amount, usdcAddress, usdcDomainName, usdcDomainVersion,
+            paymentRecipient, amount, usdcAddress, usdcDomainName, usdcDomainVersion,
         } = params;
 
-        const chain = this.walletClient.chain;
+        const walletClient = params.walletClient ?? this.walletClient;
+        const chain = walletClient.chain;
         if (!chain) throw new Error("Wallet client must have a chain configured.");
-
-        const burner = privateKeyToAccount(burnerPrivateKey);
-        const burnerWallet = createWalletClient({
-            account: burner, chain, transport: http(chain.rpcUrls.default.http[0]),
-        });
+        const account = walletClient.account;
+        if (!account) throw new Error("Wallet client must have an account configured.");
 
         const validAfter = 0n;
         const validBefore = BigInt(Math.floor(Date.now() / 1000) + 3600);
         const nonceBytes = crypto.getRandomValues(new Uint8Array(32));
         const nonce: Hex = `0x${Array.from(nonceBytes).map(b => b.toString(16).padStart(2, "0")).join("")}`;
 
-        const sig = await burnerWallet.signTypedData({
+        const sig = await walletClient.signTypedData({
+            account,
             domain: {
                 name: usdcDomainName,
                 version: usdcDomainVersion,
@@ -106,7 +162,7 @@ export class SettlementRegistry {
             },
             primaryType: "TransferWithAuthorization",
             message: {
-                from: burner.address,
+                from: account.address,
                 to: paymentRecipient,
                 value: amount,
                 validAfter,
@@ -116,9 +172,8 @@ export class SettlementRegistry {
         });
 
         const { v, r, s } = parseSignature(sig);
-
         return {
-            burnerAddress: burner.address,
+            sender: account.address,
             paymentRecipient,
             amount,
             validAfter,
@@ -131,20 +186,18 @@ export class SettlementRegistry {
     }
 
     /**
-     * Submit a payment and register with the specified semaphore group
-     * @param params 
-     * @returns 
+     * Phase 1 — submit payment and join the Semaphore group.
+     * Submitted via a relayer so the buyer's burner wallet is never linked
+     * to their identity commitment on-chain.
      */
     async register(params: RegisterParams): Promise<Hex> {
         const { resourceId, identityCommitment, relayerPrivateKey, preparedRegister } = params;
         const {
-            burnerAddress, paymentRecipient, amount,
+            sender, paymentRecipient, amount,
             validAfter, validBefore, nonce, v, r, s,
         } = preparedRegister;
 
-        const chain = this.walletClient.chain;
-        if (!chain) throw new Error("Wallet client must have a chain configured.");
-
+        const chain = this.getChain();
         const submitter = createWalletClient({
             account: privateKeyToAccount(relayerPrivateKey),
             chain,
@@ -158,7 +211,7 @@ export class SettlementRegistry {
             args: [
                 resourceId,
                 identityCommitment,
-                burnerAddress,
+                sender,
                 paymentRecipient,
                 amount,
                 validAfter,
@@ -168,12 +221,17 @@ export class SettlementRegistry {
                 r,
                 s,
             ],
+            chain,
+            account: privateKeyToAccount(relayerPrivateKey),
         });
 
         await this.publicClient.waitForTransactionReceipt({ hash });
         return hash;
     }
 
+    /**
+     * Build the Semaphore proof for Phase 2.
+     */
     async prepareSettle(params: PrepareSettleParams): Promise<PrepareSettleResult> {
         const { resourceId, identity, stealthAddress } = params;
 
@@ -189,7 +247,6 @@ export class SettlementRegistry {
         }
 
         const group = await this.fetchGroup(resourceId);
-
         const proof: SemaphoreProof = await generateProof(
             identity,
             group,
@@ -209,23 +266,30 @@ export class SettlementRegistry {
         };
     }
 
+    /**
+     * Phase 2 — prove group membership and claim access.
+     * Submitted via a relayer for unlinkability.
+     */
     async settle(params: SettleParams): Promise<{ hash: Hex; nullifier: bigint }> {
         const { relayerPrivateKey, preparedSettle } = params;
         const {
             resourceId, stealthAddress,
             merkleTreeDepth, merkleTreeRoot,
-            nullifier, message, points,
+            nullifier, message, points, hookData,
         } = preparedSettle;
 
-        const chain = this.walletClient.chain;
-        if (!chain) throw new Error("Wallet client must have a chain configured.");
-
+        const chain = this.getChain();
         const submitter = createWalletClient({
             account: privateKeyToAccount(relayerPrivateKey),
             chain,
             transport: http(chain.rpcUrls.default.http[0]),
         });
 
+        const hookBytes = hookData !== "0x"
+            ? Array.from(Buffer.from(hookData.slice(2), "hex"))
+            : [];
+
+        // TODO: proper gas estimation
         const hash = await submitter.writeContract({
             address: this.contractAddress,
             abi: SETTLEMENT_REGISTRY_ABI,
@@ -239,23 +303,19 @@ export class SettlementRegistry {
                 nullifier,
                 message,
                 points,
-                // TODO: hooks not yet implemented
-                [],
+                hookBytes,
             ],
-            chain: arbitrumSepolia,
+            chain,
             account: privateKeyToAccount(relayerPrivateKey),
         });
 
         const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
         console.log("settlement status " + receipt.status);
-
         return { hash, nullifier };
     }
 
-    /**
-     * Check if a nullifier has been settled (i.e. the user completed Phase 2).
-     * Used to gate decryptFile() in the Fangorn class.
-     */
+    // ── Views ─────────────────────────────────────────────────────────────────
+
     async isSettled(stealthAddress: Address, resourceId: Hex): Promise<boolean> {
         return this.publicClient.readContract({
             address: this.contractAddress,
@@ -265,9 +325,6 @@ export class SettlementRegistry {
         });
     }
 
-    /**
-     * Check if an identity commitment is registered for a resource (completed Phase 1).
-     */
     async isRegistered(resourceId: Hex, identityCommitment: bigint): Promise<boolean> {
         return this.publicClient.readContract({
             address: this.contractAddress,
@@ -277,11 +334,6 @@ export class SettlementRegistry {
         });
     }
 
-    /**
-     * Get the semaphore group id for a resource
-     * @param resourceId The resource id
-     * @returns The group id (if it exists), else null
-     */
     async getGroupId(resourceId: Hex): Promise<bigint> {
         return this.publicClient.readContract({
             address: this.contractAddress,
@@ -291,11 +343,6 @@ export class SettlementRegistry {
         });
     }
 
-    /**
-     * Get the price associated with a resource
-     * @param resourceId  The resource id
-     * @returns The price 
-     */
     async getPrice(resourceId: Hex): Promise<bigint> {
         return this.publicClient.readContract({
             address: this.contractAddress,
@@ -305,31 +352,29 @@ export class SettlementRegistry {
         });
     }
 
-    // utils
-
-    /**
-     * Deterministic resource_id = keccak256(ownerAddress ++ schemaName ++ tag).
-     * This can be implemented in any way as long as owner/schema/tag produces a unique output
-     */
-    static deriveResourceId(owner: Address, schemaName: string, tag: string): Hex {
-        return keccak256(
-            encodePacked(
-                ["address", "string", "string"],
-                [owner, schemaName, tag],
-            ),
-        );
+    async getOwner(resourceId: Hex): Promise<Address> {
+        return this.publicClient.readContract({
+            address: this.contractAddress,
+            abi: SETTLEMENT_REGISTRY_ABI,
+            functionName: "getOwner",
+            args: [resourceId],
+        });
     }
 
+    async waitForTransaction(hash: Hex) {
+        return this.publicClient.waitForTransactionReceipt({ hash });
+    }
+
+    // ── Utils ─────────────────────────────────────────────────────────────────
     /**
      * Reconstruct the Semaphore group from MemberRegistered events.
-     * Fetches all logs (no topic filter) and filters in JS to avoid
-     * viem topic-encoding edge cases with indexed params.
      */
     private async fetchGroup(resourceId: Hex): Promise<Group> {
         const logs = await this.publicClient.getLogs({
             address: this.contractAddress,
             event: {
-                name: "MemberRegistered", type: "event",
+                name: "MemberRegistered",
+                type: "event",
                 inputs: [
                     { name: "resourceId", type: "bytes32", indexed: true },
                     { name: "groupId", type: "uint256", indexed: true },
@@ -339,22 +384,13 @@ export class SettlementRegistry {
             fromBlock: 0n,
         });
 
-        const filtered = logs.filter(
-            (log) => log.args.resourceId?.toLowerCase() === resourceId.toLowerCase()
-        );
-
         const group = new Group();
-        for (const log of filtered) {
+        for (const log of logs.filter(
+            l => l.args.resourceId?.toLowerCase() === resourceId.toLowerCase()
+        )) {
             group.addMember(String(log.args.identityCommitment));
         }
 
         return group;
-    }
-
-
-
-    async waitForTransaction(hash: Hex) {
-        const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
-        return receipt;
     }
 }

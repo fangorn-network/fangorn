@@ -1,4 +1,5 @@
 import {
+    WalletClient,
     type Address,
     type Hex,
 } from "viem";
@@ -6,7 +7,7 @@ import { Identity } from "@semaphore-protocol/identity";
 
 // register 
 export interface TransferWithAuthParams {
-    burnerPrivateKey: Hex;
+    walletClient?: WalletClient;
     paymentRecipient: Address;
     amount: bigint;
     usdcAddress: Address;
@@ -15,7 +16,7 @@ export interface TransferWithAuthParams {
 }
 
 export interface TransferWithAuthPayload {
-    burnerAddress: Address;
+    sender: Address;
     paymentRecipient: Address;
     amount: bigint;
     validAfter: bigint;
@@ -26,7 +27,11 @@ export interface TransferWithAuthPayload {
     s: Hex;
 }
 
+/**
+ * The params for registering with a semaphore group
+ */
 export interface RegisterParams {
+    // Q: should the address (e.g. burner address) be here?
     resourceId: Hex;
     identityCommitment: bigint;
     relayerPrivateKey: Hex;
@@ -34,7 +39,6 @@ export interface RegisterParams {
 }
 
 // settle
-
 export interface PrepareSettleParams {
     resourceId: Hex;
     identity: Identity;
