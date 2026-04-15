@@ -105,7 +105,8 @@ describe("Fangorn E2E", () => {
         const price = 1n;
 
         it("registers a schema on-chain", async () => {
-            schemaName = `fangorn.music.test.${Date.now()}`;
+           schemaName = `fangorn.music.test.${Date.now()}`;
+           console.log('register schema with name ' + schemaName)
             agentId = "";
             schemaId = await testbed.registerSchema(schemaName, MUSIC_SCHEMA, agentId);
             console.log(schemaId);
@@ -154,13 +155,15 @@ describe("Fangorn E2E", () => {
                     buyerIdentity = new Identity();
                 });
 
-                it("Phase 1: purchase — joins the Semaphore group", async () => {
+                it("Phase 1: purchase joins the Semaphore group", async () => {
+                    // burner to owner
                     const transferWithAuthPayload = await testbed.prepareRegister(
                         BURNER_KEY,
                         ownerAddress,
                         USDC_AMOUNT,
                     );
 
+                    // identity registers in the sempaphore group
                     const txHash = await testbed.register(
                         ownerAddress,
                         schemaId,
@@ -179,7 +182,7 @@ describe("Fangorn E2E", () => {
                     expect(registered).toBe(true);
                 }, 30_000);
 
-                it("Phase 2: settle — proves membership and fires access hook", async () => {
+                it("Phase 2: settle", async () => {
                     const payload = await testbed.prepareSettle(
                         ownerAddress, schemaId, name,
                         buyerIdentity, STEALTH_ADDRESS,
@@ -194,6 +197,7 @@ describe("Fangorn E2E", () => {
                     expect(txHash).toMatch(/^0x[0-9a-f]{64}$/i);
 
                     const resourceId = DataSourceRegistry.resourceIdLocal(ownerAddress, schemaId, name);
+
                     const isSettled = await testbed
                         .getDelegateeFangorn()
                         .getSettlementRegistry()
@@ -201,7 +205,7 @@ describe("Fangorn E2E", () => {
                     expect(isSettled).toBe(true);
                 }, 30_000);
 
-                it.skipIf(!hasWorker)("Phase 3: fetch — buyer retrieves content via worker", async () => {
+                it.skipIf(!hasWorker)("Phase 3: fetch - buyer retrieves content via worker", async () => {
                     const data = await testbed.fetchContent(
                         ownerAddress,
                         schemaId,

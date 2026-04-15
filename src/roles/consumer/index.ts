@@ -152,7 +152,7 @@ export class ConsumerRole {
 
         const handleField = fieldValue as ResolvedHandleField
         if (handleField['@type'] !== 'handle') {
-            throw new Error(`Field "${field}" is not a handle field — read it directly from the entry`)
+            throw new Error(`Field "${field}" is not a handle field. Read it directly from the entry`)
         }
 
         const objectKey = parseObjectKey(handleField.uri)
