@@ -65,15 +65,13 @@ export class TestBed {
                 },
             },
             config,
-            domain: "localhost",
-            workerUrl
+            domain: "localhost"
         });
 
         const delegateeFangorn = Fangorn.create({
             privateKey: (process.env.DELEGATEE_ETH_PRIVATE_KEY ?? "0x0") as Hex,
             config,
             domain: "localhost",
-            workerUrl
         });
 
         if (!delegatorWalletClient.account) throw new Error("Delegator account not found");

@@ -167,8 +167,7 @@ export class PublisherRole {
                 resolvedFields[fieldName] = {
                     "@type": "handle",
                     uri: value.uri,
-                    // resourceId: gadget.resourceId,
-                    // gadgetDescriptor: gadget.toDescriptor(),
+                    workerUrl: value.workerUrl,
                 } satisfies ResolvedHandleField;
             } else {
                 resolvedFields[fieldName] = value as ResolvedField;

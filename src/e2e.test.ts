@@ -13,26 +13,26 @@ import { SchemaDefinition } from "./roles/schema/types.js";
 import { DataSourceRegistry } from "./registries/datasource-registry/index.js";
 import { PublishRecord } from "./roles/publisher/types.js";
 
-const SK          = (process.env.DELEGATOR_ETH_PRIVATE_KEY  ?? "0xde0e6c1c331fcd8692463d6ffcf20f9f2e1847264f7a3f578cf54f62f05196cb") as Hex;
-const BURNER_SK   = (process.env.DELEGATEE_ETH_PRIVATE_KEY  ?? "0xcbd236ee5a2fd07e8c9ef9198a23d869b7be792ca1ad76b35a6c67453839aaba") as Hex;
-const RPC_URL     = process.env.RPC_URL ?? "https://sepolia-rollup.arbitrum.io/rpc";
-const WORKER_URL  = process.env.WORKER_URL ?? "http://localhost:8787";
+const SK = (process.env.DELEGATOR_ETH_PRIVATE_KEY ?? "0xde0e6c1c331fcd8692463d6ffcf20f9f2e1847264f7a3f578cf54f62f05196cb") as Hex;
+const BURNER_SK = (process.env.DELEGATEE_ETH_PRIVATE_KEY ?? "0xcbd236ee5a2fd07e8c9ef9198a23d869b7be792ca1ad76b35a6c67453839aaba") as Hex;
+const RPC_URL = process.env.RPC_URL ?? "https://sepolia-rollup.arbitrum.io/rpc";
+const WORKER_URL = process.env.WORKER_URL ?? "http://localhost:8787";
 
-const OWNER_KEY       = SK;
+const OWNER_KEY = SK;
 const FACILITATOR_KEY = SK;
-const BURNER_KEY      = BURNER_SK;
+const BURNER_KEY = BURNER_SK;
 
 const PINATA_JWT = process.env.PINATA_JWT ?? "";
-const PINATA_GW  = process.env.PINATA_GATEWAY ?? "https://gateway.pinata.cloud";
+const PINATA_GW = process.env.PINATA_GATEWAY ?? "https://gateway.pinata.cloud";
 
-const SETTLEMENT_REGISTRY_ADDRESS  = (process.env.SETTLEMENT_REGISTRY_ADDRESS  ?? "0x7c261c222beaa4f866e7f33de7704906d1245a2a") as Address;
+const SETTLEMENT_REGISTRY_ADDRESS = (process.env.SETTLEMENT_REGISTRY_ADDRESS ?? "0x7c261c222beaa4f866e7f33de7704906d1245a2a") as Address;
 const DATA_SOURCE_REGISTRY_ADDRESS = (process.env.DATA_SOURCE_REGISTRY_ADDRESS ?? "0x3941c7d50caa56f7f676554bc4e78d77aaf27ebb") as Address;
-const SCHEMA_REGISTRY_ADDRESS      = (process.env.SCHEMA_REGISTRY_ADDRESS      ?? "0x49ab3d52b997e63ad56c91178df48263fd80b2dc") as Address;
+const SCHEMA_REGISTRY_ADDRESS = (process.env.SCHEMA_REGISTRY_ADDRESS ?? "0x49ab3d52b997e63ad56c91178df48263fd80b2dc") as Address;
 
 const USDC_ADDRESS = (process.env.USDC_ADDRESS ?? "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d") as Address;
-const USDC_AMOUNT  = 1n;
-const USDC_DOMAIN  = "USD Coin";
-const CAIP_2       = parseInt(process.env.CAIP2 ?? "421614");
+const USDC_AMOUNT = 1n;
+const USDC_DOMAIN = "USD Coin";
+const CAIP_2 = parseInt(process.env.CAIP2 ?? "421614");
 
 const CHAIN = arbitrumSepolia;
 
@@ -49,9 +49,9 @@ function makeWallet(key: Hex) {
 }
 
 const MUSIC_SCHEMA: SchemaDefinition = {
-    title:  { "@type": "string" },
+    title: { "@type": "string" },
     artist: { "@type": "string" },
-    audio:  { "@type": "handle" },
+    audio: { "@type": "handle" },
 };
 
 const ENCRYPTED_FIELD = "audio";
@@ -61,17 +61,17 @@ const TEST_RECORDS: PublishRecord[] = [
     {
         name: "track-01",
         fields: {
-            title:  "Track One",
+            title: "Track One",
             artist: "Alice",
-            audio:  { "@type": "handle", uri: "r2://tracks/track-01.mp3" },
+            audio: { "@type": "handle", uri: "r2://tracks/track-01.mp3", workerUrl: process.env.WORKER_URL ?? "" },
         },
     },
     {
         name: "track-02",
         fields: {
-            title:  "Track Two",
+            title: "Track Two",
             artist: "Alice",
-            audio:  { "@type": "handle", uri: "r2://tracks/track-02.mp3" },
+            audio: { "@type": "handle", uri: "r2://tracks/track-02.mp3", workerUrl: process.env.WORKER_URL ?? "" },
         },
     },
 ];
@@ -105,8 +105,8 @@ describe("Fangorn E2E", () => {
         const price = 1n;
 
         it("registers a schema on-chain", async () => {
-           schemaName = `fangorn.music.test.${Date.now()}`;
-           console.log('register schema with name ' + schemaName)
+            schemaName = `fangorn.music.test.${Date.now()}`;
+            console.log('register schema with name ' + schemaName)
             agentId = "";
             schemaId = await testbed.registerSchema(schemaName, MUSIC_SCHEMA, agentId);
             console.log(schemaId);

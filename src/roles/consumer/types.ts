@@ -40,6 +40,7 @@ export interface FetchParams {
     nullifier: string
     resourceId: Hex
     objectKey: string
+	    workerUrl: string
     walletClient: WalletClient
 }
 

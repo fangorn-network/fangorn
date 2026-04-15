@@ -21,6 +21,7 @@ export type FieldInput =
 export interface HandleFieldInput {
     "@type": "handle"
     uri: string
+    workerUrl: string
 }
 
 /**
@@ -44,6 +45,7 @@ export interface PublishRecord {
 export interface ResolvedHandleField {
     "@type": "handle"
     uri: string
+    workerUrl: string
     // resourceId: Hex
     // gadgetDescriptor: GadgetDescriptor
 }

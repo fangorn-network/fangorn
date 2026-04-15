@@ -65,14 +65,9 @@ export class Fangorn {
 	}
 
 	get consumer(): ConsumerRole {
-		if (!this.ctx.workerUrl) {
-			throw new Error("fangorn.consumer requires workerUrl. Pass workerUrl to Fangorn.create()");
-		}
 		return this._consumer ??= new ConsumerRole(
 			this.ctx.dataSourceRegistry,
 			this.ctx.settlementRegistry,
-			// this.ctx.metadataStorage,
-			this.ctx.workerUrl,
 		);
 	}
 
@@ -134,7 +129,7 @@ export class Fangorn {
 			settlementRegistry,
 			schemaRoleConfig,
 			config: resolvedConfig,
-			workerUrl: options.workerUrl,
+			// workerUrl: options.workerUrl,
 		});
 	}
 

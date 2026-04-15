@@ -23,7 +23,6 @@ export class ConsumerRole {
     constructor(
         private readonly dataSourceRegistry: DataSourceRegistry,
         private readonly settlementRegistry: SettlementRegistry,
-        private readonly workerUrl: string,
     ) { }
 
     async prepareRegister(params: TransferWithAuthParams): Promise<TransferWithAuthPayload> {
@@ -70,8 +69,7 @@ export class ConsumerRole {
      * Plain fields can be read freely via getEntry() without any of this.
      */
     async fetch(params: FetchParams): Promise<FetchResult> {
-        const { nullifier, resourceId, objectKey, walletClient } = params
-
+        const { nullifier, resourceId, objectKey, workerUrl, walletClient } = params
         const timestamp = Math.floor(Date.now() / 1000)
 
         const msgHash = keccak256(encodePacked(
@@ -87,12 +85,11 @@ export class ConsumerRole {
             account,
         })
 
-        const res = await globalThis.fetch(`${this.workerUrl}/access`, {
+        const res = await globalThis.fetch(`${workerUrl}/access`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ nullifier, resourceId, objectKey, timestamp, signature }),
         })
-
         if (!res.ok) {
             const data = (await res.json().catch(() => ({}))) as unknown;
 
@@ -158,7 +155,7 @@ export class ConsumerRole {
         const objectKey = parseObjectKey(handleField.uri)
         const resourceId = this.deriveResourceId(owner, schemaId, name)
 
-        return this.fetch({ nullifier, resourceId, objectKey, walletClient })
+        return this.fetch({ nullifier, resourceId, objectKey, workerUrl: handleField.workerUrl, walletClient })
     }
 
     async isRegistered(

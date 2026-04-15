@@ -136,7 +136,6 @@ function getFangorn(): Fangorn {
                 gateway: cfg.pinataGateway,
             },
         },
-        workerUrl: cfg.workerUrl,
         domain: "localhost",
         config: cfg.cfg,
         agentConfig,

@@ -10,7 +10,7 @@ export interface FangornContext {
     config: AppConfig;
     walletClient: WalletClient;
     metadataStorage: MetadataStorage | undefined;
-    workerUrl: string | undefined;
+    // workerUrl: string | undefined;
     domain: string;
     schemaRegistry: SchemaRegistry;
     dataSourceRegistry: DataSourceRegistry;
@@ -30,7 +30,7 @@ export interface AgentConfig {
 
 export interface FangornCreateOptions {
     storage?: StorageConfig;
-    workerUrl?: string;
+    // workerUrl?: string;
     config?: AppConfig;
     domain?: string;
     agentConfig?: AgentConfig;
