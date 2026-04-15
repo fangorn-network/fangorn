@@ -88,8 +88,7 @@ export class TestBed {
         );
     }
 
-    // ── Schema owner ──────────────────────────────────────────────────────────
-
+    // Schema owner
     async registerSchema(
         name: string,
         definition: SchemaDefinition,
@@ -103,8 +102,7 @@ export class TestBed {
         return schemaId;
     }
 
-    // ── Publisher ─────────────────────────────────────────────────────────────
-
+    // Publisher
     async fileUpload(
         records: PublishRecord[],
         schemaName: string,
@@ -117,8 +115,7 @@ export class TestBed {
         return manifestUri;
     }
 
-    // ── Consumer Phase 1: register ────────────────────────────────────────────
-
+    // Consumer Phase 1: register
     async prepareRegister(
         burnerPrivateKey: Hex,
         paymentRecipient: Address,
@@ -159,8 +156,7 @@ export class TestBed {
         return txHash;
     }
 
-    // ── Consumer Phase 2: settle ──────────────────────────────────────────────
-
+    // Consumer Phase 2: settle
     async prepareSettle(
         owner: Address,
         schemaId: Hex,
@@ -192,8 +188,7 @@ export class TestBed {
         return { txHash, nullifier };
     }
 
-    // ── Consumer Phase 3: access ──────────────────────────────────────────────
-
+    // Consumer Phase 3: access
     async fetchContent(
         owner: Address,
         schemaId: Hex,
@@ -219,8 +214,6 @@ export class TestBed {
         return data;
     }
 
-    // ── Assertions ────────────────────────────────────────────────────────────
-
     async checkManifestExists(who: Address, schemaId: Hex, name: string): Promise<boolean> {
         const manifest = await this.delegatorFangorn.consumer.getManifest(who, schemaId, name);
         return manifest !== undefined;
@@ -234,8 +227,6 @@ export class TestBed {
             return false;
         }
     }
-
-    // ── Accessors ─────────────────────────────────────────────────────────────
 
     getDelegatorAddress(): Address { return this.delegatorAddress; }
     getDelegatorFangorn(): Fangorn { return this.delegatorFangorn; }

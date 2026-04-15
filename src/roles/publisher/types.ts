@@ -1,7 +1,5 @@
 import { type Address, type Hex } from "viem";
 
-// ── Input types (supplied by publisher) ──────────────────────────────────────
-
 /**
  * A single field value supplied by the publisher.
  * If the value is already stored externally, use a HandleFieldInput instead.
@@ -18,7 +16,7 @@ export type FieldInput =
  * The publisher supplies the URI directly — no encrypt/store step occurs.
  * Examples:
  *   "r2://tracks/song.mp3"
- *   "ipfs://QmXyz..."
+ *   "ipfs://QmXyz..." [future]
  */
 export interface HandleFieldInput {
     "@type": "handle"
@@ -35,13 +33,13 @@ export interface PublishRecord {
     fields: Record<string, FieldInput>
 }
 
-// ── Resolved types (written to manifest) ─────────────────────────────────────
+// Resolved types (written to manifest)
 
 /**
  * A resolved handle field — points to content in a storage backend.
  * The URI scheme identifies the backend:
  *   r2://   → Fangorn access worker (requires settlement proof)
- *   ipfs:// → public IPFS gateway
+ *   ipfs:// → public IPFS gateway [future]
  */
 export interface ResolvedHandleField {
     "@type": "handle"
@@ -50,13 +48,13 @@ export interface ResolvedHandleField {
     // gadgetDescriptor: GadgetDescriptor
 }
 
-/** A resolved plain field — stored inline in the manifest */
+/** A resolved plain field, stored inline in the manifest */
 export type ResolvedPlainField = string | number | boolean | Uint8Array
 
 export type ResolvedField = ResolvedPlainField | ResolvedHandleField
 
 /**
- * A manifest entry — one schema-conformant record with all fields resolved.
+ * A manifest entry; one schema-conformant record with all fields resolved.
  * Plain fields are readable by anyone directly from the manifest.
  * Handle fields require the consumer to fetch via the appropriate backend.
  */
@@ -65,15 +63,15 @@ export interface ManifestEntry {
     fields: Record<string, ResolvedField>
 }
 
-// ── Manifest ──────────────────────────────────────────────────────────────────
+// Manifest
 
 export interface Manifest {
-    version: 2          // bumped — handle shape changed, gadgetDescriptor removed
+    version: 2
     schemaId: Hex
     entries: ManifestEntry[]
 }
 
-// ── Params / Results ──────────────────────────────────────────────────────────
+// Params / Results
 
 export interface UploadParams {
     records: PublishRecord[]
@@ -88,7 +86,7 @@ export interface UploadParams {
     options?: {
         /**
          * When false (default) the existing manifest for this (owner, schemaId)
-         * is loaded and merged — existing records not in this upload are kept.
+         * is loaded and merged. Existing records not in this upload are kept.
          * When true the manifest is fully replaced.
          */
         overwrite?: boolean
@@ -96,7 +94,7 @@ export interface UploadParams {
 }
 
 export interface CommitResult {
-    manifestUri: string     // renamed from manifestCid — no longer necessarily a CID
+    manifestUri: string
     schemaId: Hex
     owner: Address
     entryCount: number

@@ -65,9 +65,6 @@ export class Fangorn {
 	}
 
 	get consumer(): ConsumerRole {
-		// if (!this.ctx.metadataStorage) {
-		// 	throw new Error("fangorn.consumer requires storage.");
-		// }
 		if (!this.ctx.workerUrl) {
 			throw new Error("fangorn.consumer requires workerUrl. Pass workerUrl to Fangorn.create()");
 		}

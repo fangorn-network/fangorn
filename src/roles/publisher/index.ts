@@ -35,9 +35,8 @@ export class PublisherRole {
      * Validate and stage schema-conformant records, then commit to storage
      * and publish on-chain.
      *
-     * Fields with a HandleFieldInput are written to the manifest as-is —
-     * no storage call is made. The content is assumed to already exist at
-     * the supplied URI (e.g. pre-uploaded to R2).
+     * Fields with a HandleFieldInput are written to the manifest as-is. 
+     * The content is assumed to already exist at the supplied URI (e.g. pre-uploaded to R2).
      *
      * Plain fields are stored inline in the manifest.
      */
@@ -119,8 +118,6 @@ export class PublisherRole {
         return entry;
     }
 
-    // ── Internal ──────────────────────────────────────────────────────────────
-
     private requireAccount(): Address {
         const address = this.walletClient.account?.address;
         if (!address) throw new Error("No account connected to wallet client");
@@ -153,7 +150,7 @@ export class PublisherRole {
     /**
      * Resolve a PublishRecord into a ManifestEntry.
      *
-     * Handle fields are passed through directly — no storage call.
+     * Handle fields are passed through directly
      * Plain fields are stored inline.
      */
 private async resolveRecord(
@@ -269,8 +266,7 @@ private async resolveRecord(
     }
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
+// Helpers
 function isHandleFieldInput(value: FieldInput): value is HandleFieldInput {
     return (
         typeof value === "object" &&

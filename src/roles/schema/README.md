@@ -1,9 +1,6 @@
 # Schema
 
-Fangorn introduces a hierarchical type system for defining encrypted fields with a json schema.
-
-Right now, if you want an agent to find and purchase music, someone has to write a custom plugin for Bandcamp, a custom plugin for Splice, a custom plugin for every platform. Each one is bespoke. Each one requires a business relationship. Each one can be revoked.
-Fangorn's schema layer means any publisher who emits schema-conformant data to IPFS is automatically queryable by any agent that knows the Fangorn vocabulary. No platform relationship. No custom integration. The schema is the API.
+Fangorn introduces a hierarchical type system for defining encrypted fields with a json schema. Each field can specify a `@type` of `handle:MIME-TYPE` to indicate the location and mime type of the data. This is required for a webworker to fetch the data. 
 
 For example, a basic music schema could look like:
 
@@ -26,7 +23,7 @@ and data that satisifes the schema looks like:
         fields: {
             title: "Track One",
             artist: "Alice",
-            audio: { "@type": "handle", uri: "r2://tracks/track-01.mp3" },
+            audio: { "@type": "handle:audio/mp3", uri: "r2://tracks/track-01.mp3" },
         },
     },
     {
@@ -34,7 +31,7 @@ and data that satisifes the schema looks like:
         fields: {
             title: "Track Two",
             artist: "Alice",
-            audio: { "@type": "handle", uri: "r2://tracks/track-02.mp3" },
+            audio: { "@type": "handle:audio/mp3", uri: "r2://tracks/track-02.mp3" },
         },
     },
 ]

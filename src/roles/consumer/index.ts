@@ -18,17 +18,13 @@ import {
     TransferWithAuthPayload,
 } from "../../registries/settlement-registry/types";
 import { PinataBackend } from "../../providers/storage";
-// import { MetadataStorage } from "../../providers/storage/types.js";
 
 export class ConsumerRole {
     constructor(
         private readonly dataSourceRegistry: DataSourceRegistry,
         private readonly settlementRegistry: SettlementRegistry,
-        // private readonly storage: MetadataStorage,
         private readonly workerUrl: string,
     ) { }
-
-    // ── Phase 1 prep ──────────────────────────────────────────────────────────
 
     async prepareRegister(params: TransferWithAuthParams): Promise<TransferWithAuthPayload> {
         return this.settlementRegistry.prepareTransferWithAuth(params);
@@ -38,7 +34,7 @@ export class ConsumerRole {
         return this.settlementRegistry.prepareSettle(params);
     }
 
-    // ── Phase 1 — pay + join group ────────────────────────────────────────────
+    // Phase 1: pay + join group
 
     async register(params: PurchaseParams): Promise<PurchaseResult> {
         const resourceId = this.deriveResourceId(params.owner, params.schemaId, params.name);
@@ -51,7 +47,7 @@ export class ConsumerRole {
         return { txHash, resourceId };
     }
 
-    // ── Phase 2 — prove + claim ───────────────────────────────────────────────
+    // Phase 2: prove + claim
 
     async claim(params: ClaimParams): Promise<ClaimResult> {
         const resourceId = this.deriveResourceId(params.owner, params.schemaId, params.name);
@@ -62,7 +58,7 @@ export class ConsumerRole {
         return { txHash: hash, nullifier, resourceId };
     }
 
-    // ── Phase 3 — fetch via worker ────────────────────────────────────────────
+    // Phase 3: fetch via worker
 
     /**
      * Fetch a handle field's content from the Fangorn access worker.
@@ -109,8 +105,6 @@ export class ConsumerRole {
         }
     }
 
-    // ── Manifest access ───────────────────────────────────────────────────────
-
     async getManifest(owner: Address, schemaId: Hex, name: string): Promise<Manifest | undefined> {
         try {
             const ds = await this.dataSourceRegistry.get(owner, schemaId, name);
@@ -132,7 +126,7 @@ export class ConsumerRole {
     }
 
     /**
-     * Convenience method — resolves the handle URI for a specific field
+     * Resolves the handle URI for a specific field
      * and fetches it via the worker in one call.
      */
     async fetchField(
@@ -171,14 +165,10 @@ export class ConsumerRole {
         return this.settlementRegistry.isRegistered(resourceId, identity.commitment);
     }
 
-    // ── Internal ──────────────────────────────────────────────────────────────
-
     private deriveResourceId(owner: Address, schemaId: Hex, name: string): Hex {
         return DataSourceRegistry.resourceIdLocal(owner, schemaId, name);
     }
 }
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function parseObjectKey(uri: string): string {
     if (uri.startsWith('r2://')) return uri.slice('r2://'.length)

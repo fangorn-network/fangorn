@@ -1,8 +1,9 @@
 # Fangorn SDK
 
-Intent-bound encrypted data for the agentic web.
+Programmable access control for the agentic web.
 
-Fangorn lets you publish data encrypted under programmable access conditions using **gadgets**. A gadget defines an NP-relation that must must be provably satisfied in order to recover the plaintext (decrypt). Data is organized by **schemas**, enabling agent-based discovery across any number of publishers.
+Fangorn lets you publish data under programmable access conditions. Access is enforced on-chain through settlement verification, so your content is only retrievable by those who have provably paid for it. Data is organized by schemas, enabling agent-based discovery across any number of publishers.
+Content is stored in your own storage backend (Cloudflare R2, IPFS, or any compatible future backend). The Fangorn protocol coordinates access without ever touching your content directly.
 
 ## Supported Networks
 
@@ -27,27 +28,29 @@ npm i -g @fangorn-network/sdk
 fangorn init
 ```
 
-- `fangorn init` prompts for a wallet private key, Pinata JWT, Pinata gateway URL, and default chain. Config is written to `~/.fangorn/config.json`.
-- You can also configure via environment variables instead of `fangorn init`:
+`fangorn init` prompts for:
+- Wallet private key
+- Pinata JWT + gateway URL (for schema/manifest storage)
+- Fangorn access worker URL (for content retrieval)
+- Default chain
+
+Config is written to `~/.fangorn/config.json`.
+
+You can also configure via environment variables:
 
 ```sh
 DELEGATOR_ETH_PRIVATE_KEY=0x...
-# if you use pinata over storacha
 PINATA_JWT=...
 PINATA_GATEWAY=https://your-gateway.mypinata.cloud
-# else email for storacha
-STORACHA_EMAIL=...
+WORKER_URL=https://your-worker.workers.dev
 CHAIN_NAME=arbitrumSepolia
 ```
 
 ### Register a Schema
 
 ```sh
-# Registers an ERC-8004 agent identity and a schema
+# Register a schema on-chain
 fangorn schema register <name>
-
-# Skip agent registration
-fangorn schema register <name> --skip-erc
 
 # Fetch a registered schema by name
 fangorn schema get schema.name.v1
@@ -56,40 +59,50 @@ fangorn schema get schema.name.v1
 ### Publish Data
 
 ```sh
-# Encrypt and publish files under a schema, priced at 1 USDC unit
-fangorn publish upload file.ext -s schema.name.v1 -p 1
-
-# List your manifest entries for a schema
-fangorn publish list -s schema.name.v1
+# Publish records under a schema, priced at 1 USDC unit
+fangorn publish upload records.json -s schema.name.v1 -p 1
 
 # Inspect a specific entry
 fangorn publish entry track1 -s schema.name.v1
+```
+
+Records are JSON files containing `PublishRecord` objects. Handle fields point to content already uploaded to your storage backend:
+
+```json
+{
+  "name": "track1",
+  "fields": {
+    "title": "Locura",
+    "artist": "Alice",
+    "audio": { "@type": "handle", "uri": "r2://my-dir/locura.mp3" }
+  }
+}
 ```
 
 > A price of `1` equals the smallest USDC unit (0.000001 USDC).
 
 ### Consume Data
 
-The consumer flow is three phases: **purchase => claim => decrypt**.
+The consumer flow is three phases: **purchase → claim → fetch**.
 
 ```sh
-# Phase 1: pay and join the sempaphore group group
-fangorn consume purchase <owner> <tag> \
+# Phase 1: pay and join the Semaphore group
+fangorn consume purchase <owner> <name> \
   -s schema.name.v1 \
   --burner-key 0x... \
   --amount 1 \
   --usdc 0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d
 
-# Save the identity string printed by purchase — required for the next steps.
+# Save the identity string printed by purchase — required for claim.
 
 # Phase 2: prove membership and claim access (generates a Groth16 ZK proof)
-fangorn consume claim <owner> <tag> \
+fangorn consume claim <owner> <name> \
   -s schema.name.v1 \
   --identity '<identity-string>' \
   --stealth <stealth-address>
 
-# Phase 3: decrypt a specific field
-fangorn consume decrypt <owner> <tag> \
+# Phase 3: fetch content via the access worker
+fangorn consume fetch <owner> <name> \
   -s schema.name.v1 \
   -f audio \
   --nullifier <nullifier> \
@@ -115,7 +128,7 @@ import { Fangorn, FangornConfig } from "@fangorn-network/sdk";
 const fangorn = await Fangorn.create({
   privateKey: "0x...",
   storage: { pinata: { jwt: "...", gateway: "https://your-gateway.mypinata.cloud" } },
-  encryption: { lit: true },
+  workerUrl: "https://your-worker.workers.dev",
   config: FangornConfig.ArbitrumSepolia,
   domain: "localhost",
 });
@@ -128,100 +141,76 @@ const fangorn = await Fangorn.create({
 | `{ pinata: { jwt, gateway } }` | Read + write |
 | undefined                      | Read only    |
 
+Storage is used for schemas and manifests only. Content itself lives in your storage backend (R2 etc.) and is never handled by the SDK directly.
+
 ### Schemas
 
-A `SchemaDefinition` is a JSON object where each field declares its type. Fields marked `@type: "encrypted"` are automatically encrypted by the SDK at publish time. All other fields are stored in plaintext. The `gadget` hint on an encrypted field tells the SDK which access condition to apply.
+A `SchemaDefinition` is a JSON object where each field declares its type. Fields marked `@type: "handle"` point to content in an external storage backend — access is enforced by the Fangorn access worker. All other fields are stored inline in the manifest and are publicly readable.
 
 ```ts
-// Define a schema
 const definition: SchemaDefinition = {
   title:  { "@type": "string" },
   artist: { "@type": "string" },
-  audio:  { "@type": "encrypted", gadget: "settled" }, // field-level encryption
-  cover:  { "@type": "file" },                          // plaintext
+  audio:  { "@type": "handle" },  // content lives in R2, access-controlled by worker
 };
-
-// Register an ERC-8004 agent identity
-const { agentId } = await fangorn.schema.registerAgent({
-  name: "schema.agent.name.v1",
-  description: "Music streaming data source agent",
-});
 
 // Register the schema on-chain
 const { schemaId, schemaCid } = await fangorn.schema.register({
   name: "schema.name.v1",
   definition,
-  agentId,
+  agentId: "",
 });
 
 // Fetch a schema by name
 const schema = await fangorn.schema.get("schema.name.v1");
 ```
 
-When a record conforming to this schema is published, Fangorn encrypts each `@type: "encrypted"` field and replaces its value with a ciphertext handle and a gadget descriptor:
-
-```json
-// Input record
-{
-  "tag": "track1",
-  "fields": {
-    "title": "Cassini Division",
-    "artist": "Arca",
-    "audio": { "data": "<bytes>", "fileType": "audio/mp3" }
-  }
-}
-
-// Stored manifest entry (audio field encrypted)
-{
-  "tag": "track1",
-  "fields": {
-    "title": "Cassini Division",
-    "artist": "Arca",
-    "audio": {
-      "@type": "encrypted",
-      "handle": {
-        "cid": "bafkrei...",
-        "gateway": "your-gateway.mypinata.cloud"
-      },
-      "gadgetDescriptor": {
-        "type": "settled",
-        "description": "Settlement-gated: SettlementRegistry.isSettled(resourceId, caller)",
-        "params": {
-          "resourceId": "0xce16c0...",
-          "settlementRegistryAddress": "0x4536881306ee355c2f18ae81658771c4488139a3",
-          "chainName": "arbitrumSepolia"
-        }
-      }
-    }
-  }
-}
-```
-
-The `gadgetDescriptor` is human- and agent-readable: it describes exactly what a consumer must do to unlock the field. Plaintext fields (`title`, `artist`) remain directly readable in the manifest without any purchase flow.
-
 ### Publishing
 
-Each upload encrypts files via the gadget returned by `gadgetFactory`, pins the manifest to IPFS, and commits the new CID on-chain. Subsequent uploads merge with the existing manifest unless `overwrite` is set.
+Upload content to your R2 bucket out-of-band (via Cloudflare dashboard, wrangler CLI, or your own tooling), then publish a manifest pointing at it. The SDK stores the manifest on IPFS and commits the CID on-chain.
 
 ```ts
-import { SettledGadget } from "@fangorn-network/sdk/gadgets";
-import { SettlementRegistry } from "@fangorn-network/sdk/registries";
-
-const owner = fangorn.getAddress();
-
-// Default gadget = payment settled
 await fangorn.publisher.upload(
   {
     records: [
-      { tag: "track1", field: "audio", data: audioBytes, extension: ".mp3", fileType: "audio/mpeg" },
-      { tag: "track1", field: "cover", data: imageBytes, extension: ".png", fileType: "image/png" },
+      {
+        name: "track1",
+        fields: {
+          title:  "Locura",
+          artist: "Alice",
+          audio:  { "@type": "handle", uri: "r2://my-dir/locura.mp3" },
+        },
+      },
     ],
-    schemaName: 'schema.name.v1'
-    gateway: "https://your-gateway.mypinata.cloud",
+    schemaName: "schema.name.v1",
   },
   1n, // price in smallest USDC units
 );
 ```
+
+The manifest stored on-chain looks like:
+
+```json
+{
+  "version": 2,
+  "schemaId": "0x...",
+  "entries": [
+    {
+      "name": "track1",
+      "fields": {
+        "title": "Locura",
+        "artist": "Alice",
+        "audio": {
+          "@type": "handle",
+          "uri": "r2://my-dir/locura.mp3"
+        }
+      }
+    }
+  ]
+}
+```
+
+Plain fields (`title`, `artist`) are readable by anyone directly from the manifest. Handle fields require a valid on-chain settlement to retrieve via the access worker.
 
 ### Consuming
 
@@ -232,7 +221,6 @@ import { Identity } from "@semaphore-protocol/identity";
 
 const identity = new Identity();
 
-// Sign ERC-3009 authorization with the burner wallet
 const preparedRegister = await fangorn.consumer.prepareRegister({
   walletClient,
   paymentRecipient: ownerAddress,
@@ -242,76 +230,80 @@ const preparedRegister = await fangorn.consumer.prepareRegister({
   usdcDomainVersion: "2",
 });
 
-// Submit payment and join the Semaphore group
 const { txHash } = await fangorn.consumer.register({
   owner: ownerAddress,
   schemaId,
-  tag: "track1",
+  name: "track1",
   identityCommitment: identity.commitment,
   relayerPrivateKey: "0x...",
   preparedRegister,
 });
 
-// Save identity.export(). Required for Phase 2 and 3
+// Save identity.export() — required for Phase 2
 ```
 
 #### Phase 2: Claim
 
 ```ts
-// Generate Groth16 ZK proof of group membership
 const preparedSettle = await fangorn.consumer.prepareSettle({
-  resourceId: SettlementRegistry.deriveResourceId(ownerAddress, schemaId, "track1"),
+  resourceId: DataSourceRegistry.resourceIdLocal(ownerAddress, schemaId, "track1"),
   identity,
   stealthAddress: "0x...",
 });
 
-// Submit the proof and trigger the hook call (if configured)
 const { txHash, nullifier } = await fangorn.consumer.claim({
   owner: ownerAddress,
   schemaId,
-  tag: "track1",
+  name: "track1",
   relayerPrivateKey: "0x...",
   preparedSettle,
 });
 
-// Store nullifier. required for Phase 3.
+// Save nullifier — required for Phase 3
 ```
 
-#### Phase 3: Decrypt
+#### Phase 3: Fetch
 
 ```ts
 import { createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { arbitrumSepolia } from "viem/chains";
 
-const walletClient = createWalletClient({
+const stealthWalletClient = createWalletClient({
   account: privateKeyToAccount(stealthPrivateKey),
   chain: arbitrumSepolia,
   transport: http(rpcUrl),
 });
 
-const plaintext = await fangorn.consumer.decrypt({
-  owner: ownerAddress,
-  walletClient,
+const { data, contentType } = await fangorn.consumer.fetchField(
+  ownerAddress,
   schemaId,
-  nullifierHash: nullifier,
-  tag: "track1",
-  field: "audio",
-  identity,
-});
+  "track1",
+  "audio",
+  nullifier.toString(),
+  stealthWalletClient,
+);
 ```
 
-### Gadgets
+The consumer signs `{ nullifier, resourceId, objectKey, timestamp }` with their stealth key. The access worker verifies the signature, checks `is_settled()` on-chain, and proxies the content bytes directly from R2. The content URL is never exposed to the client.
 
-Gadgets define the access control condition baked into encryption. Built-in gadgets:
+---
 
-| Gadget          | Condition                                           |
-| --------------- | --------------------------------------------------- |
-| `SettledGadget` | Caller must complete a USDC payment + ZK claim flow |
+## Access Worker
 
-More coming soon ;)
+The Fangorn access worker is a Cloudflare Worker that gates R2 content behind on-chain settlement verification. Publishers deploy their own worker, with one worker per R2 bucket.
 
-See the [gadgets](./src/modules/gadgets/README.md) docs for details on implementing your own gadgets.
+### How it works
+
+1. Consumer signs `{ nullifier, resourceId, objectKey, timestamp }` with their stealth address private key
+2. Worker recovers the stealth address from the signature
+3. Worker calls `is_settled(stealthAddress, resourceId)` on the Settlement Registry
+4. If settled → bytes proxied directly from R2
+5. If not → 401
+
+The worker is stateless, open-source, and has no logging. Its only capability is verifying settlement and proxying bytes. The content URL is never exposed to the consumer.
+
+See the [fangorn-access-worker](https://github.com/fangorn-network/webworker) repo for deployment instructions.
 
 ---
 
@@ -337,8 +329,6 @@ pnpm test
 
 ### E2E Tests
 
-Copy the example env and fill in values:
-
 ```sh
 cp env.example .env
 pnpm test:e2e
@@ -352,35 +342,28 @@ Required variables:
 | `DELEGATEE_ETH_PRIVATE_KEY`    | Consumer private key                      |
 | `PINATA_JWT`                   | Pinata API JWT                            |
 | `PINATA_GATEWAY`               | Pinata gateway URL                        |
+| `WORKER_URL`                   | Access worker URL (optional for Phase 3)  |
 | `CHAIN_NAME`                   | `arbitrumSepolia`                         |
 | `CAIP2`                        | `421614`                                  |
-| `CHAIN_RPC_URL`                | RPC endpoint                              |
-| `USDC_CONTRACT_ADDRESS`        | USDC contract address                     |
+| `RPC_URL`                      | RPC endpoint                              |
+| `USDC_ADDRESS`                 | USDC contract address                     |
 | `DATA_SOURCE_REGISTRY_ADDRESS` | DataSourceRegistry address                |
 | `SCHEMA_REGISTRY_ADDRESS`      | SchemaRegistry address                    |
-| `SETTLEMENT_REGISTRY_ADDRESS`  | SettlementTracker address                 |
+| `SETTLEMENT_REGISTRY_ADDRESS`  | SettlementRegistry address                |
 
-Sample `.env` for Arbitrum Sepolia:
-
-```sh
-CHAIN_NAME=arbitrumSepolia
-CAIP2=421614
-CHAIN_RPC_URL=https://sepolia-rollup.arbitrum.io/rpc
-USDC_CONTRACT_ADDRESS=0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d
-SETTLEMENT_REGISTRY_ADDRESS=0x6aff8212e126ed3232958fd228bc58a202b8f590
-SCHEMA_REGISTRY_ADDRESS=0x35b67934f9c75bfef6ff3f4d61ff406d81420066
-DATA_SOURCE_REGISTRY_ADDRESS=0xdb82c131a9d51f6e7695e744bb2bd7774cbb224c
-```
-
-E2E tests deploy any contracts not defined in `.env`, register a test schema, publish manifests, and verify the full purchase → claim → decrypt cycle end-to-end.
+Phase 3 tests are skipped unless `WORKER_URL` is set. Run the access worker locally with `wrangler dev --local` and set `WORKER_URL=http://localhost:8787` to enable them.
 
 ---
 
-## Limitations/Future Work
+## Limitations / Future Work
 
-- Schema validation is **client-side** only, meaning there is no on-chain validation at all, instead operating on a 'trust me' basis. This will be addressed in the future.
-- Schema validation only works with Uint8Array inputs currently. 
+- Schema validation is client-side only — no on-chain enforcement.
+- The access worker is a trusted component. Future versions will replace it with a TEE or protocol-native verification layer.
+- One worker per R2 bucket. Multi-bucket support is planned.
+- Purchase ledger is in-memory only. Persistent ledger backed by IPFS is in progress.
+
+---
 
 ## License
 
-MIT
+MITSonnet 4.6Claude is AI and can make mistakes. Please double-check responses.
