@@ -67,3 +67,15 @@ export interface AccessResult {
     resourceId: Hex;
     entry: ManifestEntry;
 }
+
+export interface FetchParams {
+    nullifier: string
+    resourceId: Hex
+    objectKey: string
+    walletClient: WalletClient
+}
+
+export interface FetchResult {
+    data: Uint8Array
+    contentType: string
+}

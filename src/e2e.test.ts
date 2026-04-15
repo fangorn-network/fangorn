@@ -16,6 +16,7 @@ import { PublishRecord } from "./roles/publisher/types.js";
 const SK          = (process.env.DELEGATOR_ETH_PRIVATE_KEY  ?? "0xde0e6c1c331fcd8692463d6ffcf20f9f2e1847264f7a3f578cf54f62f05196cb") as Hex;
 const BURNER_SK   = (process.env.DELEGATEE_ETH_PRIVATE_KEY  ?? "0xcbd236ee5a2fd07e8c9ef9198a23d869b7be792ca1ad76b35a6c67453839aaba") as Hex;
 const RPC_URL     = process.env.RPC_URL ?? "https://sepolia-rollup.arbitrum.io/rpc";
+const WORKER_URL  = process.env.WORKER_URL ?? "http://localhost:8787";
 
 const OWNER_KEY       = SK;
 const FACILITATOR_KEY = SK;
@@ -37,6 +38,7 @@ const CHAIN = arbitrumSepolia;
 
 const STEALTH_ADDRESS = privateKeyToAccount(BURNER_SK).address;
 const hasIpfs = !!PINATA_JWT;
+const hasWorker = !!process.env.WORKER_URL;
 
 function makeWallet(key: Hex) {
     return createWalletClient({
@@ -49,18 +51,19 @@ function makeWallet(key: Hex) {
 const MUSIC_SCHEMA: SchemaDefinition = {
     title:  { "@type": "string" },
     artist: { "@type": "string" },
-    audio:  { "@type": "encrypted", gadget: "settled" },
+    audio:  { "@type": "handle" },
 };
 
 const ENCRYPTED_FIELD = "audio";
 
+// r2:// URIs — content already uploaded to R2 out-of-band
 const TEST_RECORDS: PublishRecord[] = [
     {
         name: "track-01",
         fields: {
             title:  "Track One",
             artist: "Alice",
-            audio:  { data: new Uint8Array([1, 2, 3, 4, 5]), fileType: "audio/mp3" },
+            audio:  { "@type": "handle", uri: "r2://tracks/track-01.mp3" },
         },
     },
     {
@@ -68,7 +71,7 @@ const TEST_RECORDS: PublishRecord[] = [
         fields: {
             title:  "Track Two",
             artist: "Alice",
-            audio:  { data: new Uint8Array([6, 7, 8, 9, 10]), fileType: "audio/mp3" },
+            audio:  { "@type": "handle", uri: "r2://tracks/track-02.mp3" },
         },
     },
 ];
@@ -88,6 +91,7 @@ describe("Fangorn E2E", () => {
             RPC_URL,
             "arbitrumSepolia",
             CHAIN.id,
+            WORKER_URL,
         );
 
         ownerAddress = privateKeyToAccount(OWNER_KEY).address;
@@ -104,7 +108,7 @@ describe("Fangorn E2E", () => {
             schemaName = `fangorn.music.test.${Date.now()}`;
             agentId = "";
             schemaId = await testbed.registerSchema(schemaName, MUSIC_SCHEMA, agentId);
-			console.log(schemaId)
+            console.log(schemaId);
             expect(schemaId).toMatch(/^0x[0-9a-f]{64}$/i);
         }, 30_000);
 
@@ -118,13 +122,12 @@ describe("Fangorn E2E", () => {
 
         describe("Publisher", () => {
             it("uploads multiple records and publishes a manifest", async () => {
-                const manifestCid = await testbed.fileUpload(
+                const manifestUri = await testbed.fileUpload(
                     TEST_RECORDS,
                     schemaName,
-                    PINATA_GW,
                     price,
                 );
-                expect(manifestCid).toBeTruthy();
+                expect(manifestUri).toBeTruthy();
             }, 60_000);
 
             it("manifest exists on-chain after upload", async () => {
@@ -149,26 +152,6 @@ describe("Fangorn E2E", () => {
 
                 beforeAll(() => {
                     buyerIdentity = new Identity();
-                });
-
-                it("cannot decrypt before purchasing", async () => {
-                    await expect(
-                        testbed.tryDecrypt(
-                            ownerAddress, 0n, SK,
-                            schemaId, name, ENCRYPTED_FIELD,
-                            RPC_URL, buyerIdentity, true,
-                        ),
-                    ).rejects.toThrow("not registered");
-                });
-
-                it("cannot decrypt when identity is missing and settlement is required", async () => {
-                    await expect(
-                        testbed.tryDecrypt(
-                            ownerAddress, 0n, SK,
-                            schemaId, name, ENCRYPTED_FIELD,
-                            RPC_URL, undefined, true,
-                        ),
-                    ).rejects.toThrow("identity is required");
                 });
 
                 it("Phase 1: purchase — joins the Semaphore group", async () => {
@@ -196,7 +179,7 @@ describe("Fangorn E2E", () => {
                     expect(registered).toBe(true);
                 }, 30_000);
 
-                it("Phase 2: claim — proves membership and fires access hook", async () => {
+                it("Phase 2: settle — proves membership and fires access hook", async () => {
                     const payload = await testbed.prepareSettle(
                         ownerAddress, schemaId, name,
                         buyerIdentity, STEALTH_ADDRESS,
@@ -218,49 +201,35 @@ describe("Fangorn E2E", () => {
                     expect(isSettled).toBe(true);
                 }, 30_000);
 
-                it("decrypt — buyer can read the file after full settlement", async () => {
-                    const data = await testbed.tryDecrypt(
-                        ownerAddress, nullifierHash, BURNER_KEY,
-                        schemaId, name, ENCRYPTED_FIELD,
-                        RPC_URL, buyerIdentity, true,
+                it.skipIf(!hasWorker)("Phase 3: fetch — buyer retrieves content via worker", async () => {
+                    const data = await testbed.fetchContent(
+                        ownerAddress,
+                        schemaId,
+                        name,
+                        ENCRYPTED_FIELD,
+                        nullifierHash.toString(),
+                        BURNER_KEY,
                     );
                     expect(data).toBeInstanceOf(Uint8Array);
                     expect(data.length).toBeGreaterThan(0);
                 }, 30_000);
+
+                it.skipIf(!hasWorker)("Phase 3: fetch fails without settlement", async () => {
+                    const unsettledIdentity = new Identity();
+                    // use a fresh keypair that was never settled
+                    const freshKey = "0x1111111111111111111111111111111111111111111111111111111111111111" as Hex;
+                    await expect(
+                        testbed.fetchContent(
+                            ownerAddress,
+                            schemaId,
+                            name,
+                            ENCRYPTED_FIELD,
+                            "0",
+                            freshKey,
+                        ),
+                    ).rejects.toThrow("not settled");
+                }, 30_000);
             });
         });
     });
-
-    // describe("DataSourceRegistry.resourceIdLocal", () => {
-    //     const STUB_SCHEMA_ID = "0x0000000000000000000000000000000000000000000000000000000000000001" as Hex;
-    //     const NAME = "derive-test";
-
-    //     it("is deterministic for the same (owner, schemaId, name)", () => {
-    //         const a = DataSourceRegistry.resourceIdLocal(ownerAddress, STUB_SCHEMA_ID, NAME);
-    //         const b = DataSourceRegistry.resourceIdLocal(ownerAddress, STUB_SCHEMA_ID, NAME);
-    //         expect(a).toBe(b);
-    //     });
-
-    //     it("differs for different names", () => {
-    //         const a = DataSourceRegistry.resourceIdLocal(ownerAddress, STUB_SCHEMA_ID, "name-a");
-    //         const b = DataSourceRegistry.resourceIdLocal(ownerAddress, STUB_SCHEMA_ID, "name-b");
-    //         expect(a).not.toBe(b);
-    //     });
-
-    //     it("differs for different schemaIds", () => {
-    //         const schemaA = "0x0000000000000000000000000000000000000000000000000000000000000001" as Hex;
-    //         const schemaB = "0x0000000000000000000000000000000000000000000000000000000000000002" as Hex;
-    //         const a = DataSourceRegistry.resourceIdLocal(ownerAddress, schemaA, NAME);
-    //         const b = DataSourceRegistry.resourceIdLocal(ownerAddress, schemaB, NAME);
-    //         expect(a).not.toBe(b);
-    //     });
-
-    //     it("differs for different owners", () => {
-    //         const addr1 = "0x0000000000000000000000000000000000000001" as Address;
-    //         const addr2 = "0x0000000000000000000000000000000000000002" as Address;
-    //         const a = DataSourceRegistry.resourceIdLocal(addr1, STUB_SCHEMA_ID, NAME);
-    //         const b = DataSourceRegistry.resourceIdLocal(addr2, STUB_SCHEMA_ID, NAME);
-    //         expect(a).not.toBe(b);
-    //     });
-    // });
 });

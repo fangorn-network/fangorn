@@ -1,36 +1,31 @@
-import { type Address, type Hex } from "viem";
+import { type Address, type Hex, type WalletClient, encodePacked, keccak256 } from "viem";
 import { type Identity } from "@semaphore-protocol/identity";
 import { DataSourceRegistry } from "../../registries/datasource-registry";
 import { SettlementRegistry } from "../../registries/settlement-registry";
-import { retrieveByCid } from "../../providers/storage";
-import { EncryptionService } from "../../modules/encryption";
 import {
     ClaimParams,
     ClaimResult,
-    DecryptParams,
+    FetchParams,
+    FetchResult,
     PurchaseParams,
     PurchaseResult,
 } from "./types";
-import { EncryptedPayload } from "../../modules/encryption/types";
-import { Manifest, ManifestEntry, ResolvedEncryptedField } from "../publisher/types";
+import { Manifest, ManifestEntry, ResolvedHandleField } from "../publisher/types";
 import {
     PrepareSettleParams,
     PrepareSettleResult,
     TransferWithAuthParams,
     TransferWithAuthPayload,
 } from "../../registries/settlement-registry/types";
+import { PinataBackend } from "../../providers/storage";
+// import { MetadataStorage } from "../../providers/storage/types.js";
 
-/**
- * The consumer namespace encapsulates all functionality relative to
- * accessing and consuming data.
- */
 export class ConsumerRole {
     constructor(
         private readonly dataSourceRegistry: DataSourceRegistry,
         private readonly settlementRegistry: SettlementRegistry,
-        private readonly encryptionService: EncryptionService,
-        private readonly domain: string,
-        private readonly ipfsGateway: string,
+        // private readonly storage: MetadataStorage,
+        private readonly workerUrl: string,
     ) { }
 
     // ── Phase 1 prep ──────────────────────────────────────────────────────────
@@ -67,69 +62,60 @@ export class ConsumerRole {
         return { txHash: hash, nullifier, resourceId };
     }
 
-    // ── Data access ───────────────────────────────────────────────────────────
+    // ── Phase 3 — fetch via worker ────────────────────────────────────────────
 
     /**
-     * Decrypt a specific encrypted field within a record.
+     * Fetch a handle field's content from the Fangorn access worker.
      *
-     * One purchase + claim unlocks ALL encrypted fields in the record —
-     * the resource is at the record (name) level, not the field level.
-     * This method can be called once per encrypted field without re-purchasing.
+     * The consumer signs { nullifier, resourceId, objectKey, timestamp } with
+     * their stealth address private key. The worker recovers the address,
+     * verifies is_settled() on-chain, and proxies the R2 bytes.
      *
      * Plain fields can be read freely via getEntry() without any of this.
      */
-    async decrypt(params: DecryptParams): Promise<Uint8Array> {
-        const resourceId = this.deriveResourceId(params.owner, params.schemaId, params.name);
+    async fetch(params: FetchParams): Promise<FetchResult> {
+        const { nullifier, resourceId, objectKey, walletClient } = params
 
-        if (!params.skipSettlementCheck) {
-            if (!params.identity) {
-                throw new Error(
-                    "identity is required for settlement verification. " +
-                    "Pass skipSettlementCheck: true for owner / out-of-band flows.",
-                );
-            }
-            const registered = await this.settlementRegistry.isRegistered(
-                resourceId,
-                params.identity.commitment,
-            );
-            if (!registered) {
-                throw new Error(
-                    `Access denied: identity not registered for resource ${resourceId}. ` +
-                    `Call register() and wait for confirmation before decrypting.`,
-                );
-            }
+        const timestamp = Math.floor(Date.now() / 1000)
+
+        const msgHash = keccak256(encodePacked(
+            ['uint256', 'bytes32', 'string', 'uint64'],
+            [BigInt(nullifier), resourceId as Hex, objectKey, BigInt(timestamp)]
+        ))
+
+        const account = walletClient.account;
+        if (!account) throw new Error("walletClient account must be defined")
+
+        const signature = await walletClient.signMessage({
+            message: { raw: msgHash },
+            account,
+        })
+
+        const res = await globalThis.fetch(`${this.workerUrl}/access`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nullifier, resourceId, objectKey, timestamp, signature }),
+        })
+
+        if (!res.ok) {
+            const { error } = await res.json().catch(() => ({ error: res.statusText }))
+            throw new Error(`Worker fetch failed: ${error}`)
         }
 
-        const entry = await this.getEntry(params.owner, params.schemaId, params.name);
-        const fieldValue = entry.fields[params.field];
-
-        if (!fieldValue || typeof fieldValue !== "object") {
-            throw new Error(`Field "${params.field}" is missing or invalid`);
+        const buffer = await res.arrayBuffer()
+        return {
+            data: new Uint8Array(buffer),
+            contentType: res.headers.get('Content-Type') ?? 'application/octet-stream',
         }
-
-        const encryptedField = fieldValue as ResolvedEncryptedField;
-        const encrypted = await retrieveByCid<EncryptedPayload>(
-            encryptedField.handle.cid,
-            this.ipfsGateway,
-        );
-
-        const authContext =
-            params.authContext ??
-            (await this.encryptionService.createAuthContext(
-                params.walletClient,
-                this.domain,
-                params.nullifierHash,
-            ));
-
-        const decrypted = await this.encryptionService.decrypt(encrypted, authContext);
-        return decrypted.data;
     }
+
+    // ── Manifest access ───────────────────────────────────────────────────────
 
     async getManifest(owner: Address, schemaId: Hex, name: string): Promise<Manifest | undefined> {
         try {
             const ds = await this.dataSourceRegistry.get(owner, schemaId, name);
             if (!ds.manifestCid || ds.manifestCid === "") return undefined;
-            return await retrieveByCid<Manifest>(ds.manifestCid, this.ipfsGateway);
+            return await PinataBackend.getStatic<Manifest>(ds.manifestCid);
         } catch {
             return undefined;
         }
@@ -143,6 +129,36 @@ export class ConsumerRole {
         const entry = manifest.entries.find((e) => e.name === name);
         if (!entry) throw new Error(`Entry not found: "${name}"`);
         return entry;
+    }
+
+    /**
+     * Convenience method — resolves the handle URI for a specific field
+     * and fetches it via the worker in one call.
+     */
+    async fetchField(
+        owner: Address,
+        schemaId: Hex,
+        name: string,
+        field: string,
+        nullifier: string,
+        walletClient: WalletClient,
+    ): Promise<FetchResult> {
+        const entry = await this.getEntry(owner, schemaId, name)
+        const fieldValue = entry.fields[field]
+
+        if (!fieldValue || typeof fieldValue !== 'object' || !('@type' in fieldValue)) {
+            throw new Error(`Field "${field}" is missing or is not a handle field`)
+        }
+
+        const handleField = fieldValue as ResolvedHandleField
+        if (handleField['@type'] !== 'handle') {
+            throw new Error(`Field "${field}" is not a handle field — read it directly from the entry`)
+        }
+
+        const objectKey = parseObjectKey(handleField.uri)
+        const resourceId = this.deriveResourceId(owner, schemaId, name)
+
+        return this.fetch({ nullifier, resourceId, objectKey, walletClient })
     }
 
     async isRegistered(
@@ -160,4 +176,13 @@ export class ConsumerRole {
     private deriveResourceId(owner: Address, schemaId: Hex, name: string): Hex {
         return DataSourceRegistry.resourceIdLocal(owner, schemaId, name);
     }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function parseObjectKey(uri: string): string {
+    if (uri.startsWith('r2://')) return uri.slice('r2://'.length)
+    if (uri.startsWith('ipfs://')) return uri.slice('ipfs://'.length)
+    // bare key or full URL — return as-is
+    return uri
 }
