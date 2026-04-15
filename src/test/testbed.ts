@@ -41,7 +41,7 @@ export class TestBed {
         chain: string,
         caip2: number,
         workerUrl: string,
-    ): Promise<TestBed> {
+    ): TestBed {
         let chainImpl: Chain = arbitrumSepolia;
         if (chain === "baseSepolia") chainImpl = baseSepolia;
 
