@@ -47,7 +47,7 @@ export class PublisherRole {
 
         for (const record of records) {
             this.validateRecord(record, schema);
-            const entry = await this.resolveRecord(record, schema);
+            const entry = this.resolveRecord(record, schema);
             this.pendingEntries.set(record.name, entry);
         }
 
@@ -153,30 +153,30 @@ export class PublisherRole {
      * Handle fields are passed through directly
      * Plain fields are stored inline.
      */
-private async resolveRecord(
-    record: PublishRecord,
-    schema: SchemaDefinition,
-    // gadget: Gadget,
-): Promise<ManifestEntry> {
-    const resolvedFields: Record<string, ResolvedField> = {};
+    private resolveRecord(
+        record: PublishRecord,
+        schema: SchemaDefinition,
+        // gadget: Gadget,
+    ): ManifestEntry {
+        const resolvedFields: Record<string, ResolvedField> = {};
 
-    for (const [fieldName] of Object.entries(schema)) {
-        const value = record.fields[fieldName];
+        for (const [fieldName] of Object.entries(schema)) {
+            const value = record.fields[fieldName];
 
-        if (isHandleFieldInput(value)) {
-            resolvedFields[fieldName] = {
-                "@type": "handle",
-                uri: value.uri,
-                // resourceId: gadget.resourceId,
-                // gadgetDescriptor: gadget.toDescriptor(),
-            } satisfies ResolvedHandleField;
-        } else {
-            resolvedFields[fieldName] = value as ResolvedField;
+            if (isHandleFieldInput(value)) {
+                resolvedFields[fieldName] = {
+                    "@type": "handle",
+                    uri: value.uri,
+                    // resourceId: gadget.resourceId,
+                    // gadgetDescriptor: gadget.toDescriptor(),
+                } satisfies ResolvedHandleField;
+            } else {
+                resolvedFields[fieldName] = value as ResolvedField;
+            }
         }
-    }
 
-    return { name: record.name, fields: resolvedFields };
-}
+        return { name: record.name, fields: resolvedFields };
+    }
 
     private validateRecord(record: PublishRecord, schema: SchemaDefinition): void {
         const errors: string[] = [];
@@ -259,19 +259,17 @@ private async resolveRecord(
                 console.warn(`Failed to delete old manifest ${ds.manifestCid}:`, e);
             }
         } catch {
-            // no existing manifest — first publish
+            // no existing manifest (first publish)
         }
 
         return existingMap;
     }
 }
 
-// Helpers
 function isHandleFieldInput(value: FieldInput): value is HandleFieldInput {
     return (
         typeof value === "object" &&
-        value !== null &&
         "@type" in value &&
-        (value as HandleFieldInput)["@type"] === "handle"
-    )
+        (value as unknown as Record<string, unknown>)["@type"] === "handle"
+    );
 }

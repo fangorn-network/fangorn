@@ -10,7 +10,7 @@ import {
     PurchaseParams,
     PurchaseResult,
 } from "./types";
-import { Manifest, ManifestEntry, ResolvedHandleField } from "../publisher/types";
+import { Manifest, ManifestEntry } from "../publisher/types";
 import {
     PrepareSettleParams,
     PrepareSettleResult,
@@ -76,7 +76,7 @@ export class ConsumerRole {
 
         const msgHash = keccak256(encodePacked(
             ['uint256', 'bytes32', 'string', 'uint64'],
-            [BigInt(nullifier), resourceId as Hex, objectKey, BigInt(timestamp)]
+            [BigInt(nullifier), resourceId, objectKey, BigInt(timestamp)]
         ))
 
         const account = walletClient.account;
@@ -94,10 +94,15 @@ export class ConsumerRole {
         })
 
         if (!res.ok) {
-            const { error } = await res.json().catch(() => ({ error: res.statusText }))
-            throw new Error(`Worker fetch failed: ${error}`)
-        }
+            const data = (await res.json().catch(() => ({}))) as unknown;
 
+            const message =
+                data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
+                    ? data.error
+                    : res.statusText;
+
+            throw new Error(`Worker fetch failed: ${message}`);
+        }
         const buffer = await res.arrayBuffer()
         return {
             data: new Uint8Array(buffer),
@@ -144,9 +149,10 @@ export class ConsumerRole {
             throw new Error(`Field "${field}" is missing or is not a handle field`)
         }
 
-        const handleField = fieldValue as ResolvedHandleField
-        if (handleField['@type'] !== 'handle') {
-            throw new Error(`Field "${field}" is not a handle field. Read it directly from the entry`)
+        const handleField = fieldValue;
+
+        if ((handleField as unknown as Record<string, unknown>)['@type'] !== 'handle') {
+            throw new Error(`Field "${field}" is not a handle field. Read it directly from the entry`);
         }
 
         const objectKey = parseObjectKey(handleField.uri)

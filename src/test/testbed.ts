@@ -30,7 +30,7 @@ export class TestBed {
         private readonly workerUrl: string,
     ) { }
 
-    static async init(
+    static init(
         delegatorWalletClient: WalletClient,
         dataSourceRegistryContractAddress: Hex,
         schemaRegistryContractAddress: Hex,
@@ -56,7 +56,7 @@ export class TestBed {
             ipfsGateway: "https://ipfs.io",
         };
 
-        const delegatorFangorn = await Fangorn.create({
+        const delegatorFangorn = Fangorn.create({
             privateKey: (process.env.DELEGATOR_ETH_PRIVATE_KEY ?? "0x0") as Hex,
             storage: {
                 pinata: {
@@ -69,7 +69,7 @@ export class TestBed {
             workerUrl
         });
 
-        const delegateeFangorn = await Fangorn.create({
+        const delegateeFangorn = Fangorn.create({
             privateKey: (process.env.DELEGATEE_ETH_PRIVATE_KEY ?? "0x0") as Hex,
             config,
             domain: "localhost",

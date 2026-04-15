@@ -1,8 +1,8 @@
-import { EncryptedData } from "../../types/index.js";
 import { getSubtleCrypto, getRandomValues } from "./rand.js";
+import { AesEncryptedData } from "./types.js";
 
 export async function encryptData(data: string | Uint8Array): Promise<{
-	encryptedData: EncryptedData;
+	encryptedData: AesEncryptedData;
 	keyMaterial: Uint8Array<ArrayBuffer>;
 }> {
 	const subtle = getSubtleCrypto();
@@ -48,7 +48,7 @@ export async function encryptData(data: string | Uint8Array): Promise<{
 }
 
 export async function decryptData(
-	encryptedData: EncryptedData,
+	encryptedData: AesEncryptedData,
 	keyMaterial: Uint8Array<ArrayBuffer>,
 ): Promise<Uint8Array> {
 	const subtle = getSubtleCrypto();

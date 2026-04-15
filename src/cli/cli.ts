@@ -105,7 +105,7 @@ function loadConfig(): Config {
             cfg: resolveAppConfig(stored.chainName),
             pinataJwt: stored.pinataJwt,
             pinataGateway: stored.pinataGateway,
-            workerUrl: stored.workerUrl ?? "",
+            workerUrl: stored.workerUrl,
         };
         return _config;
     }
@@ -122,13 +122,13 @@ function getAccount(): PrivateKeyAccount {
     return _account;
 }
 
-async function getFangorn(): Promise<Fangorn> {
+function getFangorn(): Fangorn {
     if (_fangorn) return _fangorn;
 
     const cfg = loadConfig();
     const agentConfig: AgentConfig = { privateKey: cfg.privateKey, pinataJwt: cfg.pinataJwt };
 
-    _fangorn = await Fangorn.create({
+    _fangorn = Fangorn.create({
         privateKey: cfg.privateKey,
         storage: {
             pinata: {
@@ -242,7 +242,7 @@ schemaCmd
             const chain = await selectChain();
             outro(`Selected chain: ${chain.name}`);
 
-            const fangorn = await getFangorn();
+            const fangorn = getFangorn();
 
             intro("Schema Registration");
 
@@ -292,7 +292,7 @@ schemaCmd
     .argument("<name>", "Schema name")
     .action(async (name: string) => {
         try {
-            const fangorn = await getFangorn();
+            const fangorn = getFangorn();
             const s = spinner();
 
             s.start(`Fetching schema "${name}"...`);
@@ -330,7 +330,7 @@ publishCmd
         options: { schema: string; price: string; overwrite: boolean },
     ) => {
         try {
-            const fangorn = await getFangorn();
+            const fangorn = getFangorn();
             const price = BigInt(options.price);
             const s = spinner();
 
@@ -373,7 +373,7 @@ publishCmd
     .requiredOption("-s, --schema <schemaName>", "Schema name or bytes32 ID")
     .action(async (tag: string, options: { schema: string }) => {
         try {
-            const fangorn = await getFangorn();
+            const fangorn = getFangorn();
             const schemaId = await resolveSchemaId(fangorn, options.schema);
             const entry = await fangorn.publisher.getEntry(schemaId, tag);
             note(JSON.stringify(entry, null, 2), `Entry: ${tag}`);
@@ -397,7 +397,7 @@ consumeCmd
     .requiredOption("--owner <address>", "Publisher address")
     .action(async (options: { schema: string; owner: Address }) => {
         try {
-            const fangorn = await getFangorn();
+            const fangorn = getFangorn();
             const schemaId = await resolveSchemaId(fangorn, options.schema);
             const manifest = await fangorn.consumer.getManifest(options.owner, schemaId, options.schema);
 
@@ -427,7 +427,7 @@ consumeCmd
     .requiredOption("--owner <address>", "Publisher address")
     .action(async (tag: string, options: { schema: string; owner: Address }) => {
         try {
-            const fangorn = await getFangorn();
+            const fangorn = getFangorn();
             const schemaId = await resolveSchemaId(fangorn, options.schema);
             const entry = await fangorn.consumer.getEntry(options.owner, schemaId, tag);
             note(JSON.stringify(entry, null, 2), `Entry: ${tag}`);
@@ -453,7 +453,7 @@ consumeCmd
         options: { schema: string; burnerKey: Hex; amount: string; usdc: Address },
     ) => {
         try {
-            const fangorn = await getFangorn();
+            const fangorn = getFangorn();
             const cfg = loadConfig();
             const schemaId = await resolveSchemaId(fangorn, options.schema);
             const relayerKey = cfg.privateKey;
@@ -528,7 +528,7 @@ consumeCmd
         options: { schema: string; identity: string; stealth: Address },
     ) => {
         try {
-            const fangorn = await getFangorn();
+            const fangorn = getFangorn();
             const schemaId = await resolveSchemaId(fangorn, options.schema);
             const relayerKey = loadConfig().privateKey;
             const identity = new Identity(options.identity);
@@ -598,7 +598,7 @@ consumeCmd
         try {
             const cfg = loadConfig();
             const chain = getChain(cfg.cfg.chainName);
-            const fangorn = await getFangorn();
+            const fangorn = getFangorn();
             const schemaId = await resolveSchemaId(fangorn, options.schema);
             const s = spinner();
 
@@ -648,7 +648,7 @@ datasourceCmd
         try {
             const self = getAccount().address;
             const owner = options.owner ?? self;
-            const fangorn = await getFangorn();
+            const fangorn = getFangorn();
             const schemaId = await resolveSchemaId(fangorn, options.schema);
             const ds = await fangorn.getDatasourceRegistry().get(owner, schemaId, options.schema);
 

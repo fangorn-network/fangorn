@@ -76,7 +76,7 @@ export class Fangorn {
 		);
 	}
 
-	static async create(options: FangornCreateOptions): Promise<Fangorn> {
+	static create(options: FangornCreateOptions): Fangorn {
 		if (!options.privateKey && !options.walletClient) {
 			throw new Error("Either privateKey or walletClient must be provided");
 		}
