@@ -10,3 +10,4 @@ ignore
 **/cache
 data.json
 schema.json
+/tmp

@@ -27,9 +27,10 @@ export class TestBed {
         private readonly delegateeFangorn: Fangorn,
         private readonly usdcContractAddress: Address,
         private readonly usdcDomainName: string,
+        private readonly workerUrl: string,
     ) { }
 
-    static async init(
+    static init(
         delegatorWalletClient: WalletClient,
         dataSourceRegistryContractAddress: Hex,
         schemaRegistryContractAddress: Hex,
@@ -39,7 +40,8 @@ export class TestBed {
         rpcUrl: string,
         chain: string,
         caip2: number,
-    ): Promise<TestBed> {
+        workerUrl: string,
+    ): TestBed {
         let chainImpl: Chain = arbitrumSepolia;
         if (chain === "baseSepolia") chainImpl = baseSepolia;
 
@@ -51,10 +53,10 @@ export class TestBed {
             chain: chainImpl,
             rpcUrl,
             caip2,
-            ipfsGateway: "https://gateway.pinata.cloud",
+            ipfsGateway: "https://ipfs.io",
         };
 
-        const delegatorFangorn = await Fangorn.create({
+        const delegatorFangorn = Fangorn.create({
             privateKey: (process.env.DELEGATOR_ETH_PRIVATE_KEY ?? "0x0") as Hex,
             storage: {
                 pinata: {
@@ -62,14 +64,12 @@ export class TestBed {
                     gateway: process.env.PINATA_GATEWAY ?? "",
                 },
             },
-            encryption: { lit: true },
             config,
-            domain: "localhost",
+            domain: "localhost"
         });
 
-        const delegateeFangorn = await Fangorn.create({
+        const delegateeFangorn = Fangorn.create({
             privateKey: (process.env.DELEGATEE_ETH_PRIVATE_KEY ?? "0x0") as Hex,
-            encryption: { lit: true },
             config,
             domain: "localhost",
         });
@@ -82,15 +82,11 @@ export class TestBed {
             delegateeFangorn,
             usdcContractAddress,
             usdcDomainName,
+            workerUrl,
         );
     }
 
-    // ── Schema owner ──────────────────────────────────────────────────────────
-
-    // async registerAgent(params: RegisterAgentParams): Promise<RegisteredAgent> {
-    //     return this.delegatorFangorn.schema.registerAgent(params);
-    // }
-
+    // Schema owner
     async registerSchema(
         name: string,
         definition: SchemaDefinition,
@@ -104,24 +100,20 @@ export class TestBed {
         return schemaId;
     }
 
-    // ── Publisher ─────────────────────────────────────────────────────────────
-
+    // Publisher
     async fileUpload(
         records: PublishRecord[],
         schemaName: string,
-        gateway: string,
         price: bigint,
     ): Promise<string> {
-        const { manifestCid } = await this.delegatorFangorn.publisher.upload({
+        const { manifestUri } = await this.delegatorFangorn.publisher.upload({
             records,
             schemaName,
-            gateway,
         }, price);
-        return manifestCid;
+        return manifestUri;
     }
 
-    // ── Consumer Phase 1: register ────────────────────────────────────────────
-
+    // Consumer Phase 1: register
     async prepareRegister(
         burnerPrivateKey: Hex,
         paymentRecipient: Address,
@@ -162,8 +154,7 @@ export class TestBed {
         return txHash;
     }
 
-    // ── Consumer Phase 2: claim ───────────────────────────────────────────────
-
+    // Consumer Phase 2: settle
     async prepareSettle(
         owner: Address,
         schemaId: Hex,
@@ -195,36 +186,31 @@ export class TestBed {
         return { txHash, nullifier };
     }
 
-    async tryDecrypt(
+    // Consumer Phase 3: access
+    async fetchContent(
         owner: Address,
-        nullifierHash: bigint,
-        stealthSecretKey: Hex,
         schemaId: Hex,
         name: string,
         field: string,
-        rpcUrl: string,
-        identity?: Identity,
-        requireSettlement = true,
+        nullifier: string,
+        stealthPrivateKey: Hex,
     ): Promise<Uint8Array> {
         const walletClient = createWalletClient({
-            account: privateKeyToAccount(stealthSecretKey),
+            account: privateKeyToAccount(stealthPrivateKey),
             chain: arbitrumSepolia,
-            transport: http(rpcUrl),
+            transport: http(process.env.RPC_URL ?? ""),
         });
 
-        return this.delegateeFangorn.consumer.decrypt({
+        const { data } = await this.delegateeFangorn.consumer.fetchField(
             owner,
-            walletClient,
             schemaId,
-            nullifierHash,
             name,
             field,
-            identity,
-            skipSettlementCheck: !requireSettlement,
-        });
+            nullifier,
+            walletClient,
+        );
+        return data;
     }
-
-    // ── Assertions ────────────────────────────────────────────────────────────
 
     async checkManifestExists(who: Address, schemaId: Hex, name: string): Promise<boolean> {
         const manifest = await this.delegatorFangorn.consumer.getManifest(who, schemaId, name);
@@ -239,8 +225,6 @@ export class TestBed {
             return false;
         }
     }
-
-    // ── Accessors ─────────────────────────────────────────────────────────────
 
     getDelegatorAddress(): Address { return this.delegatorAddress; }
     getDelegatorFangorn(): Fangorn { return this.delegatorFangorn; }

@@ -12,7 +12,7 @@ export default defineConfig({
 		pool: "forks",
 		server: {
 			deps: {
-				inline: [/@lit-protocol/, /@wagmi/, /viem/, /@noble/, /@scure/],
+				inline: [/@wagmi/, /viem/, /@noble/, /@scure/],
 			},
 		},
 	},

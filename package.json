@@ -1,6 +1,6 @@
 {
 	"name": "@fangorn-network/sdk",
-	"version": "2026.04.10",
+	"version": "2026.04.15",
 	"description": "A zero-knowledge conditional access control framework",
 	"repository": {
 		"type": "git",
@@ -53,11 +53,6 @@
 	"dependencies": {
 		"@a2a-js/sdk": "^0.3.10",
 		"@clack/prompts": "^1.0.1",
-		"@lit-protocol/access-control-conditions": "^8.0.2",
-		"@lit-protocol/auth": "^8.2.2",
-		"@lit-protocol/auth-helpers": "^8.2.1",
-		"@lit-protocol/lit-client": "^8.3.1",
-		"@lit-protocol/networks": "^8.4.1",
 		"@semaphore-protocol/group": "^4.14.2",
 		"@semaphore-protocol/identity": "^4.14.2",
 		"@semaphore-protocol/proof": "^4.14.2",

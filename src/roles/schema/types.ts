@@ -23,9 +23,30 @@ export interface EncryptedField {
 // 	ref: string;
 // };
 
-export type FieldDefinition = PlainField | EncryptedField;
+export interface PlainField {
+    "@type": "string" | "number" | "boolean" | "bytes";
+}
 
+export interface HandleField {
+    "@type": "handle";
+}
+
+// EncryptedField kept temporarily for v1 manifest backwards compat — remove once migrated
+export interface EncryptedField {
+    "@type": "encrypted";
+    gadget: string;
+    handle?: {
+        cid: string;
+        gateway: string;
+    };
+}
+
+export type FieldDefinition = PlainField | HandleField | EncryptedField;
 export type SchemaDefinition = Record<string, FieldDefinition>;
+
+// export type FieldDefinition = PlainField | EncryptedField;
+
+// export type SchemaDefinition = Record<string, FieldDefinition>;
 
 // Params for regsitering an agent (using agent0)
 export interface RegisterAgentParams {
