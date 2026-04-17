@@ -46,8 +46,7 @@ export interface ResolvedHandleField {
     "@type": "handle"
     uri: string
     workerUrl: string
-    // resourceId: Hex
-    // gadgetDescriptor: GadgetDescriptor
+    price: string
 }
 
 /** A resolved plain field, stored inline in the manifest */

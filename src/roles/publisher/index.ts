@@ -47,7 +47,7 @@ export class PublisherRole {
 
         for (const record of records) {
             this.validateRecord(record, schema);
-            const entry = this.resolveRecord(record, schema);
+            const entry = this.resolveRecord(record, schema, price);
             this.pendingEntries.set(record.name, entry);
         }
 
@@ -124,6 +124,11 @@ export class PublisherRole {
         return address;
     }
 
+    /**
+     * Fetch the schema by name from the schema registry/cache
+     * @param name The name of the schema
+     * @returns The schema and schema id, if they exist
+     */
     private resolveSchema(name: string): Promise<{ schema: SchemaDefinition; schemaId: Hex }> {
         if (!this.schemaCache.has(name)) {
             const p = Promise.all([
@@ -156,7 +161,7 @@ export class PublisherRole {
     private resolveRecord(
         record: PublishRecord,
         schema: SchemaDefinition,
-        // gadget: Gadget,
+        price: bigint,
     ): ManifestEntry {
         const resolvedFields: Record<string, ResolvedField> = {};
 
@@ -168,6 +173,7 @@ export class PublisherRole {
                     "@type": "handle",
                     uri: value.uri,
                     workerUrl: value.workerUrl,
+                    price: price.toString(),
                 } satisfies ResolvedHandleField;
             } else {
                 resolvedFields[fieldName] = value as ResolvedField;

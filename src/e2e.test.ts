@@ -149,6 +149,8 @@ describe("Fangorn E2E", () => {
 
             describe("Consumer", () => {
                 let buyerIdentity: Identity;
+                // const name = "locura.mp3"
+                // schemaId = "";
                 const name = TEST_RECORDS[0].name;
 
                 beforeAll(() => {

@@ -155,7 +155,13 @@ export class ConsumerRole {
         const objectKey = parseObjectKey(handleField.uri)
         const resourceId = this.deriveResourceId(owner, schemaId, name)
 
-        return this.fetch({ nullifier, resourceId, objectKey, workerUrl: handleField.workerUrl, walletClient })
+        return this.fetch({
+            nullifier,
+            resourceId,
+            objectKey,
+            workerUrl: handleField.workerUrl,
+            walletClient
+        })
     }
 
     async isRegistered(
