@@ -16,7 +16,7 @@ import { SettlementRegistry } from "../registries/settlement-registry/index.js";
 import { privateKeyToAccount } from "viem/accounts";
 import {
     PrepareSettleResult,
-    TransferWithAuthPayload,
+    TransferWithAuthPayload, 
 } from "../registries/settlement-registry/types.js";
 import { DataSourceRegistry } from "../registries/datasource-registry/index.js";
 
@@ -27,7 +27,6 @@ export class TestBed {
         private readonly delegateeFangorn: Fangorn,
         private readonly usdcContractAddress: Address,
         private readonly usdcDomainName: string,
-        private readonly workerUrl: string,
     ) { }
 
     static init(
@@ -82,7 +81,6 @@ export class TestBed {
             delegateeFangorn,
             usdcContractAddress,
             usdcDomainName,
-            workerUrl,
         );
     }
 
