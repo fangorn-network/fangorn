@@ -50,11 +50,11 @@ export const FangornConfig = {
 	// Arbitrum Sepolia config
 ArbitrumSepolia: {
 		dataSourceRegistryContractAddress: 
-			"0x0e61ca2dbba225580aeab641ab43d623bf5c7e5f",
+			"0xe8a5906825680a5816a7f28f2a0fa2d9ceec3755",
 		schemaRegistryContractAddress: 
-			"0x4615b03ccaf5e834490a94211e129e6ee8ec6604",
+			"0x267084865813550d9d97d3842c4a2d33a872908f",
 		settlementRegistryContractAddress: 
-			"0x0309df3ccb232023934b68c9ed068dec74be42cc",
+			"0x1d21545f536a2f026348477960ca59f9f1d7fabd",
 		chainName: "arbitrumSepolia",
 		chain: arbitrumSepolia,
 		rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",

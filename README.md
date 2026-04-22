@@ -312,9 +312,9 @@ See the [fangorn-access-worker](https://github.com/fangorn-network/webworker) re
 
 | Contract            | Address                                      |
 | ------------------- | -------------------------------------------- |
-| DataSource Registry | `0x0e61ca2dbba225580aeab641ab43d623bf5c7e5f` |
-| Schema Registry     | `0x4615b03ccaf5e834490a94211e129e6ee8ec6604` |
-| Settlement Registry | `0x0309df3ccb232023934b68c9ed068dec74be42cc` |
+| DataSource Registry | `0xe8a5906825680a5816a7f28f2a0fa2d9ceec3755` |
+| Schema Registry     | `0x267084865813550d9d97d3842c4a2d33a872908f` |
+| Settlement Registry | `0x1d21545f536a2f026348477960ca59f9f1d7fabd` |
 
 ---
 
