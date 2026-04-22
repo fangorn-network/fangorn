@@ -16,7 +16,7 @@ import { SettlementRegistry } from "../registries/settlement-registry/index.js";
 import { privateKeyToAccount } from "viem/accounts";
 import {
     PrepareSettleResult,
-    TransferWithAuthPayload,
+    TransferWithAuthPayload, 
 } from "../registries/settlement-registry/types.js";
 import { DataSourceRegistry } from "../registries/datasource-registry/index.js";
 

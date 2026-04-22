@@ -127,19 +127,18 @@ import { Fangorn, FangornConfig } from "@fangorn-network/sdk";
 
 const fangorn = await Fangorn.create({
   privateKey: "0x...",
-  storage: { pinata: { jwt: "...", gateway: "https://your-gateway.mypinata.cloud" } },
   workerUrl: "https://your-worker.workers.dev",
   config: FangornConfig.ArbitrumSepolia,
   domain: "localhost",
 });
 ```
 
-**Storage options:**
+### Storage
 
-| Config                         | Mode         |
-| ------------------------------ | ------------ |
-| `{ pinata: { jwt, gateway } }` | Read + write |
-| undefined                      | Read only    |
+Fangorn operates on a 'Bring Your Own Storage' basis.
+
+- Schema definitions and schema-conformant data sets live in IPFS using Pinata.
+- Storage of data that should be guarded via Fangorn can live in any database desired, be it S3 or within IPFS. At present, the implementation only supports Cloudflare R2. 
 
 Storage is used for schemas and manifests only. Content itself lives in your storage backend (R2 etc.) and is never handled by the SDK directly.
 
@@ -313,9 +312,9 @@ See the [fangorn-access-worker](https://github.com/fangorn-network/webworker) re
 
 | Contract            | Address                                      |
 | ------------------- | -------------------------------------------- |
-| DataSource Registry | `0xdb82c131a9d51f6e7695e744bb2bd7774cbb224c` |
-| Schema Registry     | `0x35b67934f9c75bfef6ff3f4d61ff406d81420066` |
-| Settlement Registry | `0x6aff8212e126ed3232958fd228bc58a202b8f590` |
+| DataSource Registry | `0x0e61ca2dbba225580aeab641ab43d623bf5c7e5f` |
+| Schema Registry     | `0x4615b03ccaf5e834490a94211e129e6ee8ec6604` |
+| Settlement Registry | `0x0309df3ccb232023934b68c9ed068dec74be42cc` |
 
 ---
 
