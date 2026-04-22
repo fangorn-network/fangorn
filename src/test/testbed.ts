@@ -27,6 +27,7 @@ export class TestBed {
         private readonly delegateeFangorn: Fangorn,
         private readonly usdcContractAddress: Address,
         private readonly usdcDomainName: string,
+        private readonly workerUrl: string,
     ) { }
 
     static init(
@@ -81,6 +82,7 @@ export class TestBed {
             delegateeFangorn,
             usdcContractAddress,
             usdcDomainName,
+            workerUrl,
         );
     }
 

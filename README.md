@@ -140,6 +140,8 @@ Fangorn operates on a 'Bring Your Own Storage' basis.
 - Schema definitions and schema-conformant data sets live in IPFS using Pinata.
 - Storage of data that should be guarded via Fangorn can live in any database desired, be it S3 or within IPFS. At present, the implementation only supports Cloudflare R2. 
 
+Storage is used for schemas and manifests only. Content itself lives in your storage backend (R2 etc.) and is never handled by the SDK directly.
+
 ### Schemas
 
 A `SchemaDefinition` is a JSON object where each field declares its type. Fields marked `@type: "handle"` point to content in an external storage backend — access is enforced by the Fangorn access worker. All other fields are stored inline in the manifest and are publicly readable.
