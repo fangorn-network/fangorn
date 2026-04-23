@@ -1,57 +1,13 @@
 export const SETTLEMENT_REGISTRY_ABI = [
     {
-        "inputs": [],
-        "name": "AlreadyRegistered",
-        "type": "error"
-    },
-    {
-        "inputs": [],
-        "name": "AlreadySettled",
-        "type": "error"
-    },
-    {
-        "inputs": [],
-        "name": "GroupCreationFailed",
-        "type": "error"
-    },
-    {
-        "inputs": [],
-        "name": "HookFailed",
-        "type": "error"
-    },
-    {
-        "inputs": [],
-        "name": "IncorrectPaymentAmount",
-        "type": "error"
-    },
-    {
-        "inputs": [],
-        "name": "NotAdmin",
-        "type": "error"
-    },
-    {
-        "inputs": [],
-        "name": "NotAuthorizedRegistry",
-        "type": "error"
-    },
-    {
-        "inputs": [],
-        "name": "NotResourceOwner",
-        "type": "error"
-    },
-    {
-        "inputs": [],
-        "name": "ResourceNotFound",
-        "type": "error"
-    },
-    {
-        "inputs": [],
-        "name": "TransferFailed",
-        "type": "error"
-    },
-    {
-        "inputs": [],
-        "name": "VerificationFailed",
+        "inputs": [
+            {
+                "internalType": "uint8",
+                "name": "",
+                "type": "uint8"
+            }
+        ],
+        "name": "ErrCode",
         "type": "error"
     },
     {
@@ -97,25 +53,6 @@ export const SETTLEMENT_REGISTRY_ABI = [
                 "internalType": "uint256",
                 "name": "",
                 "type": "uint256"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "bytes32",
-                "name": "resource_id",
-                "type": "bytes32"
-            }
-        ],
-        "name": "getOwner",
-        "outputs": [
-            {
-                "internalType": "address",
-                "name": "",
-                "type": "address"
             }
         ],
         "stateMutability": "view",
@@ -254,24 +191,6 @@ export const SETTLEMENT_REGISTRY_ABI = [
     {
         "inputs": [
             {
-                "internalType": "bytes32",
-                "name": "resource_id",
-                "type": "bytes32"
-            },
-            {
-                "internalType": "address",
-                "name": "hook",
-                "type": "address"
-            }
-        ],
-        "name": "registerHook",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
                 "internalType": "address",
                 "name": "registry",
                 "type": "address"
@@ -343,20 +262,19 @@ export const SETTLEMENT_REGISTRY_ABI = [
                 "type": "bytes32"
             },
             {
+                "internalType": "address",
+                "name": "hook",
+                "type": "address"
+            },
+            {
                 "internalType": "uint256",
                 "name": "price",
                 "type": "uint256"
-            },
-            {
-                "internalType": "address",
-                "name": "owner",
-                "type": "address"
             }
         ],
-        "name": "updatePrice",
+        "name": "updateResource",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"
     }
 ] as const;
-

@@ -89,13 +89,13 @@ export class SettlementRegistry {
      * Update the price for a resource.
      * In production this is called by the DataSourceRegistry.
      */
-    async updatePrice(resourceId: Hex, price: bigint, owner: Address): Promise<Hex> {
+    async updatePrice(resourceId: Hex, hook: Address, price: bigint): Promise<Hex> {
         const account = this.getAccount();
         const hash = await this.walletClient.writeContract({
             address: this.contractAddress,
             abi: SETTLEMENT_REGISTRY_ABI,
-            functionName: "updatePrice",
-            args: [resourceId, price, owner],
+            functionName: "updateResource",
+            args: [resourceId, hook, price],
             chain: this.getChain(),
             account,
         });
@@ -105,23 +105,23 @@ export class SettlementRegistry {
 
     // ── Direct wallet calls ───────────────────────────────────────────────────
 
-    /**
-     * Register a hook contract for a resource.
-     * Called directly by the publisher wallet (msg.sender must be resource owner).
-     */
-    async registerHook(resourceId: Hex, hook: Address): Promise<Hex> {
-        const account = this.getAccount();
-        const hash = await this.walletClient.writeContract({
-            address: this.contractAddress,
-            abi: SETTLEMENT_REGISTRY_ABI,
-            functionName: "registerHook",
-            args: [resourceId, hook],
-            chain: this.getChain(),
-            account,
-        });
-        await this.publicClient.waitForTransactionReceipt({ hash });
-        return hash;
-    }
+    // /**
+    //  * Register a hook contract for a resource.
+    //  * Called directly by the publisher wallet (msg.sender must be resource owner).
+    //  */
+    // async registerHook(resourceId: Hex, hook: Address): Promise<Hex> {
+    //     const account = this.getAccount();
+    //     const hash = await this.walletClient.writeContract({
+    //         address: this.contractAddress,
+    //         abi: SETTLEMENT_REGISTRY_ABI,
+    //         functionName: "registerHook",
+    //         args: [resourceId, hook],
+    //         chain: this.getChain(),
+    //         account,
+    //     });
+    //     await this.publicClient.waitForTransactionReceipt({ hash });
+    //     return hash;
+    // }
 
     /**
      * Prepare the EIP-3009 transferWithAuthorization signature.
@@ -352,14 +352,14 @@ export class SettlementRegistry {
         });
     }
 
-    async getOwner(resourceId: Hex): Promise<Address> {
-        return this.publicClient.readContract({
-            address: this.contractAddress,
-            abi: SETTLEMENT_REGISTRY_ABI,
-            functionName: "getOwner",
-            args: [resourceId],
-        });
-    }
+    // async getOwner(resourceId: Hex): Promise<Address> {
+    //     return this.publicClient.readContract({
+    //         address: this.contractAddress,
+    //         abi: SETTLEMENT_REGISTRY_ABI,
+    //         functionName: "getOwner",
+    //         args: [resourceId],
+    //     });
+    // }
 
     async waitForTransaction(hash: Hex) {
         return this.publicClient.waitForTransactionReceipt({ hash });
