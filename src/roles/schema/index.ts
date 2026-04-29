@@ -1,6 +1,6 @@
 import { type Hex, type WalletClient } from "viem";
 import { SchemaRegistry } from "../../registries/schema-registry";
-import { MetadataStorage } from "../../providers/storage/types.js"; import { RegisteredSchema, RegisterSchemaParams, SchemaBlobV1, SchemaDefinition } from "./types";
+import { MetadataStorage } from "../../providers/storage/types.js"; import { PlainField, RegisteredSchema, RegisterSchemaParams, SchemaBlobV1, SchemaDefinition } from "./types";
 
 export * from './types';
 
@@ -105,11 +105,12 @@ export class SchemaRole {
                         errors.push(`Field "${field}" must be an array, got ${typeof value}`);
                         break;
                     }
-                    value.forEach((item, i) =>
+                    const items: PlainField = fieldDef.items;
+                    value.forEach((item: unknown, i) =>
                         errors.push(
                             ...this.validate(
-                                { [`${field}[${i}]`]: item },
-                                { [`${field}[${i}]`]: fieldDef.items },
+                                { [`${field}[${i.toString()}]`]: item },
+                                { [`${field}[${i.toString()}]`]: items },
                             ),
                         ),
                     );
