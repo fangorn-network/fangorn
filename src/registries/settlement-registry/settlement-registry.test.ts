@@ -196,56 +196,24 @@ describe("SettlementRegistry", () => {
     describe("updatePrice", () => {
         it("returns the tx hash", async () => {
             const { registry } = makeRegistry();
-            expect(await registry.updatePrice(MOCK_RESOURCE_ID, MOCK_PRICE, OWNER_ADDRESS)).toBe(MOCK_TX_HASH);
+            expect(await registry.updatePrice(MOCK_RESOURCE_ID, HOOK_ADDRESS, MOCK_PRICE)).toBe(MOCK_TX_HASH);
         });
 
-        it("calls writeContract with resource_id, price, and owner", async () => {
+        it("calls writeContract with updateResource and (resource_id, hook, price)", async () => {
             const { registry, walletClient } = makeRegistry();
-            await registry.updatePrice(MOCK_RESOURCE_ID, MOCK_PRICE, OWNER_ADDRESS);
+            await registry.updatePrice(MOCK_RESOURCE_ID, HOOK_ADDRESS, MOCK_PRICE);
             expect(walletClient.writeContract).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    functionName: "updatePrice",
-                    args: [MOCK_RESOURCE_ID, MOCK_PRICE, OWNER_ADDRESS],
+                    functionName: "updateResource",
+                    args: [MOCK_RESOURCE_ID, HOOK_ADDRESS, MOCK_PRICE],
                 })
             );
         });
 
         it("waits for the receipt", async () => {
             const { registry, publicClient } = makeRegistry();
-            await registry.updatePrice(MOCK_RESOURCE_ID, MOCK_PRICE, OWNER_ADDRESS);
+            await registry.updatePrice(MOCK_RESOURCE_ID, HOOK_ADDRESS, MOCK_PRICE);
             expect(publicClient.waitForTransactionReceipt).toHaveBeenCalledWith({ hash: MOCK_TX_HASH });
-        });
-    });
-
-    // -------------------------------------------------------------------------
-    describe("registerHook", () => {
-        it("returns the tx hash", async () => {
-            const { registry } = makeRegistry();
-            expect(await registry.registerHook(MOCK_RESOURCE_ID, HOOK_ADDRESS)).toBe(MOCK_TX_HASH);
-        });
-
-        it("calls writeContract with resource_id and hook address", async () => {
-            const { registry, walletClient } = makeRegistry();
-            await registry.registerHook(MOCK_RESOURCE_ID, HOOK_ADDRESS);
-            expect(walletClient.writeContract).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    functionName: "registerHook",
-                    args: [MOCK_RESOURCE_ID, HOOK_ADDRESS],
-                })
-            );
-        });
-
-        it("waits for the receipt", async () => {
-            const { registry, publicClient } = makeRegistry();
-            await registry.registerHook(MOCK_RESOURCE_ID, HOOK_ADDRESS);
-            expect(publicClient.waitForTransactionReceipt).toHaveBeenCalledWith({ hash: MOCK_TX_HASH });
-        });
-
-        it("throws if wallet has no account", async () => {
-            const { publicClient, walletClient } = makeClients();
-            (walletClient as never as { account: null }).account = null;
-            const registry = new SettlementRegistry(CONTRACT_ADDRESS, publicClient as never, walletClient as never);
-            await expect(registry.registerHook(MOCK_RESOURCE_ID, HOOK_ADDRESS)).rejects.toThrow("must have an account");
         });
     });
 
@@ -571,22 +539,6 @@ describe("SettlementRegistry", () => {
             await registry.getPrice(MOCK_RESOURCE_ID);
             expect(publicClient.readContract).toHaveBeenCalledWith(
                 expect.objectContaining({ functionName: "getPrice", args: [MOCK_RESOURCE_ID] })
-            );
-        });
-    });
-
-    // -------------------------------------------------------------------------
-    describe("getOwner", () => {
-        it("returns the owner address", async () => {
-            const { registry } = makeRegistry({ readContractImpl: () => OWNER_ADDRESS });
-            expect(await registry.getOwner(MOCK_RESOURCE_ID)).toBe(OWNER_ADDRESS);
-        });
-
-        it("calls readContract with the correct args", async () => {
-            const { registry, publicClient } = makeRegistry({ readContractImpl: () => OWNER_ADDRESS });
-            await registry.getOwner(MOCK_RESOURCE_ID);
-            expect(publicClient.readContract).toHaveBeenCalledWith(
-                expect.objectContaining({ functionName: "getOwner", args: [MOCK_RESOURCE_ID] })
             );
         });
     });

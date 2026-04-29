@@ -195,7 +195,7 @@ describe("Fangorn E2E", () => {
 
                     const { txHash, nullifier } = await testbed.settle(
                         ownerAddress, schemaId, name,
-                        SK, payload,
+                        BURNER_SK, payload,
                     );
                     nullifierHash = nullifier;
 
