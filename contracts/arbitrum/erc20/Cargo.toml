@@ -1,0 +1,31 @@
+[package]
+name = "stylus_erc20"
+version = "0.0.1"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+keywords = ["arbitrum", "ethereum", "stylus", "alloy"]
+
+[dependencies]
+stylus-sdk = "0.10.0"
+alloy-primitives = "^1.0.1"
+alloy-sol-types = "^1.0.1"
+mini-alloc = "1.0.0"
+cfg-if = "1.0.0"
+
+[dev-dependencies]
+tokio = { version = "1.12.0", features = ["full"] }
+ethers = "2.0"
+eyre = "0.6.8"
+
+[features]
+export-abi = ["stylus-sdk/export-abi"]
+
+[lib]
+crate-type = ["lib", "cdylib"]
+
+[profile.release]
+codegen-units = 1
+strip = true
+lto = true
+panic = "abort"
+opt-level = "s"
