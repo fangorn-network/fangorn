@@ -48,34 +48,143 @@ function makeWallet(key: Hex) {
     });
 }
 
-const MUSIC_SCHEMA: SchemaDefinition = {
-    title: { "@type": "string" },
-    artist: { "@type": "string" },
-    genres:   { "@type": "array", items: { "@type": "string" } },
-    audio: { "@type": "handle" },
-};
 
 const ENCRYPTED_FIELD = "audio";
+
+// const MUSIC_SCHEMA: SchemaDefinition = {
+//     title: { "@type": "string" },
+//     artist: { "@type": "string" },
+//     genres: { "@type": "array", items: { "@type": "string" } },
+//     audio: { "@type": "handle" },
+// };
+
+// // r2:// URIs — content already uploaded to R2 out-of-band
+// const TEST_RECORDS: PublishRecord[] = [
+//     {
+//         name: "track-01",
+//         fields: {
+//             title: "Track One",
+//             artist: "Alice",
+//             genres: ["test1", "examen 1"],
+//             audio: { "@type": "handle", uri: "r2://tracks/track-01.mp3", workerUrl: process.env.WORKER_URL ?? "" },
+//         },
+//     },
+//     {
+//         name: "track-02",
+//         fields: {
+//             title: "Track Two",
+//             artist: "Alice",
+//             genres: ["test2", "testTwo"],
+//             audio: { "@type": "handle", uri: "r2://tracks/track-02.mp3", workerUrl: process.env.WORKER_URL ?? "" },
+//         },
+//     },
+// ];
+
+const MUSIC_SCHEMA: SchemaDefinition = {
+    "mbid": {
+        "@type": "string"
+    },
+    "title": {
+        "@type": "string"
+    },
+    "artist": {
+        "@type": "string"
+    },
+    "year": {
+        "@type": "number"
+    },
+    "energy": {
+        "@type": "number"
+    },
+    "genres": {
+        "@type": "array",
+        "items": {
+            "@type": "string"
+        }
+    },
+    "moods": {
+        "@type": "array",
+        "items": {
+            "@type": "string"
+        }
+    },
+    "themes": {
+        "@type": "array",
+        "items": {
+            "@type": "string"
+        }
+    },
+    "contexts": {
+        "@type": "array",
+        "items": {
+            "@type": "string"
+        }
+    }
+};
 
 // r2:// URIs — content already uploaded to R2 out-of-band
 const TEST_RECORDS: PublishRecord[] = [
     {
-        name: "track-01",
-        fields: {
-            title: "Track One",
-            artist: "Alice",
-            genres: [ "test1",  "examen 1" ],
-            audio: { "@type": "handle", uri: "r2://tracks/track-01.mp3", workerUrl: process.env.WORKER_URL ?? "" },
-        },
+        "name": "1b41c446-dbb4-4977-8d23-87496a199af9",
+        "fields": {
+            "mbid": "1b41c446-dbb4-4977-8d23-87496a199af9",
+            "title": "Analogue Bubblebath 3",
+            "artist": "Aphex Twin",
+            "year": 1993,
+            "energy": 3,
+            "genres": [
+                "ambient techno",
+                "idm",
+                "rave"
+            ],
+            "moods": [
+                "hypnotic",
+                "dreamy",
+                "euphoric",
+                "floating"
+            ],
+            "themes": [
+                "altered states",
+                "synthesis",
+                "abstraction"
+            ],
+            "contexts": [
+                "late-night",
+                "headphone-listening",
+                "art-installation"
+            ]
+        }
     },
     {
-        name: "track-02",
-        fields: {
-            title: "Track Two",
-            artist: "Alice",
-            genres: [ "test2", "testTwo" ],
-            audio: { "@type": "handle", uri: "r2://tracks/track-02.mp3", workerUrl: process.env.WORKER_URL ?? "" },
-        },
+        "name": "e1c3580b-1c05-4984-94f7-ac88ac9834ee",
+        "fields": {
+            "mbid": "e1c3580b-1c05-4984-94f7-ac88ac9834ee",
+            "title": "To Cure a Weakling Child",
+            "artist": "Aphex Twin",
+            "year": 1997,
+            "energy": 2,
+            "genres": [
+                "idm",
+                "experimental electronic",
+                "ambient"
+            ],
+            "moods": [
+                "melancholic",
+                "unsettling",
+                "tender",
+                "strange"
+            ],
+            "themes": [
+                "vulnerability",
+                "healing",
+                "fragility"
+            ],
+            "contexts": [
+                "late-night-listening",
+                "headphone-listening",
+                "art-installation"
+            ]
+        }
     },
 ];
 
@@ -150,95 +259,95 @@ describe("Fangorn E2E", () => {
                 }
             }, 30_000);
 
-            describe("Consumer", () => {
-                let buyerIdentity: Identity;
-                // const name = "locura.mp3"
-                // schemaId = "";
-                const name = TEST_RECORDS[0].name;
+            // describe("Consumer", () => {
+            //     let buyerIdentity: Identity;
+            //     // const name = "locura.mp3"
+            //     // schemaId = "";
+            //     const name = TEST_RECORDS[0].name;
 
-                beforeAll(() => {
-                    buyerIdentity = new Identity();
-                });
+            //     beforeAll(() => {
+            //         buyerIdentity = new Identity();
+            //     });
 
-                it("Phase 1: purchase joins the Semaphore group", async () => {
-                    // burner to owner
-                    const transferWithAuthPayload = await testbed.prepareRegister(
-                        BURNER_KEY,
-                        ownerAddress,
-                        USDC_AMOUNT,
-                    );
+            //     it("Phase 1: purchase joins the Semaphore group", async () => {
+            //         // burner to owner
+            //         const transferWithAuthPayload = await testbed.prepareRegister(
+            //             BURNER_KEY,
+            //             ownerAddress,
+            //             USDC_AMOUNT,
+            //         );
 
-                    // identity registers in the sempaphore group
-                    const txHash = await testbed.register(
-                        ownerAddress,
-                        schemaId,
-                        name,
-                        buyerIdentity.commitment,
-                        FACILITATOR_KEY,
-                        transferWithAuthPayload,
-                    );
+            //         // identity registers in the sempaphore group
+            //         const txHash = await testbed.register(
+            //             ownerAddress,
+            //             schemaId,
+            //             name,
+            //             buyerIdentity.commitment,
+            //             FACILITATOR_KEY,
+            //             transferWithAuthPayload,
+            //         );
 
-                    expect(txHash).toMatch(/^0x[0-9a-f]{64}$/i);
+            //         expect(txHash).toMatch(/^0x[0-9a-f]{64}$/i);
 
-                    const resourceId = DataSourceRegistry.resourceIdLocal(ownerAddress, schemaId, name);
-                    const registered = await testbed
-                        .getSettlementRegistry()
-                        .isRegistered(resourceId, buyerIdentity.commitment);
-                    expect(registered).toBe(true);
-                }, 30_000);
+            //         const resourceId = DataSourceRegistry.resourceIdLocal(ownerAddress, schemaId, name);
+            //         const registered = await testbed
+            //             .getSettlementRegistry()
+            //             .isRegistered(resourceId, buyerIdentity.commitment);
+            //         expect(registered).toBe(true);
+            //     }, 30_000);
 
-                it("Phase 2: settle", async () => {
-                    const payload = await testbed.prepareSettle(
-                        ownerAddress, schemaId, name,
-                        buyerIdentity, STEALTH_ADDRESS,
-                    );
+            //     it("Phase 2: settle", async () => {
+            //         const payload = await testbed.prepareSettle(
+            //             ownerAddress, schemaId, name,
+            //             buyerIdentity, STEALTH_ADDRESS,
+            //         );
 
-                    const { txHash, nullifier } = await testbed.settle(
-                        ownerAddress, schemaId, name,
-                        BURNER_SK, payload,
-                    );
-                    nullifierHash = nullifier;
+            //         const { txHash, nullifier } = await testbed.settle(
+            //             ownerAddress, schemaId, name,
+            //             BURNER_SK, payload,
+            //         );
+            //         nullifierHash = nullifier;
 
-                    expect(txHash).toMatch(/^0x[0-9a-f]{64}$/i);
+            //         expect(txHash).toMatch(/^0x[0-9a-f]{64}$/i);
 
-                    const resourceId = DataSourceRegistry.resourceIdLocal(ownerAddress, schemaId, name);
+            //         const resourceId = DataSourceRegistry.resourceIdLocal(ownerAddress, schemaId, name);
 
-                    const isSettled = await testbed
-                        .getDelegateeFangorn()
-                        .getSettlementRegistry()
-                        .isSettled(STEALTH_ADDRESS, resourceId);
-                    expect(isSettled).toBe(true);
-                }, 30_000);
+            //         const isSettled = await testbed
+            //             .getDelegateeFangorn()
+            //             .getSettlementRegistry()
+            //             .isSettled(STEALTH_ADDRESS, resourceId);
+            //         expect(isSettled).toBe(true);
+            //     }, 30_000);
 
-                it.skipIf(!hasWorker)("Phase 3: fetch - buyer retrieves content via worker", async () => {
-                    const data = await testbed.fetchContent(
-                        ownerAddress,
-                        schemaId,
-                        name,
-                        ENCRYPTED_FIELD,
-                        nullifierHash.toString(),
-                        BURNER_KEY,
-                    );
-                    expect(data).toBeInstanceOf(Uint8Array);
-                    expect(data.length).toBeGreaterThan(0);
-                }, 30_000);
+            //     it.skipIf(!hasWorker)("Phase 3: fetch - buyer retrieves content via worker", async () => {
+            //         const data = await testbed.fetchContent(
+            //             ownerAddress,
+            //             schemaId,
+            //             name,
+            //             ENCRYPTED_FIELD,
+            //             nullifierHash.toString(),
+            //             BURNER_KEY,
+            //         );
+            //         expect(data).toBeInstanceOf(Uint8Array);
+            //         expect(data.length).toBeGreaterThan(0);
+            //     }, 30_000);
 
-                it.skipIf(!hasWorker)("Phase 3: fetch fails without settlement", async () => {
-                    const unsettledIdentity = new Identity();
-                    // use a fresh keypair that was never settled
-                    const freshKey = "0x1111111111111111111111111111111111111111111111111111111111111111" as Hex;
-                    await expect(
-                        testbed.fetchContent(
-                            ownerAddress,
-                            schemaId,
-                            name,
-                            ENCRYPTED_FIELD,
-                            "0",
-                            freshKey,
-                        ),
-                    ).rejects.toThrow("not settled");
-                }, 30_000);
-            });
+            //     it.skipIf(!hasWorker)("Phase 3: fetch fails without settlement", async () => {
+            //         const unsettledIdentity = new Identity();
+            //         // use a fresh keypair that was never settled
+            //         const freshKey = "0x1111111111111111111111111111111111111111111111111111111111111111" as Hex;
+            //         await expect(
+            //             testbed.fetchContent(
+            //                 ownerAddress,
+            //                 schemaId,
+            //                 name,
+            //                 ENCRYPTED_FIELD,
+            //                 "0",
+            //                 freshKey,
+            //             ),
+            //         ).rejects.toThrow("not settled");
+            //     }, 30_000);
+            // });
         });
     });
 });

@@ -34,7 +34,6 @@ export class ConsumerRole {
     }
 
     // Phase 1: pay + join group
-
     async register(params: PurchaseParams): Promise<PurchaseResult> {
         const resourceId = this.deriveResourceId(params.owner, params.schemaId, params.name);
         const txHash = await this.settlementRegistry.register({
@@ -47,7 +46,6 @@ export class ConsumerRole {
     }
 
     // Phase 2: prove + claim
-
     async claim(params: ClaimParams): Promise<ClaimResult> {
         const resourceId = this.deriveResourceId(params.owner, params.schemaId, params.name);
         const { hash, nullifier } = await this.settlementRegistry.settle({
@@ -56,9 +54,7 @@ export class ConsumerRole {
         });
         return { txHash: hash, nullifier, resourceId };
     }
-
-    // Phase 3: fetch via worker
-
+    
     /**
      * Fetch a handle field's content from the Fangorn access worker.
      *
@@ -147,7 +143,6 @@ export class ConsumerRole {
         if (fieldValue['@type'] !== 'handle') {
             throw new Error(`Field "${field}" is not a handle field. Read it directly from the entry`)
         }
-        // fieldValue is now narrowed to ResolvedHandleField
         const objectKey = parseObjectKey(fieldValue.uri)
         const resourceId = this.deriveResourceId(owner, schemaId, name)
         return this.fetch({
@@ -177,6 +172,5 @@ export class ConsumerRole {
 function parseObjectKey(uri: string): string {
     if (uri.startsWith('r2://')) return uri.slice('r2://'.length)
     if (uri.startsWith('ipfs://')) return uri.slice('ipfs://'.length)
-    // bare key or full URL — return as-is
     return uri
 }
