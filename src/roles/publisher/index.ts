@@ -106,8 +106,6 @@ export class PublisherRole {
         }
 
         // Write only the new entries into this manifest.
-        const manifest: Manifest = { version: 2, schemaId, entries };
-        const manifestUri = await this.storage.put(manifest, { name: `manifest:${schemaId}` });
         const results: { entry: ManifestEntry; manifestUri: string }[] = [];
 
         // Publish the manifest CID on-chain once per entry name so the
