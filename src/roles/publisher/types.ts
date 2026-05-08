@@ -5,11 +5,20 @@ import { type Address, type Hex } from "viem";
  * If the value is already stored externally, use a HandleFieldInput instead.
  */
 export type FieldInput =
-    | string
-    | number
-    | boolean
-    | Uint8Array
+    | string | number | boolean | Uint8Array
+    | string[] | number[] | boolean[]
     | HandleFieldInput
+    | HandleArray
+
+export interface HandleArray {
+    "@type": "handle-array"
+    items: HandleFieldInput[]
+}
+
+export interface ResolvedHandleArray {
+    "@type": "handle-array"
+    items: ResolvedHandleField[]   // each item gets its own price
+}
 
 /**
  * A field whose content already lives in a storage backend.
@@ -52,7 +61,10 @@ export interface ResolvedHandleField {
 /** A resolved plain field, stored inline in the manifest */
 export type ResolvedPlainField = string | number | boolean | Uint8Array
 
-export type ResolvedField = ResolvedPlainField | ResolvedHandleField
+export type ResolvedField =
+    | ResolvedPlainField
+    | ResolvedHandleField
+    | ResolvedHandleArray
 
 /**
  * A manifest entry; one schema-conformant record with all fields resolved.

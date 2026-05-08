@@ -51,6 +51,7 @@ function makeWallet(key: Hex) {
 const MUSIC_SCHEMA: SchemaDefinition = {
     title: { "@type": "string" },
     artist: { "@type": "string" },
+    genres:   { "@type": "array", items: { "@type": "string" } },
     audio: { "@type": "handle" },
 };
 
@@ -63,6 +64,7 @@ const TEST_RECORDS: PublishRecord[] = [
         fields: {
             title: "Track One",
             artist: "Alice",
+            genres: [ "test1",  "examen 1" ],
             audio: { "@type": "handle", uri: "r2://tracks/track-01.mp3", workerUrl: process.env.WORKER_URL ?? "" },
         },
     },
@@ -71,6 +73,7 @@ const TEST_RECORDS: PublishRecord[] = [
         fields: {
             title: "Track Two",
             artist: "Alice",
+            genres: [ "test2", "testTwo" ],
             audio: { "@type": "handle", uri: "r2://tracks/track-02.mp3", workerUrl: process.env.WORKER_URL ?? "" },
         },
     },

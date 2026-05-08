@@ -1,6 +1,6 @@
 import { type Hex, type WalletClient } from "viem";
 import { SchemaRegistry } from "../../registries/schema-registry";
-import { MetadataStorage } from "../../providers/storage/types.js";import { RegisteredSchema, RegisterSchemaParams, SchemaBlobV1, SchemaDefinition } from "./types";
+import { MetadataStorage } from "../../providers/storage/types.js"; import { PlainField, RegisteredSchema, RegisterSchemaParams, SchemaBlobV1, SchemaDefinition } from "./types";
 
 export * from './types';
 
@@ -71,15 +71,12 @@ export class SchemaRole {
 
     validate(data: Record<string, unknown>, definition: SchemaDefinition): string[] {
         const errors: string[] = [];
-
         for (const [field, fieldDef] of Object.entries(definition)) {
             const value = data[field];
-
             if (value === undefined || value === null) {
                 errors.push(`Missing required field: "${field}"`);
                 continue;
             }
-
             switch (fieldDef["@type"]) {
                 case "string":
                     if (typeof value !== "string")
@@ -103,9 +100,24 @@ export class SchemaRole {
                         errors.push(`Field "${field}" is a handle — expected { uri: string }`);
                     break;
                 }
+                case "array": {
+                    if (!Array.isArray(value)) {
+                        errors.push(`Field "${field}" must be an array, got ${typeof value}`);
+                        break;
+                    }
+                    const items: PlainField = fieldDef.items;
+                    value.forEach((item: unknown, i) =>
+                        errors.push(
+                            ...this.validate(
+                                { [`${field}[${i.toString()}]`]: item },
+                                { [`${field}[${i.toString()}]`]: items },
+                            ),
+                        ),
+                    );
+                    break;
+                }
             }
         }
-
         return errors;
     }
 

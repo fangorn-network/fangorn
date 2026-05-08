@@ -1,9 +1,10 @@
 import { type Hex } from "viem";
 
-// Represents a plaintext field in a schema
-export interface PlainField {
-    "@type": "string" | "number" | "boolean" | "bytes";
-}
+export type ScalarType = "string" | "number" | "boolean" | "bytes";
+
+export type PlainField =
+    | { "@type": ScalarType }
+    | { "@type": "array"; items: { "@type": ScalarType } };
 
 // Represents an encrypted field in a schema
 export interface EncryptedField {
@@ -23,9 +24,9 @@ export interface EncryptedField {
 // 	ref: string;
 // };
 
-export interface PlainField {
-    "@type": "string" | "number" | "boolean" | "bytes";
-}
+// export interface PlainField {
+//     "@type": "string" | "number" | "boolean" | "bytes" | "array";
+// }
 
 export interface HandleField {
     "@type": "handle";

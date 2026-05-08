@@ -141,26 +141,21 @@ export class ConsumerRole {
     ): Promise<FetchResult> {
         const entry = await this.getEntry(owner, schemaId, name)
         const fieldValue = entry.fields[field]
-
         if (!fieldValue || typeof fieldValue !== 'object' || !('@type' in fieldValue)) {
             throw new Error(`Field "${field}" is missing or is not a handle field`)
         }
-
-        const handleField = fieldValue;
-
-        if ((handleField as unknown as Record<string, unknown>)['@type'] !== 'handle') {
-            throw new Error(`Field "${field}" is not a handle field. Read it directly from the entry`);
+        if (fieldValue['@type'] !== 'handle') {
+            throw new Error(`Field "${field}" is not a handle field. Read it directly from the entry`)
         }
-
-        const objectKey = parseObjectKey(handleField.uri)
+        // fieldValue is now narrowed to ResolvedHandleField
+        const objectKey = parseObjectKey(fieldValue.uri)
         const resourceId = this.deriveResourceId(owner, schemaId, name)
-
         return this.fetch({
             nullifier,
             resourceId,
             objectKey,
-            workerUrl: handleField.workerUrl,
-            walletClient
+            workerUrl: fieldValue.workerUrl,
+            walletClient,
         })
     }
 
