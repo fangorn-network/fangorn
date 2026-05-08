@@ -94,9 +94,7 @@ export class PublisherRole {
         let entries = Array.from(this.pendingEntries.values());
 
         if (!overwrite) {
-            // Filter out entries that already exist on-chain so we don't
-            // re-publish them. We no longer carry the old entries forward
-            // into this manifest — the ingestion layer handles the union.
+            // Filter out entries that already exist on-chain so we don't re-publish them. 
             entries = await this.filterNewEntries(owner, schemaId, entries);
             if (entries.length === 0) {
                 this.pendingEntries.clear();

@@ -17,7 +17,7 @@ export interface HandleArray {
 
 export interface ResolvedHandleArray {
     "@type": "array"
-    items: ResolvedHandleField[]   // each item gets its own price
+    items: ResolvedHandleField[]
 }
 
 /**
