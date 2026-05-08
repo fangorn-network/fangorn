@@ -11,12 +11,12 @@ export type FieldInput =
     | HandleArray
 
 export interface HandleArray {
-    "@type": "handle-array"
+    "@type": "array"
     items: HandleFieldInput[]
 }
 
 export interface ResolvedHandleArray {
-    "@type": "handle-array"
+    "@type": "array"
     items: ResolvedHandleField[]   // each item gets its own price
 }
 
