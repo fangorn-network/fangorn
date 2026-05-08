@@ -85,7 +85,7 @@ export class SchemaRole {
                 case "number":
                     if (typeof value !== "number")
                         errors.push(`Field "${field}" must be a number, got ${typeof value}`);
-                    break;
+                    break; 
                 case "boolean":
                     if (typeof value !== "boolean")
                         errors.push(`Field "${field}" must be a boolean, got ${typeof value}`);

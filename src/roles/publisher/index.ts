@@ -35,7 +35,7 @@ export class PublisherRole {
      * Validate and stage schema-conformant records, then commit to storage
      * and publish on-chain.
      *
-     * Fields with a HandleFieldInput are written to the manifest as-is. 
+     * Fields with a HandleFieldInput are written to the manifest as-is.
      * The content is assumed to already exist at the supplied URI (e.g. pre-uploaded to R2).
      *
      * Plain fields are stored inline in the manifest.
@@ -71,8 +71,18 @@ export class PublisherRole {
     }
 
     /**
-     * Serialize all staged entries into a manifest, publish each entry
-     * on-chain via the DataSourceRegistry, and record the manifest URI on-chain.
+     * Serialize all staged entries into a manifest, upload it to storage,
+     * and publish the manifest CID on-chain once.
+     *
+     * Each call produces one manifest containing only the currently-staged
+     * (new) entries. The ingestion layer unions across all published manifests
+     * by entry name, so there is no need to carry forward prior entries here.
+     *
+     * The `overwrite` flag is retained for API compatibility but no longer
+     * affects carry-forward behavior — it now controls whether entries whose
+     * names already exist in a prior manifest are silently skipped (false)
+     * or replaced (true). In both cases only the new/overwriting entries are
+     * written to this manifest.
      */
     async commit(schemaId: Hex, price: bigint, overwrite: boolean): Promise<CommitResult> {
         const owner = this.requireAccount();
@@ -84,13 +94,25 @@ export class PublisherRole {
         let entries = Array.from(this.pendingEntries.values());
 
         if (!overwrite) {
-            const existingEntriesMap = await this.loadExistingEntries(owner, schemaId, entries);
-            entries = [...Array.from(existingEntriesMap.values()), ...entries];
+            // Filter out entries that already exist on-chain so we don't
+            // re-publish them. We no longer carry the old entries forward
+            // into this manifest — the ingestion layer handles the union.
+            entries = await this.filterNewEntries(owner, schemaId, entries);
+            if (entries.length === 0) {
+                this.pendingEntries.clear();
+                throw new Error(
+                    "All staged entries already exist on-chain. " +
+                    "Use overwrite: true to force re-publish."
+                );
+            }
         }
 
+        // Write only the new entries into this manifest.
         const manifest: Manifest = { version: 2, schemaId, entries };
         const manifestUri = await this.storage.put(manifest, { name: `manifest:${schemaId}` });
 
+        // Publish the manifest CID on-chain once per entry name so the
+        // DataSourceRegistry can look up any entry by (owner, schemaId, name).
         for (const entry of entries) {
             await this.dataSourceRegistry.publish(manifestUri, schemaId, entry.name, price);
         }
@@ -125,9 +147,7 @@ export class PublisherRole {
     }
 
     /**
-     * Fetch the schema by name from the schema registry/cache
-     * @param name The name of the schema
-     * @returns The schema and schema id, if they exist
+     * Fetch the schema by name from the schema registry/cache.
      */
     private resolveSchema(name: string): Promise<{ schema: SchemaDefinition; schemaId: Hex }> {
         if (!this.schemaCache.has(name)) {
@@ -155,7 +175,7 @@ export class PublisherRole {
     /**
      * Resolve a PublishRecord into a ManifestEntry.
      *
-     * Handle fields are passed through directly
+     * Handle fields are passed through directly.
      * Plain fields are stored inline.
      */
     private resolveRecord(
@@ -211,9 +231,9 @@ export class PublisherRole {
         value: FieldInput,
         errors: string[],
     ): void {
-        // handle fields are always valid regardless of schema @type —
+        // Handle fields are always valid regardless of schema @type —
         // the content is already stored, we trust the publisher supplied
-        // the right URI for the right field
+        // the right URI for the right field.
         if (isHandleFieldInput(value)) return;
 
         switch (fieldDef["@type"]) {
@@ -236,38 +256,43 @@ export class PublisherRole {
         }
     }
 
-    private async loadExistingEntries(
+    /**
+     * Return only the entries whose names do not already exist on-chain
+     * for this (owner, schemaId) pair. Entries that already exist are
+     * silently dropped — use overwrite: true to force re-publish.
+     *
+     * Unlike the old loadExistingEntries(), this does NOT fetch or carry
+     * forward the prior manifest's content. It only checks existence.
+     */
+    private async filterNewEntries(
         owner: Address,
         schemaId: Hex,
         pendingEntries: ManifestEntry[],
-    ): Promise<Map<string, ManifestEntry>> {
-        const existingMap = new Map<string, ManifestEntry>();
-        const pendingNames = new Set(pendingEntries.map(e => e.name));
-
-        const firstName = pendingEntries[0]?.name;
-        if (!firstName) return existingMap;
-
-        try {
-            const ds = await this.dataSourceRegistry.get(owner, schemaId, firstName);
-            if (!ds.manifestCid) return existingMap;
-
-            const manifest = await this.storage.get<Manifest>(ds.manifestCid);
-            for (const entry of manifest.entries) {
-                if (!pendingNames.has(entry.name)) {
-                    existingMap.set(entry.name, entry);
+    ): Promise<ManifestEntry[]> {
+        const results = await Promise.allSettled(
+            pendingEntries.map(async (entry) => {
+                try {
+                    const ds = await this.dataSourceRegistry.get(owner, schemaId, entry.name);
+                    const exists = ds.manifestCid && ds.manifestCid !== "";
+                    return { entry, exists };
+                } catch {
+                    // Not found — treat as new.
+                    return { entry, exists: false };
                 }
-            }
+            })
+        );
 
-            try {
-                await this.storage.delete(ds.manifestCid);
-            } catch (e) {
-                console.warn(`Failed to delete old manifest ${ds.manifestCid}:`, e);
+        const newEntries: ManifestEntry[] = [];
+        for (const result of results) {
+            if (result.status === "fulfilled" && !result.value.exists) {
+                newEntries.push(result.value.entry);
+            } else if (result.status === "rejected") {
+                // If the check itself failed, include the entry conservatively.
+                console.warn("Failed to check entry existence, including it anyway:", result.reason);
             }
-        } catch {
-            // no existing manifest (first publish)
         }
 
-        return existingMap;
+        return newEntries;
     }
 }
 
