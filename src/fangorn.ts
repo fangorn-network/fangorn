@@ -126,10 +126,10 @@ export class Fangorn {
 			domain,
 			schemaRegistry,
 			dataSourceRegistry,
-			settlementRegistry,
+			settlementRegistry			,
 			schemaRoleConfig,
 			config: resolvedConfig,
-			// workerUrl: options.workerUrl,
+			// workerUrl: options.				,
 		});
 	}
 

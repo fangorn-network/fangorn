@@ -143,7 +143,6 @@ export class ConsumerRole {
         if (fieldValue['@type'] !== 'handle') {
             throw new Error(`Field "${field}" is not a handle field. Read it directly from the entry`)
         }
-
         const objectKey = parseObjectKey(fieldValue.uri)
         const resourceId = this.deriveResourceId(owner, schemaId, name)
         return this.fetch({

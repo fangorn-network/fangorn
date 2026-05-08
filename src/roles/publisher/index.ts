@@ -108,15 +108,31 @@ export class PublisherRole {
         // Write only the new entries into this manifest.
         const manifest: Manifest = { version: 2, schemaId, entries };
         const manifestUri = await this.storage.put(manifest, { name: `manifest:${schemaId}` });
+        const results: { entry: ManifestEntry; manifestUri: string }[] = [];
 
         // Publish the manifest CID on-chain once per entry name so the
         // DataSourceRegistry can look up any entry by (owner, schemaId, name).
         for (const entry of entries) {
+            const manifest: Manifest = {
+                version: 2,
+                schemaId,
+                entries: [entry],  // one entry per manifest
+            };
+            const manifestUri = await this.storage.put(manifest, {
+                name: `manifest:${schemaId}:${entry.name}`,
+            });
             await this.dataSourceRegistry.publish(manifestUri, schemaId, entry.name, price);
+            results.push({ entry, manifestUri });
         }
 
         this.pendingEntries.clear();
-        return { manifestUri, schemaId, owner, entryCount: entries.length };
+
+        return {
+            manifestUri: results[results.length - 1]?.manifestUri ?? '',
+            schemaId,
+            owner,
+            entryCount: results.length,
+        };
     }
 
     async getManifest(schemaId: Hex, name: string): Promise<Manifest | undefined> {
