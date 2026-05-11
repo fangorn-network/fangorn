@@ -262,15 +262,29 @@ export class PublisherRole {
                     break;
                 }
                 const itemDef = fieldDef.items;
-                if (itemDef && "@type" in itemDef) {
+                if (!itemDef) break;
+
+                if ("@type" in itemDef) {
+                    // array of primitives / nested arrays
                     (value as FieldInput[]).forEach((item, i) => {
-                        this.validateField(
-                            name,
-                            `${fieldName}[${i.toString()}]`,
-                            itemDef as FieldDefinition,
-                            item,
-                            errors,
-                        );
+                        this.validateField(name, `${fieldName}[${i}]`, itemDef as FieldDefinition, item, errors);
+                    });
+                } else {
+                    // array of objects (items is Record<string, FieldDefinition>)
+                    (value as FieldInput[]).forEach((item, i) => {
+                        if (typeof item !== "object" || Array.isArray(item) || item === null) {
+                            errors.push(`"${fieldName}[${i}]" must be an object`);
+                            return;
+                        }
+                        for (const [subField, subDef] of Object.entries(itemDef)) {
+                            this.validateField(
+                                name,
+                                `${fieldName}[${i}].${subField}`,
+                                subDef as FieldDefinition,
+                                (item as FieldInputObject)[subField],
+                                errors,
+                            );
+                        }
                     });
                 }
                 break;

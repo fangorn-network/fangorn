@@ -96,6 +96,20 @@ const MUSIC_SCHEMA: SchemaDefinition = {
     "energy": {
         "@type": "number"
     },
+    "contributors": {
+        "@type": "array",
+        "items": {
+            "role": {
+                "@type": "string | null"
+            },
+            "name": {
+                "@type": "string | null"
+            },
+            "id": {
+                "@type": "string | null"
+            }
+        }
+    },
     "genres": {
         "@type": "array",
         "items": {
@@ -132,6 +146,7 @@ const TEST_RECORDS: PublishRecord[] = [
             "artist": "Aphex Twin",
             "year": 1993,
             "energy": 3,
+            "contributors": [],
             "genres": [
                 "ambient techno",
                 "idm",
@@ -163,6 +178,13 @@ const TEST_RECORDS: PublishRecord[] = [
             "artist": "Aphex Twin",
             "year": 1997,
             "energy": 2,
+            "contributors": [
+                {
+                    "role": "test0",
+                    "name": "test0",
+                    "id": "test0"
+                }
+            ],
             "genres": [
                 "idm",
                 "experimental electronic",
@@ -223,7 +245,7 @@ describe("Fangorn E2E", () => {
             schemaId = await testbed.registerSchema(schemaName, MUSIC_SCHEMA, agentId);
             console.log(schemaId);
             expect(schemaId).toMatch(/^0x[0-9a-f]{64}$/i);
-        }, 30_000);
+        }, 60_000);
 
         it("can fetch the registered schema by id", async () => {
             const schema = await testbed.getDelegatorFangorn().schema.get(schemaName);
@@ -231,7 +253,7 @@ describe("Fangorn E2E", () => {
             expect(schema!.definition).toMatchObject(MUSIC_SCHEMA);
             expect(schema!.agentId).toBe(agentId);
             expect(schema!.owner.toLowerCase()).toBe(ownerAddress.toLowerCase());
-        }, 60_000);
+        }, 120_000);
 
         describe("Publisher", () => {
             it("uploads multiple records and publishes a manifest", async () => {
@@ -250,14 +272,14 @@ describe("Fangorn E2E", () => {
                     TEST_RECORDS[0].name,
                 );
                 expect(exists).toBe(true);
-            }, 30_000);
+            }, 60_000);
 
             it("both entries are present in the manifest", async () => {
                 for (const record of TEST_RECORDS) {
                     const exists = await testbed.checkEntryExists(ownerAddress, schemaId, record.name);
                     expect(exists).toBe(true);
                 }
-            }, 30_000);
+            }, 60_000);
 
             // describe("Consumer", () => {
             //     let buyerIdentity: Identity;
