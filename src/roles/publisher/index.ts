@@ -267,20 +267,20 @@ export class PublisherRole {
                 if ("@type" in itemDef) {
                     // array of primitives / nested arrays
                     (value as FieldInput[]).forEach((item, i) => {
-                        this.validateField(name, `${fieldName}[${i}]`, itemDef as FieldDefinition, item, errors);
+                        this.validateField(name, `${fieldName}[${i.toString()}]`, itemDef as FieldDefinition, item, errors);
                     });
                 } else {
                     // array of objects (items is Record<string, FieldDefinition>)
                     (value as FieldInput[]).forEach((item, i) => {
                         if (typeof item !== "object" || Array.isArray(item) || item === null) {
-                            errors.push(`"${fieldName}[${i}]" must be an object`);
+                            errors.push(`"${fieldName}[${i.toString()}]" must be an object`);
                             return;
                         }
                         for (const [subField, subDef] of Object.entries(itemDef)) {
                             this.validateField(
                                 name,
-                                `${fieldName}[${i}].${subField}`,
-                                subDef as FieldDefinition,
+                                `${fieldName}[${i.toString()}].${subField}`,
+                                subDef,
                                 (item as FieldInputObject)[subField],
                                 errors,
                             );

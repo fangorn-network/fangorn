@@ -160,7 +160,7 @@ async function resolveSchemaId(fangorn: Fangorn, schemaNameOrId: string): Promis
 // ─── CLI root ─────────────────────────────────────────────────────────────────
 
 const program = new Command();
-program.name("fangorn").description("Fangorn Network CLI").version("0.2.0");
+program.name("fangorn").description("Fangorn Network CLI").version("0.2.1");
 
 // ─── init ─────────────────────────────────────────────────────────────────────
 

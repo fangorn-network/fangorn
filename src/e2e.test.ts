@@ -180,9 +180,9 @@ const TEST_RECORDS: PublishRecord[] = [
             "energy": 2,
             "contributors": [
                 {
-                    "role": "test0",
-                    "name": "test0",
-                    "id": "test0"
+                    "role": "artist",
+                    "name": "Justin Bieber",
+                    "id": "e0140a67-e4d1-4f13-8a01-364355bee46e"
                 }
             ],
             "genres": [
