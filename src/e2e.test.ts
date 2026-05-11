@@ -82,7 +82,7 @@ const ENCRYPTED_FIELD = "audio";
 
 const MUSIC_SCHEMA: SchemaDefinition = {
     "mbid": {
-        "@type": "string"
+        "@type": "string | null"
     },
     "title": {
         "@type": "string"
@@ -158,7 +158,7 @@ const TEST_RECORDS: PublishRecord[] = [
     {
         "name": "e1c3580b-1c05-4984-94f7-ac88ac9834ee",
         "fields": {
-            "mbid": "e1c3580b-1c05-4984-94f7-ac88ac9834ee",
+            "mbid": null,
             "title": "To Cure a Weakling Child",
             "artist": "Aphex Twin",
             "year": 1997,

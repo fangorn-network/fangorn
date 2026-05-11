@@ -2,9 +2,17 @@ import { type Hex } from "viem";
 
 export type ScalarType = "string" | "number" | "boolean" | "bytes";
 
+export type NullableType =
+    | `${ScalarType} | null`
+    | "array | null"
+    | "object | null";
+
+export type FieldType = ScalarType | "array" | "object" | NullableType;
+
 export type PlainField =
-    | { "@type": ScalarType }
-    | { "@type": "array"; items: { "@type": ScalarType } };
+    | { "@type": ScalarType | NullableType }
+    | { "@type": "array" | "array | null"; items: FieldDefinition }
+    | { "@type": "object" | "object | null"; items: Record<string, FieldDefinition> };
 
 // Represents an encrypted field in a schema
 export interface EncryptedField {
@@ -42,7 +50,14 @@ export interface EncryptedField {
     };
 }
 
-export type FieldDefinition = PlainField | HandleField | EncryptedField;
+// export type FieldDefinition = PlainField | HandleField | EncryptedField;
+// export type SchemaDefinition = Record<string, FieldDefinition>;
+export interface FieldDefinition {
+    "@type": string;
+    "@description"?: string;
+    items?: FieldDefinition | Record<string, FieldDefinition>;
+}
+
 export type SchemaDefinition = Record<string, FieldDefinition>;
 
 // export type FieldDefinition = PlainField | EncryptedField;
