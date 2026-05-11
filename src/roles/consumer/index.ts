@@ -10,7 +10,7 @@ import {
     PurchaseParams,
     PurchaseResult,
 } from "./types";
-import { Manifest, ManifestEntry } from "../publisher/types";
+import { Manifest, ManifestEntry, ResolvedHandleField } from "../publisher/types";
 import {
     PrepareSettleParams,
     PrepareSettleResult,
@@ -143,13 +143,14 @@ export class ConsumerRole {
         if (fieldValue['@type'] !== 'handle') {
             throw new Error(`Field "${field}" is not a handle field. Read it directly from the entry`)
         }
-        const objectKey = parseObjectKey(fieldValue.uri)
+        const handle = fieldValue as ResolvedHandleField;
+        const objectKey = parseObjectKey(handle.uri);
         const resourceId = this.deriveResourceId(owner, schemaId, name)
         return this.fetch({
             nullifier,
             resourceId,
             objectKey,
-            workerUrl: fieldValue.workerUrl,
+            workerUrl: handle.workerUrl,
             walletClient,
         })
     }

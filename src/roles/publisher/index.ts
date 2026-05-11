@@ -5,6 +5,7 @@ import { MetadataStorage } from "../../providers/storage/types";
 import {
     CommitResult,
     FieldInput,
+    FieldInputObject,
     HandleFieldInput,
     Manifest,
     ManifestEntry,
@@ -16,7 +17,7 @@ import {
 import { AppConfig } from "../../config";
 import { SchemaRegistry } from "../../registries/schema-registry";
 
-export * from './types';
+export * from "./types";
 
 export class PublisherRole {
 
@@ -34,11 +35,6 @@ export class PublisherRole {
     /**
      * Validate and stage schema-conformant records, then commit to storage
      * and publish on-chain.
-     *
-     * Fields with a HandleFieldInput are written to the manifest as-is.
-     * The content is assumed to already exist at the supplied URI (e.g. pre-uploaded to R2).
-     *
-     * Plain fields are stored inline in the manifest.
      */
     async upload(params: UploadParams, price: bigint): Promise<CommitResult> {
         const { records, schemaName, options } = params;
@@ -71,18 +67,8 @@ export class PublisherRole {
     }
 
     /**
-     * Serialize all staged entries into a manifest, upload it to storage,
-     * and publish the manifest CID on-chain once.
-     *
-     * Each call produces one manifest containing only the currently-staged
-     * (new) entries. The ingestion layer unions across all published manifests
-     * by entry name, so there is no need to carry forward prior entries here.
-     *
-     * The `overwrite` flag is retained for API compatibility but no longer
-     * affects carry-forward behavior — it now controls whether entries whose
-     * names already exist in a prior manifest are silently skipped (false)
-     * or replaced (true). In both cases only the new/overwriting entries are
-     * written to this manifest.
+     * Serialize all staged entries into manifests, upload to storage,
+     * and publish each manifest CID on-chain.
      */
     async commit(schemaId: Hex, price: bigint, overwrite: boolean): Promise<CommitResult> {
         const owner = this.requireAccount();
@@ -94,7 +80,6 @@ export class PublisherRole {
         let entries = Array.from(this.pendingEntries.values());
 
         if (!overwrite) {
-            // Filter out entries that already exist on-chain so we don't re-publish them. 
             entries = await this.filterNewEntries(owner, schemaId, entries);
             if (entries.length === 0) {
                 this.pendingEntries.clear();
@@ -105,16 +90,13 @@ export class PublisherRole {
             }
         }
 
-        // Write only the new entries into this manifest.
         const results: { entry: ManifestEntry; manifestUri: string }[] = [];
 
-        // Publish the manifest CID on-chain once per entry name so the
-        // DataSourceRegistry can look up any entry by (owner, schemaId, name).
         for (const entry of entries) {
             const manifest: Manifest = {
                 version: 2,
                 schemaId,
-                entries: [entry],  // one entry per manifest
+                entries: [entry],
             };
             const manifestUri = await this.storage.put(manifest, {
                 name: `manifest:${schemaId}:${entry.name}`,
@@ -126,7 +108,7 @@ export class PublisherRole {
         this.pendingEntries.clear();
 
         return {
-            manifestUri: results[results.length - 1]?.manifestUri ?? '',
+            manifestUri: results[results.length - 1]?.manifestUri ?? "",
             schemaId,
             owner,
             entryCount: results.length,
@@ -158,9 +140,6 @@ export class PublisherRole {
         return address;
     }
 
-    /**
-     * Fetch the schema by name from the schema registry/cache.
-     */
     private resolveSchema(name: string): Promise<{ schema: SchemaDefinition; schemaId: Hex }> {
         if (!this.schemaCache.has(name)) {
             const p = Promise.all([
@@ -186,9 +165,7 @@ export class PublisherRole {
 
     /**
      * Resolve a PublishRecord into a ManifestEntry.
-     *
-     * Handle fields are passed through directly.
-     * Plain fields are stored inline.
+     * Handle fields are passed through directly; plain fields stored inline.
      */
     private resolveRecord(
         record: PublishRecord,
@@ -243,38 +220,104 @@ export class PublisherRole {
         value: FieldInput,
         errors: string[],
     ): void {
-        // Handle fields are always valid regardless of schema @type —
-        // the content is already stored, we trust the publisher supplied
-        // the right URI for the right field.
+        // Handle fields bypass schema type checks — URI correctness is the
+        // publisher's responsibility.
         if (isHandleFieldInput(value)) return;
 
-        switch (fieldDef["@type"]) {
+        const rawType = fieldDef["@type"];
+        const nullable = rawType.includes("| null");
+        const baseType = rawType.replace("| null", "").trim();
+
+        if (value === null) {
+            if (!nullable) {
+                errors.push(`"${fieldName}" is required (non-nullable), got null`);
+            }
+            return;
+        }
+
+        switch (baseType) {
             case "string":
                 if (typeof value !== "string")
                     errors.push(`"${fieldName}" must be a string, got ${typeof value}`);
                 break;
+
             case "number":
                 if (typeof value !== "number")
                     errors.push(`"${fieldName}" must be a number, got ${typeof value}`);
                 break;
+
             case "boolean":
                 if (typeof value !== "boolean")
                     errors.push(`"${fieldName}" must be a boolean, got ${typeof value}`);
                 break;
+
             case "bytes":
                 if (!(value instanceof Uint8Array))
                     errors.push(`"${fieldName}" must be Uint8Array`);
                 break;
+
+            case "array": {
+                if (!Array.isArray(value)) {
+                    errors.push(`"${fieldName}" must be an array, got ${typeof value}`);
+                    break;
+                }
+                const itemDef = fieldDef.items;
+                if (!itemDef) break;
+
+                if ("@type" in itemDef) {
+                    // array of primitives / nested arrays
+                    (value as FieldInput[]).forEach((item, i) => {
+                        this.validateField(name, `${fieldName}[${i.toString()}]`, itemDef as FieldDefinition, item, errors);
+                    });
+                } else {
+                    // array of objects (items is Record<string, FieldDefinition>)
+                    (value as FieldInput[]).forEach((item, i) => {
+                        if (typeof item !== "object" || Array.isArray(item) || item === null) {
+                            errors.push(`"${fieldName}[${i.toString()}]" must be an object`);
+                            return;
+                        }
+                        for (const [subField, subDef] of Object.entries(itemDef)) {
+                            this.validateField(
+                                name,
+                                `${fieldName}[${i.toString()}].${subField}`,
+                                subDef,
+                                (item as FieldInputObject)[subField],
+                                errors,
+                            );
+                        }
+                    });
+                }
+                break;
+            }
+
+            case "object": {
+                if (typeof value !== "object" || Array.isArray(value)) {
+                    errors.push(`"${fieldName}" must be an object, got ${typeof value}`);
+                    break;
+                }
+                const itemsDef = fieldDef.items;
+                if (itemsDef && !("@type" in itemsDef)) {
+                    for (const [subField, subDef] of Object.entries(itemsDef)) {
+                        this.validateField(
+                            name,
+                            `${fieldName}.${subField}`,
+                            subDef,
+                            (value as FieldInputObject)[subField],
+                            errors,
+                        );
+                    }
+                }
+                break;
+            }
+
+            default:
+                console.warn(`Record "${name}" field "${fieldName}": unknown @type "${baseType}", skipping validation`);
         }
     }
 
     /**
-     * Return only the entries whose names do not already exist on-chain
-     * for this (owner, schemaId) pair. Entries that already exist are
-     * silently dropped — use overwrite: true to force re-publish.
-     *
-     * Unlike the old loadExistingEntries(), this does NOT fetch or carry
-     * forward the prior manifest's content. It only checks existence.
+     * Return only entries whose names do not already exist on-chain
+     * for this (owner, schemaId) pair.
      */
     private async filterNewEntries(
         owner: Address,
@@ -288,7 +331,6 @@ export class PublisherRole {
                     const exists = ds.manifestCid && ds.manifestCid !== "";
                     return { entry, exists };
                 } catch {
-                    // Not found — treat as new.
                     return { entry, exists: false };
                 }
             })
@@ -299,8 +341,7 @@ export class PublisherRole {
             if (result.status === "fulfilled" && !result.value.exists) {
                 newEntries.push(result.value.entry);
             } else if (result.status === "rejected") {
-                // If the check itself failed, include the entry conservatively.
-                console.warn("Failed to check entry existence, including it anyway:", result.reason);
+                console.warn("Failed to check entry existence, including conservatively:", result.reason);
             }
         }
 
@@ -311,7 +352,8 @@ export class PublisherRole {
 function isHandleFieldInput(value: FieldInput): value is HandleFieldInput {
     return (
         typeof value === "object" &&
+        value !== null &&
         "@type" in value &&
-        (value as unknown as Record<string, unknown>)["@type"] === "handle"
+        (value as Record<string, unknown>)["@type"] === "handle"
     );
 }

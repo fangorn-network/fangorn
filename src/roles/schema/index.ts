@@ -105,7 +105,7 @@ export class SchemaRole {
                         errors.push(`Field "${field}" must be an array, got ${typeof value}`);
                         break;
                     }
-                    const items: PlainField = fieldDef.items;
+                    const items: PlainField = fieldDef.items as PlainField;
                     value.forEach((item: unknown, i) =>
                         errors.push(
                             ...this.validate(

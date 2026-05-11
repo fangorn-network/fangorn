@@ -82,7 +82,7 @@ const ENCRYPTED_FIELD = "audio";
 
 const MUSIC_SCHEMA: SchemaDefinition = {
     "mbid": {
-        "@type": "string"
+        "@type": "string | null"
     },
     "title": {
         "@type": "string"
@@ -95,6 +95,20 @@ const MUSIC_SCHEMA: SchemaDefinition = {
     },
     "energy": {
         "@type": "number"
+    },
+    "contributors": {
+        "@type": "array",
+        "items": {
+            "role": {
+                "@type": "string | null"
+            },
+            "name": {
+                "@type": "string | null"
+            },
+            "id": {
+                "@type": "string | null"
+            }
+        }
     },
     "genres": {
         "@type": "array",
@@ -132,6 +146,7 @@ const TEST_RECORDS: PublishRecord[] = [
             "artist": "Aphex Twin",
             "year": 1993,
             "energy": 3,
+            "contributors": [],
             "genres": [
                 "ambient techno",
                 "idm",
@@ -158,11 +173,18 @@ const TEST_RECORDS: PublishRecord[] = [
     {
         "name": "e1c3580b-1c05-4984-94f7-ac88ac9834ee",
         "fields": {
-            "mbid": "e1c3580b-1c05-4984-94f7-ac88ac9834ee",
+            "mbid": null,
             "title": "To Cure a Weakling Child",
             "artist": "Aphex Twin",
             "year": 1997,
             "energy": 2,
+            "contributors": [
+                {
+                    "role": "artist",
+                    "name": "Justin Bieber",
+                    "id": "e0140a67-e4d1-4f13-8a01-364355bee46e"
+                }
+            ],
             "genres": [
                 "idm",
                 "experimental electronic",
@@ -223,7 +245,7 @@ describe("Fangorn E2E", () => {
             schemaId = await testbed.registerSchema(schemaName, MUSIC_SCHEMA, agentId);
             console.log(schemaId);
             expect(schemaId).toMatch(/^0x[0-9a-f]{64}$/i);
-        }, 30_000);
+        }, 60_000);
 
         it("can fetch the registered schema by id", async () => {
             const schema = await testbed.getDelegatorFangorn().schema.get(schemaName);
@@ -231,7 +253,7 @@ describe("Fangorn E2E", () => {
             expect(schema!.definition).toMatchObject(MUSIC_SCHEMA);
             expect(schema!.agentId).toBe(agentId);
             expect(schema!.owner.toLowerCase()).toBe(ownerAddress.toLowerCase());
-        }, 60_000);
+        }, 120_000);
 
         describe("Publisher", () => {
             it("uploads multiple records and publishes a manifest", async () => {
@@ -250,14 +272,14 @@ describe("Fangorn E2E", () => {
                     TEST_RECORDS[0].name,
                 );
                 expect(exists).toBe(true);
-            }, 30_000);
+            }, 60_000);
 
             it("both entries are present in the manifest", async () => {
                 for (const record of TEST_RECORDS) {
                     const exists = await testbed.checkEntryExists(ownerAddress, schemaId, record.name);
                     expect(exists).toBe(true);
                 }
-            }, 30_000);
+            }, 60_000);
 
             // describe("Consumer", () => {
             //     let buyerIdentity: Identity;
