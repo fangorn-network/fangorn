@@ -228,9 +228,9 @@ export class PublisherRole {
         const nullable = rawType.includes("| null");
         const baseType = rawType.replace("| null", "").trim();
 
-        if (value === null || value === undefined) {
+        if (value === null) {
             if (!nullable) {
-                errors.push(`"${fieldName}" is required (non-nullable), got ${value}`);
+                errors.push(`"${fieldName}" is required (non-nullable), got null`);
             }
             return;
         }
@@ -266,7 +266,7 @@ export class PublisherRole {
                     (value as FieldInput[]).forEach((item, i) => {
                         this.validateField(
                             name,
-                            `${fieldName}[${i}]`,
+                            `${fieldName}[${i.toString()}]`,
                             itemDef as FieldDefinition,
                             item,
                             errors,
@@ -277,7 +277,7 @@ export class PublisherRole {
             }
 
             case "object": {
-                if (typeof value !== "object" || Array.isArray(value) || value === null) {
+                if (typeof value !== "object" || Array.isArray(value)) {
                     errors.push(`"${fieldName}" must be an object, got ${typeof value}`);
                     break;
                 }
@@ -287,7 +287,7 @@ export class PublisherRole {
                         this.validateField(
                             name,
                             `${fieldName}.${subField}`,
-                            subDef as FieldDefinition,
+                            subDef,
                             (value as FieldInputObject)[subField],
                             errors,
                         );
