@@ -57,7 +57,7 @@ ArbitrumSepolia: {
 			"0x282915f5c6f6c9b15c131fa379916da47754fbef",
 		chainName: "arbitrumSepolia",
 		chain: arbitrumSepolia,
-		rpcUrl: "https://arbitrum-sepolia-testnet.api.pocket.network",
+		rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
 		caip2: 421614,
 		ipfsGateway: 'https://ipfs.io'
 	} satisfies AppConfig,
