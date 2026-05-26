@@ -27,9 +27,8 @@ export class PinataBackend implements MetadataStorage {
 
         const encoder = new TextEncoder();
 
-        // Serialize each item and compute its CID deterministically.
-        // Using raw codec — same bytes as put(), same gateway behavior.
-        const blocks: Array<{ name: string; cid: CID; bytes: Uint8Array }> = [];
+        // Serialize each item and compute its CID deterministically
+        const blocks = [];
         for (const { data, name } of items) {
             const bytes = encoder.encode(serialize(data));
             const hash = await sha256.digest(bytes);
@@ -52,14 +51,21 @@ export class PinataBackend implements MetadataStorage {
         await writer.close();
         await drain;
 
+        // this is a little weird, but done to satisfy the linter
         const carFile = new File(
-            [new Blob(chunks.map(c => c.buffer.slice(c.byteOffset, c.byteOffset + c.byteLength) as ArrayBuffer))],
-            `bundle-${Date.now()}.car`,
+            chunks.map(c => {
+                const cleanBuffer = new ArrayBuffer(c.byteLength);
+                new Uint8Array(cleanBuffer).set(
+                    new Uint8Array(c.buffer, c.byteOffset, c.byteLength)
+                );
+                return new Uint8Array(cleanBuffer);
+            }),
+            `bundle-${Date.now().toString()}.car`,
             { type: "application/vnd.ipld.car" }
         );
 
         await this.pinata.upload.public.file(carFile, {
-            metadata: { name: `car:${Date.now()}` },
+            metadata: { name: `car:${Date.now().toString()}` },
         });
 
         return Object.fromEntries(blocks.map(({ name, cid }) => [name, cid.toString()]));

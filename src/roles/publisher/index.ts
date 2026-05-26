@@ -136,9 +136,7 @@ export class PublisherRole {
     async getEntry(schemaId: Hex, name: string): Promise<ManifestEntry> {
         const manifest = await this.getManifest(schemaId, name);
         if (!manifest) throw new Error(`No manifest found for schemaId ${schemaId} / name ${name}`);
-        const entry = manifest.entry;
-        if (!entry) throw new Error(`Entry not found: "${name}"`);
-        return entry;
+        return manifest.entry;
     }
 
     private requireAccount(): Address {

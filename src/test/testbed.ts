@@ -214,7 +214,7 @@ export class TestBed {
 
     async checkManifestExists(who: Address, schemaId: Hex, name: string): Promise<boolean> {
         const entry = await this.delegatorFangorn.consumer.checkManifestExists(who, schemaId, name);
-        return entry !== undefined;
+        return entry;
     }
 
     getDelegatorAddress(): Address { return this.delegatorAddress; }

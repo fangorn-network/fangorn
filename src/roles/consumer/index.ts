@@ -112,20 +112,14 @@ export class ConsumerRole {
         }
     }
 
-    async getEntry(owner: Address, schemaId: Hex, name: string): Promise<ManifestEntry | undefined> {
-        console.log('hi')
+    async getEntry(owner: Address, schemaId: Hex, name: string, gateway?: string): Promise<ManifestEntry | undefined> {
         try {
             const ds = await this.dataSourceRegistry.get(owner, schemaId, name);
-
-            console.log(ds)
-
             if (!ds.manifestCid || ds.manifestCid === "") return undefined;
 
-            const manifest = await PinataBackend.getStatic<Manifest>(ds.manifestCid, process.env.PINATA_GATEWAY!);
+            const manifest = await PinataBackend.getStatic<Manifest>(ds.manifestCid, gateway);
 
-            console.log(manifest)
-
-            return manifest?.entry;
+            return manifest.entry;
         } catch {
             return undefined;
         }
@@ -146,9 +140,9 @@ export class ConsumerRole {
         // TODO: entry can be undefined
         const entry = await this.getEntry(owner, schemaId, name)
         if (!entry) throw new Error("Entry not found")
-    
+
         const fieldValue = entry.fields[field]
-        
+
         if (!fieldValue || typeof fieldValue !== 'object' || !('@type' in fieldValue)) {
             throw new Error(`Field "${field}" is missing or is not a handle field`)
         }
