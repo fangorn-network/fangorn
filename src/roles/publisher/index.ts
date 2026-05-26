@@ -120,30 +120,6 @@ export class PublisherRole {
             owner,
             entryCount: results.length,
         };
-
-        // const results: { entry: ManifestEntry; manifestUri: string }[] = [];
-
-        // for (const entry of entries) {
-        //     const manifest: Manifest = {
-        //         version: 2,
-        //         schemaId,
-        //         entries: [entry],
-        //     };
-        //     const manifestUri = await this.storage.put(manifest, {
-        //         name: `manifest:${schemaId}:${entry.name}`,
-        //     });
-        //     await this.dataSourceRegistry.publish(manifestUri, schemaId, entry.name, price);
-        //     results.push({ entry, manifestUri });
-        // }
-
-        // this.pendingEntries.clear();
-
-        // return {
-        //     manifestUri: results[results.length - 1]?.manifestUri ?? "",
-        //     schemaId,
-        //     owner,
-        //     entryCount: results.length,
-        // };
     }
 
     async getManifest(schemaId: Hex, name: string): Promise<Manifest | undefined> {
