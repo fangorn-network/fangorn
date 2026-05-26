@@ -617,7 +617,7 @@ consumeCmd
                 walletClient,
             );
             s.stop();
-
+        
             if (options.output) {
                 writeFileSync(options.output, Buffer.from(data));
                 console.log(`Saved to: ${options.output}`);

@@ -144,8 +144,11 @@ export class ConsumerRole {
         walletClient: WalletClient,
     ): Promise<FetchResult> {
         // TODO: entry can be undefined
-        const entry = await this.getEntry(owner, schemaId, name)!
-        const fieldValue = entry!.fields[field]
+        const entry = await this.getEntry(owner, schemaId, name)
+        if (!entry) throw new Error("Entry not found")
+    
+        const fieldValue = entry.fields[field]
+        
         if (!fieldValue || typeof fieldValue !== 'object' || !('@type' in fieldValue)) {
             throw new Error(`Field "${field}" is missing or is not a handle field`)
         }
