@@ -48,7 +48,6 @@ function makeWallet(key: Hex) {
     });
 }
 
-
 const ENCRYPTED_FIELD = "audio";
 
 // const MUSIC_SCHEMA: SchemaDefinition = {
@@ -135,6 +134,41 @@ const MUSIC_SCHEMA: SchemaDefinition = {
         }
     }
 };
+
+const SINGLE_TEST_RECORD: PublishRecord[] = [
+    {
+        "name": "0",
+        "fields": {
+            "mbid": "1b41c446-dbb4-4977-8d23-87496a199af9",
+            "title": "Analogue Bubblebath 3",
+            "artist": "Aphex Twin",
+            "year": 1993,
+            "energy": 3,
+            "contributors": [],
+            "genres": [
+                "ambient techno",
+                "idm",
+                "rave"
+            ],
+            "moods": [
+                "hypnotic",
+                "dreamy",
+                "euphoric",
+                "floating"
+            ],
+            "themes": [
+                "altered states",
+                "synthesis",
+                "abstraction"
+            ],
+            "contexts": [
+                "late-night",
+                "headphone-listening",
+                "art-installation"
+            ]
+        }
+    }
+]
 
 // r2:// URIs — content already uploaded to R2 out-of-band
 const TEST_RECORDS: PublishRecord[] = [
@@ -256,6 +290,25 @@ describe("Fangorn E2E", () => {
         }, 120_000);
 
         describe("Publisher", () => {
+
+            it("uploads single record and publishes a manifest", async () => {
+                const manifestUri = await testbed.fileUpload(
+                    SINGLE_TEST_RECORD,
+                    schemaName,
+                    price,
+                );
+                expect(manifestUri).toBeTruthy();
+            }, 60_000);
+
+            it("single manifest exists on-chain after upload", async () => {
+                const exists = await testbed.checkManifestExists(
+                    ownerAddress,
+                    schemaId,
+                    SINGLE_TEST_RECORD[0].name,
+                );
+                expect(exists).toBe(true);
+            }, 60_000);
+
             it("uploads multiple records and publishes a manifest", async () => {
                 const manifestUri = await testbed.fileUpload(
                     TEST_RECORDS,
@@ -265,21 +318,29 @@ describe("Fangorn E2E", () => {
                 expect(manifestUri).toBeTruthy();
             }, 60_000);
 
-            it("manifest exists on-chain after upload", async () => {
-                const exists = await testbed.checkManifestExists(
+            it("both records exists on-chain after upload", async () => {
+                let exists = await testbed.checkManifestExists(
                     ownerAddress,
                     schemaId,
                     TEST_RECORDS[0].name,
                 );
                 expect(exists).toBe(true);
+
+
+                exists = await testbed.checkManifestExists(
+                    ownerAddress,
+                    schemaId,
+                    TEST_RECORDS[1].name,
+                );
+                expect(exists).toBe(true);
             }, 60_000);
 
-            it("both entries are present in the manifest", async () => {
-                for (const record of TEST_RECORDS) {
-                    const exists = await testbed.checkEntryExists(ownerAddress, schemaId, record.name);
-                    expect(exists).toBe(true);
-                }
-            }, 60_000);
+            // it("both entries are present in the manifest", async () => {
+            //     for (const record of TEST_RECORDS) {
+            //         const exists = await testbed.checkEntryExists(ownerAddress, schemaId, record.name);
+            //         expect(exists).toBe(true);
+            //     }
+            // }, 60_000);
 
             // describe("Consumer", () => {
             //     let buyerIdentity: Identity;

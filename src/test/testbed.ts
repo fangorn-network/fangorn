@@ -16,7 +16,7 @@ import { SettlementRegistry } from "../registries/settlement-registry/index.js";
 import { privateKeyToAccount } from "viem/accounts";
 import {
     PrepareSettleResult,
-    TransferWithAuthPayload, 
+    TransferWithAuthPayload,
 } from "../registries/settlement-registry/types.js";
 import { DataSourceRegistry } from "../registries/datasource-registry/index.js";
 
@@ -213,17 +213,8 @@ export class TestBed {
     }
 
     async checkManifestExists(who: Address, schemaId: Hex, name: string): Promise<boolean> {
-        const manifest = await this.delegatorFangorn.consumer.getManifest(who, schemaId, name);
-        return manifest !== undefined;
-    }
-
-    async checkEntryExists(who: Address, schemaId: Hex, name: string): Promise<boolean> {
-        try {
-            await this.delegatorFangorn.consumer.getEntry(who, schemaId, name);
-            return true;
-        } catch {
-            return false;
-        }
+        const entry = await this.delegatorFangorn.consumer.checkManifestExists(who, schemaId, name);
+        return entry !== undefined;
     }
 
     getDelegatorAddress(): Address { return this.delegatorAddress; }

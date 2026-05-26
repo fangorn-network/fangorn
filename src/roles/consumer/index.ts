@@ -54,7 +54,7 @@ export class ConsumerRole {
         });
         return { txHash: hash, nullifier, resourceId };
     }
-    
+
     /**
      * Fetch a handle field's content from the Fangorn access worker.
      *
@@ -103,24 +103,32 @@ export class ConsumerRole {
         }
     }
 
-    async getManifest(owner: Address, schemaId: Hex, name: string): Promise<Manifest | undefined> {
+    async checkManifestExists(who: Address, schemaId: Hex, name: string): Promise<boolean> {
         try {
-            const ds = await this.dataSourceRegistry.get(owner, schemaId, name);
-            if (!ds.manifestCid || ds.manifestCid === "") return undefined;
-            return await PinataBackend.getStatic<Manifest>(ds.manifestCid);
+            const ds = await this.dataSourceRegistry.get(who, schemaId, name);
+            return !!ds.manifestCid && ds.manifestCid !== "";
         } catch {
-            return undefined;
+            return false;
         }
     }
 
-    async getEntry(owner: Address, schemaId: Hex, name: string): Promise<ManifestEntry> {
-        const manifest = await this.getManifest(owner, schemaId, name);
-        if (!manifest) {
-            throw new Error(`No manifest found for owner ${owner} / schemaId ${schemaId} / name ${name}`);
+    async getEntry(owner: Address, schemaId: Hex, name: string): Promise<ManifestEntry | undefined> {
+        console.log('hi')
+        try {
+            const ds = await this.dataSourceRegistry.get(owner, schemaId, name);
+
+            console.log(ds)
+
+            if (!ds.manifestCid || ds.manifestCid === "") return undefined;
+
+            const manifest = await PinataBackend.getStatic<Manifest>(ds.manifestCid, process.env.PINATA_GATEWAY!);
+
+            console.log(manifest)
+
+            return manifest?.entry;
+        } catch {
+            return undefined;
         }
-        const entry = manifest.entries.find((e) => e.name === name);
-        if (!entry) throw new Error(`Entry not found: "${name}"`);
-        return entry;
     }
 
     /**
@@ -135,8 +143,9 @@ export class ConsumerRole {
         nullifier: string,
         walletClient: WalletClient,
     ): Promise<FetchResult> {
-        const entry = await this.getEntry(owner, schemaId, name)
-        const fieldValue = entry.fields[field]
+        // TODO: entry can be undefined
+        const entry = await this.getEntry(owner, schemaId, name)!
+        const fieldValue = entry!.fields[field]
         if (!fieldValue || typeof fieldValue !== 'object' || !('@type' in fieldValue)) {
             throw new Error(`Field "${field}" is missing or is not a handle field`)
         }

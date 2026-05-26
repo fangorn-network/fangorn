@@ -95,6 +95,7 @@ function loadConfig(): Config {
             pinataGateway: pinataGateway ?? "",
             workerUrl: workerUrl ?? "",
         };
+
         return _config;
     }
 
@@ -126,6 +127,9 @@ function getFangorn(): Fangorn {
     if (_fangorn) return _fangorn;
 
     const cfg = loadConfig();
+
+    console.log(JSON.stringify(cfg))
+
     const agentConfig: AgentConfig = { privateKey: cfg.privateKey, pinataJwt: cfg.pinataJwt };
 
     _fangorn = Fangorn.create({
@@ -398,7 +402,7 @@ consumeCmd
         try {
             const fangorn = getFangorn();
             const schemaId = await resolveSchemaId(fangorn, options.schema);
-            const manifest = await fangorn.consumer.getManifest(options.owner, schemaId, options.schema);
+            const manifest = await fangorn.consumer.getEntry(options.owner, schemaId, options.schema);
 
             if (!manifest) {
                 log.warn("No manifest found.");
@@ -407,10 +411,6 @@ consumeCmd
 
             console.log(`Owner:   ${options.owner}`);
             console.log(`Schema:  ${options.schema}`);
-            console.log(`Entries (${manifest.entries.length.toString()}):`);
-            for (const entry of manifest.entries) {
-                console.log(`  - ${entry.name}`);
-            }
             process.exit(0);
         } catch (err) {
             console.error("Failed:", (err as Error).message);

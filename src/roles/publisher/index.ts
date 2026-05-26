@@ -90,29 +90,60 @@ export class PublisherRole {
             }
         }
 
-        const results: { entry: ManifestEntry; manifestUri: string }[] = [];
+        // build all manifests (in mem)
+        const manifests = entries.map((entry) => ({
+            entry,
+            manifest: { version: 1, schemaId, entry } as Manifest,
+            name: `manifest:${schemaId}:${entry.name}`,
+        }));
 
-        for (const entry of entries) {
-            const manifest: Manifest = {
-                version: 2,
-                schemaId,
-                entries: [entry],
-            };
-            const manifestUri = await this.storage.put(manifest, {
-                name: `manifest:${schemaId}:${entry.name}`,
-            });
+        // bulk upload/commit all manifest together 
+        const uriMap = await this.storage.putMany(
+            manifests.map(({ manifest, name }) => ({ data: manifest, name }))
+        );
+
+        // Publish each CID on-chain (no storage I/O here)
+        const results: { entry: ManifestEntry; manifestUri: string }[] = [];
+        for (const { entry, name } of manifests) {
+            const manifestUri = uriMap[name];
+
+            console.log(`publishing data with the manifest Uri ${manifestUri}`)
+
             await this.dataSourceRegistry.publish(manifestUri, schemaId, entry.name, price);
             results.push({ entry, manifestUri });
         }
 
         this.pendingEntries.clear();
-
         return {
             manifestUri: results[results.length - 1]?.manifestUri ?? "",
             schemaId,
             owner,
             entryCount: results.length,
         };
+
+        // const results: { entry: ManifestEntry; manifestUri: string }[] = [];
+
+        // for (const entry of entries) {
+        //     const manifest: Manifest = {
+        //         version: 2,
+        //         schemaId,
+        //         entries: [entry],
+        //     };
+        //     const manifestUri = await this.storage.put(manifest, {
+        //         name: `manifest:${schemaId}:${entry.name}`,
+        //     });
+        //     await this.dataSourceRegistry.publish(manifestUri, schemaId, entry.name, price);
+        //     results.push({ entry, manifestUri });
+        // }
+
+        // this.pendingEntries.clear();
+
+        // return {
+        //     manifestUri: results[results.length - 1]?.manifestUri ?? "",
+        //     schemaId,
+        //     owner,
+        //     entryCount: results.length,
+        // };
     }
 
     async getManifest(schemaId: Hex, name: string): Promise<Manifest | undefined> {
@@ -129,7 +160,7 @@ export class PublisherRole {
     async getEntry(schemaId: Hex, name: string): Promise<ManifestEntry> {
         const manifest = await this.getManifest(schemaId, name);
         if (!manifest) throw new Error(`No manifest found for schemaId ${schemaId} / name ${name}`);
-        const entry = manifest.entries.find((e) => e.name === name);
+        const entry = manifest.entry;
         if (!entry) throw new Error(`Entry not found: "${name}"`);
         return entry;
     }
@@ -357,3 +388,4 @@ function isHandleFieldInput(value: FieldInput): value is HandleFieldInput {
         (value as Record<string, unknown>)["@type"] === "handle"
     );
 }
+

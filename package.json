@@ -53,6 +53,7 @@
 	"dependencies": {
 		"@a2a-js/sdk": "^0.3.10",
 		"@clack/prompts": "^1.0.1",
+		"@ipld/car": "^5.4.6",
 		"@semaphore-protocol/group": "^4.14.2",
 		"@semaphore-protocol/identity": "^4.14.2",
 		"@semaphore-protocol/proof": "^4.14.2",
@@ -61,6 +62,8 @@
 		"commander": "^14.0.3",
 		"dotenv": "^17.2.3",
 		"ethers": "^6.16.0",
+		"ipfs-car": "^3.1.0",
+		"multiformats": "^14.0.0",
 		"pinata": "^2.5.2",
 		"solc": "^0.8.28",
 		"viem": "^2.47.1"

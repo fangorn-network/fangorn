@@ -106,9 +106,9 @@ export interface ManifestEntry {
 
 // Manifest
 export interface Manifest {
-    version: 2;
+    version: 1;
     schemaId: Hex;
-    entries: ManifestEntry[];
+    entry: ManifestEntry;
 }
 
 // Params / Results
