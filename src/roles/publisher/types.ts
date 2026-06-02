@@ -1,9 +1,5 @@
 import { type Address, type Hex } from "viem";
 
-/**
- * A single field value supplied by the publisher.
- * Supports primitives, nullable variants, arrays, objects, and handle fields.
- */
 export type FieldInput =
     | null
     | string
@@ -33,13 +29,6 @@ export interface ResolvedHandleArray {
     items: ResolvedHandleField[];
 }
 
-/**
- * A field whose content already lives in a storage backend.
- * The publisher supplies the URI directly — no encrypt/store step occurs.
- * Examples:
- *   "r2://tracks/song.mp3"
- *   "ipfs://QmXyz..." [future]
- */
 export interface HandleFieldInput {
     "@type": "handle";
     uri: string;
@@ -56,22 +45,16 @@ export interface PublishRecord {
     fields: Record<string, FieldInput>;
 }
 
-// Resolved types (written to manifest)
-
 /**
- * A resolved handle field — points to content in a storage backend.
- * The URI scheme identifies the backend:
- *   r2://   → Fangorn access worker (requires settlement proof)
- *   ipfs:// → public IPFS gateway [future]
+ * Resolved manifest fields
  */
+
 export interface ResolvedHandleField {
     "@type": "handle";
     uri: string;
     workerUrl: string;
-    price: string;
 }
 
-/** A resolved plain field, stored inline in the manifest */
 export type ResolvedPlainField =
     | null
     | string
@@ -94,46 +77,64 @@ export type ResolvedField =
     | ResolvedHandleField
     | ResolvedHandleArray;
 
-/**
- * A manifest entry; one schema-conformant record with all fields resolved.
- * Plain fields are readable by anyone directly from the manifest.
- * Handle fields require the consumer to fetch via the appropriate backend.
- */
+export interface ManifestLeaf {
+    index: bigint;
+    name: string;
+}
+
+/// each "leaf" looks like one of these
 export interface ManifestEntry {
     name: string;
-    fields: Record<string, ResolvedField>;
+    fields: Record<string, any>;
 }
 
-// Manifest
+/**
+ * Dataset manifest
+ */
+
 export interface Manifest {
-    version: 1;
+    version: 2;
     schemaId: Hex;
-    entry: ManifestEntry;
+    /**
+     * Poseidon2 Merkle root
+     */
+    root: Hex;
+    /**
+     * Entire dataset
+     */
+    entries: ManifestEntry[];
+    /**
+     * Full Merkle tree layers
+     *
+     * layer[0] = leaves
+     * layer[last][0] = root
+     */
+    tree: Hex[][];
 }
 
-// Params / Results
+/**
+ * Upload params
+ */
+
 export interface UploadParams {
     records: PublishRecord[];
-    /**
-     * The unique name of the schema the records must conform to.
-     */
+
     schemaName: string;
-    /**
-     * Configurable gas for the on-chain publish call.
-     */
+
     gas?: bigint;
+
     options?: {
-        /**
-         * When false (default) existing entries are preserved.
-         * When true the manifest is fully replaced.
-         */
         overwrite?: boolean;
     };
 }
+
+/**
+ * Commit result
+ */
 
 export interface CommitResult {
     manifestUri: string;
     schemaId: Hex;
     owner: Address;
     entryCount: number;
-}
+}1

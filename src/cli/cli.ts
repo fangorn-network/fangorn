@@ -29,7 +29,7 @@ import type { SchemaDefinition } from "../roles/schema/index.js";
 import type { PublishRecord } from "../roles/publisher/index.js";
 import { AgentConfig } from "../types/index.js";
 import { AppConfig, FangornConfig, SupportedNetworks } from "../config.js";
-import { DataSourceRegistry } from "../registries/datasource-registry/index.js";
+import { DataSourceRegistry } from "../contract/registry/index.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

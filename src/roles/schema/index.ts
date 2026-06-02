@@ -19,7 +19,7 @@ export class SchemaRole {
             version: 1,
             name: params.name,
             owner,
-            agentId: params.agentId,
+            agentId: params.agentId ?? "",
             definition: params.definition,
             createdAt: new Date().toISOString(),
         };
@@ -29,7 +29,7 @@ export class SchemaRole {
         const { schemaId } = await this.schemaRegistry.registerSchema(
             params.name,
             schemaCid,
-            params.agentId,
+            params.agentId ?? "",
         );
 
         return {
@@ -37,7 +37,7 @@ export class SchemaRole {
             schemaCid,
             definition: params.definition,
             name: params.name,
-            agentId: params.agentId,
+            agentId: params.agentId ?? "",
             owner,
         };
     }

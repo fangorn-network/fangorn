@@ -1,159 +1,192 @@
 import {
-    type PublicClient,
-    type WalletClient,
     type Address,
     type Hash,
     type Hex,
+    type PublicClient,
+    type WalletClient,
     keccak256,
     encodePacked,
 } from "viem";
+
+import { poseidon2 } from "poseidon-lite";
 import { DS_REGISTRY_ABI } from "./abi.js";
+
+const MODULUS =
+    21888242871839275222246405745257275088548364400416034343698204186575808495617n;
+
+function normalize(v: bigint): bigint {
+    return ((v % MODULUS) + MODULUS) % MODULUS;
+}
+
+function poseidonHash(inputs: bigint[]): bigint {
+    return BigInt(poseidon2(inputs.map(normalize)));
+}
+
+function hashString(value: string): bigint {
+    return normalize(BigInt(keccak256(new TextEncoder().encode(value))));
+}
+
+export interface ManifestLeaf {
+    index: bigint;
+    name: string;
+}
+
+export class MerkleTree {
+    static leafHash(leaf: ManifestLeaf): bigint {
+        return poseidonHash([
+            leaf.index,
+            hashString(leaf.name),
+        ]);
+    }
+
+    static buildTree(leaves: ManifestLeaf[]) {
+        if (leaves.length === 0) throw new Error("Empty tree");
+
+        const sorted = [...leaves].sort((a, b) =>
+            Number(a.index - b.index),
+        );
+
+        let current = sorted.map(MerkleTree.leafHash);
+        const layers: bigint[][] = [current];
+
+        while (current.length > 1) {
+            const next: bigint[] = [];
+
+            for (let i = 0; i < current.length; i += 2) {
+                const left = current[i];
+                const right = current[i + 1] ?? left;
+                next.push(poseidonHash([left, right]));
+            }
+
+            current = next;
+            layers.push(next);
+        }
+
+        return {
+            root: current[0],
+            layers,
+        };
+    }
+
+    static buildProof(layers: bigint[][], index: number): bigint[] {
+        const proof: bigint[] = [];
+
+        for (let d = 0; d < layers.length - 1; d++) {
+            const layer = layers[d];
+
+            const sibling =
+                index % 2 === 0
+                    ? layer[index + 1] ?? layer[index]
+                    : layer[index - 1];
+
+            proof.push(sibling);
+            index = Math.floor(index / 2);
+        }
+
+        return proof;
+    }
+
+    static rootToHex(root: bigint): Hex {
+        return `0x${root.toString(16).padStart(64, "0")}` as Hex;
+    }
+}
 
 export interface DataSource {
     manifestCid: string;
+    merkleRoot: Hex;
     name: string;
     schemaId: Hex;
     version: bigint;
 }
 
 export class DataSourceRegistry {
-    private publicClient: PublicClient;
-    private walletClient: WalletClient;
-    private contractAddress: Address;
-
     constructor(
-        contractAddress: Address,
-        publicClient: PublicClient,
-        walletClient: WalletClient,
-    ) {
-        this.publicClient = publicClient;
-        this.contractAddress = contractAddress;
-        this.walletClient = walletClient;
-    }
+        private contractAddress: Address,
+        private publicClient: PublicClient,
+        private walletClient: WalletClient,
+    ) { }
 
     private getWriteConfig() {
         if (!this.walletClient.chain) throw new Error("Chain required");
         if (!this.walletClient.account) throw new Error("Account required");
+
         return {
             chain: this.walletClient.chain,
             account: this.walletClient.account,
         };
     }
 
-    getContractAddress() {
-        return this.contractAddress;
-    }
-
-    /// Publish or update a named data source entry under a schema.
-    /// On first publish: creates the Semaphore group in the settlement registry.
-    /// On update: mutates price and CID; the group stays stable.
     async publish(
         manifestCid: string,
+        merkleRoot: Hex,
         schemaId: Hex,
         name: string,
-        price: bigint,
-        gas?: bigint,
     ): Promise<Hash> {
         const { chain, account } = this.getWriteConfig();
-        const gasLimit = await this.estimateGas(
-            () => this.publicClient.estimateContractGas({
-                address: this.contractAddress,
-                abi: DS_REGISTRY_ABI,
-                functionName: "publish",
-                args: [manifestCid, schemaId, name, price],
-                account,
-            }),
-            gas,
-        );
+
         const fees = await this.publicClient.estimateFeesPerGas();
+
+        const gas = await this.publicClient.estimateContractGas({
+            address: this.contractAddress,
+            abi: DS_REGISTRY_ABI,
+            functionName: "publish",
+            args: [manifestCid, merkleRoot, schemaId, name],
+            account,
+        });
 
         const hash = await this.walletClient.writeContract({
             address: this.contractAddress,
             abi: DS_REGISTRY_ABI,
             functionName: "publish",
-            args: [manifestCid, schemaId, name, price],
+            args: [manifestCid, merkleRoot, schemaId, name],
             chain,
             account,
-            gas: gasLimit,
+            gas: (gas * 130n) / 100n,
             maxFeePerGas: fees.maxFeePerGas * 3n,
             maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
         });
-        await this.waitForTransaction(hash);
+        await this.publicClient.waitForTransactionReceipt({ hash });
+
         return hash;
     }
 
-    /// Get the manifest CID and metadata for a given (owner, schemaId, name) triple.
-    async get(owner: Address, schemaId: Hex, name: string): Promise<DataSource> {
-        const [manifestCid, version] = await Promise.all([
+    async get(
+        owner: Address,
+        schemaId: Hex,
+        name: string,
+    ): Promise<DataSource> {
+        const [tuple, version] = await Promise.all([
             this.publicClient.readContract({
                 address: this.contractAddress,
                 abi: DS_REGISTRY_ABI,
                 functionName: "get",
                 args: [owner, schemaId, name],
-            }),
+            }) as Promise<readonly [string, Hex]>,
+
             this.publicClient.readContract({
                 address: this.contractAddress,
                 abi: DS_REGISTRY_ABI,
                 functionName: "getVersion",
                 args: [owner, schemaId, name],
-            }),
+            }) as Promise<bigint>,
         ]);
-        return { manifestCid, name, schemaId, version };
+
+        const [manifestCid, merkleRoot] = tuple;
+
+        return {
+            manifestCid,
+            merkleRoot,
+            name,
+            schemaId,
+            version,
+        };
     }
 
-    /// Get by pre-computed name_hash. Useful when you have the hash
-    /// but not the original string (e.g. from an on-chain event).
-    async getByHash(
-        owner: Address,
-        schemaId: Hex,
-        nameHash: Hex,
-    ): Promise<string> {
-        return this.publicClient.readContract({
-            address: this.contractAddress,
-            abi: DS_REGISTRY_ABI,
-            functionName: "getByHash",
-            args: [owner, schemaId, nameHash],
-        });
-    }
+    static resourceId(owner: Address, schemaId: Hex, name: string): Hex {
+        const nameHash = keccak256(
+            new TextEncoder().encode(name),
+        );
 
-    /// Recover the original name string from a name_hash.
-    async getName(
-        owner: Address,
-        schemaId: Hex,
-        nameHash: Hex,
-    ): Promise<string> {
-        return this.publicClient.readContract({
-            address: this.contractAddress,
-            abi: DS_REGISTRY_ABI,
-            functionName: "getName",
-            args: [owner, schemaId, nameHash],
-        });
-    }
-
-    async getVersion(owner: Address, schemaId: Hex, name: string): Promise<bigint> {
-        return this.publicClient.readContract({
-            address: this.contractAddress,
-            abi: DS_REGISTRY_ABI,
-            functionName: "getVersion",
-            args: [owner, schemaId, name],
-        });
-    }
-
-    /// Derive the resource_id (Semaphore group id) via contract call.
-    async resourceId(owner: Address, schemaId: Hex, name: string): Promise<Hex> {
-        return this.publicClient.readContract({
-            address: this.contractAddress,
-            abi: DS_REGISTRY_ABI,
-            functionName: "resourceId",
-            args: [owner, schemaId, name],
-        });
-    }
-
-    /// Derive the resource_id client-side without an RPC call.
-    /// Matches the contract's derive_resource_id exactly:
-    ///   keccak256(owner ++ schema_id ++ keccak256(name))
-    public static resourceIdLocal(owner: Address, schemaId: Hex, name: string): Hex {
-        const nameHash = keccak256(new TextEncoder().encode(name) as Uint8Array<ArrayBuffer>);
         return keccak256(
             encodePacked(
                 ["address", "bytes32", "bytes32"],
@@ -162,21 +195,7 @@ export class DataSourceRegistry {
         );
     }
 
-    /// keccak256 of the UTF-8 name string, matching the contract's on-chain hash.
-    hashName(name: string): Hex {
-        return keccak256(new TextEncoder().encode(name) as Uint8Array<ArrayBuffer>);
-    }
-
-    async waitForTransaction(hash: Hash) {
-        return this.publicClient.waitForTransactionReceipt({ hash });
-    }
-
-    private async estimateGas(
-        fn: () => Promise<bigint>,
-        override?: bigint,
-    ): Promise<bigint> {
-        if (override !== undefined) return override;
-        const estimated = await fn();
-        return (estimated * 130n) / 100n;
+    static hashName(name: string): Hex {
+        return keccak256(new TextEncoder().encode(name));
     }
 }

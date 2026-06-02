@@ -1,28 +1,62 @@
 import { type Address, type Hex, type WalletClient } from "viem";
 import { FieldDefinition, SchemaDefinition } from "../schema/types";
-import { DataSourceRegistry } from "../../registries/datasource-registry";
+import { DataSourceRegistry, MerkleTree } from "../../registries/datasource-registry";
 import { MetadataStorage } from "../../providers/storage/types";
+import { AppConfig } from "../../config";
+import { SchemaRegistry } from "../../registries/schema-registry";
 import {
     CommitResult,
     FieldInput,
-    FieldInputObject,
-    HandleFieldInput,
     Manifest,
-    ManifestEntry,
     PublishRecord,
     ResolvedField,
     ResolvedHandleField,
     UploadParams,
+    ManifestEntry,
+    HandleFieldInput
 } from "./types";
-import { AppConfig } from "../../config";
-import { SchemaRegistry } from "../../registries/schema-registry";
 
-export * from "./types";
+function createLimiter(concurrency: number) {
+    const queue: (() => void)[] = [];
+    let active = 0;
+
+    const next = () => {
+        active--;
+        if (queue.length > 0) {
+            const nextTask = queue.shift();
+            if (nextTask) {
+                active++;
+                nextTask();
+            }
+        }
+    };
+
+    return async <T>(fn: () => Promise<T>): Promise<T> => {
+        if (active >= concurrency) {
+            await new Promise<void>((resolve) => queue.push(resolve));
+        }
+        active++;
+        try {
+            return await fn();
+        } catch (err) {
+            throw err;
+        } finally {
+            next();
+        }
+    };
+}
+
+function isAsyncIterable<T>(val: any): val is AsyncIterable<T> {
+    return val !== null && typeof val === "object" && Symbol.asyncIterator in val;
+}
 
 export class PublisherRole {
-
     private pendingEntries = new Map<string, ManifestEntry>();
-    private readonly schemaCache = new Map<string, Promise<{ schema: SchemaDefinition; schemaId: Hex }>>();
+
+    private readonly schemaCache = new Map<
+        string,
+        Promise<{ schema: SchemaDefinition; schemaId: Hex }>
+    >();
 
     constructor(
         private readonly dataSourceRegistry: DataSourceRegistry,
@@ -32,22 +66,68 @@ export class PublisherRole {
         private readonly config: AppConfig,
     ) { }
 
-    /**
-     * Validate and stage schema-conformant records, then commit to storage
-     * and publish on-chain.
-     */
-    async upload(params: UploadParams, price: bigint): Promise<CommitResult> {
-        const { records, schemaName, options } = params;
+    // TODO: should these be added to params?
+    async upload(params: UploadParams & { chunkSize?: number; concurrency?: number; datasetName?: string }): Promise<CommitResult> {
+        const { records, schemaName, options, chunkSize = 1000, concurrency = 10, datasetName } = params;
 
         const { schema, schemaId } = await this.resolveSchema(schemaName);
+        const limit = createLimiter(concurrency);
 
-        for (const record of records) {
-            this.validateRecord(record, schema);
-            const entry = this.resolveRecord(record, schema, price);
-            this.pendingEntries.set(record.name, entry);
+        const chunkLeafInputs: { index: bigint; cid: string; chunkName: string }[] = [];
+        let currentChunkEntries: ManifestEntry[] = [];
+        let leafIndex = 0;
+        const uploadPromises: Promise<any>[] = [];
+
+        const processAndQueueChunk = (entriesToUpload: ManifestEntry[], index: number) => {
+            const chunkName = `chunk:${schemaId}:${index}`;
+
+            const task = limit(async () => {
+                const dataCid = await this.storage.put(entriesToUpload, {
+                    name: chunkName,
+                });
+                return { index: BigInt(index), cid: dataCid, chunkName };
+            });
+
+            uploadPromises.push(task.then(res => chunkLeafInputs.push(res)));
+        };
+
+        if (isAsyncIterable<PublishRecord>(records)) {
+            let count = 0;
+            for await (const record of records) {
+                this.validateRecord(record, schema);
+                currentChunkEntries.push(this.resolveRecord(record, schema));
+                count++;
+
+                if (count % chunkSize === 0) {
+                    processAndQueueChunk(currentChunkEntries, leafIndex++);
+                    currentChunkEntries = [];
+                }
+            }
+        } else {
+            const recordArray = records as PublishRecord[];
+            for (let i = 0; i < recordArray.length; i += chunkSize) {
+                const slice = recordArray.slice(i, i + chunkSize);
+                const processed = slice.map(record => {
+                    this.validateRecord(record, schema);
+                    return this.resolveRecord(record, schema);
+                });
+                processAndQueueChunk(processed, leafIndex++);
+            }
         }
 
-        return this.commit(schemaId, price, options?.overwrite ?? false);
+        if (currentChunkEntries.length > 0) {
+            processAndQueueChunk(currentChunkEntries, leafIndex++);
+        }
+
+        await Promise.all(uploadPromises);
+
+        if (chunkLeafInputs.length === 0) {
+            throw new Error("No data records processed inside request payload.");
+        }
+
+        chunkLeafInputs.sort((a, b) => a.cid.localeCompare(b.cid));
+
+        return this.commitChunkedTree(schemaId, chunkLeafInputs, datasetName);
     }
 
     stage(entry: ManifestEntry): void {
@@ -66,291 +146,217 @@ export class PublisherRole {
         this.pendingEntries.clear();
     }
 
-    /**
-     * Serialize all staged entries into manifests, upload to storage,
-     * and publish each manifest CID on-chain.
-     */
-    async commit(schemaId: Hex, price: bigint, overwrite: boolean): Promise<CommitResult> {
+    private async commitChunkedTree(
+        schemaId: Hex,
+        chunkLeafInputs: { index: bigint; cid: string; chunkName: string }[],
+        customDatasetName?: string
+    ): Promise<CommitResult> {
         const owner = this.requireAccount();
 
-        if (this.pendingEntries.size === 0) {
-            throw new Error("Nothing to commit. Stage at least one record.");
-        }
-
-        let entries = Array.from(this.pendingEntries.values());
-
-        if (!overwrite) {
-            entries = await this.filterNewEntries(owner, schemaId, entries);
-            if (entries.length === 0) {
-                this.pendingEntries.clear();
-                throw new Error(
-                    "All staged entries already exist on-chain. " +
-                    "Use overwrite: true to force re-publish."
-                );
-            }
-        }
-
-        // build all manifests (in mem)
-        const manifests = entries.map((entry) => ({
-            entry,
-            manifest: { version: 1, schemaId, entry } as Manifest,
-            name: `manifest:${schemaId}:${entry.name}`,
+        const leafInputs = chunkLeafInputs.map((chunk) => ({
+            index: chunk.index,
+            name: chunk.cid,
         }));
 
-        // bulk upload/commit all manifest together 
-        const uriMap = await this.storage.putMany(
-            manifests.map(({ manifest, name }) => ({ data: manifest, name }))
+        const leaves = leafInputs.map(l => MerkleTree.leafHash(l));
+        const { root, layers } = MerkleTree.buildTree(leafInputs);
+
+        const manifest: Manifest = {
+            version: 2,
+            schemaId,
+            root: MerkleTree.rootToHex(root),
+
+            entries: chunkLeafInputs.map((chunk, i): ManifestEntry => ({
+                name: chunk.chunkName,
+                fields: {
+                    dataCid: chunk.cid,
+                    leaf: MerkleTree.rootToHex(leaves[i])
+                }
+            })),
+
+            tree: layers.map(layer => layer.map(MerkleTree.rootToHex)),
+        };
+
+        const manifestName = `manifest:${schemaId}:${Date.now().toString()}`;
+        const manifestCid = await this.storage.put(manifest, { name: manifestName });
+
+        // Fallback to defaults if a dedicated test/custom execution name isn't given
+        const datasetName = customDatasetName ?? `${schemaId}:${owner}`;
+
+        await this.dataSourceRegistry.publish(
+            manifestCid,
+            MerkleTree.rootToHex(root),
+            schemaId,
+            datasetName,
         );
 
-        // Publish each CID on-chain (no storage I/O here)
-        const results: { entry: ManifestEntry; manifestUri: string }[] = [];
-        for (const { entry, name } of manifests) {
-            const manifestUri = uriMap[name];
-
-            console.log(`publishing data with the manifest Uri ${manifestUri}`)
-
-            await this.dataSourceRegistry.publish(manifestUri, schemaId, entry.name, price);
-            results.push({ entry, manifestUri });
-        }
-
+        
         this.pendingEntries.clear();
+
         return {
-            manifestUri: results[results.length - 1]?.manifestUri ?? "",
+            manifestUri: manifestCid,
             schemaId,
             owner,
-            entryCount: results.length,
+            entryCount: chunkLeafInputs.length,
         };
     }
 
-    async getManifest(schemaId: Hex, name: string): Promise<Manifest | undefined> {
+    async commit(schemaId: Hex, overwrite: boolean, customDatasetName?: string): Promise<CommitResult> {
+        const owner = this.requireAccount();
+        if (this.pendingEntries.size === 0) {
+            throw new Error("Nothing to commit; Stage entries with `upload` first.");
+        }
+
+        let entries = Array.from(this.pendingEntries.values());
+        if (!overwrite) {
+            entries = await this.filterNewEntries(owner, schemaId, entries);
+        }
+
+        if (entries.length === 0) {
+            throw new Error("No new entries to publish");
+        }
+
+        const chunkLeafInputs = await Promise.all(entries.map(async (entry, idx) => {
+            const dataCid = await this.storage.put(entry.fields, { name: `legacy:${entry.name}` });
+            return { index: BigInt(idx), cid: dataCid, chunkName: entry.name };
+        }));
+
+        return this.commitChunkedTree(schemaId, chunkLeafInputs, customDatasetName);
+    }
+
+    async getManifest(schemaName: string, datasetName: string): Promise<Manifest | undefined> {
+        const schemaId = (await this.resolveSchema(schemaName)).schemaId;
+        console.log('schema id ' + schemaId)
         const owner = this.requireAccount();
         try {
-            const ds = await this.dataSourceRegistry.get(owner, schemaId, name);
-            if (!ds.manifestCid || ds.manifestCid === "") return undefined;
+            const ds = await this.dataSourceRegistry.get(owner, schemaId, datasetName);
+            if (!ds.manifestCid) return undefined;
             return await this.storage.get<Manifest>(ds.manifestCid);
-        } catch {
+        } catch (err) {
+            console.log(err);
             return undefined;
         }
     }
 
-    async getEntry(schemaId: Hex, name: string): Promise<ManifestEntry> {
-        const manifest = await this.getManifest(schemaId, name);
-        if (!manifest) throw new Error(`No manifest found for schemaId ${schemaId} / name ${name}`);
-        return manifest.entry;
-    }
+    async getEntry(schemaName: string, datasetName: string, recordName: string): Promise<ManifestEntry> {
+        const manifest = await this.getManifest(schemaName, datasetName);
 
+        if (!manifest) {
+            throw new Error(`No manifest found for schema ${schemaName} under dataset ${datasetName}`);
+        }
+
+        // look through the chunks for the specific record name
+        for (const chunkEntry of manifest.entries) {
+            const dataCid = chunkEntry.fields.dataCid;
+            if (!dataCid) continue;
+
+            try {
+                const chunkRecords = await this.storage.get<ManifestEntry[]>(dataCid);
+                const foundRecord = chunkRecords.find(record => record.name === recordName);
+                if (foundRecord) {
+                    return foundRecord;
+                }
+            } catch {
+                continue;
+            }
+        }
+
+        throw new Error(`Entry "${recordName}" not found across any dataset chunks in ${datasetName}`);
+    }
     private requireAccount(): Address {
         const address = this.walletClient.account?.address;
-        if (!address) throw new Error("No account connected to wallet client");
+        if (!address) throw new Error("No account connected");
         return address;
     }
 
-    private resolveSchema(name: string): Promise<{ schema: SchemaDefinition; schemaId: Hex }> {
+    private resolveSchema(name: string) {
+        // if no local cache for a schema, try to fetch it
         if (!this.schemaCache.has(name)) {
             const p = Promise.all([
                 this.schemaRegistry.getSchema(name),
                 this.schemaRegistry.schemaId(name),
-            ])
-                .then(async ([{ specCid }, schemaId]) => {
-                    const registered = await this.storage.get<{ definition: SchemaDefinition }>(specCid);
-                    return { schema: registered.definition, schemaId };
-                })
-                .catch((err: unknown) => {
-                    this.schemaCache.delete(name);
-                    throw err;
-                });
-
+            ]).then(async ([{ specCid }, schemaId]) => {
+                const registered = await this.storage.get<{ definition: SchemaDefinition }>(specCid);
+                return { schema: registered.definition, schemaId };
+            }).catch(err => {
+                this.schemaCache.delete(name);
+                throw err;
+            });
             this.schemaCache.set(name, p);
         }
 
         const cached = this.schemaCache.get(name);
-        if (!cached) throw new Error(`Schema not found in cache: ${name}`);
+
+        if (!cached) throw new Error("Schema cache failure");
         return cached;
     }
 
-    /**
-     * Resolve a PublishRecord into a ManifestEntry.
-     * Handle fields are passed through directly; plain fields stored inline.
-     */
-    private resolveRecord(
-        record: PublishRecord,
-        schema: SchemaDefinition,
-        price: bigint,
-    ): ManifestEntry {
-        const resolvedFields: Record<string, ResolvedField> = {};
+    private resolveRecord(record: PublishRecord, schema: SchemaDefinition): ManifestEntry {
+        const resolved: Record<string, ResolvedField> = {};
 
         for (const [fieldName] of Object.entries(schema)) {
             const value = record.fields[fieldName];
 
             if (isHandleFieldInput(value)) {
-                resolvedFields[fieldName] = {
+                resolved[fieldName] = {
                     "@type": "handle",
                     uri: value.uri,
                     workerUrl: value.workerUrl,
-                    price: price.toString(),
                 } satisfies ResolvedHandleField;
             } else {
-                resolvedFields[fieldName] = value as ResolvedField;
+                resolved[fieldName] = value as ResolvedField;
             }
         }
 
-        return { name: record.name, fields: resolvedFields };
+        return {
+            name: record.name,
+            fields: resolved,
+        };
     }
 
     private validateRecord(record: PublishRecord, schema: SchemaDefinition): void {
         const errors: string[] = [];
-
         for (const [fieldName, fieldDef] of Object.entries(schema)) {
             this.validateField(record.name, fieldName, fieldDef, record.fields[fieldName], errors);
         }
-
-        for (const fieldName of Object.keys(record.fields)) {
-            if (!(fieldName in schema)) {
-                console.warn(`Record "${record.name}": field "${fieldName}" is not in the schema and will be ignored`);
-            }
-        }
-
         if (errors.length > 0) {
-            throw new Error(
-                `Validation failed for record "${record.name}":\n` +
-                errors.map((e) => `  • ${e}`).join("\n"),
-            );
+            throw new Error(`Validation failed for "${record.name}":\n` + errors.map(e => ` - ${e}`).join("\n"));
         }
     }
 
-    private validateField(
-        name: string,
-        fieldName: string,
-        fieldDef: FieldDefinition,
-        value: FieldInput,
-        errors: string[],
-    ): void {
-        // Handle fields bypass schema type checks — URI correctness is the
-        // publisher's responsibility.
+    private validateField(name: string, fieldName: string, fieldDef: FieldDefinition, value: FieldInput, errors: string[]): void {
         if (isHandleFieldInput(value)) return;
-
         const rawType = fieldDef["@type"];
         const nullable = rawType.includes("| null");
         const baseType = rawType.replace("| null", "").trim();
 
         if (value === null) {
-            if (!nullable) {
-                errors.push(`"${fieldName}" is required (non-nullable), got null`);
-            }
+            if (!nullable) errors.push(`"${fieldName}" is required`);
             return;
         }
 
         switch (baseType) {
-            case "string":
-                if (typeof value !== "string")
-                    errors.push(`"${fieldName}" must be a string, got ${typeof value}`);
-                break;
-
-            case "number":
-                if (typeof value !== "number")
-                    errors.push(`"${fieldName}" must be a number, got ${typeof value}`);
-                break;
-
-            case "boolean":
-                if (typeof value !== "boolean")
-                    errors.push(`"${fieldName}" must be a boolean, got ${typeof value}`);
-                break;
-
-            case "bytes":
-                if (!(value instanceof Uint8Array))
-                    errors.push(`"${fieldName}" must be Uint8Array`);
-                break;
-
-            case "array": {
-                if (!Array.isArray(value)) {
-                    errors.push(`"${fieldName}" must be an array, got ${typeof value}`);
-                    break;
-                }
-                const itemDef = fieldDef.items;
-                if (!itemDef) break;
-
-                if ("@type" in itemDef) {
-                    // array of primitives / nested arrays
-                    (value as FieldInput[]).forEach((item, i) => {
-                        this.validateField(name, `${fieldName}[${i.toString()}]`, itemDef as FieldDefinition, item, errors);
-                    });
-                } else {
-                    // array of objects (items is Record<string, FieldDefinition>)
-                    (value as FieldInput[]).forEach((item, i) => {
-                        if (typeof item !== "object" || Array.isArray(item) || item === null) {
-                            errors.push(`"${fieldName}[${i.toString()}]" must be an object`);
-                            return;
-                        }
-                        for (const [subField, subDef] of Object.entries(itemDef)) {
-                            this.validateField(
-                                name,
-                                `${fieldName}[${i.toString()}].${subField}`,
-                                subDef,
-                                (item as FieldInputObject)[subField],
-                                errors,
-                            );
-                        }
-                    });
-                }
-                break;
-            }
-
-            case "object": {
-                if (typeof value !== "object" || Array.isArray(value)) {
-                    errors.push(`"${fieldName}" must be an object, got ${typeof value}`);
-                    break;
-                }
-                const itemsDef = fieldDef.items;
-                if (itemsDef && !("@type" in itemsDef)) {
-                    for (const [subField, subDef] of Object.entries(itemsDef)) {
-                        this.validateField(
-                            name,
-                            `${fieldName}.${subField}`,
-                            subDef,
-                            (value as FieldInputObject)[subField],
-                            errors,
-                        );
-                    }
-                }
-                break;
-            }
-
-            default:
-                console.warn(`Record "${name}" field "${fieldName}": unknown @type "${baseType}", skipping validation`);
+            case "string": if (typeof value !== "string") errors.push(`${fieldName} must be string`); break;
+            case "number": if (typeof value !== "number") errors.push(`${fieldName} must be number`); break;
+            case "boolean": if (typeof value !== "boolean") errors.push(`${fieldName} must be boolean`); break;
+            case "bytes": if (!((value as unknown) instanceof Uint8Array)) errors.push(`${fieldName} must be bytes`); break;
         }
     }
 
-    /**
-     * Return only entries whose names do not already exist on-chain
-     * for this (owner, schemaId) pair.
-     */
-    private async filterNewEntries(
-        owner: Address,
-        schemaId: Hex,
-        pendingEntries: ManifestEntry[],
-    ): Promise<ManifestEntry[]> {
+    private async filterNewEntries(owner: Address, schemaId: Hex, pendingEntries: ManifestEntry[]): Promise<ManifestEntry[]> {
         const results = await Promise.allSettled(
-            pendingEntries.map(async (entry) => {
+            pendingEntries.map(async entry => {
                 try {
                     const ds = await this.dataSourceRegistry.get(owner, schemaId, entry.name);
-                    const exists = ds.manifestCid && ds.manifestCid !== "";
-                    return { entry, exists };
+                    return { entry, exists: !!ds.manifestCid };
                 } catch {
                     return { entry, exists: false };
                 }
-            })
+            }),
         );
-
-        const newEntries: ManifestEntry[] = [];
-        for (const result of results) {
-            if (result.status === "fulfilled" && !result.value.exists) {
-                newEntries.push(result.value.entry);
-            } else if (result.status === "rejected") {
-                console.warn("Failed to check entry existence, including conservatively:", result.reason);
-            }
-        }
-
-        return newEntries;
+        return results
+            .filter(r => r.status === "fulfilled" && !r.value.exists)
+            .map(r => (r as PromiseFulfilledResult<any>).value.entry);
     }
 }
 
@@ -359,7 +365,6 @@ function isHandleFieldInput(value: FieldInput): value is HandleFieldInput {
         typeof value === "object" &&
         value !== null &&
         "@type" in value &&
-        (value as Record<string, unknown>)["@type"] === "handle"
+        (value as any)["@type"] === "handle"
     );
 }
-

@@ -11,14 +11,11 @@ import { arbitrumSepolia, baseSepolia } from "viem/chains";
 import { Fangorn } from "../fangorn.js";
 import { type AppConfig } from "../config.js";
 import { type SchemaDefinition } from "../roles/schema/index.js";
-import { type PublishRecord } from "../roles/publisher/index.js";
 import { SettlementRegistry } from "../registries/settlement-registry/index.js";
 import { privateKeyToAccount } from "viem/accounts";
-import {
-    PrepareSettleResult,
-    TransferWithAuthPayload,
-} from "../registries/settlement-registry/types.js";
 import { DataSourceRegistry } from "../registries/datasource-registry/index.js";
+import { PublishRecord } from "../roles/publisher/types.js";
+import { PrepareSettleResult, TransferWithAuthPayload } from "../registries/settlement-registry/types.js";
 
 export class TestBed {
     private constructor(
@@ -53,7 +50,7 @@ export class TestBed {
             chain: chainImpl,
             rpcUrl,
             caip2,
-            ipfsGateway: "https://ipfs.io",
+            ipfsGateway: process.env.PINATA_GATEWAY ?? "https://ipfs.io",
         };
 
         const delegatorFangorn = Fangorn.create({
@@ -90,26 +87,29 @@ export class TestBed {
     async registerSchema(
         name: string,
         definition: SchemaDefinition,
-        agentId: string,
     ): Promise<Hex> {
         const { schemaId } = await this.delegatorFangorn.schema.register({
             name,
             definition,
-            agentId,
         });
         return schemaId;
     }
 
     // Publisher
-    async fileUpload(
+    async publish(
         records: PublishRecord[],
         schemaName: string,
-        price: bigint,
+        datasetName: string,
+        chunkSize?: any,
+        concurrency?: any
     ): Promise<string> {
         const { manifestUri } = await this.delegatorFangorn.publisher.upload({
             records,
             schemaName,
-        }, price);
+            datasetName,
+            chunkSize,
+            concurrency,
+        });
         return manifestUri;
     }
 
@@ -154,20 +154,21 @@ export class TestBed {
         return txHash;
     }
 
-    // Consumer Phase 2: settle
-    async prepareSettle(
-        owner: Address,
-        schemaId: Hex,
-        name: string,
-        identity: Identity,
-        stealthAddress: Address,
-    ): Promise<PrepareSettleResult> {
-        return this.delegateeFangorn.consumer.prepareSettle({
-            resourceId: DataSourceRegistry.resourceIdLocal(owner, schemaId, name),
-            identity,
-            stealthAddress,
-        });
-    }
+    // TODO!
+    // // Consumer Phase 2: settle
+    // async prepareSettle(
+    //     owner: Address,
+    //     schemaId: Hex,
+    //     name: string,
+    //     identity: Identity,
+    //     stealthAddress: Address,
+    // ): Promise<PrepareSettleResult> {
+    //     return this.delegateeFangorn.consumer.prepareSettle({
+    //         resourceId: DataSourceRegistry.resourceIdLocal(owner, schemaId, name),
+    //         identity,
+    //         stealthAddress,
+    //     });
+    // }
 
     async settle(
         owner: Address,

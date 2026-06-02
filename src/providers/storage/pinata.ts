@@ -25,50 +25,48 @@ export class PinataBackend implements MetadataStorage {
     async putMany(items: { data: unknown; name: string }[]): Promise<Record<string, string>> {
         if (items.length === 0) return {};
 
-        const encoder = new TextEncoder();
+        const uriMap: Record<string, string> = {};
 
-        // Serialize each item and compute its CID deterministically
-        const blocks = [];
-        for (const { data, name } of items) {
-            const bytes = encoder.encode(serialize(data));
-            const hash = await sha256.digest(bytes);
-            const cid = CID.create(1, raw.code, hash);
-            blocks.push({ name, cid, bytes });
-        }
+        // Pinata free tier max file array limit per HTTP request
+        const PINATA_MAX_FILES = 500;
 
-        // CarWriter streams output — must drain concurrently with writes
-        // or the internal buffer will deadlock on large payloads.
-        const { writer, out } = CarWriter.create([blocks[0].cid]);
+        // Process the items in sub-batches of 500 to satisfy the free tier constraint
+        for (let i = 0; i < items.length; i += PINATA_MAX_FILES) {
+            const subBatch = items.slice(i, i + PINATA_MAX_FILES);
 
-        const chunks: Uint8Array[] = [];
-        const drain = (async () => {
-            for await (const chunk of out) chunks.push(chunk);
-        })();
+            // 1. Convert data to standard browser-compatible File objects
+            const filesToUpload = subBatch.map(({ data, name }) => {
+                const content = typeof data === "string" ? data : JSON.stringify(data);
 
-        for (const { cid, bytes } of blocks) {
-            await writer.put({ cid, bytes });
-        }
-        await writer.close();
-        await drain;
-
-        // this is a little weird, but done to satisfy the linter
-        const carFile = new File(
-            chunks.map(c => {
-                const cleanBuffer = new ArrayBuffer(c.byteLength);
-                new Uint8Array(cleanBuffer).set(
-                    new Uint8Array(c.buffer, c.byteOffset, c.byteLength)
+                // Keep the relative sub-path layout to force directory wrapping
+                return new File(
+                    [content],
+                    `manifests/${name}.json`,
+                    { type: "application/json" }
                 );
-                return new Uint8Array(cleanBuffer);
-            }),
-            `bundle-${Date.now().toString()}.car`,
-            { type: "application/vnd.ipld.car" }
-        );
+            });
 
-        await this.pinata.upload.public.file(carFile, {
-            metadata: { name: `car:${Date.now().toString()}` },
-        });
+            try {
+                // 2. Upload this sub-batch as an independent folder
+                const batchName = `batch-${Date.now().toString()}-${i}`;
+                const upload = await this.pinata.upload.public
+                    .fileArray(filesToUpload)
+                    .name(batchName);
 
-        return Object.fromEntries(blocks.map(({ name, cid }) => [name, cid.toString()]));
+                const folderCid = upload.cid;
+
+                // 3. Map this sub-batch's items to their correct folder path
+                for (const { name } of subBatch) {
+                    uriMap[name] = `ipfs://${folderCid}/manifests/${name}.json`;
+                }
+
+            } catch (error) {
+                console.error(`❌ Pinata sub-batch upload failure at offset ${i}:`, error);
+                throw error;
+            }
+        }
+
+        return uriMap;
     }
 
     async get<T>(uri: string): Promise<T> {

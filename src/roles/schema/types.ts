@@ -78,7 +78,7 @@ export interface RegisterAgentParams {
 
 export interface RegisterSchemaParams {
     definition: SchemaDefinition;
-    agentId: string;
+    agentId?: string;
     name: string;
 }
 

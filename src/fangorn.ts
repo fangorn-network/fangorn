@@ -7,13 +7,12 @@ import {
 	type WalletClient,
 } from "viem";
 import { AppConfig, FangornConfig } from "./config.js";
-import { SchemaRole } from "./roles/schema/index.js";
+import { SchemaRole, SchemaRoleConfig } from "./roles/schema/index.js";
 import { PublisherRole } from "./roles/publisher/index.js";
 import { ConsumerRole } from "./roles/consumer/index.js";
 import { SchemaRegistry } from "./registries/schema-registry/index.js";
 import { DataSourceRegistry } from "./registries/datasource-registry/index.js";
 import { SettlementRegistry } from "./registries/settlement-registry/index.js";
-import { SchemaRoleConfig } from "./roles/schema/types.js";
 import { FangornContext, FangornCreateOptions, StorageConfig } from "./types/index.js";
 import { privateKeyToAccount } from "viem/accounts";
 import { MetadataStorage } from "./providers/storage/types.js";
