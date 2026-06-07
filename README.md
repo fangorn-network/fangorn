@@ -1,5 +1,7 @@
 # Fangorn SDK
 
+commit → index → discover → prove → settle → fetch
+
 Programmable access control for the agentic web.
 
 Fangorn lets you publish data under programmable access conditions. Access is enforced on-chain through settlement verification, so your content is only retrievable by those who have provably paid for it. Data is organized by schemas, enabling agent-based discovery across any number of publishers.
