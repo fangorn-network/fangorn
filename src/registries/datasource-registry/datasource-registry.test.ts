@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { DataSourceRegistry, MerkleTree, type ManifestLeaf } from "./index.js";
+import { DataSourceRegistry, hashString, MerkleTree, poseidonHash, type ManifestLeaf } from "./index.js";
 import { keccak256, encodePacked } from "viem";
 import { poseidon2 } from "poseidon-lite";
 import type { Address, Hash, Hex } from "viem";
@@ -7,12 +7,12 @@ import type { Address, Hash, Hex } from "viem";
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
 const CONTRACT_ADDRESS: Address = "0x1111111111111111111111111111111111111111";
-const OWNER_ADDRESS: Address    = "0x3333333333333333333333333333333333333333";
+const OWNER_ADDRESS: Address = "0x3333333333333333333333333333333333333333";
 
-const MOCK_SCHEMA_ID: Hex   = "0xdeadbeef00000000000000000000000000000000000000000000000000000000";
-const MOCK_TX_HASH: Hash    = "0xaabbccdd00000000000000000000000000000000000000000000000000000000";
-const MOCK_CID              = "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi";
-const MOCK_NAME             = "track-1";
+const MOCK_SCHEMA_ID: Hex = "0xdeadbeef00000000000000000000000000000000000000000000000000000000";
+const MOCK_TX_HASH: Hash = "0xaabbccdd00000000000000000000000000000000000000000000000000000000";
+const MOCK_CID = "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi";
+const MOCK_NAME = "track-1";
 const MOCK_MERKLE_ROOT: Hex = "0xcafebabe00000000000000000000000000000000000000000000000000000000";
 
 const MOCK_LEAF: ManifestLeaf = {
@@ -27,14 +27,6 @@ const MODULUS =
 
 function normalize(v: bigint): bigint {
     return ((v % MODULUS) + MODULUS) % MODULUS;
-}
-
-function poseidonHash(inputs: bigint[]): bigint {
-    return BigInt(poseidon2(inputs.map(normalize)));
-}
-
-function hashString(value: string): bigint {
-    return normalize(BigInt(keccak256(new TextEncoder().encode(value))));
 }
 
 // ── Mock factory ──────────────────────────────────────────────────────────────
@@ -394,6 +386,13 @@ describe("MerkleTree", () => {
                 { ...leaves[3], name: "changed" },
             ]).root;
             expect(baseline).not.toBe(mutated);
+        });
+
+        it("handles names longer than one field element (>31 bytes)", () => {
+            const long = "track-" + "x".repeat(40); // 46 bytes -> 2 elements
+            expect(MerkleTree.leafHash({ index: 0n, name: long }))
+                .toBe(poseidonHash([0n, hashString(long)]));
+            expect(hashString(long)).not.toBe(hashString("track-x"));
         });
     });
 

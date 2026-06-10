@@ -18,12 +18,23 @@ function normalize(v: bigint): bigint {
     return ((v % MODULUS) + MODULUS) % MODULUS;
 }
 
-function poseidonHash(inputs: bigint[]): bigint {
+export function poseidonHash(inputs: bigint[]): bigint {
     return BigInt(poseidon2(inputs.map(normalize)));
 }
 
-function hashString(value: string): bigint {
-    return normalize(BigInt(keccak256(new TextEncoder().encode(value))));
+function bytesToField(chunk: Uint8Array): bigint {
+    let acc = 0n;
+    for (const b of chunk) acc = (acc << 8n) | BigInt(b);
+    return acc;
+}
+
+export function hashString(value: string): bigint {
+    const bytes = new TextEncoder().encode(value);
+    let h = 0n;                       // IV; "" => 0n
+    for (let i = 0; i < bytes.length; i += 31) {
+        h = poseidonHash([h, bytesToField(bytes.subarray(i, i + 31))]);
+    }
+    return h;
 }
 
 export interface ManifestLeaf {
