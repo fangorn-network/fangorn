@@ -119,7 +119,10 @@ export class ConsumerRole {
 
             const manifest = await PinataBackend.getStatic<Manifest>(ds.manifestCid, gateway);
 
-            return manifest.entry;
+            manifest.entries.forEach(entry  => {
+                if (entry.name === name) return entry;
+            });
+            return undefined;
         } catch {
             return undefined;
         }
@@ -172,7 +175,7 @@ export class ConsumerRole {
     }
 
     private deriveResourceId(owner: Address, schemaId: Hex, name: string): Hex {
-        return DataSourceRegistry.resourceIdLocal(owner, schemaId, name);
+        return DataSourceRegistry.resourceId(owner, schemaId, name);
     }
 }
 
