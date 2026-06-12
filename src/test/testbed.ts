@@ -10,11 +10,11 @@ import { Identity } from "@semaphore-protocol/identity";
 import { arbitrumSepolia, baseSepolia } from "viem/chains";
 import { Fangorn } from "../fangorn.js";
 import { type AppConfig } from "../config.js";
-import { type SchemaDefinition } from "../roles/schema/index.js";
+import { BundleInput, type SchemaDefinition } from "../roles/schema/index.js";
 import { SettlementRegistry } from "../registries/settlement-registry/index.js";
 import { privateKeyToAccount } from "viem/accounts";
 import { DataSourceRegistry } from "../registries/datasource-registry/index.js";
-import { PublishRecord } from "../roles/publisher/types.js";
+import { FieldInput, PublishRecord } from "../roles/publisher/types.js";
 import { PrepareSettleResult, TransferWithAuthPayload } from "../registries/settlement-registry/types.js";
 
 export class TestBed {
@@ -83,6 +83,8 @@ export class TestBed {
         );
     }
 
+    // "resolver" funcs
+
     // Schema owner
     async registerSchema(
         name: string,
@@ -109,6 +111,31 @@ export class TestBed {
             datasetName,
             chunkSize,
             concurrency,
+        });
+        return manifestUri;
+    }
+
+    // "bundle" funcs
+    async registerBundle(name: string, bundle: BundleInput): Promise<Hex> {
+        const { schemaId } = await this.delegatorFangorn.schema.register({
+            kind: "bundle",
+            name,
+            bundle,
+        });
+        return schemaId;
+    }
+
+    async publishBundle(
+        bundleName: string,
+        nodes: { id: string; type: string; fields: Record<string, FieldInput> }[],
+        edges: { rel: string; from: string; to: string }[],
+        datasetName?: string,
+    ): Promise<string> {
+        const { manifestUri } = await this.getDelegatorFangorn().publisher.uploadBundle({
+            bundleName,
+            nodes,
+            edges,
+            datasetName,
         });
         return manifestUri;
     }

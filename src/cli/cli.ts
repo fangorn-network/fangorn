@@ -277,7 +277,6 @@ schemaCmd
             const { schemaId, schemaCid } = await fangorn.schema.register({
                 name,
                 definition,
-                agentId: "",
             });
             s.stop();
 

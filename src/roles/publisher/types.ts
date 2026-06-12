@@ -112,29 +112,28 @@ export interface Manifest {
     tree: Hex[][];
 }
 
-/**
- * Upload params
- */
-
-export interface UploadParams {
-    records: PublishRecord[];
-
-    schemaName: string;
-
-    gas?: bigint;
-
-    options?: {
-        overwrite?: boolean;
-    };
+export interface BundleManifest {
+  version: 3;
+  bundleSchemaId: Hex;
+  root: Hex;
+  nodeChunks: { type: string; dataCid: string; leaf: Hex }[];
+  edgeChunk: { dataCid: string; leaf: Hex };
+  tree: Hex[][];
 }
 
-/**
- * Commit result
- */
+export interface BundleNode {
+  id: string;
+  type: string;
+  fields: Record<string, ResolvedField>;
+}
 
-export interface CommitResult {
-    manifestUri: string;
-    schemaId: Hex;
-    owner: Address;
-    entryCount: number;
-}1
+export interface BundleEdge {
+  rel: string;
+  from: string; // node id
+  to: string;   // node id
+}
+
+export interface HydratedBundle {
+  nodesById: Map<string, BundleNode>;
+  edges: BundleEdge[];
+}

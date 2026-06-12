@@ -1,6 +1,6 @@
 {
 	"name": "@fangorn-network/sdk",
-	"version": "2026.05.26",
+	"version": "2026.06.11",
 	"description": "A zero-knowledge conditional access control framework",
 	"repository": {
 		"type": "git",
@@ -24,6 +24,8 @@
 		"test:e2e": "dotenvx run -f .env -- vitest run --config vitest.e2e.config.ts",
 		"tsc": "tsc",
 		"deploy": "dotenvx run -f .env -- tsx deploy.ts",
+		"setup:embeddings": "dotenvx run -f .env -- tsx src/test/setup-embeddings-testdata.ts",
+		"cleanup:embeddings": "dotenvx run -f .env -- tsx src/test/cleanup-embeddings-testdata.ts",
 		"prepare:cli": "npm run build",
 		"fangorn": "dotenvx run -f .env -- node dist/src/cli/cli.js"
 	},

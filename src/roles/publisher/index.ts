@@ -1,20 +1,49 @@
 import { type Address, type Hex, type WalletClient } from "viem";
-import { FieldDefinition, SchemaDefinition } from "../schema/types";
+import { FieldDefinition, ResolvedBundle, SchemaDefinition } from "../schema/types";
 import { DataSourceRegistry, MerkleTree } from "../../registries/datasource-registry";
 import { MetadataStorage } from "../../providers/storage/types";
 import { AppConfig } from "../../config";
 import { SchemaRegistry } from "../../registries/schema-registry";
 import {
-    CommitResult,
     FieldInput,
     Manifest,
     PublishRecord,
     ResolvedField,
     ResolvedHandleField,
-    UploadParams,
     ManifestEntry,
-    HandleFieldInput
+    HandleFieldInput,
+    BundleManifest,
+    BundleNode,
+    HydratedBundle,
+    BundleEdge
 } from "./types";
+
+/**
+ * Upload params
+ */
+
+export interface UploadParams {
+    records: PublishRecord[];
+
+    schemaName: string;
+
+    gas?: bigint;
+
+    options?: {
+        overwrite?: boolean;
+    };
+}
+
+/**
+ * Commit result
+ */
+
+export interface CommitResult {
+    manifestUri: string;
+    schemaId: Hex;
+    owner: Address;
+    entryCount: number;
+}1
 
 function createLimiter(concurrency: number) {
     const queue: (() => void)[] = [];
@@ -190,7 +219,7 @@ export class PublisherRole {
             datasetName,
         );
 
-        
+
         this.pendingEntries.clear();
 
         return {
@@ -222,6 +251,204 @@ export class PublisherRole {
         }));
 
         return this.commitChunkedTree(schemaId, chunkLeafInputs, customDatasetName);
+    }
+
+    /**
+     * Uploads a 'bundle' to Fangorn
+     * 
+     * A bundle is a small subgraph that defines the 'shape' of the data by defining relationships
+     * that cut across multiple schemas, allowing for data to be published relative to a  *set* of schemas
+     * rather than a single one.
+     * 
+     * @param params 
+     * @returns 
+     */
+    async uploadBundle(params: {
+        bundleName: string;
+        nodes: { id: string; type: string; fields: Record<string, FieldInput> }[];
+        edges?: { rel: string; from: string; to: string }[];
+        datasetName?: string;
+        concurrency?: number;
+    }): Promise<CommitResult> {
+        const { bundleName, nodes, edges = [], datasetName, concurrency = 10 } = params;
+        if (nodes.length === 0) throw new Error("Bundle has no nodes");
+
+        const { bundle, bundleSchemaId } = await this.resolveBundleShape(bundleName);
+
+        // resolver definition per declared node type (for record validation)
+        const defByType = new Map<string, SchemaDefinition>();
+        await Promise.all(
+            Object.entries(bundle.nodes).map(async ([type, schemaId]) => {
+                defByType.set(type, await this.resolveNodeDefinition(schemaId));
+            }),
+        );
+
+        // validate + resolve each node, grouped by type
+        const nodeType = new Map<string, string>();        // id -> type
+        const seen = new Set<string>();
+        const byType = new Map<string, BundleNode[]>();
+
+        for (const node of nodes) {
+            if (!(node.type in bundle.nodes)) throw new Error(`node "${node.id}" has undeclared type "${node.type}"`);
+            if (seen.has(node.id)) throw new Error(`duplicate node id "${node.id}"`);
+            seen.add(node.id);
+            nodeType.set(node.id, node.type);
+
+            const def = defByType.get(node.type)!;
+            const record = { name: node.id, fields: node.fields } as PublishRecord;
+            this.validateRecord(record, def);                 // throws on bad field
+            const resolved = this.resolveRecord(record, def); // handles handle-fields
+            const list = byType.get(node.type) ?? [];
+            list.push({ id: node.id, type: node.type, fields: resolved.fields });
+            byType.set(node.type, list);
+        }
+
+        // edge validation: existence, declared-relation closure, cardinality
+        this.validateBundleEdges(bundle, edges, nodeType);
+
+        // chunk + upload nodes by type, plus the edge set as its own chunk
+        const limit = createLimiter(concurrency);
+        const nodeChunks: { type: string; dataCid: string }[] = [];
+        const uploads: Promise<void>[] = [];
+
+        for (const [type, typeNodes] of byType) {
+            uploads.push(limit(async () => {
+                const cid = await this.storage.put(typeNodes, { name: `bundle-node:${bundleSchemaId}:${type}` });
+                nodeChunks.push({ type, dataCid: cid });
+            }));
+        }
+        let edgeCid = "";
+        uploads.push(limit(async () => {
+            edgeCid = await this.storage.put(edges, { name: `bundle-edges:${bundleSchemaId}` });
+        }));
+        await Promise.all(uploads);
+
+        nodeChunks.sort((a, b) => a.type.localeCompare(b.type)); // deterministic leaf order
+
+        return this.commitBundleTree(bundleSchemaId, nodeChunks, { dataCid: edgeCid }, datasetName);
+    }
+
+    private validateBundleEdges(
+        bundle: ResolvedBundle,
+        edges: { rel: string; from: string; to: string }[],
+        nodeType: Map<string, string>,
+    ): void {
+        const errors: string[] = [];
+        const declared = new Set(bundle.edges.map(e => `${e.rel}:${e.from}:${e.to}`));
+
+        // existence + closed-world: every instance edge must match a declared (rel, fromType, toType)
+        edges.forEach((edge, i) => {
+            const ft = nodeType.get(edge.from);
+            const tt = nodeType.get(edge.to);
+            if (!ft) return errors.push(`edge[${i}] "${edge.rel}" from unknown node "${edge.from}"`);
+            if (!tt) return errors.push(`edge[${i}] "${edge.rel}" to unknown node "${edge.to}"`);
+            if (!declared.has(`${edge.rel}:${ft}:${tt}`))
+                errors.push(`edge[${i}] undeclared relation "${edge.rel}" (${ft} → ${tt})`);
+        });
+
+        // cardinality per source node, per declared edge shape (SHACL min/maxCount semantics)
+        for (const shape of bundle.edges) {
+            const min = shape.min ?? 0;
+            const max = shape.max ?? null;
+            for (const [id, type] of nodeType) {
+                if (type !== shape.from) continue;
+                const count = edges.filter(
+                    e => e.rel === shape.rel && e.from === id && nodeType.get(e.to) === shape.to,
+                ).length;
+                if (count < min) errors.push(`node "${id}" has ${count} "${shape.rel}" edges, needs min ${min}`);
+                if (max !== null && count > max) errors.push(`node "${id}" has ${count} "${shape.rel}" edges, exceeds max ${max}`);
+            }
+        }
+
+        if (errors.length) throw new Error("Bundle edge validation failed:\n" + errors.map(e => ` - ${e}`).join("\n"));
+    }
+
+    private async commitBundleTree(
+        bundleSchemaId: Hex,
+        nodeChunks: { type: string; dataCid: string }[],
+        edgeChunk: { dataCid: string },
+        datasetName?: string,
+    ): Promise<CommitResult> {
+        const owner = this.requireAccount();
+
+        // leaves: node chunks (sorted) then edge chunk last
+        const ordered = [...nodeChunks.map(c => c.dataCid), edgeChunk.dataCid];
+        const leafInputs = ordered.map((cid, i) => ({ index: BigInt(i), name: cid }));
+        const leaves = leafInputs.map(l => MerkleTree.leafHash(l));
+        const { root, layers } = MerkleTree.buildTree(leafInputs);
+
+        const manifest: BundleManifest = {
+            version: 3,
+            bundleSchemaId,
+            root: MerkleTree.rootToHex(root),
+            nodeChunks: nodeChunks.map((c, i) => ({
+                type: c.type,
+                dataCid: c.dataCid,
+                leaf: MerkleTree.rootToHex(leaves[i]),
+            })),
+            edgeChunk: {
+                dataCid: edgeChunk.dataCid,
+                leaf: MerkleTree.rootToHex(leaves[nodeChunks.length]),
+            },
+            tree: layers.map(layer => layer.map(MerkleTree.rootToHex)),
+        };
+
+        const manifestCid = await this.storage.put(manifest, {
+            name: `bundle-manifest:${bundleSchemaId}:${Date.now()}`,
+        });
+        const ds = datasetName ?? `${bundleSchemaId}:${owner}`;
+
+        await this.dataSourceRegistry.publish(manifestCid, MerkleTree.rootToHex(root), bundleSchemaId, ds);
+
+        return {
+            manifestUri: manifestCid,
+            schemaId: bundleSchemaId,
+            owner,
+            entryCount: nodeChunks.length + 1,
+        };
+    }
+
+    /**
+ * Fetch a bundle's node + edge chunks and return the graph in memory.
+ * The manifest holds CIDs (pointers); this follows them to the real data.
+ */
+    async readBundle(manifest: BundleManifest): Promise<HydratedBundle> {
+        // follow every node-chunk CID -> arrays of BundleNode, in parallel
+        const nodeArrays = await Promise.all(
+            manifest.nodeChunks.map(chunk =>
+                this.storage.get<BundleNode[]>(chunk.dataCid),
+            ),
+        );
+
+        // follow the edge-chunk CID -> the edge set
+        const edges = await this.storage.get<BundleEdge[]>(manifest.edgeChunk.dataCid);
+
+        // index every node by id so edge walks are O(1) lookups
+        const nodesById = new Map<string, BundleNode>();
+        for (const nodes of nodeArrays) {
+            for (const node of nodes) {
+                nodesById.set(node.id, node);
+            }
+        }
+
+        return { nodesById, edges };
+    }
+
+    private async resolveBundleShape(name: string): Promise<{ bundle: ResolvedBundle; bundleSchemaId: Hex }> {
+        const [{ specCid }, bundleSchemaId] = await Promise.all([
+            this.schemaRegistry.getSchema(name),
+            this.schemaRegistry.schemaId(name),
+        ]);
+        const blob = await this.storage.get<{ bundle?: ResolvedBundle }>(specCid);
+        if (!blob.bundle) throw new Error(`Schema "${name}" is not a bundle`);
+        return { bundle: blob.bundle, bundleSchemaId };
+    }
+
+    private async resolveNodeDefinition(schemaId: Hex): Promise<SchemaDefinition> {
+        const { specCid } = await this.schemaRegistry.getSchema(schemaId);
+        const blob = await this.storage.get<{ definition?: SchemaDefinition }>(specCid);
+        if (!blob.definition) throw new Error(`node schema ${schemaId} is not a resolver schema`);
+        return blob.definition;
     }
 
     async getManifest(schemaName: string, datasetName: string): Promise<Manifest | undefined> {
@@ -263,6 +490,33 @@ export class PublisherRole {
 
         throw new Error(`Entry "${recordName}" not found across any dataset chunks in ${datasetName}`);
     }
+
+    /** Read a v3 bundle manifest directly by its CID. */
+    async getBundleManifestByCid(manifestCid: string): Promise<BundleManifest | undefined> {
+        try {
+            const manifest = await this.storage.get<BundleManifest>(manifestCid);
+            if (manifest?.version !== 3) return undefined;
+            return manifest;
+        } catch (err) {
+            console.error(err);
+            return undefined;
+        }
+    }
+
+    /** Look up a bundle's v3 manifest by owner + bundle name + dataset. */
+    async getBundleManifest(bundleName: string, datasetName: string): Promise<BundleManifest | undefined> {
+        const bundleSchemaId = await this.schemaRegistry.schemaId(bundleName);
+        const owner = this.requireAccount();
+        try {
+            const ds = await this.dataSourceRegistry.get(owner, bundleSchemaId, datasetName);
+            if (!ds.manifestCid) return undefined;
+            return this.getBundleManifestByCid(ds.manifestCid);
+        } catch (err) {
+            console.error(err);
+            return undefined;
+        }
+    }
+
     private requireAccount(): Address {
         const address = this.walletClient.account?.address;
         if (!address) throw new Error("No account connected");

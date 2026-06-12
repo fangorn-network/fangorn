@@ -53,7 +53,14 @@ export async function retrieveByCid<T>(
 	gateway = "https://ipfs.io",
 	timeoutSecond = 16_000,
 ): Promise<T> {
-	const url = `${gateway.replace(/\/$/, "")}/ipfs/${cid}`;
+	// Gateways may be passed as a bare host (e.g. "foo.mypinata.cloud") — give
+	// them a scheme so `fetch` gets an absolute URL. An empty gateway falls
+	// back to the public one.
+	const base = (gateway || "https://ipfs.io").replace(/\/$/, "");
+	const origin = /^https?:\/\//.test(base) ? base : `https://${base}`;
+	// CIDs may arrive as raw ("bafy…") or path-style ("ipfs://cid/path").
+	const path = cid.replace(/^ipfs:\/\//, "");
+	const url = `${origin}/ipfs/${path}`;
 	const controller = new AbortController();
 	const timeout = setTimeout(() => { controller.abort(); }, timeoutSecond);
 	try {
