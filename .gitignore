@@ -11,3 +11,4 @@ ignore
 data.json
 schema.json
 /tmp
+.claude

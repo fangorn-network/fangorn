@@ -11,7 +11,7 @@
  * fangorn-sdk repo (src/publish_mb_bundle.ts) to resolve its imports.
  *
  * Run from the fangorn-sdk root:
- *   pnpm dotenvx run -f .env -- tsx src/publish_mb_bundle.ts \
+ *   pnpm dotenvx run -f .env -- tsx src/test/publish_mb_bundle.ts \
  *     --tracks   /path/to/volume_1_tracks.json \
  *     --taxonomies /path/to/volume_1_taxonomies.json \
  *     --edges    /path/to/volume_1_edges.json \
@@ -49,37 +49,54 @@ const CHAIN = arbitrumSepolia;
 // Must match the fields produced by quickbeam/pipelines/mb.py.
 
 const TRACK_SCHEMA: SchemaDefinition = {
+    schemaVersion: { "@type": "number" },
     trackId: { "@type": "string" },
-    isrcCode: { "@type": "string" },
+    isrcCode: { "@type": "string | null" },
     title: { "@type": "string" },
     byArtist: { "@type": "string" },
-    albumName: { "@type": "string" },
-    datePublished: { "@type": "string" },
-    durationMs: { "@type": "number" },
-    _mbid: { "@type": "string" },
+    albumName: { "@type": "string | null" },
+    datePublished: { "@type": "string | null" },
+    durationMs: { "@type": "number | null" },
+    contributors: { "@type": "array", items: { role: { "@type": "string | null" }, name: { "@type": "string | null" }, id: { "@type": "string | null" } } },
 };
 
 const TAXONOMY_SCHEMA: SchemaDefinition = {
+    schemaVersion: { "@type": "number" },
     trackId: { "@type": "string" },
-    genres: { "@type": "string[]" },
-    moods: { "@type": "string[]" },
-    themes: { "@type": "string[]" },
-    contexts: { "@type": "string[]" },
+    genres: { "@type": "array", items: { "@type": "string" } },
+    moods: { "@type": "array", items: { "@type": "string" } },
+    themes: { "@type": "array", items: { "@type": "string" } },
+    contexts: { "@type": "array", items: { "@type": "string" } },
 };
 
 // ── types matching mb.py output ───────────────────────────────────────────────
-type MbNode = { id: string; type: string; fields: Record<string, unknown> };
+type MbNode = { name: string; fields: Record<string, unknown> };
 type MbEdge = { rel: string; from: string; to: string };
 
-/** Strip null/undefined values; the SDK expects only defined FieldInput values. */
+/** Strip undefined values; null is kept so nullable schema fields validate correctly. */
 function cleanFields(raw: Record<string, unknown>): Record<string, FieldInput> {
     const out: Record<string, FieldInput> = {};
     for (const [k, v] of Object.entries(raw)) {
-        if (v !== null && v !== undefined) {
+        if (v !== undefined) {
             out[k] = v as FieldInput;
         }
     }
     return out;
+}
+
+// ── retry ─────────────────────────────────────────────────────────────────────
+async function withRetry<T>(label: string, maxAttempts: number, fn: () => Promise<T>): Promise<T> {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+            return await fn();
+        } catch (err) {
+            if (attempt === maxAttempts) throw err;
+            const delayMs = 2000 * attempt;
+            console.warn(`  [retry] ${label} failed (attempt ${attempt}/${maxAttempts}), retrying in ${delayMs / 1000}s: ${(err as Error).message}`);
+            await new Promise(r => setTimeout(r, delayMs));
+        }
+    }
+    throw new Error("unreachable");
 }
 
 // ── ledger ────────────────────────────────────────────────────────────────────
@@ -114,16 +131,22 @@ program
     .requiredOption("--dataset <name>", "Base dataset name, e.g. ds.mb.v1")
     .option("--batch-size <n>", "Track nodes per publishBundle call", "2000")
     .option("--bundle-name <name>", "Bundle schema name", "fangorn.mb.bundle.v1")
-    .option("--track-schema <name>", "Track node schema name", "fangorn.mb.track.v1")
-    .option("--taxonomy-schema <name>", "TrackTaxonomy node schema name", "fangorn.mb.track.taxonomy.v1")
-    .option("--ledger <path>", "Ledger file path for resume tracking", "tmp/mb-publish-ledger.json")
+    .option("--bundle-schema-id <hex>", "Reuse an existing bundle schema ID and skip registration")
+    .option("--track-schema <name>", "Track node schema name", "sond3r.track.invariants.v1")
+    .option("--taxonomy-schema <name>", "TrackTaxonomy node schema name", "sond3r.track.taxonomy.v1")
+    .option("--ledger <path>", "Ledger file path (default: tmp/mb-publish-<dataset>.json)")
+    .option("--max-retries <n>", "Retry attempts per batch on transient failures", "5")
     .parse();
 
 const opts = program.opts<{
     tracks: string; taxonomies: string; edges: string;
     dataset: string; batchSize: string;
-    bundleName: string; trackSchema: string; taxonomySchema: string;
-    ledger: string;
+    bundleName: string;
+    bundleSchemaId?: string;
+    trackSchema: string;
+    taxonomySchema: string;
+    ledger?: string;
+    maxRetries: string;
 }>();
 
 function requireEnv(): void {
@@ -141,6 +164,7 @@ async function main(): Promise<void> {
     requireEnv();
 
     const batchSize = parseInt(opts.batchSize, 10);
+    const maxRetries = parseInt(opts.maxRetries, 10);
 
     const testbed = TestBed.init(
         createWalletClient({ account: privateKeyToAccount(SK), chain: CHAIN, transport: http(RPC_URL) }),
@@ -160,13 +184,21 @@ async function main(): Promise<void> {
     await testbed.registerSchema(opts.trackSchema, TRACK_SCHEMA);
     await testbed.registerSchema(opts.taxonomySchema, TAXONOMY_SCHEMA);
 
-    console.log("[publish] registering bundle shape...");
-    const bundle: BundleInput = {
-        nodes: { Track: opts.trackSchema, TrackTaxonomy: opts.taxonomySchema },
-        edges: [{ rel: "hasTaxonomy", from: "Track", to: "TrackTaxonomy", min: 1, max: 1 }],
-    };
-    const bundleSchemaId = await testbed.registerBundle(opts.bundleName, bundle);
-    console.log(`[publish] bundle schema id: ${bundleSchemaId}`);
+    let bundleSchemaId: Hex;
+    if (opts.bundleSchemaId) {
+        bundleSchemaId = opts.bundleSchemaId as Hex;
+        console.log(`[publish] reusing bundle schema id: ${bundleSchemaId}`);
+    } else {
+        console.log("[publish] registering bundle shape...");
+        const bundle: BundleInput = {
+            nodes: { Track: opts.trackSchema, TrackTaxonomy: opts.taxonomySchema },
+            edges: [{ rel: "hasTaxonomy", from: "Track", to: "TrackTaxonomy", min: 1, max: 1 }],
+        };
+        bundleSchemaId = await testbed.registerBundle(opts.bundleName, bundle);
+        console.log(`[publish] bundle schema id: ${bundleSchemaId}`);
+    }
+
+    const ledgerPath = opts.ledger ?? `tmp/mb-publish-${opts.dataset.replace(/[^a-z0-9._-]/gi, "_")}.json`;
 
     // ── 2. Load data ──────────────────────────────────────────────────────────
     console.log("[publish] loading JSON files...");
@@ -174,9 +206,9 @@ async function main(): Promise<void> {
     const allTaxonomies: MbNode[] = JSON.parse(readFileSync(opts.taxonomies, "utf8"));
     const allEdges: MbEdge[] = JSON.parse(readFileSync(opts.edges, "utf8"));
 
-    // Index taxonomies by the track id they belong to (id = "taxonomy:<tid>")
+    // Index taxonomies by track name (taxonomy entries use bare name, edges reference "taxonomy:<name>")
     const taxoByTrack = new Map<string, MbNode>(
-        allTaxonomies.map(t => [t.id.replace(/^taxonomy:/, ""), t])
+        allTaxonomies.map(t => [t.name, t])
     );
     const edgesByTrack = new Map<string, MbEdge[]>();
     for (const e of allEdges) {
@@ -188,7 +220,7 @@ async function main(): Promise<void> {
     console.log(`[publish] ${allTracks.length} tracks, ${allTaxonomies.length} taxonomies, ${allEdges.length} edges`);
 
     // ── 3. Publish in batches (resumable via ledger) ──────────────────────────
-    const ledger: Ledger = loadLedger(opts.ledger) ?? {
+    const ledger: Ledger = loadLedger(ledgerPath) ?? {
         bundleName: opts.bundleName,
         bundleSchemaId,
         batches: [],
@@ -210,19 +242,23 @@ async function main(): Promise<void> {
         const batchEdges: MbEdge[] = [];
 
         for (const track of batchTracks) {
-            batchNodes.push({ id: track.id, type: "Track", fields: cleanFields(track.fields) });
-            const taxo = taxoByTrack.get(track.id);
+            batchNodes.push({ id: track.name, type: "Track", fields: cleanFields(track.fields) });
+            const taxo = taxoByTrack.get(track.name);
             if (taxo) {
-                batchNodes.push({ id: taxo.id, type: "TrackTaxonomy", fields: cleanFields(taxo.fields) });
+                batchNodes.push({ id: `taxonomy:${taxo.name}`, type: "TrackTaxonomy", fields: cleanFields(taxo.fields) });
             }
-            const edges = edgesByTrack.get(track.id) ?? [];
+            const edges = edgesByTrack.get(track.name) ?? [];
             batchEdges.push(...edges);
         }
 
         const batchDataset = `${opts.dataset}.batch${batchIdx}`;
         console.log(`[publish] batch ${batchIdx}/${totalBatches - 1}: ${batchTracks.length} tracks → ${batchDataset}`);
 
-        const manifestUri = await testbed.publishBundle(opts.bundleName, batchNodes, batchEdges, batchDataset);
+        const manifestUri = await withRetry(
+            `batch ${batchIdx}`,
+            maxRetries,
+            () => testbed.publishBundle(opts.bundleName, batchNodes, batchEdges, batchDataset),
+        );
 
         ledger.batches.push({
             batchIndex: batchIdx,
@@ -231,7 +267,7 @@ async function main(): Promise<void> {
             trackCount: batchTracks.length,
             publishedAt: new Date().toISOString(),
         });
-        saveLedger(opts.ledger, ledger);
+        saveLedger(ledgerPath, ledger);
         console.log(`  ✓ manifest: ${manifestUri}`);
     }
 
@@ -239,7 +275,7 @@ async function main(): Promise<void> {
     console.log(`  bundle name : ${opts.bundleName}`);
     console.log(`  bundle id   : ${bundleSchemaId}`);
     console.log(`  batches     : ${ledger.batches.length}`);
-    console.log(`  ledger      : ${opts.ledger}`);
+    console.log(`  ledger      : ${ledgerPath}`);
     console.log("\nBuild embeddings with:\n");
     console.log(`  quickbeam build \\`);
     console.log(`    --bundle "${opts.bundleName}=${bundleSchemaId}" \\`);

@@ -58,12 +58,9 @@ export class SchemaRegistry {
     async registerSchema(
         name: string,
         specCid: string,
+        agentId = "",
     ): Promise<{ hash: Hash; schemaId: Hex }> {
         const { chain, account } = this.getWriteConfig();
-
-        // This is for the future where we may integrate agents associated with schemas
-        // but is not yet implemented
-        const agentId = "";
 
         const schemaId = await this.publicClient.simulateContract({
             address: this.contractAddress,

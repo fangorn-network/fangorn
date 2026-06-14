@@ -1,7 +1,7 @@
 import { type Hex, type WalletClient } from "viem";
 import { SchemaRegistry } from "../../registries/schema-registry";
 import { MetadataStorage } from "../../providers/storage/types.js";
-import { BundleInput, PlainField, ResolvedBundle, SchemaBlobV1, SchemaDefinition } from "./types";
+import { BundleInput, PlainField, ResolvedBundle, SchemaBlob, SchemaDefinition } from "./types";
 
 export * from './types';
 
@@ -21,11 +21,6 @@ export type RegisteredSchema =
     | (RegisteredSchemaBase & { kind: "resolver"; definition: SchemaDefinition })
     | (RegisteredSchemaBase & { kind: "bundle"; bundle: ResolvedBundle });
 
-// Persisted blob (v2, discriminated). v1 blobs (no `kind`) are read as resolvers.
-type PersistedBlobBase = { version: 2; name: string; owner: Hex; createdAt: string };
-type ResolverBlob = PersistedBlobBase & { kind: "resolver"; definition: SchemaDefinition };
-type BundleBlob = PersistedBlobBase & { kind: "bundle"; bundle: ResolvedBundle };
-type SchemaBlob = ResolverBlob | BundleBlob;
 
 export class SchemaRole {
     constructor(
@@ -41,13 +36,20 @@ export class SchemaRole {
         let blob: SchemaBlob;
         if (params.kind === "bundle") {
             const bundle = await this.resolveBundle(params.bundle);
-            blob = { version: 2, kind: "bundle", name: params.name, owner, createdAt, bundle };
+            blob = { kind: "bundle", name: params.name, owner, createdAt, bundle };
         } else {
-            blob = { version: 2, kind: "resolver", name: params.name, owner, createdAt, definition: params.definition };
+            blob = { kind: "resolver", name: params.name, owner, createdAt, definition: params.definition };
         }
 
         const schemaCid = await this.storage.put(blob, { name: `schema:${params.name}` });
-        const { schemaId } = await this.schemaRegistry.registerSchema(params.name, schemaCid);
+
+        let schemaId: Hex;
+        try {
+            ({ schemaId } = await this.schemaRegistry.registerSchema(params.name, schemaCid));
+        } catch (err) {
+            if (!isSchemaAlreadyExists(err)) throw err;
+            schemaId = await this.schemaRegistry.schemaId(params.name);
+        }
 
         const base = { schemaId, schemaCid, name: params.name, owner };
         return blob.kind === "bundle"
@@ -61,12 +63,11 @@ export class SchemaRole {
             const record = await this.schemaRegistry.getSchema(nameOrId);
             if (!record.specCid) return undefined;
 
-            const blob = await this.storage.get<SchemaBlob | SchemaBlobV1>(record.specCid);
+            const blob = await this.storage.get<SchemaBlob>(record.specCid);
             const base = { schemaId, schemaCid: record.specCid, name: blob.name, owner: blob.owner };
 
-            // v1 (no `kind`) and v2 resolver both carry `definition`
-            if (!("kind" in blob) || blob.kind === "resolver") {
-                return { kind: "resolver", ...base, definition: (blob as ResolverBlob | SchemaBlobV1).definition };
+            if (blob.kind === "resolver") {
+                return { kind: "resolver", ...base, definition: blob.definition };
             }
             return { kind: "bundle", ...base, bundle: blob.bundle };
         } catch (e) {
@@ -154,4 +155,10 @@ export class SchemaRole {
         if (!address) throw new Error("No account connected to wallet client");
         return address;
     }
+}
+
+function isSchemaAlreadyExists(err: unknown): boolean {
+    if (!(err instanceof Error)) return false;
+    const data = (err as any)?.cause?.data ?? (err as any)?.data;
+    return data?.errorName === "SchemaAlreadyExists";
 }

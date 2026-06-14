@@ -272,7 +272,7 @@ describe("Fangorn Publisher E2E", () => {
             expect(graph.nodesById.get("track-1")?.fields.title).toBe("Song One");
             expect(graph.nodesById.get("artist-1")?.fields.name).toBe("Alice");
             expect(graph.edges).toContainEqual({ rel: "performed_by", from: "track-1", to: "artist-1" });
-            expect(manifest!.version).toBe(3);
+            expect(manifest!.kind).toBe("bundle");
             expect(manifest!.nodeChunks).toHaveLength(2);           // Track + Artist
             expect(manifest!.edgeChunk?.dataCid).toBeTruthy();
         }, 90_000);

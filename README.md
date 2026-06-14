@@ -2,7 +2,7 @@
 
 commit → index → discover → prove → settle → fetch
 
-Programmable access control for the agentic web.
+Intent-bound data for the agentic web.
 
 Fangorn lets you publish data under programmable access conditions. Access is enforced on-chain through settlement verification, so your content is only retrievable by those who have provably paid for it. Data is organized by schemas, enabling agent-based discovery across any number of publishers.
 Content is stored in your own storage backend (Cloudflare R2, IPFS, or any compatible future backend). The Fangorn protocol coordinates access without ever touching your content directly.
@@ -168,50 +168,98 @@ const schema = await fangorn.schema.get("schema.name.v1");
 
 ### Publishing
 
-Upload content to your R2 bucket out-of-band (via Cloudflare dashboard, wrangler CLI, or your own tooling), then publish a manifest pointing at it. The SDK stores the manifest on IPFS and commits the CID on-chain.
+Fangorn supports two manifest kinds, selected by which builder you pass to `publisher.publish()`.
+
+#### Record-set
+
+Upload content to your R2 bucket out-of-band, then publish a manifest pointing at it. The SDK stores the manifest on IPFS and commits the Merkle root on-chain.
 
 ```ts
-await fangorn.publisher.upload(
-  {
-    records: [
-      {
-        name: "track1",
-        fields: {
-          title:  "Locura",
-          artist: "Alice",
-          audio:  { "@type": "handle", uri: "r2://my-dir/locura.mp3" },
-        },
-      },
-    ],
-    schemaName: "schema.name.v1",
-  },
-  1n, // price in smallest USDC units
-);
-```
-
-The manifest stored on-chain looks like:
-
-```json
-{
-  "version": 2,
-  "schemaId": "0x...",
-  "entries": [
+// Convenience wrapper — equivalent to publish({ builder: new RecordSetBuilder(), ... })
+await fangorn.publisher.publishRecords({
+  schemaName: "schema.name.v1",
+  records: [
     {
-      "name": "track1",
-      "fields": {
-        "title": "Locura",
-        "artist": "Alice",
-        "audio": {
-          "@type": "handle",
-          "uri": "r2://my-dir/locura.mp3"
-        }
-      }
-    }
-  ]
-}
+      name: "track1",
+      fields: {
+        title:  "Locura",
+        artist: "Alice",
+        audio:  { "@type": "handle", uri: "r2://my-dir/locura.mp3" },
+      },
+    },
+  ],
+});
+
+// Legacy alias still works
+await fangorn.publisher.upload({ schemaName: "schema.name.v1", records: [...] });
 ```
 
-Plain fields (`title`, `artist`) are readable by anyone directly from the manifest. Handle fields require a valid on-chain settlement to retrieve via the access worker.
+The resulting manifest has `kind: "record-set"` and `version: 2`. Plain fields (`title`, `artist`) are publicly readable from the manifest; handle fields require a valid on-chain settlement to retrieve via the access worker.
+
+#### Bundle
+
+A bundle is a small typed subgraph spanning multiple schemas. Define the shape once via a bundle schema, then publish node + edge data against it. This is the right primitive for linked data (e.g. tracks + taxonomy + edges between them).
+
+```ts
+// 1. Register node schemas (idempotent)
+await fangorn.schema.register({ name: "my.track.v1", definition: trackSchema });
+await fangorn.schema.register({ name: "my.taxonomy.v1", definition: taxonomySchema });
+
+// 2. Register the bundle shape (idempotent)
+await fangorn.schema.register({
+  kind: "bundle",
+  name: "my.bundle.v1",
+  bundle: {
+    nodes: { Track: "my.track.v1", Taxonomy: "my.taxonomy.v1" },
+    edges: [{ rel: "hasTaxonomy", from: "Track", to: "Taxonomy", min: 1, max: 1 }],
+  },
+});
+
+// 3. Publish data
+await fangorn.publisher.publishBundle({
+  bundleName: "my.bundle.v1",
+  nodes: [
+    { id: "t1", type: "Track",    fields: { trackId: "t1", title: "Locura", ... } },
+    { id: "x1", type: "Taxonomy", fields: { trackId: "t1", genres: ["electronic"] } },
+  ],
+  edges: [
+    { rel: "hasTaxonomy", from: "t1", to: "x1" },
+  ],
+  datasetName: "my-dataset-v1",
+});
+
+// Legacy alias still works
+await fangorn.publisher.uploadBundle({ bundleName: "my.bundle.v1", nodes: [...], edges: [...] });
+```
+
+The resulting manifest has `kind: "bundle"` and `version: 3`. Node chunks and the edge chunk are stored separately on IPFS and committed together under a single Merkle root.
+
+#### Custom builders
+
+Both `RecordSetBuilder` and `BundleBuilder` implement the `ManifestBuilder` interface. You can implement your own:
+
+```ts
+import {
+  ManifestBuilder, BuildContext, ChunkDraft, ChunkRef,
+  BaseManifest, ResolvedSchemaShape,
+} from "@fangorn-network/sdk";
+
+class MyBuilder implements ManifestBuilder<MyInput, MyManifest> {
+  readonly kind = "my-kind";
+  readonly version = 1;
+  validate(schema, input) { /* ... */ }
+  async *chunk(input, schema) { yield { name: "chunk:0", data: [...] }; }
+  compareChunks(a, b) { return a.cid.localeCompare(b.cid); }
+  assemble(ctx, input, schema): MyManifest { /* ... */ }
+}
+
+await fangorn.publisher.publish({
+  schemaName: "my.schema.v1",
+  builder: new MyBuilder(),
+  input: myInput,
+  datasetName: "my-dataset",
+});
+```
 
 ### Consuming
 
@@ -236,7 +284,7 @@ const { txHash } = await fangorn.consumer.register({
   schemaId,
   name: "track1",
   identityCommitment: identity.commitment,
-  relayerPrivateKey: "0x...",
+  relayerPrivateKey: "0x...", 
   preparedRegister,
 });
 

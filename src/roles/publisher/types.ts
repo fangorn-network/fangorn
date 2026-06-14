@@ -1,4 +1,4 @@
-import { type Address, type Hex } from "viem";
+import { type Hex } from "viem";
 
 export type FieldInput =
     | null
@@ -93,7 +93,7 @@ export interface ManifestEntry {
  */
 
 export interface Manifest {
-    version: 2;
+    kind: "record-set";
     schemaId: Hex;
     /**
      * Poseidon2 Merkle root
@@ -113,8 +113,8 @@ export interface Manifest {
 }
 
 export interface BundleManifest {
-  version: 3;
-  bundleSchemaId: Hex;
+  kind: "bundle";
+  schemaId: Hex;
   root: Hex;
   nodeChunks: { type: string; dataCid: string; leaf: Hex }[];
   edgeChunk: { dataCid: string; leaf: Hex };

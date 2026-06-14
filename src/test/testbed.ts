@@ -105,7 +105,7 @@ export class TestBed {
         chunkSize?: any,
         concurrency?: any
     ): Promise<string> {
-        const { manifestUri } = await this.delegatorFangorn.publisher.upload({
+        const { manifestUri } = await this.delegatorFangorn.publisher.publishRecords({
             records,
             schemaName,
             datasetName,
@@ -131,7 +131,7 @@ export class TestBed {
         edges: { rel: string; from: string; to: string }[],
         datasetName?: string,
     ): Promise<string> {
-        const { manifestUri } = await this.getDelegatorFangorn().publisher.uploadBundle({
+        const { manifestUri } = await this.getDelegatorFangorn().publisher.publishBundle({
             bundleName,
             nodes,
             edges,

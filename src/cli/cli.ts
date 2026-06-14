@@ -326,10 +326,9 @@ publishCmd
     .argument("<files...>", "JSON file(s) containing PublishRecord(s)")
     .requiredOption("-s, --schema <schemaName>", "Schema name or bytes32 ID")
     .requiredOption("-d, --dataset <datasetName>", "Dataset name (groups entries under a manifest)")
-    .option("-o, --overwrite", "Overwrite existing entries instead of merging", false)
     .action(async (
         files: string[],
-        options: { schema: string; dataset: string; price: string; overwrite: boolean },
+        options: { schema: string; dataset: string; price: string },
     ) => {
         try {
             const fangorn = getFangorn();
@@ -344,14 +343,11 @@ publishCmd
             });
 
             s.start("Publishing...");
-            const result = await fangorn.publisher.upload(
-                {
-                    records,
-                    schemaName: options.schema,
-                    datasetName: options.dataset,
-                    options: { overwrite: options.overwrite },
-                },
-            );
+            const result = await fangorn.publisher.publishRecords({
+                records,
+                schemaName: options.schema,
+                datasetName: options.dataset,
+            });
             s.stop();
 
             note(

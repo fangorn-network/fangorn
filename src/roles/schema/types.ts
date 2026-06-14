@@ -94,10 +94,8 @@ export interface BundleShape {
 }
 
 interface SchemaBlobBase {
-    version: 2;
     name: string;
     owner: Hex;
-    agentId: string;
     createdAt: string;
 }
 export interface ResolverSchemaBlob extends SchemaBlobBase {
@@ -108,19 +106,7 @@ export interface BundleSchemaBlob extends SchemaBlobBase {
     kind: "bundle";
     bundle: ResolvedBundle;
 }
-export type SchemaBlobV2 = ResolverSchemaBlob | BundleSchemaBlob;
-
-/** Anything readable from storage: v2 discriminated, or legacy v1. */
-export type SchemaBlob = SchemaBlobV2 | SchemaBlobV1;
-
-export interface SchemaBlobV1 {
-    version: 1;
-    name: string;
-    owner: Hex;
-    agentId: string;
-    definition: SchemaDefinition;
-    createdAt: string;
-}
+export type SchemaBlob = ResolverSchemaBlob | BundleSchemaBlob;
 
 export interface SchemaRoleConfig {
     chainId: number;
