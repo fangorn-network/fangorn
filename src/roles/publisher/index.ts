@@ -1,5 +1,5 @@
 import { type Address, type Hex, type WalletClient } from "viem";
-import { ResolvedBundle, SchemaDefinition } from "../schema/types";
+import { ResolvedBundle, SchemaDefinition, TypeDefinition } from "../schema/types";
 import { DataSourceRegistry, MerkleTree } from "../../registries/datasource-registry";
 import { MetadataStorage } from "../../providers/storage/types";
 import { AppConfig } from "../../config";
@@ -65,8 +65,6 @@ export class PublisherRole {
         _config: AppConfig,
     ) {}
 
-    // ── Core generic publish ──────────────────────────────────────────────────
-
     async publish<TIn, TMan extends { kind: string; schemaId: Hex; root: Hex; tree: Hex[][] }>(params: {
         schemaName: string;
         builder: ManifestBuilder<TIn, TMan>;
@@ -119,8 +117,6 @@ export class PublisherRole {
         return { manifestUri: manifestCid, schemaId, owner, entryCount: chunks.length };
     }
 
-    // ── Convenience wrappers ──────────────────────────────────────────────────
-
     async publishRecords(params: {
         records: PublishRecord[] | AsyncIterable<PublishRecord>;
         schemaName: string;
@@ -156,8 +152,6 @@ export class PublisherRole {
             concurrency: params.concurrency,
         });
     }
-
-    // ── Read methods ──────────────────────────────────────────────────────────
 
     async readBundle(manifest: BundleManifest): Promise<HydratedBundle> {
         const nodeArrays = await Promise.all(
@@ -216,16 +210,15 @@ export class PublisherRole {
         } catch { return undefined; }
     }
 
-    // ── Private helpers ───────────────────────────────────────────────────────
-
     private resolveSchema(name: string): Promise<{ schema: ResolvedSchemaShape; schemaId: Hex }> {
         if (!this.schemaCache.has(name)) {
             const p = Promise.all([
                 this.schemaRegistry.getSchema(name),
                 this.schemaRegistry.schemaId(name),
             ]).then(async ([{ specCid }, schemaId]) => {
-                const blob = await this.storage.get<{ definition?: SchemaDefinition; bundle?: ResolvedBundle }>(specCid);
-                const schema: ResolvedSchemaShape = blob.bundle ?? blob.definition!;
+                const blob = await this.storage.get<{ definition?: SchemaDefinition; types?: Record<string, TypeDefinition>; bundle?: ResolvedBundle }>(specCid);
+                const schema: ResolvedSchemaShape = blob.bundle
+                    ?? (blob.definition ? { fields: blob.definition, types: blob.types } : undefined)!;
                 if (!schema) throw new Error(`schema "${name}" has neither definition nor bundle`);
                 return { schema, schemaId };
             }).catch(err => { this.schemaCache.delete(name); throw err; });

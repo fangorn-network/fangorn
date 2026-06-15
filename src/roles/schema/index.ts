@@ -1,14 +1,15 @@
 import { type Hex, type WalletClient } from "viem";
 import { SchemaRegistry } from "../../registries/schema-registry";
 import { MetadataStorage } from "../../providers/storage/types.js";
-import { BundleInput, PlainField, ResolvedBundle, SchemaBlob, SchemaDefinition } from "./types";
+import { BundleInput, ResolvedBundle, SchemaBlob, SchemaDefinition, SchemaDoc, TypeDefinition } from "./types";
+import { validate } from "./validate";
 
 export * from './types';
 
-// Register either a 'resolver' (a standard flat schema)
-// or a 'bundle' (the shape of how resolver schemas combine).
+// Register either a 'resolver' (a standard flat schema, optionally with a
+// custom-type vocabulary) or a 'bundle' (the shape of how resolver schemas combine).
 export type RegisterSchemaParams =
-    | { kind?: "resolver"; name: string; definition: SchemaDefinition }
+    | { kind?: "resolver"; name: string; definition: SchemaDefinition; types?: Record<string, TypeDefinition> }
     | { kind: "bundle"; name: string; bundle: BundleInput };
 
 type RegisteredSchemaBase = {
@@ -18,7 +19,7 @@ type RegisteredSchemaBase = {
     owner: Hex;
 };
 export type RegisteredSchema =
-    | (RegisteredSchemaBase & { kind: "resolver"; definition: SchemaDefinition })
+    | (RegisteredSchemaBase & { kind: "resolver"; definition: SchemaDefinition; types?: Record<string, TypeDefinition> })
     | (RegisteredSchemaBase & { kind: "bundle"; bundle: ResolvedBundle });
 
 
@@ -38,7 +39,7 @@ export class SchemaRole {
             const bundle = await this.resolveBundle(params.bundle);
             blob = { kind: "bundle", name: params.name, owner, createdAt, bundle };
         } else {
-            blob = { kind: "resolver", name: params.name, owner, createdAt, definition: params.definition };
+            blob = { kind: "resolver", name: params.name, owner, createdAt, definition: params.definition, types: params.types };
         }
 
         const schemaCid = await this.storage.put(blob, { name: `schema:${params.name}` });
@@ -54,7 +55,7 @@ export class SchemaRole {
         const base = { schemaId, schemaCid, name: params.name, owner };
         return blob.kind === "bundle"
             ? { kind: "bundle", ...base, bundle: blob.bundle }
-            : { kind: "resolver", ...base, definition: blob.definition };
+            : { kind: "resolver", ...base, definition: blob.definition, types: blob.types };
     }
 
     async get(nameOrId: string): Promise<RegisteredSchema | undefined> {
@@ -67,7 +68,7 @@ export class SchemaRole {
             const base = { schemaId, schemaCid: record.specCid, name: blob.name, owner: blob.owner };
 
             if (blob.kind === "resolver") {
-                return { kind: "resolver", ...base, definition: blob.definition };
+                return { kind: "resolver", ...base, definition: blob.definition, types: blob.types };
             }
             return { kind: "bundle", ...base, bundle: blob.bundle };
         } catch (e) {
@@ -105,49 +106,8 @@ export class SchemaRole {
         return { nodes, edges: input.edges };
     }
 
-    validate(data: Record<string, unknown>, definition: SchemaDefinition): string[] {
-        const errors: string[] = [];
-        for (const [field, fieldDef] of Object.entries(definition)) {
-            const value = data[field];
-            if (value === undefined || value === null) {
-                errors.push(`Missing required field: "${field}"`);
-                continue;
-            }
-            switch (fieldDef["@type"]) {
-                case "string":
-                    if (typeof value !== "string") errors.push(`Field "${field}" must be a string, got ${typeof value}`);
-                    break;
-                case "number":
-                    if (typeof value !== "number") errors.push(`Field "${field}" must be a number, got ${typeof value}`);
-                    break;
-                case "boolean":
-                    if (typeof value !== "boolean") errors.push(`Field "${field}" must be a boolean, got ${typeof value}`);
-                    break;
-                case "bytes":
-                    if (!(value instanceof Uint8Array) && !ArrayBuffer.isView(value)) errors.push(`Field "${field}" must be bytes (Uint8Array)`);
-                    break;
-                case "handle": {
-                    const asObj = value as Record<string, unknown>;
-                    if (typeof asObj.uri !== "string") errors.push(`Field "${field}" is a handle — expected { uri: string }`);
-                    break;
-                }
-                case "array": {
-                    if (!Array.isArray(value)) {
-                        errors.push(`Field "${field}" must be an array, got ${typeof value}`);
-                        break;
-                    }
-                    const items: PlainField = fieldDef.items as PlainField;
-                    value.forEach((item: unknown, i) =>
-                        errors.push(...this.validate(
-                            { [`${field}[${i.toString()}]`]: item },
-                            { [`${field}[${i.toString()}]`]: items },
-                        )),
-                    );
-                    break;
-                }
-            }
-        }
-        return errors;
+    validate(data: Record<string, unknown>, definition: SchemaDefinition | SchemaDoc): string[] {
+        return validate(data, definition);
     }
 
     private requireAccount(): Hex {

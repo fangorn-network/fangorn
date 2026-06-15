@@ -1,5 +1,5 @@
 import type { Hex } from "viem";
-import type { SchemaDefinition, ResolvedBundle } from "../../schema/types";
+import type { SchemaDoc, ResolvedBundle } from "../../schema/types";
 
 export interface ChunkDraft {
     // storage object name passed to storage.put
@@ -32,7 +32,7 @@ export interface BaseManifest {
     tree: Hex[][];
 }
 
-export type ResolvedSchemaShape = SchemaDefinition | ResolvedBundle;
+export type ResolvedSchemaShape = SchemaDoc | ResolvedBundle;
 
 export interface ManifestBuilder<TInput, TManifest extends BaseManifest> {
     readonly kind: string;

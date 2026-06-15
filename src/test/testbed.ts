@@ -10,7 +10,7 @@ import { Identity } from "@semaphore-protocol/identity";
 import { arbitrumSepolia, baseSepolia } from "viem/chains";
 import { Fangorn } from "../fangorn.js";
 import { type AppConfig } from "../config.js";
-import { BundleInput, type SchemaDefinition } from "../roles/schema/index.js";
+import { BundleInput, type SchemaDefinition, type TypeDefinition } from "../roles/schema/index.js";
 import { SettlementRegistry } from "../registries/settlement-registry/index.js";
 import { privateKeyToAccount } from "viem/accounts";
 import { DataSourceRegistry } from "../registries/datasource-registry/index.js";
@@ -89,10 +89,12 @@ export class TestBed {
     async registerSchema(
         name: string,
         definition: SchemaDefinition,
+        types?: Record<string, TypeDefinition>,
     ): Promise<Hex> {
         const { schemaId } = await this.delegatorFangorn.schema.register({
             name,
             definition,
+            types,
         });
         return schemaId;
     }

@@ -61,4 +61,4 @@ fangorn publish upload ./data.json \
     -p 1 -o
 ```
 
-Verify the upload is committed by running `fangorn publish list -s noagent-fangorn.test.music.v0 -c arbitrumSepolia`
+Verify the upload is committed by running `fangorn publish list -s noagent-fangorn.test.music.v0 -c arbitrumSepolia -p 0.000001`

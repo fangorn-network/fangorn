@@ -1,5 +1,5 @@
 import type { ManifestBuilder, ChunkDraft, ChunkRef, BuildContext, ResolvedSchemaShape } from "./types";
-import type { SchemaDefinition } from "../../schema/types";
+import type { SchemaDoc } from "../../schema/types";
 import type { Manifest, PublishRecord } from "../types";
 import { resolveRecord, validateRecord } from "./utils";
 
@@ -63,8 +63,8 @@ export class RecordSetBuilder implements ManifestBuilder<RecordSetInput, Manifes
     }
 }
 
-function isRecordSchema(schema: ResolvedSchemaShape): schema is SchemaDefinition {
-    return !("nodes" in schema && "edges" in schema);
+function isRecordSchema(schema: ResolvedSchemaShape): schema is SchemaDoc {
+    return "fields" in schema;
 }
 
 function isAsyncIterable<T>(val: unknown): val is AsyncIterable<T> {

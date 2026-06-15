@@ -1,5 +1,5 @@
 import type { Hex } from "viem";
-import type { SchemaDefinition, ResolvedBundle } from "../../schema/types";
+import type { SchemaDefinition, SchemaDoc, TypeDefinition, ResolvedBundle } from "../../schema/types";
 import type { MetadataStorage } from "../../../providers/storage/types";
 import type { SchemaRegistry } from "../../../registries/schema-registry";
 import type { BundleManifest, BundleNode, FieldInput, PublishRecord } from "../types";
@@ -81,13 +81,13 @@ export class BundleBuilder implements ManifestBuilder<BundleUploadInput, BundleM
         bundle: ResolvedBundle,
         nodes: BundleUploadInput["nodes"],
     ): Promise<{ nodeType: Map<string, string>; byType: Map<string, BundleNode[]> }> {
-        const defByType = new Map<string, SchemaDefinition>();
+        const defByType = new Map<string, SchemaDoc>();
         await Promise.all(
             Object.entries(bundle.nodes).map(async ([type, schemaId]: [string, Hex]) => {
                 const { specCid } = await this.schemaRegistry.getSchema(schemaId);
-                const blob = await this.storage.get<{ definition?: SchemaDefinition }>(specCid);
+                const blob = await this.storage.get<{ definition?: SchemaDefinition; types?: Record<string, TypeDefinition> }>(specCid);
                 if (!blob.definition) throw new Error(`node schema ${schemaId} is not a resolver schema`);
-                defByType.set(type, blob.definition);
+                defByType.set(type, { fields: blob.definition, types: blob.types });
             }),
         );
 

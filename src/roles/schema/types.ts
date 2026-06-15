@@ -49,10 +49,38 @@ export interface HandleField {
     "@type": "handle";
 }
 
+// CONSTRAINT PRIMITIVES
+//
+// A small, fixed vocabulary of value-level checks that schema authors compose
+// onto fields and custom types. Adding a new `kind` is an SDK release; composing
+// the existing kinds into a new custom type is zero code.
+export type Constraint =
+    | { kind: "regex"; pattern: string }
+    | { kind: "enum"; values: (string | number | boolean)[] }
+    | { kind: "range"; min?: number; max?: number; exclusive?: boolean }
+    | { kind: "length"; min?: number; max?: number }
+    | { kind: "ref"; type: string };
+
+// A schema-author-declared custom type: a named shape of fields, optionally
+// guarded by constraints applied to the whole value.
+export interface TypeDefinition {
+    shape: Record<string, FieldDefinition>;
+    constraints?: Constraint[];
+}
+
 export interface FieldDefinition {
     "@type": string;
     "@description"?: string;
+    constraints?: Constraint[];
     items?: FieldDefinition | Record<string, FieldDefinition>;
+}
+
+// A schema document that pairs the flat field map with a custom-type vocabulary.
+// `validate` accepts either this or a bare SchemaDefinition (back-compat); the
+// latter is treated as `{ fields }` with no custom types.
+export interface SchemaDoc {
+    types?: Record<string, TypeDefinition>;
+    fields: SchemaDefinition;
 }
 
 // bundle "shape" types inspired by SHACL
@@ -101,6 +129,8 @@ interface SchemaBlobBase {
 export interface ResolverSchemaBlob extends SchemaBlobBase {
     kind: "resolver";
     definition: SchemaDefinition;
+    // optional custom-type vocabulary referenced by fields in `definition`
+    types?: Record<string, TypeDefinition>;
 }
 export interface BundleSchemaBlob extends SchemaBlobBase {
     kind: "bundle";

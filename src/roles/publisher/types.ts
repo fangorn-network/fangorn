@@ -36,6 +36,10 @@ export interface HandleFieldInput {
     encryption?: {
         gadget: string;          // e.g. "tee-aes-v1"
         ciphertextHash: string;  // sha256 hex of the bytes at uri
+        // Explicit TEE public key for the sealed-encryption gadget. Inline for
+        // now; once the gadget registry is live this becomes resolvable via
+        // lookup instead of being carried in the manifest. See examples/sealed-e2e.ts.
+        teePubkey?: string;      // hex-encoded X25519 public key
     };
 }
 
@@ -60,6 +64,7 @@ export interface ResolvedHandleField {
     encryption?: {
         gadget: string;          // e.g. "tee-aes-v1"
         ciphertextHash: string;  // sha256 hex of the bytes at uri
+        teePubkey?: string;      // hex-encoded X25519 public key (see HandleFieldInput)
     };
 }
 
