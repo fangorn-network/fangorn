@@ -33,6 +33,10 @@ export interface HandleFieldInput {
     "@type": "handle";
     uri: string;
     workerUrl: string;
+    encryption?: {
+        gadget: string;          // e.g. "tee-aes-v1"
+        ciphertextHash: string;  // sha256 hex of the bytes at uri
+    };
 }
 
 /**
@@ -46,13 +50,17 @@ export interface PublishRecord {
 }
 
 /**
+ * wait do I really even need this?
  * Resolved manifest fields
  */
-
 export interface ResolvedHandleField {
     "@type": "handle";
     uri: string;
     workerUrl: string;
+    encryption?: {
+        gadget: string;          // e.g. "tee-aes-v1"
+        ciphertextHash: string;  // sha256 hex of the bytes at uri
+    };
 }
 
 export type ResolvedPlainField =
@@ -113,27 +121,27 @@ export interface Manifest {
 }
 
 export interface BundleManifest {
-  kind: "bundle";
-  schemaId: Hex;
-  root: Hex;
-  nodeChunks: { type: string; dataCid: string; leaf: Hex }[];
-  edgeChunk: { dataCid: string; leaf: Hex };
-  tree: Hex[][];
+    kind: "bundle";
+    schemaId: Hex;
+    root: Hex;
+    nodeChunks: { type: string; dataCid: string; leaf: Hex }[];
+    edgeChunk: { dataCid: string; leaf: Hex };
+    tree: Hex[][];
 }
 
 export interface BundleNode {
-  id: string;
-  type: string;
-  fields: Record<string, ResolvedField>;
+    id: string;
+    type: string;
+    fields: Record<string, ResolvedField>;
 }
 
 export interface BundleEdge {
-  rel: string;
-  from: string; // node id
-  to: string;   // node id
+    rel: string;
+    from: string; // node id
+    to: string;   // node id
 }
 
 export interface HydratedBundle {
-  nodesById: Map<string, BundleNode>;
-  edges: BundleEdge[];
+    nodesById: Map<string, BundleNode>;
+    edges: BundleEdge[];
 }
