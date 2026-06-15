@@ -1,7 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { DataSourceRegistry, hashString, MerkleTree, poseidonHash, type ManifestLeaf } from "./index.js";
 import { keccak256, encodePacked } from "viem";
-import { poseidon2 } from "poseidon-lite";
 import type { Address, Hash, Hex } from "viem";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -19,15 +18,6 @@ const MOCK_LEAF: ManifestLeaf = {
     index: 0n,
     name: MOCK_NAME,
 };
-
-// ── Hashing helpers (mirror the implementation for verification) ───────────────
-
-const MODULUS =
-    21888242871839275222246405745257275088548364400416034343698204186575808495617n;
-
-function normalize(v: bigint): bigint {
-    return ((v % MODULUS) + MODULUS) % MODULUS;
-}
 
 // ── Mock factory ──────────────────────────────────────────────────────────────
 
@@ -79,7 +69,7 @@ function makeRegistry(clients = makeClients()) {
 function makeLeaves(n: number): ManifestLeaf[] {
     return Array.from({ length: n }, (_, i) => ({
         index: BigInt(i),
-        name: `track-${i}`,
+        name: `track-${i.toString()}`,
     }));
 }
 
@@ -360,7 +350,7 @@ describe("MerkleTree", () => {
 
         it("duplicates the last node when a layer has an odd count", () => {
             const leaves = makeLeaves(3);
-            const [h0, h1, h2] = leaves.map(MerkleTree.leafHash);
+            const [h0, h1, h2] = leaves.map(leaf => MerkleTree.leafHash(leaf));
             // odd node h2 is paired with itself
             const expected = poseidonHash([
                 poseidonHash([h0, h1]),

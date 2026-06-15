@@ -43,8 +43,8 @@ export class PinataBackend implements MetadataStorage {
             });
 
             try {
-                // Upload this sub-batch as an independent folder
-                const batchName = `batch-${Date.now().toString()}-${i}`;
+                // 2. Upload this sub-batch as an independent folder
+                const batchName = `batch-${Date.now().toString()}-${i.toString()}`;
                 const upload = await this.pinata.upload.public
                     .fileArray(filesToUpload)
                     .name(batchName);
@@ -57,7 +57,7 @@ export class PinataBackend implements MetadataStorage {
                 }
 
             } catch (error) {
-                console.error(`❌ Pinata sub-batch upload failure at offset ${i}:`, error);
+                console.error(`❌ Pinata sub-batch upload failure at offset ${i.toString()}:`, error);
                 throw error;
             }
         }

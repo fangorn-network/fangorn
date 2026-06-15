@@ -11,9 +11,12 @@ export interface RecordSetInput {
 export class RecordSetBuilder implements ManifestBuilder<RecordSetInput, Manifest> {
     readonly kind = "record-set";
 
-    validate(schema: ResolvedSchemaShape, _input: RecordSetInput): void {
+    validate(schema: ResolvedSchemaShape, input: RecordSetInput): void {
         if (!isRecordSchema(schema)) {
             throw new Error("RecordSetBuilder requires a resolver schema, not a bundle");
+        }
+        if (input.chunkSize !== undefined && (!Number.isInteger(input.chunkSize) || input.chunkSize <= 0)) {
+            throw new Error(`chunkSize must be a positive integer, got ${input.chunkSize.toString()}`);
         }
     }
 
@@ -24,17 +27,14 @@ export class RecordSetBuilder implements ManifestBuilder<RecordSetInput, Manifes
         let chunkIdx = 0;
 
         const flush = (): ChunkDraft => {
-            const draft: ChunkDraft = { name: `chunk:${chunkIdx}`, data: buffer };
+            const draft: ChunkDraft = { name: `chunk:${chunkIdx.toString()}`, data: buffer };
             buffer = [];
             chunkIdx++;
             return draft;
         };
 
-        const iter: AsyncIterable<PublishRecord> = isAsyncIterable(input.records)
-            ? input.records
-            : toAsyncIterable(input.records);
-
-        for await (const record of iter) {
+        // `for await` consumes both arrays (sync iterable) and async iterables.
+        for await (const record of input.records) {
             validateRecord(record, schema);
             buffer.push(resolveRecord(record, schema));
             if (buffer.length >= chunkSize) yield flush();
@@ -46,7 +46,7 @@ export class RecordSetBuilder implements ManifestBuilder<RecordSetInput, Manifes
         return a.cid.localeCompare(b.cid);
     }
 
-    assemble(ctx: BuildContext, _input: RecordSetInput, _schema: ResolvedSchemaShape): Manifest {
+    assemble(ctx: BuildContext): Manifest {
         return {
             kind: "record-set",
             schemaId: ctx.schemaId,
@@ -65,12 +65,4 @@ export class RecordSetBuilder implements ManifestBuilder<RecordSetInput, Manifes
 
 function isRecordSchema(schema: ResolvedSchemaShape): schema is SchemaDefinition {
     return !("nodes" in schema && "edges" in schema);
-}
-
-function isAsyncIterable<T>(val: unknown): val is AsyncIterable<T> {
-    return val !== null && typeof val === "object" && Symbol.asyncIterator in (val as object);
-}
-
-async function* toAsyncIterable<T>(arr: T[]): AsyncIterable<T> {
-    for (const item of arr) yield item;
 }

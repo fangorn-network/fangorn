@@ -93,7 +93,7 @@ export interface ManifestLeaf {
 /// each "leaf" looks like one of these
 export interface ManifestEntry {
     name: string;
-    fields: Record<string, any>;
+    fields: Record<string, unknown>;
 }
 
 /**
