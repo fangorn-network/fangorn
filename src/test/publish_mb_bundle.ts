@@ -25,7 +25,10 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, createReadStream, mkdtempSync, rmSync } from "node:fs";
+import { join, resolve } from "node:path";
+import streamArray from "stream-json/streamers/stream-array.js";
+import { open, type Database, type Key } from "lmdb";
 import { program } from "commander";
 import { createWalletClient, http, type Address, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -72,6 +75,46 @@ const TAXONOMY_SCHEMA: SchemaDefinition = {
 // ── types matching mb.py output ───────────────────────────────────────────────
 type MbNode = { name: string; fields: Record<string, unknown> };
 type MbEdge = { rel: string; from: string; to: string };
+
+/**
+ * Stream the elements of a top-level JSON array file one at a time. Avoids
+ * readFileSync()+JSON.parse(), which materializes the whole file as a single
+ * string (>512MB hits V8's ERR_STRING_TOO_LONG) plus a full object-graph copy.
+ */
+async function* streamJsonArray<T>(path: string): AsyncIterable<T> {
+    const pipeline = createReadStream(path).pipe(streamArray.withParserAsStream());
+    for await (const { value } of pipeline as AsyncIterable<{ value: T }>) yield value;
+}
+
+/**
+ * Stream a JSON-array file into an LMDB sub-database in committed batches, so the
+ * full index lives on disk (memory-mapped) instead of the JS heap. `keyFn`
+ * derives each record's key; `seq` is a per-call running counter for composite keys.
+ * Returns the number of records written.
+ */
+async function bulkLoad<T>(
+    db: Database,
+    source: AsyncIterable<T>,
+    keyFn: (item: T, seq: number) => Key,
+): Promise<number> {
+    const BATCH = 20_000;
+    let buf: [Key, T][] = [];
+    let n = 0;
+    const commit = () => {
+        const pending = buf;
+        buf = [];
+        db.transactionSync(() => {
+            for (const [k, v] of pending) db.putSync(k, v);
+        });
+    };
+    for await (const item of source) {
+        buf.push([keyFn(item, n), item]);
+        n++;
+        if (buf.length >= BATCH) commit();
+    }
+    if (buf.length) commit();
+    return n;
+}
 
 /** Strip undefined values; null is kept so nullable schema fields validate correctly. */
 function cleanFields(raw: Record<string, unknown>): Record<string, FieldInput> {
@@ -135,6 +178,7 @@ program
     .option("--track-schema <name>", "Track node schema name", "sond3r.track.invariants.v1")
     .option("--taxonomy-schema <name>", "TrackTaxonomy node schema name", "sond3r.track.taxonomy.v1")
     .option("--ledger <path>", "Ledger file path (default: tmp/mb-publish-<dataset>.json)")
+    .option("--index-dir <path>", "Directory for the temporary on-disk LMDB index — MUST be on real disk, not tmpfs/RAM", "tmp")
     .option("--max-retries <n>", "Retry attempts per batch on transient failures", "5")
     .parse();
 
@@ -146,6 +190,7 @@ const opts = program.opts<{
     trackSchema: string;
     taxonomySchema: string;
     ledger?: string;
+    indexDir: string;
     maxRetries: string;
 }>();
 
@@ -200,76 +245,110 @@ async function main(): Promise<void> {
 
     const ledgerPath = opts.ledger ?? `tmp/mb-publish-${opts.dataset.replace(/[^a-z0-9._-]/gi, "_")}.json`;
 
-    // ── 2. Load data ──────────────────────────────────────────────────────────
-    console.log("[publish] loading JSON files...");
-    const allTracks: MbNode[] = JSON.parse(readFileSync(opts.tracks, "utf8"));
-    const allTaxonomies: MbNode[] = JSON.parse(readFileSync(opts.taxonomies, "utf8"));
-    const allEdges: MbEdge[] = JSON.parse(readFileSync(opts.edges, "utf8"));
+    // ── 2. Index taxonomies + edges on disk (LMDB) ────────────────────────────
+    // The taxonomy/edge lookups are random-access by track name and far too
+    // large to hold in the JS heap (multi-GB each). We stream them into a
+    // memory-mapped LMDB index instead: taxonomies keyed by track name, edges
+    // under composite [from, seq] keys so a track's edges are a contiguous range.
+    // The index can be several GB — it MUST live on a real disk, not tmpfs/RAM
+    // (e.g. the default /tmp on Linux is RAM-backed). Default to the project's
+    // tmp/ dir on the same disk as the data; override with --index-dir.
+    const indexBase = resolve(opts.indexDir);
+    mkdirSync(indexBase, { recursive: true });
+    const indexDir = mkdtempSync(join(indexBase, "mb-index-"));
+    console.log(`[publish] LMDB index dir: ${indexDir}`);
+    // noSync: this index is rebuilt every run, so durability is irrelevant —
+    // skipping fsync makes the bulk load dramatically faster.
+    const indexEnv = open({ path: indexDir, compression: false, noSync: true, maxDbs: 2 });
+    const taxoDb = indexEnv.openDB({ name: "taxo" });
+    const edgeDb = indexEnv.openDB({ name: "edge" });
 
-    // Index taxonomies by track name (taxonomy entries use bare name, edges reference "taxonomy:<name>")
-    const taxoByTrack = new Map<string, MbNode>(
-        allTaxonomies.map(t => [t.name, t])
-    );
-    const edgesByTrack = new Map<string, MbEdge[]>();
-    for (const e of allEdges) {
-        const list = edgesByTrack.get(e.from) ?? [];
-        list.push(e);
-        edgesByTrack.set(e.from, list);
-    }
+    try {
+        console.log("[publish] indexing taxonomies + edges (on-disk LMDB)...");
+        const taxoCount = await bulkLoad<MbNode>(taxoDb, streamJsonArray<MbNode>(opts.taxonomies), t => t.name);
+        const edgeCount = await bulkLoad<MbEdge>(edgeDb, streamJsonArray<MbEdge>(opts.edges), (e, seq) => [e.from, seq]);
+        console.log(`[publish] ${taxoCount} taxonomies, ${edgeCount} edges indexed → ${indexDir}`);
 
-    console.log(`[publish] ${allTracks.length} tracks, ${allTaxonomies.length} taxonomies, ${allEdges.length} edges`);
+        // ── 3. Stream tracks and publish in batches (resumable via ledger) ────
+        const ledger: Ledger = loadLedger(ledgerPath) ?? {
+            bundleName: opts.bundleName,
+            bundleSchemaId,
+            batches: [],
+        };
 
-    // ── 3. Publish in batches (resumable via ledger) ──────────────────────────
-    const ledger: Ledger = loadLedger(ledgerPath) ?? {
-        bundleName: opts.bundleName,
-        bundleSchemaId,
-        batches: [],
-    };
-    const completedBatches = new Set(ledger.batches.map(b => b.batchIndex));
-
-    const totalBatches = Math.ceil(allTracks.length / batchSize);
-    console.log(`[publish] ${totalBatches} batches of up to ${batchSize} tracks each`);
-
-    for (let i = 0; i < allTracks.length; i += batchSize) {
-        const batchIdx = Math.floor(i / batchSize);
-        if (completedBatches.has(batchIdx)) {
-            console.log(`[publish] batch ${batchIdx}/${totalBatches - 1} already done, skipping`);
-            continue;
-        }
-
-        const batchTracks = allTracks.slice(i, i + batchSize);
-        const batchNodes: { id: string; type: string; fields: Record<string, FieldInput> }[] = [];
-        const batchEdges: MbEdge[] = [];
-
-        for (const track of batchTracks) {
-            batchNodes.push({ id: track.name, type: "Track", fields: cleanFields(track.fields) });
-            const taxo = taxoByTrack.get(track.name);
-            if (taxo) {
-                batchNodes.push({ id: `taxonomy:${taxo.name}`, type: "TrackTaxonomy", fields: cleanFields(taxo.fields) });
+        // Resume by TRACK OFFSET, not batch index — this stays correct even when
+        // --batch-size changes between runs. A failed batch aborts the run, so the
+        // ledger is always a contiguous 0..N-1 prefix covering the first
+        // `tracksDone` tracks; assert that before trusting the offset.
+        const sortedIdx = ledger.batches.map(b => b.batchIndex).sort((a, b) => a - b);
+        sortedIdx.forEach((idx, i) => {
+            if (idx !== i) {
+                throw new Error(
+                    `Ledger batch indices are not a contiguous 0..N prefix (gap near index ${idx}); ` +
+                    `offset-based resume would be unsafe. Inspect ${ledgerPath}.`,
+                );
             }
-            const edges = edgesByTrack.get(track.name) ?? [];
-            batchEdges.push(...edges);
-        }
-
-        const batchDataset = `${opts.dataset}.batch${batchIdx}`;
-        console.log(`[publish] batch ${batchIdx}/${totalBatches - 1}: ${batchTracks.length} tracks → ${batchDataset}`);
-
-        const manifestUri = await withRetry(
-            `batch ${batchIdx}`,
-            maxRetries,
-            () => testbed.publishBundle(opts.bundleName, batchNodes, batchEdges, batchDataset),
-        );
-
-        ledger.batches.push({
-            batchIndex: batchIdx,
-            dataset: batchDataset,
-            manifestUri,
-            trackCount: batchTracks.length,
-            publishedAt: new Date().toISOString(),
         });
-        saveLedger(ledgerPath, ledger);
-        console.log(`  ✓ manifest: ${manifestUri}`);
-    }
+        const tracksDone = ledger.batches.reduce((sum, b) => sum + b.trackCount, 0);
+        let nextBatchIdx = ledger.batches.length;
+        const firstNewIdx = nextBatchIdx;
+        if (tracksDone > 0) {
+            console.log(`[publish] resuming: ${tracksDone} tracks already published across ${nextBatchIdx} batches — skipping those`);
+        }
+        console.log(`[publish] publishing remaining tracks in batches of up to ${batchSize}`);
+
+        let seen = 0;
+        let trackTotal = 0;
+        let batchTracks: MbNode[] = [];
+
+        const flushBatch = async (): Promise<void> => {
+            const tracks = batchTracks;
+            batchTracks = []; // release the batch buffer immediately
+            if (tracks.length === 0) return;
+            const thisIdx = nextBatchIdx++;
+            const batchDataset = `${opts.dataset}.batch${thisIdx}`;
+
+            const batchNodes: { id: string; type: string; fields: Record<string, FieldInput> }[] = [];
+            const batchEdges: MbEdge[] = [];
+            for (const track of tracks) {
+                batchNodes.push({ id: track.name, type: "Track", fields: cleanFields(track.fields) });
+                const taxo = taxoDb.get(track.name) as MbNode | undefined;
+                if (taxo) {
+                    batchNodes.push({ id: `taxonomy:${taxo.name}`, type: "TrackTaxonomy", fields: cleanFields(taxo.fields) });
+                }
+                // all edges whose `from === track.name` are the contiguous [name, *] range
+                for (const { value } of edgeDb.getRange({ start: [track.name], end: [`${track.name}\x00`] })) {
+                    batchEdges.push(value as MbEdge);
+                }
+            }
+
+            console.log(`[publish] batch ${thisIdx}: ${tracks.length} tracks → ${batchDataset}`);
+            const manifestUri = await withRetry(
+                `batch ${thisIdx}`,
+                maxRetries,
+                () => testbed.publishBundle(opts.bundleName, batchNodes, batchEdges, batchDataset),
+            );
+
+            ledger.batches.push({
+                batchIndex: thisIdx,
+                dataset: batchDataset,
+                manifestUri,
+                trackCount: tracks.length,
+                publishedAt: new Date().toISOString(),
+            });
+            saveLedger(ledgerPath, ledger);
+            console.log(`  ✓ manifest: ${manifestUri}`);
+        };
+
+        for await (const track of streamJsonArray<MbNode>(opts.tracks)) {
+            seen++;
+            if (seen <= tracksDone) continue; // already published in a prior run
+            batchTracks.push(track);
+            trackTotal++;
+            if (batchTracks.length >= batchSize) await flushBatch();
+        }
+        await flushBatch();
+        console.log(`[publish] ${trackTotal} new tracks across ${nextBatchIdx - firstNewIdx} new batches`);
 
     console.log("\n✅ All batches published.\n");
     console.log(`  bundle name : ${opts.bundleName}`);
@@ -281,6 +360,11 @@ async function main(): Promise<void> {
     console.log(`    --bundle "${opts.bundleName}=${bundleSchemaId}" \\`);
     console.log(`    --root-type Track \\`);
     console.log(`    --reset\n`);
+    } finally {
+        // Tear down the temporary on-disk index.
+        await indexEnv.close();
+        rmSync(indexDir, { recursive: true, force: true });
+    }
 }
 
 main().catch(err => {
