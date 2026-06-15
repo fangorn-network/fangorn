@@ -19,7 +19,7 @@ function normalize(v: bigint): bigint {
 }
 
 export function poseidonHash(inputs: bigint[]): bigint {
-    return BigInt(poseidon2(inputs.map(normalize)));
+    return poseidon2(inputs.map(normalize));
 }
 
 function bytesToField(chunk: Uint8Array): bigint {
@@ -42,7 +42,13 @@ export interface ManifestLeaf {
     name: string;
 }
 
+/* eslint-disable @typescript-eslint/no-extraneous-class */
 export class MerkleTree {
+    protected constructor() {
+        throw new Error("MerkleTree is a static utility class and cannot be instantiated.");
+    }
+
+    // Removed `this: void` to fix the no-invalid-void-type error
     static leafHash(leaf: ManifestLeaf): bigint {
         return poseidonHash([
             leaf.index,
@@ -57,7 +63,8 @@ export class MerkleTree {
             Number(a.index - b.index),
         );
 
-        let current = sorted.map(MerkleTree.leafHash);
+        // Wrapping in an inline arrow function dynamically satisfies unbound-method 
+        let current = sorted.map(leaf => MerkleTree.leafHash(leaf));
         const layers: bigint[][] = [current];
 
         while (current.length > 1) {
@@ -98,7 +105,7 @@ export class MerkleTree {
     }
 
     static rootToHex(root: bigint): Hex {
-        return `0x${root.toString(16).padStart(64, "0")}` as Hex;
+        return `0x${root.toString(16).padStart(64, "0")}`;
     }
 }
 
@@ -172,14 +179,14 @@ export class DataSourceRegistry {
                 abi: DS_REGISTRY_ABI,
                 functionName: "get",
                 args: [owner, schemaId, name],
-            }) as Promise<readonly [string, Hex]>,
+            }),
 
             this.publicClient.readContract({
                 address: this.contractAddress,
                 abi: DS_REGISTRY_ABI,
                 functionName: "getVersion",
                 args: [owner, schemaId, name],
-            }) as Promise<bigint>,
+            }),
         ]);
 
         const [manifestCid, merkleRoot] = tuple;

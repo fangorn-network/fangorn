@@ -11,10 +11,8 @@ import {
     log,
 } from "@clack/prompts";
 import {
-    createWalletClient,
     type Hex,
     type Address,
-    http,
 } from "viem";
 import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import {
@@ -31,16 +29,14 @@ import {
 import streamArray from "stream-json/streamers/stream-array.js";
 import { extname, join } from "path";
 import { homedir } from "os";
-import { Identity } from "@semaphore-protocol/identity";
 import "dotenv/config";
 
 import { Fangorn } from "../fangorn.js";
-import { getChain, handleCancel, selectChain } from "./index.js";
+import { handleCancel, selectChain } from "./index.js";
 import type { SchemaDefinition } from "../roles/schema/index.js";
 import { AgentConfig } from "../types/index.js";
 import { AppConfig, FangornConfig, SupportedNetworks } from "../config.js";
 import { PublishRecord } from "../roles/publisher/types.js";
-import { DataSourceRegistry } from "../registries/datasource-registry/index.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

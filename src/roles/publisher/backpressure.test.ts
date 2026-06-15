@@ -23,10 +23,13 @@ describe("PublisherRole.publish backpressure", () => {
         let completedUploads = 0;
         let maxLeadChunks = 0;
 
+        // Must be an async generator to satisfy AsyncIterable<PublishRecord>; the
+        // lazy yield is what lets the test measure backpressure, not the awaiting.
+        // eslint-disable-next-line @typescript-eslint/require-await
         async function* source(): AsyncIterable<PublishRecord> {
             for (let i = 0; i < TOTAL; i++) {
                 produced++;
-                yield { name: `rec-${i}`, fields: { x: `${i}` } };
+                yield { name: `rec-${i.toString()}`, fields: { x: i.toString() } };
             }
         }
 
@@ -41,23 +44,25 @@ describe("PublisherRole.publish backpressure", () => {
                 await new Promise((r) => setTimeout(r, 2));
                 inFlight--;
                 completedUploads++;
-                return `cid-${completedUploads}-${Math.random().toString(36).slice(2, 8)}`;
+                return `cid-${completedUploads.toString()}-${Math.random().toString(36).slice(2, 8)}`;
             },
-            async get<T>(): Promise<T> {
-                return { definition: { x: { "@type": "string" } } } as unknown as T;
+
+            get(): unknown {
+                return { definition: { x: { "@type": "string" } } };
             },
         };
 
         const schemaRegistry = {
-            async getSchema() {
+            getSchema() {
                 return { specCid: "spec-cid" };
             },
-            async schemaId(): Promise<Hex> {
+
+            schemaId(): Hex {
                 return "0x1234567890123456789012345678901234567890123456789012345678901234";
             },
         };
         const dataSourceRegistry = {
-            async publish() {
+            publish() {
                 return undefined;
             },
         };

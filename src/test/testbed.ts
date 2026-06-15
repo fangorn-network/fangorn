@@ -6,14 +6,12 @@ import {
     createWalletClient,
     http,
 } from "viem";
-import { Identity } from "@semaphore-protocol/identity";
 import { arbitrumSepolia, baseSepolia } from "viem/chains";
 import { Fangorn } from "../fangorn.js";
 import { type AppConfig } from "../config.js";
 import { BundleInput, type SchemaDefinition } from "../roles/schema/index.js";
 import { SettlementRegistry } from "../registries/settlement-registry/index.js";
 import { privateKeyToAccount } from "viem/accounts";
-import { DataSourceRegistry } from "../registries/datasource-registry/index.js";
 import { FieldInput, PublishRecord } from "../roles/publisher/types.js";
 import { PrepareSettleResult, TransferWithAuthPayload } from "../registries/settlement-registry/types.js";
 
@@ -102,8 +100,8 @@ export class TestBed {
         records: PublishRecord[],
         schemaName: string,
         datasetName: string,
-        chunkSize?: any,
-        concurrency?: any
+        chunkSize?: number,
+        concurrency?: number
     ): Promise<string> {
         const { manifestUri } = await this.delegatorFangorn.publisher.publishRecords({
             records,

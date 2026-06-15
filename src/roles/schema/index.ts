@@ -11,12 +11,12 @@ export type RegisterSchemaParams =
     | { kind?: "resolver"; name: string; definition: SchemaDefinition }
     | { kind: "bundle"; name: string; bundle: BundleInput };
 
-type RegisteredSchemaBase = {
+interface RegisteredSchemaBase {
     schemaId: Hex;
     schemaCid: string;
     name: string;
     owner: Hex;
-};
+}
 export type RegisteredSchema =
     | (RegisteredSchemaBase & { kind: "resolver"; definition: SchemaDefinition })
     | (RegisteredSchemaBase & { kind: "bundle"; bundle: ResolvedBundle });
@@ -92,13 +92,13 @@ export class SchemaRole {
         );
 
         input.edges.forEach((e, i) => {
-            if (!e.rel) errors.push(`edge[${i}] missing rel`);
-            if (!(e.from in input.nodes)) errors.push(`edge[${i}] "${e.rel}" from undeclared type "${e.from}"`);
-            if (!(e.to in input.nodes)) errors.push(`edge[${i}] "${e.rel}" to undeclared type "${e.to}"`);
+            if (!e.rel) errors.push(`edge[${i.toString()}] missing rel`);
+            if (!(e.from in input.nodes)) errors.push(`edge[${i.toString()}] "${e.rel}" from undeclared type "${e.from}"`);
+            if (!(e.to in input.nodes)) errors.push(`edge[${i.toString()}] "${e.rel}" to undeclared type "${e.to}"`);
             const min = e.min ?? 0;
             const max = e.max ?? null;
-            if (min < 0) errors.push(`edge[${i}] "${e.rel}" min < 0`);
-            if (max !== null && max < min) errors.push(`edge[${i}] "${e.rel}" max(${max}) < min(${min})`);
+            if (min < 0) errors.push(`edge[${i.toString()}] "${e.rel}" min < 0`);
+            if (max !== null && max < min) errors.push(`edge[${i.toString()}] "${e.rel}" max(${max.toString()}) < min(${min.toString()})`);
         });
 
         if (errors.length) throw new Error("Invalid bundle shape:\n" + errors.map(e => ` - ${e}`).join("\n"));
@@ -159,6 +159,14 @@ export class SchemaRole {
 
 function isSchemaAlreadyExists(err: unknown): boolean {
     if (!(err instanceof Error)) return false;
-    const data = (err as any)?.cause?.data ?? (err as any)?.data;
+
+    const causeObj = (err.cause) as Record<string, unknown> | undefined;
+    const causeData = causeObj?.data as Record<string, unknown> | undefined;
+
+    const errorObj = (err as unknown) as Record<string, unknown>;
+    const errorData = errorObj.data as Record<string, unknown> | undefined;
+
+    const data = causeData ?? errorData;
+
     return data?.errorName === "SchemaAlreadyExists";
 }

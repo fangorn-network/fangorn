@@ -73,8 +73,8 @@ const TAXONOMY_SCHEMA: SchemaDefinition = {
 };
 
 // ── types matching mb.py output ───────────────────────────────────────────────
-type MbNode = { name: string; fields: Record<string, unknown> };
-type MbEdge = { rel: string; from: string; to: string };
+interface MbNode { name: string; fields: Record<string, unknown> }
+interface MbEdge { rel: string; from: string; to: string }
 
 /**
  * Stream the elements of a top-level JSON array file one at a time. Avoids
@@ -135,7 +135,7 @@ async function withRetry<T>(label: string, maxAttempts: number, fn: () => Promis
         } catch (err) {
             if (attempt === maxAttempts) throw err;
             const delayMs = 2000 * attempt;
-            console.warn(`  [retry] ${label} failed (attempt ${attempt}/${maxAttempts}), retrying in ${delayMs / 1000}s: ${(err as Error).message}`);
+            console.warn(`  [retry] ${label} failed (attempt ${attempt.toString()}/${maxAttempts.toString()}), retrying in ${(delayMs / 1000).toString()}s: ${(err as Error).message}`);
             await new Promise(r => setTimeout(r, delayMs));
         }
     }
@@ -196,9 +196,9 @@ const opts = program.opts<{
 
 function requireEnv(): void {
     const missing: string[] = [];
-    if (!SK) missing.push("DELEGATOR_ETH_PRIVATE_KEY");
-    if (!DATA_SOURCE_REGISTRY_ADDRESS) missing.push("DATA_SOURCE_REGISTRY_ADDRESS");
-    if (!SCHEMA_REGISTRY_ADDRESS) missing.push("SCHEMA_REGISTRY_ADDRESS");
+    if (SK === "0x") missing.push("DELEGATOR_ETH_PRIVATE_KEY");
+    if (DATA_SOURCE_REGISTRY_ADDRESS === "0x") missing.push("DATA_SOURCE_REGISTRY_ADDRESS");
+    if (SCHEMA_REGISTRY_ADDRESS === "0x") missing.push("SCHEMA_REGISTRY_ADDRESS");
     if (!process.env.PINATA_JWT) missing.push("PINATA_JWT");
     if (missing.length) {
         throw new Error(`Missing env vars: ${missing.join(", ")}`);
@@ -267,7 +267,7 @@ async function main(): Promise<void> {
         console.log("[publish] indexing taxonomies + edges (on-disk LMDB)...");
         const taxoCount = await bulkLoad<MbNode>(taxoDb, streamJsonArray<MbNode>(opts.taxonomies), t => t.name);
         const edgeCount = await bulkLoad<MbEdge>(edgeDb, streamJsonArray<MbEdge>(opts.edges), (e, seq) => [e.from, seq]);
-        console.log(`[publish] ${taxoCount} taxonomies, ${edgeCount} edges indexed → ${indexDir}`);
+        console.log(`[publish] ${taxoCount.toString()} taxonomies, ${edgeCount.toString()} edges indexed → ${indexDir}`);
 
         // ── 3. Stream tracks and publish in batches (resumable via ledger) ────
         const ledger: Ledger = loadLedger(ledgerPath) ?? {
@@ -284,7 +284,7 @@ async function main(): Promise<void> {
         sortedIdx.forEach((idx, i) => {
             if (idx !== i) {
                 throw new Error(
-                    `Ledger batch indices are not a contiguous 0..N prefix (gap near index ${idx}); ` +
+                    `Ledger batch indices are not a contiguous 0..N prefix (gap near index ${idx.toString()}); ` +
                     `offset-based resume would be unsafe. Inspect ${ledgerPath}.`,
                 );
             }
@@ -293,9 +293,9 @@ async function main(): Promise<void> {
         let nextBatchIdx = ledger.batches.length;
         const firstNewIdx = nextBatchIdx;
         if (tracksDone > 0) {
-            console.log(`[publish] resuming: ${tracksDone} tracks already published across ${nextBatchIdx} batches — skipping those`);
+            console.log(`[publish] resuming: ${tracksDone.toString()} tracks already published across ${nextBatchIdx.toString()} batches — skipping those`);
         }
-        console.log(`[publish] publishing remaining tracks in batches of up to ${batchSize}`);
+        console.log(`[publish] publishing remaining tracks in batches of up to ${batchSize.toString()}`);
 
         let seen = 0;
         let trackTotal = 0;
@@ -306,7 +306,7 @@ async function main(): Promise<void> {
             batchTracks = []; // release the batch buffer immediately
             if (tracks.length === 0) return;
             const thisIdx = nextBatchIdx++;
-            const batchDataset = `${opts.dataset}.batch${thisIdx}`;
+            const batchDataset = `${opts.dataset}.batch${thisIdx.toString()}`;
 
             const batchNodes: { id: string; type: string; fields: Record<string, FieldInput> }[] = [];
             const batchEdges: MbEdge[] = [];
@@ -322,9 +322,9 @@ async function main(): Promise<void> {
                 }
             }
 
-            console.log(`[publish] batch ${thisIdx}: ${tracks.length} tracks → ${batchDataset}`);
+            console.log(`[publish] batch ${thisIdx.toString()}: ${tracks.length.toString()} tracks → ${batchDataset}`);
             const manifestUri = await withRetry(
-                `batch ${thisIdx}`,
+                `batch ${thisIdx.toString()}`,
                 maxRetries,
                 () => testbed.publishBundle(opts.bundleName, batchNodes, batchEdges, batchDataset),
             );
@@ -348,12 +348,12 @@ async function main(): Promise<void> {
             if (batchTracks.length >= batchSize) await flushBatch();
         }
         await flushBatch();
-        console.log(`[publish] ${trackTotal} new tracks across ${nextBatchIdx - firstNewIdx} new batches`);
+        console.log(`[publish] ${trackTotal.toString()} new tracks across ${(nextBatchIdx - firstNewIdx).toString()} new batches`);
 
     console.log("\n✅ All batches published.\n");
     console.log(`  bundle name : ${opts.bundleName}`);
     console.log(`  bundle id   : ${bundleSchemaId}`);
-    console.log(`  batches     : ${ledger.batches.length}`);
+    console.log(`  batches     : ${ledger.batches.length.toString()}`);
     console.log(`  ledger      : ${ledgerPath}`);
     console.log("\nBuild embeddings with:\n");
     console.log(`  quickbeam build \\`);
@@ -367,7 +367,7 @@ async function main(): Promise<void> {
     }
 }
 
-main().catch(err => {
+main().catch((err: unknown) => {
     console.error("\n[publish] failed:", err);
     process.exit(1);
 });

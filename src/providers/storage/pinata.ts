@@ -1,8 +1,4 @@
 import { PinataSDK } from "pinata";
-import { CID } from "multiformats";
-import { sha256 } from "multiformats/hashes/sha2";
-import * as raw from "multiformats/codecs/raw";
-import { CarWriter } from "@ipld/car";
 import { MetadataStorage, StorageMeta } from "./types.js";
 import { serialize, retrieveByCid } from "./utils.js";
 
@@ -48,7 +44,7 @@ export class PinataBackend implements MetadataStorage {
 
             try {
                 // 2. Upload this sub-batch as an independent folder
-                const batchName = `batch-${Date.now().toString()}-${i}`;
+                const batchName = `batch-${Date.now().toString()}-${i.toString()}`;
                 const upload = await this.pinata.upload.public
                     .fileArray(filesToUpload)
                     .name(batchName);
@@ -61,7 +57,7 @@ export class PinataBackend implements MetadataStorage {
                 }
 
             } catch (error) {
-                console.error(`❌ Pinata sub-batch upload failure at offset ${i}:`, error);
+                console.error(`❌ Pinata sub-batch upload failure at offset ${i.toString()}:`, error);
                 throw error;
             }
         }

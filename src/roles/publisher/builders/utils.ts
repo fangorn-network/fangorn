@@ -2,22 +2,24 @@ import type { FieldDefinition, SchemaDefinition } from "../../schema/types";
 import type {
     FieldInput,
     HandleFieldInput,
-    ManifestEntry,
     PublishRecord,
     ResolvedField,
     ResolvedHandleField,
 } from "../types";
 
-export function isHandleFieldInput(value: FieldInput): value is HandleFieldInput {
+export function isHandleFieldInput(value: FieldInput | undefined): value is HandleFieldInput {
     return (
         typeof value === "object" &&
         value !== null &&
         "@type" in value &&
-        (value as any)["@type"] === "handle"
+        (value as { "@type"?: unknown })["@type"] === "handle"
     );
 }
 
-export function resolveRecord(record: PublishRecord, schema: SchemaDefinition): ManifestEntry {
+export function resolveRecord(
+    record: PublishRecord,
+    schema: SchemaDefinition,
+): { name: string; fields: Record<string, ResolvedField> } {
     const resolved: Record<string, ResolvedField> = {};
     for (const [fieldName] of Object.entries(schema)) {
         const value = record.fields[fieldName];
@@ -44,7 +46,7 @@ export function validateRecord(record: PublishRecord, schema: SchemaDefinition):
     }
 }
 
-function validateField(fieldName: string, fieldDef: FieldDefinition, value: FieldInput, errors: string[]): void {
+function validateField(fieldName: string, fieldDef: FieldDefinition, value: FieldInput | undefined, errors: string[]): void {
     if (isHandleFieldInput(value)) return;
     const rawType = fieldDef["@type"];
     const nullable = rawType.includes("| null");
