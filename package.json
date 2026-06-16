@@ -71,10 +71,12 @@
 		"dotenv": "^17.2.3",
 		"ethers": "^6.16.0",
 		"ipfs-car": "^3.1.0",
+		"lmdb": "^3.5.5",
 		"multiformats": "^14.0.0",
 		"pinata": "^2.5.2",
 		"poseidon-lite": "^0.3.0",
 		"solc": "^0.8.28",
+		"stream-json": "^3.4.0",
 		"viem": "^2.47.1"
 	},
 	"overrides": {

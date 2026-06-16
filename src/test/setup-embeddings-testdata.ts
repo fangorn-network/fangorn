@@ -90,8 +90,8 @@ const ARTIST_SCHEMA: SchemaDefinition = {
 };
 
 // ── a few entries — deliberately tiny ────────────────────────────────────────
-type Node = { id: string; type: string; fields: Record<string, FieldInput> };
-type Edge = { rel: string; from: string; to: string };
+interface Node { id: string; type: string; fields: Record<string, FieldInput> }
+interface Edge { rel: string; from: string; to: string }
 
 const NODES: Node[] = [
     { id: "artist-aurora", type: "Artist", fields: { name: "Aurora Skies", country: "Norway" } },
@@ -120,9 +120,9 @@ function makeWallet(key: Hex) {
 
 function requireEnv() {
     const missing: string[] = [];
-    if (!SK) missing.push("DELEGATOR_ETH_PRIVATE_KEY");
-    if (!DATA_SOURCE_REGISTRY_ADDRESS) missing.push("DATA_SOURCE_REGISTRY_ADDRESS");
-    if (!SCHEMA_REGISTRY_ADDRESS) missing.push("SCHEMA_REGISTRY_ADDRESS");
+    if (SK === "0x") missing.push("DELEGATOR_ETH_PRIVATE_KEY");
+    if (DATA_SOURCE_REGISTRY_ADDRESS === "0x") missing.push("DATA_SOURCE_REGISTRY_ADDRESS");
+    if (SCHEMA_REGISTRY_ADDRESS === "0x") missing.push("SCHEMA_REGISTRY_ADDRESS");
     if (!process.env.PINATA_JWT) missing.push("PINATA_JWT");
     if (missing.length) {
         throw new Error(
@@ -148,7 +148,7 @@ async function main() {
         WORKER_URL,
     );
 
-    const suffix = `${Date.now()}.${Math.random().toString(36).substring(2, 5)}`;
+    const suffix = `${Date.now().toString()}.${Math.random().toString(36).substring(2, 5)}`;
     const trackSchema = `fangorn.track.${suffix}`;
     const artistSchema = `fangorn.artist.${suffix}`;
     const bundleName = `fangorn.music.bundle.${suffix}`;
@@ -165,7 +165,7 @@ async function main() {
     };
     const bundleSchemaId = await testbed.registerBundle(bundleName, bundle);
 
-    console.log(`[setup] publishing ${NODES.length} nodes / ${EDGES.length} edges as one v3 bundle ...`);
+    console.log(`[setup] publishing ${NODES.length.toString()} nodes / ${EDGES.length.toString()} edges as one v3 bundle ...`);
     const manifestUri = await testbed.publishBundle(bundleName, NODES, EDGES, datasetName);
 
     appendLedger({ bundleName, bundleSchemaId, datasetName, manifestUri, createdAt: new Date().toISOString() });
@@ -183,7 +183,7 @@ async function main() {
     console.log(`Recorded in ${LEDGER_FILE} — unpin later with: pnpm cleanup:embeddings\n`);
 }
 
-main().catch((err) => {
+main().catch((err: unknown) => {
     console.error("\n[setup] failed:", err);
     process.exit(1);
 });

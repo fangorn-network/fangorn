@@ -11,25 +11,32 @@ import {
     log,
 } from "@clack/prompts";
 import {
-    createWalletClient,
     type Hex,
     type Address,
-    http,
 } from "viem";
 import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
-import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from "fs";
+import {
+    existsSync,
+    mkdirSync,
+    readFileSync,
+    writeFileSync,
+    chmodSync,
+    createReadStream,
+    openSync,
+    readSync,
+    closeSync,
+} from "fs";
+import streamArray from "stream-json/streamers/stream-array.js";
 import { extname, join } from "path";
 import { homedir } from "os";
-import { Identity } from "@semaphore-protocol/identity";
 import "dotenv/config";
 
 import { Fangorn } from "../fangorn.js";
-import { getChain, handleCancel, selectChain } from "./index.js";
+import { handleCancel, selectChain } from "./index.js";
 import type { SchemaDefinition } from "../roles/schema/index.js";
 import { AgentConfig } from "../types/index.js";
 import { AppConfig, FangornConfig, SupportedNetworks } from "../config.js";
 import { PublishRecord } from "../roles/publisher/types.js";
-import { DataSourceRegistry } from "../registries/datasource-registry/index.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -316,6 +323,30 @@ schemaCmd
 
 // ─── publish ──────────────────────────────────────────────────────────────────
 
+/**
+ * Cheaply read the first non-whitespace byte of a file without loading it.
+ * Used to decide between streaming an array ("[") and reading a single object.
+ */
+function peekFirstNonWsByte(filepath: string): number | undefined {
+    const fd = openSync(filepath, "r");
+    try {
+        const buf = Buffer.alloc(64);
+        let offset = 0;
+        for (;;) {
+            const bytesRead = readSync(fd, buf, 0, buf.length, offset);
+            if (bytesRead === 0) return undefined;
+            for (let i = 0; i < bytesRead; i++) {
+                const b = buf[i];
+                // skip ASCII whitespace: space, tab, LF, CR
+                if (b !== 0x20 && b !== 0x09 && b !== 0x0a && b !== 0x0d) return b;
+            }
+            offset += bytesRead;
+        }
+    } finally {
+        closeSync(fd);
+    }
+}
+
 const publishCmd = program
     .command("publish")
     .description("Publisher operations");
@@ -326,27 +357,48 @@ publishCmd
     .argument("<files...>", "JSON file(s) containing PublishRecord(s)")
     .requiredOption("-s, --schema <schemaName>", "Schema name or bytes32 ID")
     .requiredOption("-d, --dataset <datasetName>", "Dataset name (groups entries under a manifest)")
+    .option("--chunk-size <n>", "Records per chunk (default 1000)", (v) => parseInt(v, 10))
+    .option("--concurrency <n>", "Parallel chunk uploads (default 10)", (v) => parseInt(v, 10))
     .action(async (
         files: string[],
-        options: { schema: string; dataset: string; price: string },
+        options: { schema: string; dataset: string; chunkSize?: number; concurrency?: number },
     ) => {
         try {
             const fangorn = getFangorn();
             const s = spinner();
 
-            const records: PublishRecord[] = files.flatMap((filepath) => {
-                const data = readFileSync(filepath, "utf-8");
-                const parsed = JSON.parse(data) as unknown;
-                return Array.isArray(parsed)
-                    ? (parsed as PublishRecord[])
-                    : ([parsed] as PublishRecord[]);
-            });
+            // Stream records lazily so a multi-GB array file is never fully
+            // resident in memory. publishRecords/RecordSetBuilder consume the
+            // async iterable directly, and publish() applies upload backpressure.
+            let published = 0;
+            async function* streamRecords(): AsyncIterable<PublishRecord> {
+                for (const filepath of files) {
+                    if (peekFirstNonWsByte(filepath) === 0x5b /* "[" */) {
+                        const pipeline = createReadStream(filepath).pipe(
+                            streamArray.withParserAsStream(),
+                        );
+                        for await (const { value } of pipeline as AsyncIterable<{ value: PublishRecord }>) {
+                            yield value;
+                            if (++published % 10_000 === 0) {
+                                s.message(`Publishing... ${published.toLocaleString()} records read`);
+                            }
+                        }
+                    } else {
+                        // Single top-level object (or non-array): tiny, read directly.
+                        const parsed = JSON.parse(readFileSync(filepath, "utf-8")) as PublishRecord;
+                        yield parsed;
+                        published++;
+                    }
+                }
+            }
 
             s.start("Publishing...");
             const result = await fangorn.publisher.publishRecords({
-                records,
+                records: streamRecords(),
                 schemaName: options.schema,
                 datasetName: options.dataset,
+                chunkSize: options.chunkSize,
+                concurrency: options.concurrency,
             });
             s.stop();
 

@@ -1,4 +1,3 @@
-// import { poseidon2Hash } from "./utils";
 import { TREE_DEPTH } from "./constants.js";
 
 export function hashCidToField(cid: string): bigint {
@@ -10,35 +9,6 @@ export function hashCidToField(cid: string): bigint {
 	}
 	return value;
 }
-
-// export async function buildTreeFromLeaves(leaves: bigint[]): Promise<{
-// 	root: bigint;
-// 	layers: bigint[][];
-// }> {
-// 	const size = 2 ** TREE_DEPTH;
-// 	const paddedLeaves = [...leaves];
-// 	while (paddedLeaves.length < size) {
-// 		paddedLeaves.push(0n);
-// 	}
-
-// 	const layers: bigint[][] = [paddedLeaves];
-// 	let current = paddedLeaves;
-
-// 	while (current.length > 1) {
-// 		const next: bigint[] = [];
-// 		for (let i = 0; i < current.length; i += 2) {
-// 			const hash = await poseidon2Hash(current[i], current[i + 1]);
-// 			next.push(hash);
-// 		}
-// 		layers.push(next);
-// 		current = next;
-// 	}
-
-// 	return {
-// 		root: layers[layers.length - 1][0],
-// 		layers,
-// 	};
-// }
 
 export function getProof(
 	layers: bigint[][],
@@ -59,7 +29,7 @@ export function getProof(
 }
 
 export function fieldToHex(field: bigint): `0x${string}` {
-	return `0x${field.toString(16).padStart(64, "0")}` as `0x${string}`;
+	return `0x${field.toString(16).padStart(64, "0")}`;
 }
 
 export function hexToField(hex: string): bigint {

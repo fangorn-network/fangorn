@@ -29,7 +29,8 @@ import { LEDGER_FILE, type LedgerEntry } from "./setup-embeddings-testdata.js";
 const SK = process.env.DELEGATOR_ETH_PRIVATE_KEY as Hex;
 const RPC_URL = process.env.RPC_URL ?? process.env.CHAIN_RPC_URL ?? "https://sepolia-rollup.arbitrum.io/rpc";
 const WORKER_URL = process.env.WORKER_URL ?? "http://localhost:8787";
-const PINATA_JWT = process.env.PINATA_JWT;
+// will fail if the jwt is not provided
+const PINATA_JWT = process.env.PINATA_JWT ?? "";
 
 const SETTLEMENT_REGISTRY_ADDRESS = process.env.SETTLEMENT_REGISTRY_ADDRESS as Address;
 const DATA_SOURCE_REGISTRY_ADDRESS = process.env.DATA_SOURCE_REGISTRY_ADDRESS as Address;
@@ -62,7 +63,7 @@ async function unpinFromPinata(cid: string): Promise<boolean> {
             console.log(`  - ${cid} not pinned (already gone)`);
             return true;
         }
-        console.warn(`  ✗ ${cid}: ${response.status} ${response.statusText}`);
+        console.warn(`  ✗ ${cid}: ${response.status.toString()} ${response.statusText}`);
         return false;
     } catch (err) {
         console.warn(`  ✗ ${cid}: request failed`, err);
@@ -107,7 +108,7 @@ async function main() {
             const manifest = await publisher.getBundleManifestByCid(entry.manifestUri);
             if (manifest) {
                 for (const c of manifest.nodeChunks) cids.push(c.dataCid);
-                if (manifest.edgeChunk?.dataCid) cids.push(manifest.edgeChunk.dataCid);
+                if (manifest.edgeChunk.dataCid) cids.push(manifest.edgeChunk.dataCid);
             } else {
                 console.warn("  (could not read manifest — unpinning manifest CID only)");
             }
@@ -130,7 +131,7 @@ async function main() {
     }
 }
 
-main().catch((err) => {
+main().catch((err: unknown) => {
     console.error("\n[cleanup] failed:", err);
     process.exit(1);
 });

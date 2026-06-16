@@ -119,7 +119,7 @@ export class ConsumerRole {
 
             const manifest = await PinataBackend.getStatic<Manifest>(ds.manifestCid, gateway);
 
-            manifest.entries.forEach(entry  => {
+            manifest.entries.forEach(entry => {
                 if (entry.name === name) return entry;
             });
             return undefined;
@@ -144,17 +144,24 @@ export class ConsumerRole {
         const entry = await this.getEntry(owner, schemaId, name)
         if (!entry) throw new Error("Entry not found")
 
-        const fieldValue = entry.fields[field]
+        const fieldValue = entry.fields[field];
 
-        if (!fieldValue || typeof fieldValue !== 'object' || !('@type' in fieldValue)) {
+        if (!fieldValue || typeof fieldValue !== 'object') {
             throw new Error(`Field "${field}" is missing or is not a handle field`)
         }
+
+        if (typeof fieldValue !== 'object' || !('@type' in fieldValue)) {
+            throw new Error(`Field "${field}" is missing or is not a handle field`)
+        }
+
         if (fieldValue['@type'] !== 'handle') {
             throw new Error(`Field "${field}" is not a handle field. Read it directly from the entry`)
         }
+
         const handle = fieldValue as ResolvedHandleField;
         const objectKey = parseObjectKey(handle.uri);
         const resourceId = this.deriveResourceId(owner, schemaId, name)
+
         return this.fetch({
             nullifier,
             resourceId,

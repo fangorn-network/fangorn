@@ -9,16 +9,16 @@ import type {
     ResolvedHandleField,
 } from "../types";
 
-export function isHandleFieldInput(value: FieldInput): value is HandleFieldInput {
+export function isHandleFieldInput(value: FieldInput | undefined): value is HandleFieldInput {
     return (
         typeof value === "object" &&
         value !== null &&
         "@type" in value &&
-        (value as any)["@type"] === "handle"
+        (value as { "@type"?: unknown })["@type"] === "handle"
     );
 }
 
-export function resolveRecord(record: PublishRecord, schema: SchemaDoc): ManifestEntry {
+export function resolveRecord(record: PublishRecord, schema: SchemaDoc): ManifestEntry  {
     const resolved: Record<string, ResolvedField> = {};
     for (const [fieldName] of Object.entries(schema.fields)) {
         const value = record.fields[fieldName];
