@@ -54,7 +54,7 @@ export class ConsumerRole {
         });
         return { txHash: hash, nullifier, resourceId };
     }
-    
+
     /**
      * Fetch a handle field's content from the Fangorn access worker.
      *
@@ -103,24 +103,29 @@ export class ConsumerRole {
         }
     }
 
-    async getManifest(owner: Address, schemaId: Hex, name: string): Promise<Manifest | undefined> {
+    async checkManifestExists(who: Address, schemaId: Hex, name: string): Promise<boolean> {
         try {
-            const ds = await this.dataSourceRegistry.get(owner, schemaId, name);
-            if (!ds.manifestCid || ds.manifestCid === "") return undefined;
-            return await PinataBackend.getStatic<Manifest>(ds.manifestCid);
+            const ds = await this.dataSourceRegistry.get(who, schemaId, name);
+            return !!ds.manifestCid && ds.manifestCid !== "";
         } catch {
-            return undefined;
+            return false;
         }
     }
 
-    async getEntry(owner: Address, schemaId: Hex, name: string): Promise<ManifestEntry> {
-        const manifest = await this.getManifest(owner, schemaId, name);
-        if (!manifest) {
-            throw new Error(`No manifest found for owner ${owner} / schemaId ${schemaId} / name ${name}`);
+    async getEntry(owner: Address, schemaId: Hex, name: string, gateway?: string): Promise<ManifestEntry | undefined> {
+        try {
+            const ds = await this.dataSourceRegistry.get(owner, schemaId, name);
+            if (!ds.manifestCid || ds.manifestCid === "") return undefined;
+
+            const manifest = await PinataBackend.getStatic<Manifest>(ds.manifestCid, gateway);
+
+            manifest.entries.forEach(entry => {
+                if (entry.name === name) return entry;
+            });
+            return undefined;
+        } catch {
+            return undefined;
         }
-        const entry = manifest.entries.find((e) => e.name === name);
-        if (!entry) throw new Error(`Entry not found: "${name}"`);
-        return entry;
     }
 
     /**
@@ -135,17 +140,28 @@ export class ConsumerRole {
         nullifier: string,
         walletClient: WalletClient,
     ): Promise<FetchResult> {
+        // TODO: entry can be undefined
         const entry = await this.getEntry(owner, schemaId, name)
-        const fieldValue = entry.fields[field]
-        if (!fieldValue || typeof fieldValue !== 'object' || !('@type' in fieldValue)) {
+        if (!entry) throw new Error("Entry not found")
+
+        const fieldValue = entry.fields[field];
+
+        if (!fieldValue || typeof fieldValue !== 'object') {
             throw new Error(`Field "${field}" is missing or is not a handle field`)
         }
+
+        if (typeof fieldValue !== 'object' || !('@type' in fieldValue)) {
+            throw new Error(`Field "${field}" is missing or is not a handle field`)
+        }
+
         if (fieldValue['@type'] !== 'handle') {
             throw new Error(`Field "${field}" is not a handle field. Read it directly from the entry`)
         }
+
         const handle = fieldValue as ResolvedHandleField;
         const objectKey = parseObjectKey(handle.uri);
         const resourceId = this.deriveResourceId(owner, schemaId, name)
+
         return this.fetch({
             nullifier,
             resourceId,
@@ -166,7 +182,7 @@ export class ConsumerRole {
     }
 
     private deriveResourceId(owner: Address, schemaId: Hex, name: string): Hex {
-        return DataSourceRegistry.resourceIdLocal(owner, schemaId, name);
+        return DataSourceRegistry.resourceId(owner, schemaId, name);
     }
 }
 

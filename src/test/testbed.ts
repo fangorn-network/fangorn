@@ -6,19 +6,14 @@ import {
     createWalletClient,
     http,
 } from "viem";
-import { Identity } from "@semaphore-protocol/identity";
 import { arbitrumSepolia, baseSepolia } from "viem/chains";
 import { Fangorn } from "../fangorn.js";
 import { type AppConfig } from "../config.js";
-import { type SchemaDefinition } from "../roles/schema/index.js";
-import { type PublishRecord } from "../roles/publisher/index.js";
+import { BundleInput, type SchemaDefinition } from "../roles/schema/index.js";
 import { SettlementRegistry } from "../registries/settlement-registry/index.js";
 import { privateKeyToAccount } from "viem/accounts";
-import {
-    PrepareSettleResult,
-    TransferWithAuthPayload, 
-} from "../registries/settlement-registry/types.js";
-import { DataSourceRegistry } from "../registries/datasource-registry/index.js";
+import { FieldInput, PublishRecord } from "../roles/publisher/types.js";
+import { PrepareSettleResult, TransferWithAuthPayload } from "../registries/settlement-registry/types.js";
 
 export class TestBed {
     private constructor(
@@ -53,7 +48,7 @@ export class TestBed {
             chain: chainImpl,
             rpcUrl,
             caip2,
-            ipfsGateway: "https://ipfs.io",
+            ipfsGateway: process.env.PINATA_GATEWAY ?? "https://ipfs.io",
         };
 
         const delegatorFangorn = Fangorn.create({
@@ -86,30 +81,60 @@ export class TestBed {
         );
     }
 
+    // "resolver" funcs
+
     // Schema owner
     async registerSchema(
         name: string,
         definition: SchemaDefinition,
-        agentId: string,
     ): Promise<Hex> {
         const { schemaId } = await this.delegatorFangorn.schema.register({
             name,
             definition,
-            agentId,
         });
         return schemaId;
     }
 
     // Publisher
-    async fileUpload(
+    async publish(
         records: PublishRecord[],
         schemaName: string,
-        price: bigint,
+        datasetName: string,
+        chunkSize?: number,
+        concurrency?: number
     ): Promise<string> {
-        const { manifestUri } = await this.delegatorFangorn.publisher.upload({
+        const { manifestUri } = await this.delegatorFangorn.publisher.publishRecords({
             records,
             schemaName,
-        }, price);
+            datasetName,
+            chunkSize,
+            concurrency,
+        });
+        return manifestUri;
+    }
+
+    // "bundle" funcs
+    async registerBundle(name: string, bundle: BundleInput): Promise<Hex> {
+        const { schemaId } = await this.delegatorFangorn.schema.register({
+            kind: "bundle",
+            name,
+            bundle,
+        });
+        return schemaId;
+    }
+
+    async publishBundle(
+        bundleName: string,
+        nodes: { id: string; type: string; fields: Record<string, FieldInput> }[],
+        edges: { rel: string; from: string; to: string }[],
+        datasetName?: string,
+    ): Promise<string> {
+        const { manifestUri } = await this.getDelegatorFangorn().publisher.publishBundle({
+            bundleName,
+            nodes,
+            edges,
+            datasetName,
+        });
         return manifestUri;
     }
 
@@ -154,20 +179,21 @@ export class TestBed {
         return txHash;
     }
 
-    // Consumer Phase 2: settle
-    async prepareSettle(
-        owner: Address,
-        schemaId: Hex,
-        name: string,
-        identity: Identity,
-        stealthAddress: Address,
-    ): Promise<PrepareSettleResult> {
-        return this.delegateeFangorn.consumer.prepareSettle({
-            resourceId: DataSourceRegistry.resourceIdLocal(owner, schemaId, name),
-            identity,
-            stealthAddress,
-        });
-    }
+    // TODO!
+    // // Consumer Phase 2: settle
+    // async prepareSettle(
+    //     owner: Address,
+    //     schemaId: Hex,
+    //     name: string,
+    //     identity: Identity,
+    //     stealthAddress: Address,
+    // ): Promise<PrepareSettleResult> {
+    //     return this.delegateeFangorn.consumer.prepareSettle({
+    //         resourceId: DataSourceRegistry.resourceIdLocal(owner, schemaId, name),
+    //         identity,
+    //         stealthAddress,
+    //     });
+    // }
 
     async settle(
         owner: Address,
@@ -213,17 +239,8 @@ export class TestBed {
     }
 
     async checkManifestExists(who: Address, schemaId: Hex, name: string): Promise<boolean> {
-        const manifest = await this.delegatorFangorn.consumer.getManifest(who, schemaId, name);
-        return manifest !== undefined;
-    }
-
-    async checkEntryExists(who: Address, schemaId: Hex, name: string): Promise<boolean> {
-        try {
-            await this.delegatorFangorn.consumer.getEntry(who, schemaId, name);
-            return true;
-        } catch {
-            return false;
-        }
+        const entry = await this.delegatorFangorn.consumer.checkManifestExists(who, schemaId, name);
+        return entry;
     }
 
     getDelegatorAddress(): Address { return this.delegatorAddress; }

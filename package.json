@@ -1,6 +1,6 @@
 {
 	"name": "@fangorn-network/sdk",
-	"version": "2026.05.11",
+	"version": "2026.06.11",
 	"description": "A zero-knowledge conditional access control framework",
 	"repository": {
 		"type": "git",
@@ -24,6 +24,8 @@
 		"test:e2e": "dotenvx run -f .env -- vitest run --config vitest.e2e.config.ts",
 		"tsc": "tsc",
 		"deploy": "dotenvx run -f .env -- tsx deploy.ts",
+		"setup:embeddings": "dotenvx run -f .env -- tsx src/test/setup-embeddings-testdata.ts",
+		"cleanup:embeddings": "dotenvx run -f .env -- tsx src/test/cleanup-embeddings-testdata.ts",
 		"prepare:cli": "npm run build",
 		"fangorn": "dotenvx run -f .env -- node dist/src/cli/cli.js"
 	},
@@ -52,7 +54,11 @@
 	},
 	"dependencies": {
 		"@a2a-js/sdk": "^0.3.10",
+		"@aztec/bb.js": "^4.3.0",
 		"@clack/prompts": "^1.0.1",
+		"@ipld/car": "^5.4.6",
+		"@noble/hashes": "^2.2.0",
+		"@noir-lang/noir_js": "1.0.0-beta.22",
 		"@semaphore-protocol/group": "^4.14.2",
 		"@semaphore-protocol/identity": "^4.14.2",
 		"@semaphore-protocol/proof": "^4.14.2",
@@ -61,8 +67,13 @@
 		"commander": "^14.0.3",
 		"dotenv": "^17.2.3",
 		"ethers": "^6.16.0",
+		"ipfs-car": "^3.1.0",
+		"lmdb": "^3.5.5",
+		"multiformats": "^14.0.0",
 		"pinata": "^2.5.2",
+		"poseidon-lite": "^0.3.0",
 		"solc": "^0.8.28",
+		"stream-json": "^3.4.0",
 		"viem": "^2.47.1"
 	},
 	"overrides": {

@@ -11,25 +11,32 @@ import {
     log,
 } from "@clack/prompts";
 import {
-    createWalletClient,
     type Hex,
     type Address,
-    http,
 } from "viem";
 import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
-import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync } from "fs";
+import {
+    existsSync,
+    mkdirSync,
+    readFileSync,
+    writeFileSync,
+    chmodSync,
+    createReadStream,
+    openSync,
+    readSync,
+    closeSync,
+} from "fs";
+import streamArray from "stream-json/streamers/stream-array.js";
 import { extname, join } from "path";
 import { homedir } from "os";
-import { Identity } from "@semaphore-protocol/identity";
 import "dotenv/config";
 
 import { Fangorn } from "../fangorn.js";
-import { getChain, handleCancel, selectChain } from "./index.js";
+import { handleCancel, selectChain } from "./index.js";
 import type { SchemaDefinition } from "../roles/schema/index.js";
-import type { PublishRecord } from "../roles/publisher/index.js";
 import { AgentConfig } from "../types/index.js";
 import { AppConfig, FangornConfig, SupportedNetworks } from "../config.js";
-import { DataSourceRegistry } from "../registries/datasource-registry/index.js";
+import { PublishRecord } from "../roles/publisher/types.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -95,6 +102,7 @@ function loadConfig(): Config {
             pinataGateway: pinataGateway ?? "",
             workerUrl: workerUrl ?? "",
         };
+
         return _config;
     }
 
@@ -126,6 +134,9 @@ function getFangorn(): Fangorn {
     if (_fangorn) return _fangorn;
 
     const cfg = loadConfig();
+
+    console.log(JSON.stringify(cfg))
+
     const agentConfig: AgentConfig = { privateKey: cfg.privateKey, pinataJwt: cfg.pinataJwt };
 
     _fangorn = Fangorn.create({
@@ -273,7 +284,6 @@ schemaCmd
             const { schemaId, schemaCid } = await fangorn.schema.register({
                 name,
                 definition,
-                agentId: "",
             });
             s.stop();
 
@@ -313,6 +323,30 @@ schemaCmd
 
 // ─── publish ──────────────────────────────────────────────────────────────────
 
+/**
+ * Cheaply read the first non-whitespace byte of a file without loading it.
+ * Used to decide between streaming an array ("[") and reading a single object.
+ */
+function peekFirstNonWsByte(filepath: string): number | undefined {
+    const fd = openSync(filepath, "r");
+    try {
+        const buf = Buffer.alloc(64);
+        let offset = 0;
+        for (;;) {
+            const bytesRead = readSync(fd, buf, 0, buf.length, offset);
+            if (bytesRead === 0) return undefined;
+            for (let i = 0; i < bytesRead; i++) {
+                const b = buf[i];
+                // skip ASCII whitespace: space, tab, LF, CR
+                if (b !== 0x20 && b !== 0x09 && b !== 0x0a && b !== 0x0d) return b;
+            }
+            offset += bytesRead;
+        }
+    } finally {
+        closeSync(fd);
+    }
+}
+
 const publishCmd = program
     .command("publish")
     .description("Publisher operations");
@@ -322,34 +356,50 @@ publishCmd
     .description("Publish file handle(s) under a schema")
     .argument("<files...>", "JSON file(s) containing PublishRecord(s)")
     .requiredOption("-s, --schema <schemaName>", "Schema name or bytes32 ID")
-    .option("-p, --price <USDC>", "Resource price in USDC (smallest unit)", "0")
-    .option("-o, --overwrite", "Overwrite existing entries instead of merging", false)
+    .requiredOption("-d, --dataset <datasetName>", "Dataset name (groups entries under a manifest)")
+    .option("--chunk-size <n>", "Records per chunk (default 1000)", (v) => parseInt(v, 10))
+    .option("--concurrency <n>", "Parallel chunk uploads (default 10)", (v) => parseInt(v, 10))
     .action(async (
         files: string[],
-        options: { schema: string; price: string; overwrite: boolean },
+        options: { schema: string; dataset: string; chunkSize?: number; concurrency?: number },
     ) => {
         try {
             const fangorn = getFangorn();
-            const price = BigInt(options.price);
             const s = spinner();
 
-            const records: PublishRecord[] = files.flatMap((filepath) => {
-                const data = readFileSync(filepath, "utf-8");
-                const parsed = JSON.parse(data) as unknown;
-                return Array.isArray(parsed)
-                    ? (parsed as PublishRecord[])
-                    : ([parsed] as PublishRecord[]);
-            });
+            // Stream records lazily so a multi-GB array file is never fully
+            // resident in memory. publishRecords/RecordSetBuilder consume the
+            // async iterable directly, and publish() applies upload backpressure.
+            let published = 0;
+            async function* streamRecords(): AsyncIterable<PublishRecord> {
+                for (const filepath of files) {
+                    if (peekFirstNonWsByte(filepath) === 0x5b /* "[" */) {
+                        const pipeline = createReadStream(filepath).pipe(
+                            streamArray.withParserAsStream(),
+                        );
+                        for await (const { value } of pipeline as AsyncIterable<{ value: PublishRecord }>) {
+                            yield value;
+                            if (++published % 10_000 === 0) {
+                                s.message(`Publishing... ${published.toLocaleString()} records read`);
+                            }
+                        }
+                    } else {
+                        // Single top-level object (or non-array): tiny, read directly.
+                        const parsed = JSON.parse(readFileSync(filepath, "utf-8")) as PublishRecord;
+                        yield parsed;
+                        published++;
+                    }
+                }
+            }
 
             s.start("Publishing...");
-            const result = await fangorn.publisher.upload(
-                {
-                    records,
-                    schemaName: options.schema,
-                    options: { overwrite: options.overwrite },
-                },
-                price,
-            );
+            const result = await fangorn.publisher.publishRecords({
+                records: streamRecords(),
+                schemaName: options.schema,
+                datasetName: options.dataset,
+                chunkSize: options.chunkSize,
+                concurrency: options.concurrency,
+            });
             s.stop();
 
             note(
@@ -369,12 +419,17 @@ publishCmd
     .command("entry")
     .description("Show details for one of your manifest entries")
     .argument("<tag>", "Entry tag / name")
-    .requiredOption("-s, --schema <schemaName>", "Schema name or bytes32 ID")
-    .action(async (tag: string, options: { schema: string }) => {
+    .requiredOption("-s, --schema <schemaName>", "Schema name")
+    .requiredOption("-d, --dataset <datasetName>", "Dataset name")
+    .action(async (tag: string, options: { schema: string; dataset: string }) => {
         try {
             const fangorn = getFangorn();
-            const schemaId = await resolveSchemaId(fangorn, options.schema);
-            const entry = await fangorn.publisher.getEntry(schemaId, tag);
+            const s = spinner();
+
+            s.start(`Fetching entry "${tag}"...`);
+            const entry = await fangorn.publisher.getEntry(options.schema, options.dataset, tag);
+            s.stop();
+
             note(JSON.stringify(entry, null, 2), `Entry: ${tag}`);
             process.exit(0);
         } catch (err) {
@@ -398,7 +453,7 @@ consumeCmd
         try {
             const fangorn = getFangorn();
             const schemaId = await resolveSchemaId(fangorn, options.schema);
-            const manifest = await fangorn.consumer.getManifest(options.owner, schemaId, options.schema);
+            const manifest = await fangorn.consumer.getEntry(options.owner, schemaId, options.schema);
 
             if (!manifest) {
                 log.warn("No manifest found.");
@@ -407,10 +462,6 @@ consumeCmd
 
             console.log(`Owner:   ${options.owner}`);
             console.log(`Schema:  ${options.schema}`);
-            console.log(`Entries (${manifest.entries.length.toString()}):`);
-            for (const entry of manifest.entries) {
-                console.log(`  - ${entry.name}`);
-            }
             process.exit(0);
         } catch (err) {
             console.error("Failed:", (err as Error).message);
@@ -437,200 +488,200 @@ consumeCmd
         }
     });
 
-consumeCmd
-    .command("purchase")
-    .description("Phase 1: pay and join the access group")
-    .argument("<owner>", "Publisher address")
-    .argument("<name>", "Entry name")
-    .requiredOption("-s, --schema <schemaName>", "Schema name or bytes32 ID")
-    .requiredOption("--burner-key <hex>", "Burner wallet private key (pays USDC)")
-    .requiredOption("--amount <usdc>", "USDC amount in smallest unit")
-    .requiredOption("--usdc <address>", "USDC contract address")
-    .action(async (
-        owner: Address,
-        name: string,
-        options: { schema: string; burnerKey: Hex; amount: string; usdc: Address },
-    ) => {
-        try {
-            const fangorn = getFangorn();
-            const cfg = loadConfig();
-            const schemaId = await resolveSchemaId(fangorn, options.schema);
-            const relayerKey = cfg.privateKey;
-            const s = spinner();
+// consumeCmd
+//     .command("purchase")
+//     .description("Phase 1: pay and join the access group")
+//     .argument("<owner>", "Publisher address")
+//     .argument("<name>", "Entry name")
+//     .requiredOption("-s, --schema <schemaName>", "Schema name or bytes32 ID")
+//     .requiredOption("--burner-key <hex>", "Burner wallet private key (pays USDC)")
+//     .requiredOption("--amount <usdc>", "USDC amount in smallest unit")
+//     .requiredOption("--usdc <address>", "USDC contract address")
+//     .action(async (
+//         owner: Address,
+//         name: string,
+//         options: { schema: string; burnerKey: Hex; amount: string; usdc: Address },
+//     ) => {
+//         try {
+//             const fangorn = getFangorn();
+//             const cfg = loadConfig();
+//             const schemaId = await resolveSchemaId(fangorn, options.schema);
+//             const relayerKey = cfg.privateKey;
+//             const s = spinner();
 
-            const identity = new Identity();
-            const chain = getChain(cfg.cfg.chainName);
-            const walletClient = createWalletClient({
-                account: privateKeyToAccount(options.burnerKey),
-                chain,
-                transport: http(cfg.cfg.rpcUrl),
-            });
+//             const identity = new Identity();
+//             const chain = getChain(cfg.cfg.chainName);
+//             const walletClient = createWalletClient({
+//                 account: privateKeyToAccount(options.burnerKey),
+//                 chain,
+//                 transport: http(cfg.cfg.rpcUrl),
+//             });
 
-            s.start("Preparing ERC-3009 authorization...");
-            const preparedRegister = await fangorn.consumer.prepareRegister({
-                walletClient,
-                paymentRecipient: owner,
-                amount: BigInt(options.amount),
-                usdcAddress: options.usdc,
-                usdcDomainName: "USD Coin",
-                usdcDomainVersion: "2",
-            });
-            s.stop();
+//             s.start("Preparing ERC-3009 authorization...");
+//             const preparedRegister = await fangorn.consumer.prepareRegister({
+//                 walletClient,
+//                 paymentRecipient: owner,
+//                 amount: BigInt(options.amount),
+//                 usdcAddress: options.usdc,
+//                 usdcDomainName: "USD Coin",
+//                 usdcDomainVersion: "2",
+//             });
+//             s.stop();
 
-            s.start("Submitting registration...");
-            const { txHash } = await fangorn.consumer.register({
-                owner,
-                schemaId,
-                name,
-                identityCommitment: identity.commitment,
-                relayerPrivateKey: relayerKey,
-                preparedRegister,
-            });
-            s.stop();
+//             s.start("Submitting registration...");
+//             const { txHash } = await fangorn.consumer.register({
+//                 owner,
+//                 schemaId,
+//                 name,
+//                 identityCommitment: identity.commitment,
+//                 relayerPrivateKey: relayerKey,
+//                 preparedRegister,
+//             });
+//             s.stop();
 
-            const exported = identity.export();
+//             const exported = identity.export();
 
-            note(
-                [
-                    `Tx: ${txHash}`,
-                    ``,
-                    `⚠️  Save this identity string — you will need it for \`claim\`:`,
-                    ``,
-                    `  ${exported}`,
-                    ``,
-                    `Next:`,
-                    `  fangorn consume claim ${owner} ${name} \\`,
-                    `    -s ${options.schema} \\`,
-                    `    --identity '${exported}' \\`,
-                    `    --stealth <your-stealth-address>`,
-                ].join("\n"),
-                "Purchase complete ✓",
-            );
-            process.exit(0);
-        } catch (err) {
-            console.error("Failed:", (err as Error).message);
-            process.exit(1);
-        }
-    });
+//             note(
+//                 [
+//                     `Tx: ${txHash}`,
+//                     ``,
+//                     `⚠️  Save this identity string — you will need it for \`claim\`:`,
+//                     ``,
+//                     `  ${exported}`,
+//                     ``,
+//                     `Next:`,
+//                     `  fangorn consume claim ${owner} ${name} \\`,
+//                     `    -s ${options.schema} \\`,
+//                     `    --identity '${exported}' \\`,
+//                     `    --stealth <your-stealth-address>`,
+//                 ].join("\n"),
+//                 "Purchase complete ✓",
+//             );
+//             process.exit(0);
+//         } catch (err) {
+//             console.error("Failed:", (err as Error).message);
+//             process.exit(1);
+//         }
+//     });
 
-consumeCmd
-    .command("claim")
-    .description("Phase 2: prove membership and claim access")
-    .argument("<owner>", "Publisher address")
-    .argument("<name>", "Entry name")
-    .requiredOption("-s, --schema <schemaName>", "Schema name or bytes32 ID")
-    .requiredOption("--identity <string>", "Exported identity from `consume purchase`")
-    .requiredOption("--stealth <address>", "Stealth address to receive the access token")
-    .action(async (
-        owner: Address,
-        name: string,
-        options: { schema: string; identity: string; stealth: Address },
-    ) => {
-        try {
-            const fangorn = getFangorn();
-            const schemaId = await resolveSchemaId(fangorn, options.schema);
-            const relayerKey = loadConfig().privateKey;
-            const identity = new Identity(options.identity);
-            const s = spinner();
+// consumeCmd
+//     .command("claim")
+//     .description("Phase 2: prove membership and claim access")
+//     .argument("<owner>", "Publisher address")
+//     .argument("<name>", "Entry name")
+//     .requiredOption("-s, --schema <schemaName>", "Schema name or bytes32 ID")
+//     .requiredOption("--identity <string>", "Exported identity from `consume purchase`")
+//     .requiredOption("--stealth <address>", "Stealth address to receive the access token")
+//     .action(async (
+//         owner: Address,
+//         name: string,
+//         options: { schema: string; identity: string; stealth: Address },
+//     ) => {
+//         try {
+//             const fangorn = getFangorn();
+//             const schemaId = await resolveSchemaId(fangorn, options.schema);
+//             const relayerKey = loadConfig().privateKey;
+//             const identity = new Identity(options.identity);
+//             const s = spinner();
 
-            s.start("Generating ZK proof...");
-            const preparedSettle = await fangorn.consumer.prepareSettle({
-                resourceId: DataSourceRegistry.resourceIdLocal(owner, schemaId, name),
-                identity,
-                stealthAddress: options.stealth,
-            });
-            s.stop();
+//             s.start("Generating ZK proof...");
+//             const preparedSettle = await fangorn.consumer.prepareSettle({
+//                 resourceId: DataSourceRegistry.resourceIdLocal(owner, schemaId, name),
+//                 identity,
+//                 stealthAddress: options.stealth,
+//             });
+//             s.stop();
 
-            s.start("Submitting settlement...");
-            const { txHash, nullifier } = await fangorn.consumer.claim({
-                owner,
-                schemaId,
-                name,
-                relayerPrivateKey: relayerKey,
-                preparedSettle,
-            });
-            s.stop();
+//             s.start("Submitting settlement...");
+//             const { txHash, nullifier } = await fangorn.consumer.claim({
+//                 owner,
+//                 schemaId,
+//                 name,
+//                 relayerPrivateKey: relayerKey,
+//                 preparedSettle,
+//             });
+//             s.stop();
 
-            note(
-                [
-                    `Tx:        ${txHash}`,
-                    `Nullifier: ${nullifier.toString()}`,
-                    ``,
-                    `Next:`,
-                    `  fangorn consume fetch ${owner} ${name} \\`,
-                    `    -s ${options.schema} \\`,
-                    `    -f <field> \\`,
-                    `    --nullifier ${nullifier.toString()} \\`,
-                    `    --stealth-key <stealth-private-key> \\`,
-                    `    -o out.mp3`,
-                ].join("\n"),
-                "Claim complete ✓",
-            );
-            process.exit(0);
-        } catch (err) {
-            console.error("Failed:", (err as Error).message);
-            process.exit(1);
-        }
-    });
+//             note(
+//                 [
+//                     `Tx:        ${txHash}`,
+//                     `Nullifier: ${nullifier.toString()}`,
+//                     ``,
+//                     `Next:`,
+//                     `  fangorn consume fetch ${owner} ${name} \\`,
+//                     `    -s ${options.schema} \\`,
+//                     `    -f <field> \\`,
+//                     `    --nullifier ${nullifier.toString()} \\`,
+//                     `    --stealth-key <stealth-private-key> \\`,
+//                     `    -o out.mp3`,
+//                 ].join("\n"),
+//                 "Claim complete ✓",
+//             );
+//             process.exit(0);
+//         } catch (err) {
+//             console.error("Failed:", (err as Error).message);
+//             process.exit(1);
+//         }
+//     });
 
-consumeCmd
-    .command("fetch")
-    .description("Fetch a field after purchase and claim")
-    .argument("<owner>", "Publisher address")
-    .argument("<name>", "Entry name")
-    .requiredOption("-s, --schema <schemaName>", "Schema name or bytes32 ID")
-    .requiredOption("-f, --field <field>", "Field name to fetch")
-    .requiredOption("--nullifier <bigint>", "Nullifier from `consume claim`")
-    .requiredOption("--stealth-key <hex>", "Private key of the stealth address")
-    .option("-o, --output <path>", "Write output to file (default: stdout)")
-    .action(async (
-        owner: Address,
-        name: string,
-        options: {
-            schema: string;
-            field: string;
-            nullifier: string;
-            stealthKey: Hex;
-            output?: string;
-        },
-    ) => {
-        try {
-            const cfg = loadConfig();
-            const chain = getChain(cfg.cfg.chainName);
-            const fangorn = getFangorn();
-            const schemaId = await resolveSchemaId(fangorn, options.schema);
-            const s = spinner();
+// consumeCmd
+//     .command("fetch")
+//     .description("Fetch a field after purchase and claim")
+//     .argument("<owner>", "Publisher address")
+//     .argument("<name>", "Entry name")
+//     .requiredOption("-s, --schema <schemaName>", "Schema name or bytes32 ID")
+//     .requiredOption("-f, --field <field>", "Field name to fetch")
+//     .requiredOption("--nullifier <bigint>", "Nullifier from `consume claim`")
+//     .requiredOption("--stealth-key <hex>", "Private key of the stealth address")
+//     .option("-o, --output <path>", "Write output to file (default: stdout)")
+//     .action(async (
+//         owner: Address,
+//         name: string,
+//         options: {
+//             schema: string;
+//             field: string;
+//             nullifier: string;
+//             stealthKey: Hex;
+//             output?: string;
+//         },
+//     ) => {
+//         try {
+//             const cfg = loadConfig();
+//             const chain = getChain(cfg.cfg.chainName);
+//             const fangorn = getFangorn();
+//             const schemaId = await resolveSchemaId(fangorn, options.schema);
+//             const s = spinner();
 
-            const walletClient = createWalletClient({
-                account: privateKeyToAccount(options.stealthKey),
-                chain,
-                transport: http(cfg.cfg.rpcUrl),
-            });
+//             const walletClient = createWalletClient({
+//                 account: privateKeyToAccount(options.stealthKey),
+//                 chain,
+//                 transport: http(cfg.cfg.rpcUrl),
+//             });
 
-            s.start("Fetching...");
-            const { data } = await fangorn.consumer.fetchField(
-                owner,
-                schemaId,
-                name,
-                options.field,
-                options.nullifier,
-                walletClient,
-            );
-            s.stop();
-
-            if (options.output) {
-                writeFileSync(options.output, Buffer.from(data));
-                console.log(`Saved to: ${options.output}`);
-            } else {
-                process.stdout.write(Buffer.from(data));
-                process.stdout.write("\n");
-            }
-            process.exit(0);
-        } catch (err) {
-            console.error("Failed:", (err as Error).message);
-            process.exit(1);
-        }
-    });
+//             s.start("Fetching...");
+//             const { data } = await fangorn.consumer.fetchField(
+//                 owner,
+//                 schemaId,
+//                 name,
+//                 options.field,
+//                 options.nullifier,
+//                 walletClient,
+//             );
+//             s.stop();
+        
+//             if (options.output) {
+//                 writeFileSync(options.output, Buffer.from(data));
+//                 console.log(`Saved to: ${options.output}`);
+//             } else {
+//                 process.stdout.write(Buffer.from(data));
+//                 process.stdout.write("\n");
+//             }
+//             process.exit(0);
+//         } catch (err) {
+//             console.error("Failed:", (err as Error).message);
+//             process.exit(1);
+//         }
+//     });
 
 // ─── datasource ───────────────────────────────────────────────────────────────
 

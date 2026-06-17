@@ -1,44 +1,27 @@
-import { describe, it, expect, beforeAll } from "vitest";
-import {
-    createWalletClient,
-    http,
-    type Address,
-    type Hex,
-} from "viem";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { createWalletClient, http, type Address, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { arbitrumSepolia } from "viem/chains";
-import { Identity } from "@semaphore-protocol/identity";
 import { TestBed } from "./test/index.js";
-import { SchemaDefinition } from "./roles/schema/types.js";
-import { DataSourceRegistry } from "./registries/datasource-registry/index.js";
-import { PublishRecord } from "./roles/publisher/types.js";
+import { BundleInput, SchemaDefinition } from "./roles/schema/types.js";
+import { FieldInput, PublishRecord } from "./roles/publisher/types.js";
 
-const SK = (process.env.DELEGATOR_ETH_PRIVATE_KEY ?? "0xde0e6c1c331fcd8692463d6ffcf20f9f2e1847264f7a3f578cf54f62f05196cb") as Hex;
-const BURNER_SK = (process.env.DELEGATEE_ETH_PRIVATE_KEY ?? "0xcbd236ee5a2fd07e8c9ef9198a23d869b7be792ca1ad76b35a6c67453839aaba") as Hex;
+const SK = process.env.DELEGATOR_ETH_PRIVATE_KEY as Hex;
 const RPC_URL = process.env.RPC_URL ?? "https://sepolia-rollup.arbitrum.io/rpc";
 const WORKER_URL = process.env.WORKER_URL ?? "http://localhost:8787";
 
 const OWNER_KEY = SK;
-const FACILITATOR_KEY = SK;
-const BURNER_KEY = BURNER_SK;
+const PINATA_JWT = process.env.PINATA_JWT;
 
-const PINATA_JWT = process.env.PINATA_JWT ?? "";
-const PINATA_GW = process.env.PINATA_GATEWAY ?? "https://gateway.pinata.cloud";
-
-const SETTLEMENT_REGISTRY_ADDRESS = (process.env.SETTLEMENT_REGISTRY_ADDRESS ?? "0x7c261c222beaa4f866e7f33de7704906d1245a2a") as Address;
-const DATA_SOURCE_REGISTRY_ADDRESS = (process.env.DATA_SOURCE_REGISTRY_ADDRESS ?? "0x3941c7d50caa56f7f676554bc4e78d77aaf27ebb") as Address;
-const SCHEMA_REGISTRY_ADDRESS = (process.env.SCHEMA_REGISTRY_ADDRESS ?? "0x49ab3d52b997e63ad56c91178df48263fd80b2dc") as Address;
+const SETTLEMENT_REGISTRY_ADDRESS = process.env.SETTLEMENT_REGISTRY_ADDRESS as Address;
+const DATA_SOURCE_REGISTRY_ADDRESS = process.env.DATA_SOURCE_REGISTRY_ADDRESS as Address;
+const SCHEMA_REGISTRY_ADDRESS = process.env.SCHEMA_REGISTRY_ADDRESS as Address;
 
 const USDC_ADDRESS = (process.env.USDC_ADDRESS ?? "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d") as Address;
-const USDC_AMOUNT = 1n;
 const USDC_DOMAIN = "USD Coin";
-const CAIP_2 = parseInt(process.env.CAIP2 ?? "421614");
 
 const CHAIN = arbitrumSepolia;
-
-const STEALTH_ADDRESS = privateKeyToAccount(BURNER_SK).address;
 const hasIpfs = !!PINATA_JWT;
-const hasWorker = !!process.env.WORKER_URL;
 
 function makeWallet(key: Hex) {
     return createWalletClient({
@@ -48,171 +31,18 @@ function makeWallet(key: Hex) {
     });
 }
 
-
-const ENCRYPTED_FIELD = "audio";
-
-// const MUSIC_SCHEMA: SchemaDefinition = {
-//     title: { "@type": "string" },
-//     artist: { "@type": "string" },
-//     genres: { "@type": "array", items: { "@type": "string" } },
-//     audio: { "@type": "handle" },
-// };
-
-// // r2:// URIs — content already uploaded to R2 out-of-band
-// const TEST_RECORDS: PublishRecord[] = [
-//     {
-//         name: "track-01",
-//         fields: {
-//             title: "Track One",
-//             artist: "Alice",
-//             genres: ["test1", "examen 1"],
-//             audio: { "@type": "handle", uri: "r2://tracks/track-01.mp3", workerUrl: process.env.WORKER_URL ?? "" },
-//         },
-//     },
-//     {
-//         name: "track-02",
-//         fields: {
-//             title: "Track Two",
-//             artist: "Alice",
-//             genres: ["test2", "testTwo"],
-//             audio: { "@type": "handle", uri: "r2://tracks/track-02.mp3", workerUrl: process.env.WORKER_URL ?? "" },
-//         },
-//     },
-// ];
-
-const MUSIC_SCHEMA: SchemaDefinition = {
-    "mbid": {
-        "@type": "string | null"
-    },
-    "title": {
-        "@type": "string"
-    },
-    "artist": {
-        "@type": "string"
-    },
-    "year": {
-        "@type": "number"
-    },
-    "energy": {
-        "@type": "number"
-    },
-    "contributors": {
-        "@type": "array",
-        "items": {
-            "role": {
-                "@type": "string | null"
-            },
-            "name": {
-                "@type": "string | null"
-            },
-            "id": {
-                "@type": "string | null"
-            }
-        }
-    },
-    "genres": {
-        "@type": "array",
-        "items": {
-            "@type": "string"
-        }
-    },
-    "moods": {
-        "@type": "array",
-        "items": {
-            "@type": "string"
-        }
-    },
-    "themes": {
-        "@type": "array",
-        "items": {
-            "@type": "string"
-        }
-    },
-    "contexts": {
-        "@type": "array",
-        "items": {
-            "@type": "string"
-        }
-    }
+const ULTRA_SIMPLE_SCHEMA: SchemaDefinition = {
+    "x": { "@type": "string" }
 };
 
-// r2:// URIs — content already uploaded to R2 out-of-band
-const TEST_RECORDS: PublishRecord[] = [
-    {
-        "name": "1b41c446-dbb4-4977-8d23-87496a199af9",
-        "fields": {
-            "mbid": "1b41c446-dbb4-4977-8d23-87496a199af9",
-            "title": "Analogue Bubblebath 3",
-            "artist": "Aphex Twin",
-            "year": 1993,
-            "energy": 3,
-            "contributors": [],
-            "genres": [
-                "ambient techno",
-                "idm",
-                "rave"
-            ],
-            "moods": [
-                "hypnotic",
-                "dreamy",
-                "euphoric",
-                "floating"
-            ],
-            "themes": [
-                "altered states",
-                "synthesis",
-                "abstraction"
-            ],
-            "contexts": [
-                "late-night",
-                "headphone-listening",
-                "art-installation"
-            ]
-        }
-    },
-    {
-        "name": "e1c3580b-1c05-4984-94f7-ac88ac9834ee",
-        "fields": {
-            "mbid": null,
-            "title": "To Cure a Weakling Child",
-            "artist": "Aphex Twin",
-            "year": 1997,
-            "energy": 2,
-            "contributors": [
-                {
-                    "role": "artist",
-                    "name": "Justin Bieber",
-                    "id": "e0140a67-e4d1-4f13-8a01-364355bee46e"
-                }
-            ],
-            "genres": [
-                "idm",
-                "experimental electronic",
-                "ambient"
-            ],
-            "moods": [
-                "melancholic",
-                "unsettling",
-                "tender",
-                "strange"
-            ],
-            "themes": [
-                "vulnerability",
-                "healing",
-                "fragility"
-            ],
-            "contexts": [
-                "late-night-listening",
-                "headphone-listening",
-                "art-installation"
-            ]
-        }
-    },
-];
+const createdManifestCids: string[] = [];
 
-describe("Fangorn E2E", () => {
+describe("Fangorn Publisher E2E", () => {
+
     let testbed: TestBed;
     let ownerAddress: Address;
+
+    let schemaName: string;
 
     beforeAll(async () => {
         testbed = await TestBed.init(
@@ -231,145 +61,247 @@ describe("Fangorn E2E", () => {
         ownerAddress = privateKeyToAccount(OWNER_KEY).address;
     });
 
-    describe.skipIf(!hasIpfs)("Alice: schema owner", () => {
-        let schemaName: string;
-        let agentId: string;
-        let schemaId: Hex;
-        let nullifierHash: bigint;
-        const price = 1n;
+    afterAll(async () => {
+        // cleanup files after runs
+        if (!hasIpfs || createdManifestCids.length === 0) return;
+        console.log(`\n--- Starting Storage Cleanup Pass (${createdManifestCids.length} entries) ---`);
 
-        it("registers a schema on-chain", async () => {
-            schemaName = `fangorn.music.test.${Date.now()}`;
-            console.log('register schema with name ' + schemaName)
-            agentId = "";
-            schemaId = await testbed.registerSchema(schemaName, MUSIC_SCHEMA, agentId);
-            console.log(schemaId);
-            expect(schemaId).toMatch(/^0x[0-9a-f]{64}$/i);
-        }, 60_000);
+        for (const mCid of createdManifestCids) {
+            try {
+                await unpinFromPinata(mCid);
+            } catch (err) {
+                console.error(`Cleanup failure for CID tracking index ${mCid}:`, err);
+            }
+        }
+    }, 60_000);
 
-        it("can fetch the registered schema by id", async () => {
+
+    describe.skipIf(!hasIpfs)("Schema", () => {
+
+        it("should register a schema successfully", async () => {
+            // register a schema with a unique name
+            schemaName = `fangorn.simple.test.${Date.now()}.${Math.random().toString(36).substring(2, 5)}`;
+            await testbed.registerSchema(schemaName, ULTRA_SIMPLE_SCHEMA);
+            // verify that the schema exists
             const schema = await testbed.getDelegatorFangorn().schema.get(schemaName);
             expect(schema).toBeDefined();
-            expect(schema!.definition).toMatchObject(MUSIC_SCHEMA);
-            expect(schema!.agentId).toBe(agentId);
-            expect(schema!.owner.toLowerCase()).toBe(ownerAddress.toLowerCase());
+            expect(schema?.kind).toBe("resolver");
+
+            if (schema?.kind !== "resolver") throw new Error("expected resolver schema");
+            expect(schema.definition).toMatchObject(ULTRA_SIMPLE_SCHEMA);
+            expect(schema.owner.toLowerCase()).toBe(ownerAddress.toLowerCase());
+        }, 60_000)
+    })
+
+    describe.skipIf(!hasIpfs)("Publish", () => {
+
+        /**
+         * we are publishing a record that looks like:
+         * 
+         * {
+         *   "name": "simple-0",
+         *   "fields": { "x": "Hello, Fangorn: [date].[random]" }
+         * }
+         * 
+         * to the schema registered above
+         * 
+         */
+        it("should upload a single simple record successfully inside a unified chunk", async () => {
+            const singleRecord: PublishRecord[] = [
+                {
+                    name: "simple-0",
+                    fields: { x: `Hello, Fangorn: ${Date.now()}.${Math.random().toString(36).substring(2, 5)}` }
+                }
+            ];
+
+            // random name for dataset
+            const uniqueDatasetName = `ds.single.${Date.now()}.${Math.random().toString(36).substring(2, 7)}`;
+            const manifestUri = await testbed.publish(singleRecord, schemaName, uniqueDatasetName);
+
+            expect(manifestUri).toBeTruthy();
+            createdManifestCids.push(manifestUri);
+
+            // and we can read the entry too
+            const manifest = await testbed.getDelegatorFangorn().publisher.getManifest(schemaName, uniqueDatasetName);
+            expect(manifest).toBeTruthy();
+
+        }, 60_000);
+
+        /**
+          * The SDK chunks records so that you don't need to have a million leaf merkle tree
+          */
+        it("should chunk a larger array payload and build a valid Merkle tree", async () => {
+            const recordCount = 2500;
+            // default chunkSize = 1000;
+            const recordsArray: PublishRecord[] = Array.from({ length: recordCount }, (_, idx) => ({
+                name: `array-rec-${idx}`,
+                fields: { x: `${idx}` }
+            }));
+
+            const uniqueDatasetName = `ds.array.${Date.now()}.${Math.random().toString(36).substring(2, 7)}`;
+
+            const manifestUri = await testbed.publish(recordsArray, schemaName, uniqueDatasetName);
+            expect(manifestUri).toBeTruthy();
+            createdManifestCids.push(manifestUri);
+
+            // Verify a record inside the first chunk and one in the last partial chunk
+            const firstEntry = await testbed.getDelegatorFangorn()
+                .publisher
+                .getEntry(schemaName, uniqueDatasetName, "array-rec-0");
+            expect(firstEntry).toBeDefined();
+
+            const lastEntry = await testbed.getDelegatorFangorn()
+                .publisher
+                .getEntry(schemaName, uniqueDatasetName, `array-rec-${recordCount - 1}`);
+            expect(lastEntry).toBeDefined();
+            expect(lastEntry.fields.x).toBe(`${recordCount - 1}`);
+
         }, 120_000);
 
-        describe("Publisher", () => {
-            it("uploads multiple records and publishes a manifest", async () => {
-                const manifestUri = await testbed.fileUpload(
-                    TEST_RECORDS,
-                    schemaName,
-                    price,
-                );
-                expect(manifestUri).toBeTruthy();
-            }, 60_000);
+        // it("should process and stream data seamlessly using an async iterable generator", async () => {
+        //     const totalRecords = 3500;
+        //     const chunkSize = 500; // Forces 7 full chunk cycles
 
-            it("manifest exists on-chain after upload", async () => {
-                const exists = await testbed.checkManifestExists(
-                    ownerAddress,
-                    schemaId,
-                    TEST_RECORDS[0].name,
-                );
-                expect(exists).toBe(true);
-            }, 60_000);
+        //     // Create an async generator to stream chunks dynamically
+        //     async function* recordStreamGenerator() {
+        //         for (let i = 0; i < totalRecords; i++) {
+        //             yield {
+        //                 name: `stream-rec-${i}`,
+        //                 fields: { x: `Streaming generation line tracking element index: ${i}` }
+        //             } as PublishRecord;
+        //         }
+        //     }
 
-            it("both entries are present in the manifest", async () => {
-                for (const record of TEST_RECORDS) {
-                    const exists = await testbed.checkEntryExists(ownerAddress, schemaId, record.name);
-                    expect(exists).toBe(true);
-                }
-            }, 60_000);
+        //     const uniqueDatasetName = `ds.stream.${Date.now()}.${Math.random().toString(36).substring(2, 7)}`;
 
-            // describe("Consumer", () => {
-            //     let buyerIdentity: Identity;
-            //     // const name = "locura.mp3"
-            //     // schemaId = "";
-            //     const name = TEST_RECORDS[0].name;
+        //     const { manifestUri } = await testbed.getDelegatorFangorn().publisher.upload({
+        //         records: recordStreamGenerator(),
+        //         schemaName,
+        //         datasetName: uniqueDatasetName,
+        //         chunkSize,
+        //         concurrency: 5
+        //     });
 
-            //     beforeAll(() => {
-            //         buyerIdentity = new Identity();
-            //     });
+        //     expect(manifestUri).toBeTruthy();
+        //     createdManifestCids.push(manifestUri);
 
-            //     it("Phase 1: purchase joins the Semaphore group", async () => {
-            //         // burner to owner
-            //         const transferWithAuthPayload = await testbed.prepareRegister(
-            //             BURNER_KEY,
-            //             ownerAddress,
-            //             USDC_AMOUNT,
-            //         );
+        //     // Pull verification entries from disparate chunks out of the generated manifest
+        //     const intermediateEntry = await testbed.getDelegatorFangorn().publisher.getEntry(schemaName, "stream-rec-1750");
+        //     expect(intermediateEntry).toBeDefined();
+        //     expect(intermediateEntry.fields.x).toContain("1750");
 
-            //         // identity registers in the sempaphore group
-            //         const txHash = await testbed.register(
-            //             ownerAddress,
-            //             schemaId,
-            //             name,
-            //             buyerIdentity.commitment,
-            //             FACILITATOR_KEY,
-            //             transferWithAuthPayload,
-            //         );
+        //     const finalEntry = await testbed.getDelegatorFangorn().publisher.getEntry(schemaName, `stream-rec-${totalRecords - 1}`);
+        //     expect(finalEntry).toBeDefined();
+        // }, 180_000);
 
-            //         expect(txHash).toMatch(/^0x[0-9a-f]{64}$/i);
+    });
 
-            //         const resourceId = DataSourceRegistry.resourceIdLocal(ownerAddress, schemaId, name);
-            //         const registered = await testbed
-            //             .getSettlementRegistry()
-            //             .isRegistered(resourceId, buyerIdentity.commitment);
-            //         expect(registered).toBe(true);
-            //     }, 30_000);
+    describe.skipIf(!hasIpfs)("Bundle", () => {
+        let trackSchema: string;
+        let artistSchema: string;
+        let bundleName: string;
 
-            //     it("Phase 2: settle", async () => {
-            //         const payload = await testbed.prepareSettle(
-            //             ownerAddress, schemaId, name,
-            //             buyerIdentity, STEALTH_ADDRESS,
-            //         );
+        const TRACK_SCHEMA: SchemaDefinition = {
+            title: { "@type": "string" },
+        };
+        const ARTIST_SCHEMA: SchemaDefinition = {
+            name: { "@type": "string" },
+        };
 
-            //         const { txHash, nullifier } = await testbed.settle(
-            //             ownerAddress, schemaId, name,
-            //             BURNER_SK, payload,
-            //         );
-            //         nullifierHash = nullifier;
+        it("registers the resolver node schemas", async () => {
+            const suffix = `${Date.now()}.${Math.random().toString(36).substring(2, 5)}`;
+            trackSchema = `fangorn.track.${suffix}`;
+            artistSchema = `fangorn.artist.${suffix}`;
 
-            //         expect(txHash).toMatch(/^0x[0-9a-f]{64}$/i);
+            await testbed.registerSchema(trackSchema, TRACK_SCHEMA);
+            await testbed.registerSchema(artistSchema, ARTIST_SCHEMA);
 
-            //         const resourceId = DataSourceRegistry.resourceIdLocal(ownerAddress, schemaId, name);
+            const t = await testbed.getDelegatorFangorn().schema.get(trackSchema);
+            const a = await testbed.getDelegatorFangorn().schema.get(artistSchema);
+            expect(t?.kind).toBe("resolver");
+            expect(a?.kind).toBe("resolver");
+        }, 90_000);
 
-            //         const isSettled = await testbed
-            //             .getDelegateeFangorn()
-            //             .getSettlementRegistry()
-            //             .isSettled(STEALTH_ADDRESS, resourceId);
-            //         expect(isSettled).toBe(true);
-            //     }, 30_000);
+        /**
+         * Here we are publishing a new schema for the bundle
+         */
+        it("registers a bundle shape over Track and Artist", async () => {
+            bundleName = `fangorn.music.bundle.${Date.now()}.${Math.random().toString(36).substring(2, 5)}`;
 
-            //     it.skipIf(!hasWorker)("Phase 3: fetch - buyer retrieves content via worker", async () => {
-            //         const data = await testbed.fetchContent(
-            //             ownerAddress,
-            //             schemaId,
-            //             name,
-            //             ENCRYPTED_FIELD,
-            //             nullifierHash.toString(),
-            //             BURNER_KEY,
-            //         );
-            //         expect(data).toBeInstanceOf(Uint8Array);
-            //         expect(data.length).toBeGreaterThan(0);
-            //     }, 30_000);
+            console.log("Publishing the bundle name " + bundleName);
 
-            //     it.skipIf(!hasWorker)("Phase 3: fetch fails without settlement", async () => {
-            //         const unsettledIdentity = new Identity();
-            //         // use a fresh keypair that was never settled
-            //         const freshKey = "0x1111111111111111111111111111111111111111111111111111111111111111" as Hex;
-            //         await expect(
-            //             testbed.fetchContent(
-            //                 ownerAddress,
-            //                 schemaId,
-            //                 name,
-            //                 ENCRYPTED_FIELD,
-            //                 "0",
-            //                 freshKey,
-            //             ),
-            //         ).rejects.toThrow("not settled");
-            //     }, 30_000);
-            // });
-        });
+            // define the bundle, encodes relationships between schemas and how they join
+            const bundle: BundleInput = {
+                nodes: { Track: trackSchema, Artist: artistSchema },
+                edges: [{ rel: "performed_by", from: "Track", to: "Artist", min: 1, max: 1 }],
+            };
+
+            await testbed.registerBundle(bundleName, bundle);
+            // the bundle should exist
+            const registered = await testbed.getDelegatorFangorn().schema.get(bundleName);
+            expect(registered?.kind).toBe("bundle");
+
+            if (registered?.kind !== "bundle") throw new Error("expected bundle schema");
+            expect(registered.bundle.nodes.Track).toMatch(/^0x[0-9a-f]{64}$/i);
+        }, 90_000);
+
+        it("publishes a Track+Artist bundle in a single commitment", async () => {
+            // unique name for the collection
+            const datasetName = `ds.bundle.${Date.now()}.${Math.random().toString(36).substring(2, 7)}`;
+
+            // each node is a schema
+            const nodes: { id: string; type: string; fields: Record<string, FieldInput> }[] = [
+                { id: "artist-1", type: "Artist", fields: { name: "Alice" } },
+                { id: "track-1", type: "Track", fields: { title: "Song One" } },
+            ];
+
+            // defines how edges are connected
+            const edges = [{ rel: "performed_by", from: "track-1", to: "artist-1" }];
+
+            // publish tthe bundle onchain
+            const manifestUri = await testbed.publishBundle(bundleName, nodes, edges, datasetName);
+            expect(manifestUri).toBeTruthy();
+            createdManifestCids.push(manifestUri);
+
+            // manifest is a v3 bundle manifest: node chunks per type + one edge chunk
+            const manifest = await testbed.getDelegatorFangorn()
+                .publisher.getBundleManifestByCid(manifestUri);
+            const graph = await testbed.getDelegatorFangorn()
+                .publisher.readBundle(manifest!);
+
+            expect(graph.nodesById.get("track-1")?.fields.title).toBe("Song One");
+            expect(graph.nodesById.get("artist-1")?.fields.name).toBe("Alice");
+            expect(graph.edges).toContainEqual({ rel: "performed_by", from: "track-1", to: "artist-1" });
+            expect(manifest!.kind).toBe("bundle");
+            expect(manifest!.nodeChunks).toHaveLength(2);           // Track + Artist
+            expect(manifest!.edgeChunk?.dataCid).toBeTruthy();
+        }, 90_000);
+
+        it("rejects a bundle whose edge violates min cardinality", async () => {
+            const datasetName = `ds.bundle.bad.${Date.now()}`;
+            const nodes = [
+                { id: "track-x", type: "Track", fields: { title: "Orphan" } },
+            ];
+            // performed_by min=1 but no edge supplied
+            await expect(
+                testbed.publishBundle(bundleName, nodes, [], datasetName),
+            ).rejects.toThrow(/min 1|cardinality/i);
+        }, 60_000);
     });
 });
+
+async function unpinFromPinata(cid: string): Promise<void> {
+    try {
+        const response = await fetch(`https://api.pinata.cloud/pinning/unpin/${cid}`, {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${PINATA_JWT}` }
+        });
+        if (response.ok) {
+            console.log(`Successfully unpinned remote storage hash target: ${cid}`);
+        } else {
+            console.warn(`Unpin validation rejection response for tracking hash ${cid}: ${response.statusText}`);
+        }
+    } catch (err) {
+        console.warn(`Failed endpoint transaction on unpin execution route for asset ${cid}`);
+    }
+}

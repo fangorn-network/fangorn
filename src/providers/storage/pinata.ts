@@ -18,12 +18,62 @@ export class PinataBackend implements MetadataStorage {
         return upload.cid;
     }
 
-    async get<T>(uri: string): Promise<T> {
-        return retrieveByCid<T>(uri);
+    async putMany(items: { data: unknown; name: string }[]): Promise<Record<string, string>> {
+        if (items.length === 0) return {};
+
+        const uriMap: Record<string, string> = {};
+
+        // Pinata free tier max file array limit per HTTP request
+        const PINATA_MAX_FILES = 500;
+
+        // Process the items in sub-batches of 500 to satisfy the free tier constraint
+        for (let i = 0; i < items.length; i += PINATA_MAX_FILES) {
+            const subBatch = items.slice(i, i + PINATA_MAX_FILES);
+
+            // 1. Convert data to standard browser-compatible File objects
+            const filesToUpload = subBatch.map(({ data, name }) => {
+                const content = typeof data === "string" ? data : JSON.stringify(data);
+
+                // Keep the relative sub-path layout to force directory wrapping
+                return new File(
+                    [content],
+                    `manifests/${name}.json`,
+                    { type: "application/json" }
+                );
+            });
+
+            try {
+                // 2. Upload this sub-batch as an independent folder
+                const batchName = `batch-${Date.now().toString()}-${i.toString()}`;
+                const upload = await this.pinata.upload.public
+                    .fileArray(filesToUpload)
+                    .name(batchName);
+
+                const folderCid = upload.cid;
+
+                // 3. Map this sub-batch's items to their correct folder path
+                for (const { name } of subBatch) {
+                    uriMap[name] = `ipfs://${folderCid}/manifests/${name}.json`;
+                }
+
+            } catch (error) {
+                console.error(`❌ Pinata sub-batch upload failure at offset ${i.toString()}:`, error);
+                throw error;
+            }
+        }
+
+        return uriMap;
     }
 
-    static async getStatic<T>(uri: string): Promise<T> {
-        return retrieveByCid<T>(uri);
+    async get<T>(uri: string): Promise<T> {
+        // Use the dedicated Pinata gateway — freshly pinned content is served
+        // immediately there, whereas the public ipfs.io gateway lags propagation
+        // and times out on just-published CIDs.
+        return retrieveByCid<T>(uri, this.gateway);
+    }
+
+    static async getStatic<T>(uri: string, gateway?: string): Promise<T> {
+        return retrieveByCid<T>(uri, gateway);
     }
 
     async delete(uri: string): Promise<void> {

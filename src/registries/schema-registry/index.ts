@@ -58,7 +58,7 @@ export class SchemaRegistry {
     async registerSchema(
         name: string,
         specCid: string,
-        agentId: string,
+        agentId = "",
     ): Promise<{ hash: Hash; schemaId: Hex }> {
         const { chain, account } = this.getWriteConfig();
 
