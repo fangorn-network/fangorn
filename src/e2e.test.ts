@@ -258,14 +258,14 @@ describe("Fangorn Publisher E2E", () => {
             // defines how edges are connected
             const edges = [{ rel: "performed_by", from: "track-1", to: "artist-1" }];
 
-            // publish tthe bundle onchain
+            // publish the bundle onchain
             const manifestUri = await testbed.publishBundle(bundleName, nodes, edges, datasetName);
             expect(manifestUri).toBeTruthy();
             createdManifestCids.push(manifestUri);
 
-            // manifest is a v3 bundle manifest: node chunks per type + one edge chunk
             const manifest = await testbed.getDelegatorFangorn()
                 .publisher.getBundleManifestByCid(manifestUri);
+            // 'unbundle'     
             const graph = await testbed.getDelegatorFangorn()
                 .publisher.readBundle(manifest!);
 
@@ -274,7 +274,7 @@ describe("Fangorn Publisher E2E", () => {
             expect(graph.edges).toContainEqual({ rel: "performed_by", from: "track-1", to: "artist-1" });
             expect(manifest!.kind).toBe("bundle");
             expect(manifest!.nodeChunks).toHaveLength(2);           // Track + Artist
-            expect(manifest!.edgeChunk?.dataCid).toBeTruthy();
+            expect(manifest!.edgeChunks[0].dataCid).toBeTruthy();
         }, 90_000);
 
         it("rejects a bundle whose edge violates min cardinality", async () => {

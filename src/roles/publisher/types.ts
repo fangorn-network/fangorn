@@ -117,7 +117,8 @@ export interface BundleManifest {
   schemaId: Hex;
   root: Hex;
   nodeChunks: { type: string; dataCid: string; leaf: Hex }[];
-  edgeChunk: { dataCid: string; leaf: Hex };
+  /** Edges chunked into many leaves (one bundle = one merkle root over all of them). */
+  edgeChunks: { dataCid: string; leaf: Hex }[];
   tree: Hex[][];
 }
 
