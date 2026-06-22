@@ -8,7 +8,7 @@
  *   --sort-mem 256M
  *
  *
- * This is the §5/§6 step of docs/REBUILD_FROM_ZERO.md made executable. It:
+ * This is the §5/§6 step of docs/REBUILD_FROM_ZERO.md made executable. It: 
  *   1. Ensures the root type's resolver schema is registered (idempotent; skips
  *      the IPFS re-upload if it already exists on-chain).
  *   2. DENORMALIZES the graph: each root (e.g. each Recording) + its outgoing

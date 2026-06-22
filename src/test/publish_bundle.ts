@@ -121,9 +121,23 @@ function conformFields(raw: Record<string, unknown>, def: SchemaDefinition): Rec
 const ZERO = `0x${"0".repeat(64)}`;
 async function ensureResolver(fangorn: Fangorn, name: string, definition: SchemaDefinition, skip: boolean): Promise<Hex> {
     let id: Hex | null = null;
-    try { const x = await fangorn.getSchemaRegistry().schemaId(name); id = x.toLowerCase() === ZERO ? null : x; } catch { /* none */ }
-    if (id) { console.log(`[publish] schema "${name}" already registered → ${id}`); return id; }
+    try {
+        const registry = fangorn.getSchemaRegistry();
+        const computedId = await registry.schemaId(name);
+        const exists = await registry.schemaExists(computedId);
+
+        if (exists) {
+            id = computedId;
+        }
+    } catch { /* none */ }
+
+    if (id) {
+        console.log(`[publish] schema "${name}" already registered → ${id}`);
+        return id;
+    }
+
     if (skip) throw new Error(`--skip-register but "${name}" not registered`);
+
     const { schemaId } = await fangorn.schema.register({ name, definition });
     console.log(`[publish] registered "${name}" → ${schemaId}`);
     return schemaId;
@@ -381,11 +395,26 @@ async function main(): Promise<void> {
         await ensureResolver(fangorn, schemaName, def, opts.skipRegister);
     }
     let bundleId: Hex | null = null;
-    try { const x = await fangorn.getSchemaRegistry().schemaId(bundle.name); bundleId = x.toLowerCase() === ZERO ? null : x; } catch { /* none */ }
-    if (bundleId) console.log(`[publish] bundle "${bundle.name}" already registered → ${bundleId}`);
-    else if (opts.skipRegister) throw new Error(`--skip-register but bundle "${bundle.name}" not registered`);
-    else { ({ schemaId: bundleId } = await fangorn.schema.register({ kind: "bundle", name: bundle.name, bundle: bundle.bundle })); console.log(`[publish] registered bundle "${bundle.name}" → ${bundleId}`); }
-    if (!bundleId) throw new Error(`could not resolve bundle id for "${bundle.name}"`);
+    try {
+        const registry = fangorn.getSchemaRegistry();
+        const computedId = await registry.schemaId(bundle.name);
+
+        // Actually check if it exists on-chain, don't just rely on the ID being non-zero
+        const exists = await registry.schemaExists(computedId);
+
+        if (exists) {
+            bundleId = computedId;
+        }
+    } catch { /* none */ }
+
+    if (bundleId) {
+        console.log(`[publish] bundle "${bundle.name}" already registered → ${bundleId}`);
+    } else if (opts.skipRegister) {
+        throw new Error(`--skip-register but bundle "${bundle.name}" not registered`);
+    } else {
+        ({ schemaId: bundleId } = await fangorn.schema.register({ kind: "bundle", name: bundle.name, bundle: bundle.bundle }));
+        console.log(`[publish] registered bundle "${bundle.name}" → ${bundleId}`);
+    }
 
     const shardRoots = parseInt(opts.shardRoots, 10) || 0;
     if (shardRoots > 0) { await publishSharded(fangorn, inputDir, volume, bundle, bundleId, defByName, { shardRoots, chunkSize, concurrency, limit }); return; }

@@ -123,9 +123,17 @@ async function withRetry<T>(label: string, maxAttempts: number, fn: () => Promis
 const ZERO = `0x${"0".repeat(64)}`;
 async function ensureSchema(fangorn: Fangorn, name: string, definition: SchemaDefinition, skipRegister: boolean): Promise<Hex> {
     let existing: Hex | null = null;
-    try { const id = await fangorn.getSchemaRegistry().schemaId(name); existing = id.toLowerCase() === ZERO ? null : id; } catch { /* not found */ }
-    if (existing) { console.log(`[publish] schema "${name}" already registered → ${existing}`); return existing; }
+    try { 
+        const id = await fangorn.getSchemaRegistry().schemaId(name); 
+        existing = id.toLowerCase() === ZERO ? null : id; 
+    } catch { /* not found */ }
+
+    if (existing) { 
+        console.log(`[publish] schema "${name}" already registered → ${existing}`); return existing; 
+    }
+
     if (skipRegister) throw new Error(`--skip-register but "${name}" is not registered`);
+
     const { schemaId } = await fangorn.schema.register({ name, definition });
     console.log(`[publish] registered "${name}" → ${schemaId}`);
     return schemaId;
@@ -139,7 +147,7 @@ program
     .option("--types <list>", "Node types to include as entries", "Recording,Artist,Work,Release,ReleaseGroup")
     .option("--no-edges", "Skip edge entries")
     .option("--entry-schema <name>", "Uniform entry schema name", "fangorn.mb.entry.v1")
-    .option("--dataset <name>", "Dataset name (one manifest = one tx)", "ds.creativecore.full.v1")
+    .option("--dataset <name>", "Dataset name (one manifest = one tx)", "ds.creativecore.full.v3")
     .option("--limit <n>", "Max entries per file (0 = all) — use a small value to test", "0")
     .option("--chunk-size <n>", "Entries per merkle leaf", "1000")
     .option("--concurrency <n>", "Parallel chunk uploads (low on a modest uplink)", "4")
