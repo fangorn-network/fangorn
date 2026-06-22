@@ -158,42 +158,6 @@ describe("Fangorn Publisher E2E", () => {
 
         }, 120_000);
 
-        // it("should process and stream data seamlessly using an async iterable generator", async () => {
-        //     const totalRecords = 3500;
-        //     const chunkSize = 500; // Forces 7 full chunk cycles
-
-        //     // Create an async generator to stream chunks dynamically
-        //     async function* recordStreamGenerator() {
-        //         for (let i = 0; i < totalRecords; i++) {
-        //             yield {
-        //                 name: `stream-rec-${i}`,
-        //                 fields: { x: `Streaming generation line tracking element index: ${i}` }
-        //             } as PublishRecord;
-        //         }
-        //     }
-
-        //     const uniqueDatasetName = `ds.stream.${Date.now()}.${Math.random().toString(36).substring(2, 7)}`;
-
-        //     const { manifestUri } = await testbed.getDelegatorFangorn().publisher.upload({
-        //         records: recordStreamGenerator(),
-        //         schemaName,
-        //         datasetName: uniqueDatasetName,
-        //         chunkSize,
-        //         concurrency: 5
-        //     });
-
-        //     expect(manifestUri).toBeTruthy();
-        //     createdManifestCids.push(manifestUri);
-
-        //     // Pull verification entries from disparate chunks out of the generated manifest
-        //     const intermediateEntry = await testbed.getDelegatorFangorn().publisher.getEntry(schemaName, "stream-rec-1750");
-        //     expect(intermediateEntry).toBeDefined();
-        //     expect(intermediateEntry.fields.x).toContain("1750");
-
-        //     const finalEntry = await testbed.getDelegatorFangorn().publisher.getEntry(schemaName, `stream-rec-${totalRecords - 1}`);
-        //     expect(finalEntry).toBeDefined();
-        // }, 180_000);
-
     });
 
     describe.skipIf(!hasIpfs)("Constraints", () => {

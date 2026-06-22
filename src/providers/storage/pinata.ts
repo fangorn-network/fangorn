@@ -24,7 +24,7 @@ export class PinataBackend implements MetadataStorage {
         const uriMap: Record<string, string> = {};
 
         // TODO: make this a parameter instead
-        const PINATA_MAX_FILES = 500;
+        const PINATA_MAX_FILES = 1000;
 
         // Process the items in sub-batches of 500 to satisfy the free tier constraint
         for (let i = 0; i < items.length; i += PINATA_MAX_FILES) {

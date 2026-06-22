@@ -2,7 +2,7 @@ import type { Hex } from "viem";
 import type { SchemaDefinition, SchemaDoc, TypeDefinition, ResolvedBundle } from "../../schema/types";
 import type { MetadataStorage } from "../../../providers/storage/types";
 import type { SchemaRegistry } from "../../../registries/schema-registry";
-import type { BundleManifest, BundleNode, FieldInput, PublishRecord } from "../types";
+import type { BundleManifest, BundleNode, FieldInput, PublishRecord, ResolvedField } from "../types";
 import type { ManifestBuilder, ChunkDraft, ChunkRef, BuildContext, ResolvedSchemaShape } from "./types";
 import { validateRecord, resolveRecord } from "./utils";
 
@@ -118,7 +118,8 @@ export class BundleBuilder implements ManifestBuilder<BundleUploadInput, BundleM
             validateRecord(record, def);
             const resolved = resolveRecord(record, def);
             const list = byType.get(node.type) ?? [];
-            list.push({ id: node.id, type: node.type, fields: resolved.fields });
+            const fields = resolved.fields as Record<string, ResolvedField>; 
+            list.push({ id: node.id, type: node.type, fields });
             byType.set(node.type, list);
         }
 
@@ -126,8 +127,7 @@ export class BundleBuilder implements ManifestBuilder<BundleUploadInput, BundleM
     }
 }
 
-// ── private helpers ───────────────────────────────────────────────────────────
-
+// check if something is a bundle or not
 function isBundleSchema(schema: ResolvedSchemaShape): schema is ResolvedBundle {
     return "nodes" in schema && "edges" in schema;
 }

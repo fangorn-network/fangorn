@@ -122,7 +122,7 @@ function isSchemaAlreadyExists(err: unknown): boolean {
 
     const causeObj = (err.cause) as Record<string, unknown> | undefined;
     const causeData = causeObj?.data as Record<string, unknown> | undefined;
-
+ 
     const errorObj = (err as unknown) as Record<string, unknown>;
     const errorData = errorObj.data as Record<string, unknown> | undefined;
 

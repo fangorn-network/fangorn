@@ -46,6 +46,7 @@ export class RecordSetBuilder implements ManifestBuilder<RecordSetInput, Manifes
         return a.cid.localeCompare(b.cid);
     }
 
+    // builds a manifest from the build context
     assemble(ctx: BuildContext): Manifest {
         return {
             kind: "record-set",

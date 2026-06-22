@@ -415,4 +415,4 @@ Phase 3 tests are skipped unless `WORKER_URL` is set. Run the access worker loca
 
 ## License
 
-MITSonnet 4.6Claude is AI and can make mistakes. Please double-check responses.
+MIT

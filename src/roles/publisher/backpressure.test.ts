@@ -4,7 +4,7 @@ import { PublisherRole } from "./index.js";
 import type { PublishRecord } from "./types.js";
 
 /**
- * Regression guard for the streaming-publish memory fix.
+ * Regression guard for streaming-publish memory.
  *
  * publish() must apply backpressure: the source record generator may only run
  * a bounded number of chunks ahead of in-flight uploads, so peak memory is
@@ -75,7 +75,6 @@ describe("PublisherRole.publish backpressure", () => {
             schemaRegistry as never,
             storage as never,
             walletClient as never,
-            {} as never,
         );
 
         const result = await publisher.publishRecords({
