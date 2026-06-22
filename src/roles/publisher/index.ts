@@ -114,7 +114,7 @@ export class PublisherRole {
         chunkSize?: number;
         concurrency?: number;
         datasetName?: string;
-    }): Promise<CommitResult> {
+    }): Promise<CommitResult> { 
         return this.publish({
             schemaName: params.schemaName,
             builder: new RecordSetBuilder(),
@@ -126,10 +126,19 @@ export class PublisherRole {
 
     async publishBundle(params: {
         bundleName: string;
-        nodes: { id: string; type: string; fields: Record<string, FieldInput> }[];
-        edges?: { rel: string; from: string; to: string }[];
+        nodes: { 
+            id: string; 
+            type: string; 
+            fields: Record<string, FieldInput> }[] | AsyncIterable<{ id: string; type: string; fields: Record<string, FieldInput> }>;
+        edges?: { 
+            rel: string; 
+            from: string; to: string }[] | AsyncIterable<{ rel: string; from: string; to: string }>;
         datasetName?: string;
         concurrency?: number;
+        /** Entries per merkle leaf (default 1000). */
+        chunkSize?: number;
+        /** Cross-node graph validation; set false for huge streamed inputs (see BundleUploadInput). */
+        validate?: boolean;
     }): Promise<CommitResult> {
         return this.publish({
             schemaName: params.bundleName,
@@ -138,6 +147,8 @@ export class PublisherRole {
                 bundleName: params.bundleName,
                 nodes: params.nodes,
                 edges: params.edges,
+                chunkSize: params.chunkSize,
+                validate: params.validate,
             } satisfies BundleUploadInput,
             datasetName: params.datasetName,
             concurrency: params.concurrency,
@@ -148,10 +159,18 @@ export class PublisherRole {
         const nodeArrays = await Promise.all(
             manifest.nodeChunks.map(chunk => this.storage.get<BundleNode[]>(chunk.dataCid)),
         );
-        const edges = await this.storage.get<BundleEdge[]>(manifest.edgeChunk.dataCid);
+
+        const edgeRefs = manifest.edgeChunks;
+        const edgeArrays = await Promise.all(
+            edgeRefs.map(chunk => this.storage.get<BundleEdge[]>(chunk.dataCid)),
+        );
         const nodesById = new Map<string, BundleNode>();
         for (const nodes of nodeArrays) {
             for (const node of nodes) nodesById.set(node.id, node);
+        }
+        const edges: BundleEdge[] = [];
+        for (const arr of edgeArrays) {
+            for (const e of arr) edges.push(e);
         }
         return { nodesById, edges };
     }

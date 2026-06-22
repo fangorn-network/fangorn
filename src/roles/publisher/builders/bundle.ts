@@ -6,10 +6,22 @@ import type { BundleManifest, BundleNode, FieldInput, PublishRecord, ResolvedFie
 import type { ManifestBuilder, ChunkDraft, ChunkRef, BuildContext, ResolvedSchemaShape } from "./types";
 import { validateRecord, resolveRecord } from "./utils";
 
+type Node = { id: string; type: string; fields: Record<string, FieldInput> };
+type Edge = { rel: string; from: string; to: string };
+
 export interface BundleUploadInput {
     bundleName: string;
-    nodes: { id: string; type: string; fields: Record<string, FieldInput> }[];
-    edges?: { rel: string; from: string; to: string }[];
+    nodes: Node[] | AsyncIterable<Node>;
+    edges?: Edge[] | AsyncIterable<Edge>;
+    /** Entries per merkle leaf (nodes chunked per type, edges chunked across). Default 1000. */
+    chunkSize?: number;
+    /**
+     * Cross-node graph validation: edge endpoints exist, declared relations,
+     * cardinality, duplicate node ids. Per-record SCHEMA validation always runs.
+     * Set false for very large STREAMED inputs — it skips the in-memory node-id
+     * map (the only unbounded structure), keeping peak memory ~ one chunk. Default true.
+     */
+    validate?: boolean;
 }
 
 export class BundleBuilder implements ManifestBuilder<BundleUploadInput, BundleManifest> {
@@ -20,71 +32,145 @@ export class BundleBuilder implements ManifestBuilder<BundleUploadInput, BundleM
         private readonly schemaRegistry: SchemaRegistry,
     ) { }
 
-    validate(schema: ResolvedSchemaShape, input: BundleUploadInput): void {
+    validate(schema: ResolvedSchemaShape, _input: BundleUploadInput): void {
         if (!isBundleSchema(schema)) throw new Error("BundleBuilder requires a bundle schema");
-        if (input.nodes.length === 0) throw new Error("bundle has no nodes");
+        // "has nodes" is enforced in chunk() — input may be a stream we can't pre-count.
     }
 
-    // Yields node chunks in alphabetical type order then the edge chunk last.
-    // This matches compareChunks, so creation-order indices equal sorted-position
-    // indices — preserving identical leaf hashes to the legacy commitBundleTree.
+    /**
+     * Stream nodes (chunked per type) then edges (chunked) into ~chunkSize-entry
+     * leaves, so a 50M-edge bundle becomes many small leaves under ONE merkle root
+     * — not one oversized chunk that blows V8's ~512MB `JSON.stringify` cap. With a
+     * stream input + `validate:false`, peak memory is ~one chunk regardless of size.
+     *
+     * Merkle correctness:
+     *  - Each chunk carries a monotonic `seq` (yield order). `compareChunks` orders
+     *    by `seq`, so publish()'s sort restores yield order deterministically (a
+     *    strict total order — no ties, so the tree is reproducible).
+     *  - `assemble` maps each chunk to its leaf by SORTED POSITION (ctx.leaves[i] ↔
+     *    ctx.chunks[i], since leaves = chunks.map(...) after the sort). This is correct
+     *    regardless of upload-completion ordering or the creation-index in leaf hashes.
+     */
     async *chunk(input: BundleUploadInput, schema: ResolvedSchemaShape): AsyncIterable<ChunkDraft> {
         const bundle = schema as ResolvedBundle;
-        const { nodeType, byType } = await this.resolveNodes(bundle, input.nodes);
-        validateBundleEdges(bundle, input.edges ?? [], nodeType);
+        const chunkSize = input.chunkSize && input.chunkSize > 0 ? input.chunkSize : 1000;
+        const doValidate = input.validate ?? true;
 
-        for (const type of [...byType.keys()].sort()) {
-            const data = byType.get(type);
-            if (!data) continue; // FIX: Replaced non-null assertion with structural fallback
+        const defByType = await this.resolveDefs(bundle);
+        const declared = new Set(bundle.edges.map(e => `${e.rel}:${e.from}:${e.to}`));
+        const constrained = bundle.edges.filter(s => (s.min ?? 0) > 0 || (s.max ?? null) !== null);
 
-            yield {
-                name: `bundle-node:${type}`,
-                data,
-                meta: { kind: "node", type },
-            };
+        // The lone unbounded structures — only allocated when validating, so a huge
+        // streamed publish with validate:false stays memory-bounded.
+        const nodeType = doValidate ? new Map<string, string>() : null;
+        const seenIds = doValidate ? new Set<string>() : null;
+
+        let seq = 0;
+        let nodeChunkCount = 0;
+
+        // ── nodes: per-type buffers, flushed at chunkSize ─────────────────────
+        const buffers = new Map<string, BundleNode[]>();
+        for await (const node of input.nodes) {
+            if (!(node.type in bundle.nodes)) throw new Error(`node "${node.id}" has undeclared type "${node.type}"`);
+            const def = defByType.get(node.type);
+            if (!def) throw new Error(`Missing definition schema for type "${node.type}"`);
+            if (seenIds) {
+                if (seenIds.has(node.id)) throw new Error(`duplicate node id "${node.id}"`);
+                seenIds.add(node.id);
+            }
+            nodeType?.set(node.id, node.type);
+
+            const record: PublishRecord = { name: node.id, fields: node.fields };
+            validateRecord(record, def); // per-record schema validation (always on)
+            const resolved = resolveRecord(record, def);
+
+            let buf = buffers.get(node.type);
+            if (!buf) { buf = []; buffers.set(node.type, buf); }
+            buf.push({ id: node.id, type: node.type, fields: resolved.fields });
+            if (buf.length >= chunkSize) {
+                yield { name: `bundle-node:${node.type}:${seq.toString()}`, data: buf, meta: { kind: "node", type: node.type, seq } };
+                seq++; nodeChunkCount++;
+                buffers.set(node.type, []);
+            }
         }
-        yield {
-            name: "bundle-edges",
-            data: input.edges ?? [],
-            meta: { kind: "edges" },
-        };
+        for (const type of [...buffers.keys()].sort()) {
+            const buf = buffers.get(type);
+            if (buf && buf.length > 0) {
+                yield { name: `bundle-node:${type}:${seq.toString()}`, data: buf, meta: { kind: "node", type, seq } };
+                seq++; nodeChunkCount++;
+            }
+        }
+        if (nodeChunkCount === 0) throw new Error("bundle has no nodes");
+
+        // ── edges: single growing buffer, flushed at chunkSize ────────────────
+        const counts = doValidate && constrained.length > 0 ? new Map<string, number>() : null;
+        let edgeBuf: Edge[] = [];
+        let edgeChunkCount = 0;
+        for await (const e of (input.edges ?? [])) {
+            if (doValidate && nodeType) {
+                const ft = nodeType.get(e.from);
+                const tt = nodeType.get(e.to);
+                if (!ft) throw new Error(`edge "${e.rel}" from unknown node "${e.from}"`);
+                if (!tt) throw new Error(`edge "${e.rel}" to unknown node "${e.to}"`);
+                const key = `${e.rel}:${ft}:${tt}`;
+                if (!declared.has(key)) throw new Error(`undeclared relation "${e.rel}" (${ft} → ${tt})`);
+                if (counts) counts.set(`${e.from}\x00${key}`, (counts.get(`${e.from}\x00${key}`) ?? 0) + 1);
+            }
+            edgeBuf.push({ rel: e.rel, from: e.from, to: e.to });
+            if (edgeBuf.length >= chunkSize) {
+                yield { name: `bundle-edges:${seq.toString()}`, data: edgeBuf, meta: { kind: "edges", seq } };
+                seq++; edgeChunkCount++; edgeBuf = [];
+            }
+        }
+        if (edgeBuf.length > 0) {
+            yield { name: `bundle-edges:${seq.toString()}`, data: edgeBuf, meta: { kind: "edges", seq } };
+            seq++; edgeChunkCount++;
+        }
+        // Always emit at least one edge chunk so the manifest has an edge section.
+        if (edgeChunkCount === 0) {
+            yield { name: `bundle-edges:${seq.toString()}`, data: [] as Edge[], meta: { kind: "edges", seq } };
+            seq++;
+        }
+
+        // ── cardinality (min/max), O(nodes + edges), only for constrained shapes ──
+        if (doValidate && nodeType && counts) {
+            const errors: string[] = [];
+            for (const shape of constrained) {
+                const min = shape.min ?? 0;
+                const max = shape.max ?? null;
+                const key = `${shape.rel}:${shape.from}:${shape.to}`;
+                for (const [id, type] of nodeType) {
+                    if (type !== shape.from) continue;
+                    const count = counts.get(`${id}\x00${key}`) ?? 0;
+                    if (count < min) errors.push(`node "${id}" has ${count.toString()} "${shape.rel}" edges, needs min ${min.toString()}`);
+                    if (max !== null && count > max) errors.push(`node "${id}" has ${count.toString()} "${shape.rel}" edges, exceeds max ${max.toString()}`);
+                }
+            }
+            if (errors.length) throw new Error("Bundle edge validation failed:\n" + errors.map(e => ` - ${e}`).join("\n"));
+        }
     }
 
     compareChunks(a: ChunkRef, b: ChunkRef): number {
-        const aIsEdge = a.meta?.kind === "edges";
-        const bIsEdge = b.meta?.kind === "edges";
-        if (aIsEdge && !bIsEdge) return 1;
-        if (!aIsEdge && bIsEdge) return -1;
-
-        // FIX: Extract type safe string values to satisfy no-base-to-string
-        const aType = typeof a.meta?.type === "string" ? a.meta.type : "";
-        const bType = typeof b.meta?.type === "string" ? b.meta.type : "";
-        return aType.localeCompare(bType);
+        // Total order = yield order via the monotonic seq. No ties → deterministic
+        // sort → reproducible merkle tree.
+        const as = typeof a.meta?.seq === "number" ? a.meta.seq : 0;
+        const bs = typeof b.meta?.seq === "number" ? b.meta.seq : 0;
+        return as - bs;
     }
 
     assemble(ctx: BuildContext): BundleManifest {
-        const nodeChunks = ctx.chunks
-            .filter(c => c.meta?.kind === "node")
-            .map((c) => ({ // FIX: Removed unused `_i` parameter
-                type: (c.meta?.type ?? "") as string, // FIX: Replaced `!` with a fallback
-                dataCid: c.cid,
-                leaf: ctx.leaves[Number(c.index)],
-            }));
+        // After publish()'s sort, ctx.chunks[i] and ctx.leaves[i] are position-aligned
+        // (leaves = chunks.map(...)). Map by index i — robust to upload ordering.
+        const nodeChunks: { type: string; dataCid: string; leaf: Hex }[] = [];
+        const edgeChunks: { dataCid: string; leaf: Hex }[] = [];
+        ctx.chunks.forEach((c, i) => {
+            const leaf = ctx.leaves[i];
+            if (c.meta?.kind === "edges") edgeChunks.push({ dataCid: c.cid, leaf });
+            else nodeChunks.push({ type: typeof c.meta?.type === "string" ? c.meta.type : "", dataCid: c.cid, leaf });
+        });
+        if (edgeChunks.length === 0) throw new Error("Missing edge chunk during assembly");
 
-        const edgeChunk = ctx.chunks.find(c => c.meta?.kind === "edges");
-        if (!edgeChunk) throw new Error("Missing edge chunk during assembly"); // FIX: Safe runtime verification instead of `!`
-
-        return {
-            kind: "bundle",
-            schemaId: ctx.schemaId,
-            root: ctx.root,
-            nodeChunks,
-            edgeChunk: {
-                dataCid: edgeChunk.cid,
-                leaf: ctx.leaves[Number(edgeChunk.index)],
-            },
-            tree: ctx.layers,
-        };
+        return { kind: "bundle", schemaId: ctx.schemaId, root: ctx.root, nodeChunks, edgeChunks, tree: ctx.layers };
     }
 
     private async resolveNodes(
@@ -130,44 +216,4 @@ export class BundleBuilder implements ManifestBuilder<BundleUploadInput, BundleM
 // check if something is a bundle or not
 function isBundleSchema(schema: ResolvedSchemaShape): schema is ResolvedBundle {
     return "nodes" in schema && "edges" in schema;
-}
-
-function validateBundleEdges(
-    bundle: ResolvedBundle,
-    edges: { rel: string; from: string; to: string }[],
-    nodeType: Map<string, string>,
-): void {
-    const errors: string[] = [];
-    const declared = new Set(bundle.edges.map(e => `${e.rel}:${e.from}:${e.to}`));
-
-    edges.forEach((edge, i) => {
-        const ft = nodeType.get(edge.from);
-        const tt = nodeType.get(edge.to);
-        const indexStr = i.toString(); // FIX: Extracted to satisfy template restrictions safely
-
-        if (!ft) return errors.push(`edge[${indexStr}] "${edge.rel}" from unknown node "${edge.from}"`);
-        if (!tt) return errors.push(`edge[${indexStr}] "${edge.rel}" to unknown node "${edge.to}"`);
-        if (!declared.has(`${edge.rel}:${ft}:${tt}`))
-            errors.push(`edge[${indexStr}] undeclared relation "${edge.rel}" (${ft} → ${tt})`);
-    });
-
-    for (const shape of bundle.edges) {
-        const min = shape.min ?? 0;
-        const max = shape.max ?? null;
-        for (const [id, type] of nodeType) {
-            if (type !== shape.from) continue;
-            const count = edges.filter(
-                e => e.rel === shape.rel && e.from === id && nodeType.get(e.to) === shape.to,
-            ).length;
-
-            const countStr = count.toString(); // FIX: Stringified numbers for templates
-            const minStr = min.toString();
-            const maxStr = max !== null ? max.toString() : "";
-
-            if (count < min) errors.push(`node "${id}" has ${countStr} "${shape.rel}" edges, needs min ${minStr}`);
-            if (max !== null && count > max) errors.push(`node "${id}" has ${countStr} "${shape.rel}" edges, exceeds max ${maxStr}`);
-        }
-    }
-
-    if (errors.length) throw new Error("Bundle edge validation failed:\n" + errors.map(e => ` - ${e}`).join("\n"));
 }
