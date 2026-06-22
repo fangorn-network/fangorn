@@ -2,6 +2,7 @@ import { type Address, type Hex, type WalletClient } from "viem";
 import { ResolvedBundle, SchemaDefinition, TypeDefinition } from "../schema/types";
 import { DataSourceRegistry, MerkleTree } from "../../registries/datasource-registry";
 import { MetadataStorage } from "../../providers/storage/types";
+import { serialize } from "../../providers/storage/utils";
 import { SchemaRegistry } from "../../registries/schema-registry";
 import {
     FieldInput,
@@ -22,6 +23,13 @@ export { BundleBuilder } from "./builders/bundle";
 export type { ManifestBuilder, BuildContext, ChunkDraft, ChunkRef, BaseManifest, ResolvedSchemaShape } from "./builders/types";
 export type { RecordSetInput } from "./builders/record-set";
 export type { BundleUploadInput } from "./builders/bundle";
+
+// CAR grouping bounds: how many chunks (and how many bytes) we pack into one
+// CAR / one Pinata pin. A flat UnixFS directory of this many entries stays well
+// under the 1 MiB block limit, and the byte cap keeps peak memory predictable.
+// Both are overridable for tuning against a given uplink / Pinata tier.
+const CAR_GROUP_FILES = Math.max(1, Number(process.env.FANGORN_CAR_GROUP_FILES ?? 1000));
+const CAR_GROUP_BYTES = Math.max(1, Number(process.env.FANGORN_CAR_GROUP_BYTES ?? 96 * 1024 * 1024));
 
 export interface CommitResult {
     manifestUri: string;
@@ -55,27 +63,48 @@ export class PublisherRole {
 
         await builder.validate(schema, input);
 
-        // Bounded-inflight upload: the chunk generator is pulled only as fast as
-        // uploads drain, so at most `concurrency` chunks (their `draft.data`) are
-        // held in memory at once — regardless of total dataset size.
+        // CAR-batched upload: instead of one HTTP POST per chunk, we pack many
+        // chunks into a single locally-built CAR (one pin = one request) and run
+        // up to `concurrency` such CAR uploads in flight. Chunks are pre-serialized
+        // once here (the string passes straight through the storage layer), so we
+        // know each group's exact byte size and bound it two ways — peak memory
+        // stays ~`concurrency` × CAR_GROUP_BYTES regardless of dataset size.
         const chunks: ChunkRef[] = [];
         const inFlight = new Set<Promise<unknown>>();
         let firstErr: unknown;
         let idx = 0n;
 
-        for await (const draft of builder.chunk(input, schema)) {
-            if (firstErr) break;
-            const myIdx = idx++; // assigned in generation order — preserves leaf indexing
+        let group: { index: bigint; name: string; data: string; meta: ChunkRef["meta"] }[] = [];
+        let groupBytes = 0;
+        const flushGroup = (): void => {
+            if (group.length === 0) return;
+            const g = group;
+            group = [];
+            groupBytes = 0;
             const task = (async () => {
-                const cid = await this.storage.put(draft.data, { name: draft.name });
-                chunks.push({ index: myIdx, cid, name: draft.name, meta: draft.meta });
+                const cidByName = await this.storage.putMany(g.map(c => ({ data: c.data, name: c.name })));
+                for (const c of g) {
+                    const cid = cidByName[c.name];
+                    if (!cid) throw new Error(`CAR upload returned no CID for chunk "${c.name}"`);
+                    chunks.push({ index: c.index, cid, name: c.name, meta: c.meta });
+                }
             })().catch((e: unknown) => { firstErr ??= e; });
             inFlight.add(task);
             void task.finally(() => inFlight.delete(task));
+        };
+
+        for await (const draft of builder.chunk(input, schema)) {
+            if (firstErr) break;
+            const myIdx = idx++; // assigned in generation order — preserves leaf indexing
+            const data = serialize(draft.data);
+            group.push({ index: myIdx, name: draft.name, data, meta: draft.meta });
+            groupBytes += data.length;
+            if (group.length >= CAR_GROUP_FILES || groupBytes >= CAR_GROUP_BYTES) flushGroup();
             // `while`, not `if`: the settled task's `.finally` delete may not have
             // run yet when Promise.race resolves, so keep draining until under cap.
             while (inFlight.size >= concurrency) await Promise.race(inFlight);
         }
+        if (!firstErr) flushGroup();
 
         await Promise.all(inFlight);
         // Rethrow the first upload rejection verbatim (matches prior Promise.all behavior).

@@ -23,6 +23,9 @@ importers:
       '@ipld/car':
         specifier: ^5.4.6
         version: 5.4.6
+      '@ipld/unixfs':
+        specifier: ^3.0.0
+        version: 3.0.0
       '@noble/hashes':
         specifier: ^2.2.0
         version: 2.2.0

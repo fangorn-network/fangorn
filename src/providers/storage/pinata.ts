@@ -1,6 +1,7 @@
 import { PinataSDK } from "pinata";
 import { MetadataStorage, StorageMeta } from "./types.js";
 import { serialize, retrieveByCid } from "./utils.js";
+import { packCar } from "./car.js";
 
 // Pinata's upload endpoint intermittently drops connections (HTTP 408 "client
 // disconnected") and overloads (5xx/429), especially under parallel uploads on a
@@ -47,51 +48,24 @@ export class PinataBackend implements MetadataStorage {
         });
     }
 
+    /**
+     * Pack every item into ONE locally-built CAR and upload it as a single pin,
+     * collapsing N uploads into one request. Returns each item's `ipfs://<root>/<name>`
+     * path URI: a CAR upload registers only the directory root as a "file", so the
+     * dedicated gateway serves chunks by path through that root (bare sub-block CIDs
+     * 403). Callers must bound batch size — the CAR is built in memory.
+     */
     async putMany(items: { data: unknown; name: string }[]): Promise<Record<string, string>> {
         if (items.length === 0) return {};
 
-        const uriMap: Record<string, string> = {};
+        const { bytes, uriByName } = await packCar(items);
+        const label = `car[${items.length.toString()}f/${(bytes.length / 1e6).toFixed(1)}MB]`;
+        await withUploadRetry(label, async () => {
+            const file = new File([bytes as BlobPart], "data.car", { type: "application/vnd.ipld.car" });
+            await this.pinata.upload.public.file(file).car();
+        });
 
-        // TODO: make this a parameter instead
-        const PINATA_MAX_FILES = 1000;
-
-        // Process the items in sub-batches of 500 to satisfy the free tier constraint
-        for (let i = 0; i < items.length; i += PINATA_MAX_FILES) {
-            const subBatch = items.slice(i, i + PINATA_MAX_FILES);
-
-            // Convert data to standard browser-compatible File objects
-            const filesToUpload = subBatch.map(({ data, name }) => {
-                const content = typeof data === "string" ? data : JSON.stringify(data);
-
-                // Keep the relative sub-path layout to force directory wrapping
-                return new File(
-                    [content],
-                    `manifests/${name}.json`,
-                    { type: "application/json" }
-                );
-            });
-
-            try {
-                // 2. Upload this sub-batch as an independent folder
-                const batchName = `batch-${Date.now().toString()}-${i.toString()}`;
-                const upload = await this.pinata.upload.public
-                    .fileArray(filesToUpload)
-                    .name(batchName);
-
-                const folderCid = upload.cid;
-
-                // Map this sub-batch's items to their correct folder path
-                for (const { name } of subBatch) {
-                    uriMap[name] = `ipfs://${folderCid}/manifests/${name}.json`;
-                }
-
-            } catch (error) {
-                console.error(`❌ Pinata sub-batch upload failure at offset ${i.toString()}:`, error);
-                throw error;
-            }
-        }
-
-        return uriMap;
+        return uriByName;
     }
 
     async get<T>(uri: string): Promise<T> {
