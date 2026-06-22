@@ -76,7 +76,12 @@ async function writeCarBytes(root: CID, blocks: Block[]): Promise<Uint8Array> {
     const { writer, out } = CarWriter.create([root]);
     const collected: Uint8Array[] = [];
     const sink = (async () => { for await (const part of out) collected.push(part); })();
-    for (const b of blocks) await writer.put(b);
+    // Release each block as soon as the writer has serialized it so GC can reclaim
+    // the encoded blocks while we accumulate CAR output — peak ~2× group, not 3×.
+    for (let i = 0; i < blocks.length; i++) {
+        await writer.put(blocks[i]);
+        blocks[i] = undefined as unknown as Block;
+    }
     await writer.close();
     await sink;
 

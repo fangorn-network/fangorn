@@ -27,9 +27,14 @@ export type { BundleUploadInput } from "./builders/bundle";
 // CAR grouping bounds: how many chunks (and how many bytes) we pack into one
 // CAR / one Pinata pin. A flat UnixFS directory of this many entries stays well
 // under the 1 MiB block limit, and the byte cap keeps peak memory predictable.
-// Both are overridable for tuning against a given uplink / Pinata tier.
-const CAR_GROUP_FILES = Math.max(1, Number(process.env.FANGORN_CAR_GROUP_FILES ?? 1000));
-const CAR_GROUP_BYTES = Math.max(1, Number(process.env.FANGORN_CAR_GROUP_BYTES ?? 96 * 1024 * 1024));
+//
+// Peak CAR-layer memory ≈ concurrency × ~3 × CAR_GROUP_BYTES (serialized group +
+// encoded blocks + concatenated CAR bytes), and in sharded mode this lands ON TOP
+// of the whole shard already buffered in RAM. So keep the byte cap modest — even
+// at 16 MB / 256 files this is still a ~256× request reduction over per-chunk PUTs.
+// Raise it on a roomy box; lower it (or drop concurrency) if you OOM.
+const CAR_GROUP_FILES = Math.max(1, Number(process.env.FANGORN_CAR_GROUP_FILES ?? 256));
+const CAR_GROUP_BYTES = Math.max(1, Number(process.env.FANGORN_CAR_GROUP_BYTES ?? 16 * 1024 * 1024));
 
 export interface CommitResult {
     manifestUri: string;
