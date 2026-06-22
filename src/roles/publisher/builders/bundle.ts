@@ -86,7 +86,7 @@ export class BundleBuilder implements ManifestBuilder<BundleUploadInput, BundleM
 
             let buf = buffers.get(node.type);
             if (!buf) { buf = []; buffers.set(node.type, buf); }
-            buf.push({ id: node.id, type: node.type, fields: resolved.fields });
+            buf.push({ id: node.id, type: node.type, fields: resolved.fields as Record<string, ResolvedField> });
             if (buf.length >= chunkSize) {
                 yield { name: `bundle-node:${node.type}:${seq.toString()}`, data: buf, meta: { kind: "node", type: node.type, seq } };
                 seq++; nodeChunkCount++;
@@ -173,10 +173,11 @@ export class BundleBuilder implements ManifestBuilder<BundleUploadInput, BundleM
         return { kind: "bundle", schemaId: ctx.schemaId, root: ctx.root, nodeChunks, edgeChunks, tree: ctx.layers };
     }
 
-    private async resolveNodes(
-        bundle: ResolvedBundle,
-        nodes: BundleUploadInput["nodes"],
-    ): Promise<{ nodeType: Map<string, string>; byType: Map<string, BundleNode[]> }> {
+    /**
+     * Resolve each bundle node type to its `SchemaDoc` ({ fields, types }) so
+     * `chunk()` can validate/resolve records per type. Fetched once up front.
+     */
+    private async resolveDefs(bundle: ResolvedBundle): Promise<Map<string, SchemaDoc>> {
         const defByType = new Map<string, SchemaDoc>();
         await Promise.all(
             Object.entries(bundle.nodes).map(async ([type, schemaId]: [string, Hex]) => {
@@ -186,30 +187,7 @@ export class BundleBuilder implements ManifestBuilder<BundleUploadInput, BundleM
                 defByType.set(type, { fields: blob.definition, types: blob.types });
             }),
         );
-
-        const nodeType = new Map<string, string>();
-        const seen = new Set<string>();
-        const byType = new Map<string, BundleNode[]>();
-
-        for (const node of nodes) {
-            if (!(node.type in bundle.nodes)) throw new Error(`node "${node.id}" has undeclared type "${node.type}"`);
-            if (seen.has(node.id)) throw new Error(`duplicate node id "${node.id}"`);
-            seen.add(node.id);
-            nodeType.set(node.id, node.type);
-
-            const def = defByType.get(node.type);
-            if (!def) throw new Error(`Missing definition schema for type "${node.type}"`); // FIX: Safe runtime check instead of `!`
-
-            const record: PublishRecord = { name: node.id, fields: node.fields };
-            validateRecord(record, def);
-            const resolved = resolveRecord(record, def);
-            const list = byType.get(node.type) ?? [];
-            const fields = resolved.fields as Record<string, ResolvedField>; 
-            list.push({ id: node.id, type: node.type, fields });
-            byType.set(node.type, list);
-        }
-
-        return { nodeType, byType };
+        return defByType;
     }
 }
 
