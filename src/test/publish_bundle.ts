@@ -159,6 +159,17 @@ function runSort(input: string, output: string, keyArgs: string[], tmpDir: strin
     });
 }
 
+/** Fast line count via `wc -l` (one root per line in the sorted JSONL ± brackets). */
+function countLines(path: string): Promise<number> {
+    return new Promise((res, rej) => {
+        const p = spawn("wc", ["-l", path], { stdio: ["ignore", "pipe", "ignore"] });
+        let out = "";
+        p.stdout.on("data", (d: Buffer) => { out += d.toString(); });
+        p.on("error", rej);
+        p.on("close", code => code === 0 ? res(parseInt(out.trim().split(/\s+/)[0], 10) || 0) : rej(new Error(`wc exited ${code === null ? "null" : code.toString()}`)));
+    });
+}
+
 async function withRetry<T>(label: string, maxAttempts: number, fn: () => Promise<T>): Promise<T> {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try { return await fn(); }
@@ -292,7 +303,9 @@ async function publishSharded(
         console.log(`[publish]   ${neighborNode.size.toLocaleString()} neighbor nodes in memory`);
 
         // ── pass 4/4: merge-join roots ⋈ edges → self-contained shard → one tx ──
-        console.log(`[publish] pass 4/4: publishing shards (one tx each)...`);
+        const totalRoots = await countLines(rootsSorted);
+        const totalShards = Math.max(1, Math.ceil(totalRoots / o.shardRoots));
+        console.log(`[publish] pass 4/4: publishing ${totalShards.toLocaleString()} shard(s) (~${totalRoots.toLocaleString()} roots, one tx each)...`);
         const ledger: Ledger = loadLedger(ledgerPath) ?? { bundleName: bundle.name, bundleSchemaId: bundleId, rootType, shards: [] };
         ledger.shards.map(s => s.shardIndex).sort((a, b) => a - b).forEach((idx, i) => { if (idx !== i) throw new Error(`ledger not a contiguous 0..N prefix near ${idx.toString()}; inspect ${ledgerPath}`); });
         const rootsDone = ledger.shards.reduce((s, x) => s + x.rootCount, 0);
@@ -311,6 +324,10 @@ async function publishSharded(
 
         let seen = 0, rootTotal = 0;
         let batch: { node: MbNode; edges: [string, string][] }[] = [];
+
+        // ETA is over shards published THIS run (resumed shards have no timing).
+        const t0run = Date.now();
+        let shardsThisRun = 0;
 
         const flush = async (): Promise<void> => {
             const roots = batch; batch = [];
@@ -339,7 +356,11 @@ async function publishSharded(
             }));
             ledger.shards.push({ shardIndex: idx, dataset: shardDataset, manifestUri: r.manifestUri, rootCount: roots.length, publishedAt: new Date().toISOString() });
             saveLedger(ledgerPath, ledger);
-            console.log(`  ✓ ${r.manifestUri} (${r.entryCount.toString()} leaves)`);
+            shardsThisRun++;
+            const done = idx + 1;
+            const avg = (Date.now() - t0run) / shardsThisRun;
+            const eta = Math.max(0, totalShards - done) * avg;
+            console.log(`  ✓ ${r.manifestUri} (${r.entryCount.toString()} leaves) · shard ${done.toLocaleString()}/${totalShards.toLocaleString()} (${(100 * done / totalShards).toFixed(1)}%) · ${hms(avg)}/shard · ETA ${hms(eta)}`);
         };
 
         // Merge: roots.sorted (by id) ⋈ edges.sorted (by from). Edges consumed for
