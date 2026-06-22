@@ -40,7 +40,7 @@ export function validateRecord(record: PublishRecord, schema: SchemaDefinition):
     const errors: string[] = [];
     for (const [fieldName, fieldDef] of Object.entries(schema)) {
         validateField(fieldName, fieldDef, record.fields[fieldName], errors);
-    }
+    }   
     if (errors.length > 0) {
         throw new Error(`Validation failed for "${record.name}":\n` + errors.map(e => ` - ${e}`).join("\n"));
     }

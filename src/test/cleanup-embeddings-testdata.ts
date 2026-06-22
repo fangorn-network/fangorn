@@ -108,7 +108,8 @@ async function main() {
             const manifest = await publisher.getBundleManifestByCid(entry.manifestUri);
             if (manifest) {
                 for (const c of manifest.nodeChunks) cids.push(c.dataCid);
-                if (manifest.edgeChunk.dataCid) cids.push(manifest.edgeChunk.dataCid);
+                const edgeRefs = manifest.edgeChunks ?? (manifest.edgeChunk ? [manifest.edgeChunk] : []);
+                for (const c of edgeRefs) if (c.dataCid) cids.push(c.dataCid);
             } else {
                 console.warn("  (could not read manifest — unpinning manifest CID only)");
             }
