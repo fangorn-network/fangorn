@@ -38,10 +38,9 @@ export class BundleBuilder implements ManifestBuilder<BundleUploadInput, BundleM
     }
 
     /**
-     * Stream nodes (chunked per type) then edges (chunked) into ~chunkSize-entry
-     * leaves, so a 50M-edge bundle becomes many small leaves under ONE merkle root
-     * — not one oversized chunk that blows V8's ~512MB `JSON.stringify` cap. With a
-     * stream input + `validate:false`, peak memory is ~one chunk regardless of size.
+     * Stream nodes (chunked per type) then edges (chunked) into ~chunkSize-entry leaves
+     * i.e. so a 50M-edge bundle becomes many small leaves under ONE merkle root
+     * With a stream input + `validate:false`, peak memory is ~one chunk regardless of size.
      *
      * Merkle correctness:
      *  - Each chunk carries a monotonic `seq` (yield order). `compareChunks` orders
@@ -53,6 +52,7 @@ export class BundleBuilder implements ManifestBuilder<BundleUploadInput, BundleM
      */
     async *chunk(input: BundleUploadInput, schema: ResolvedSchemaShape): AsyncIterable<ChunkDraft> {
         const bundle = schema as ResolvedBundle;
+        // defaults to 1000
         const chunkSize = input.chunkSize && input.chunkSize > 0 ? input.chunkSize : 1000;
         const doValidate = input.validate ?? true;
 

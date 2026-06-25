@@ -16,7 +16,7 @@
  * PINATA_GATEWAY, CHAIN_NAME[, RPC_URL].
  */
 
-import { readFileSync, writeFileSync, existsSync, createReadStream, createWriteStream, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, readdirSync, createReadStream, createWriteStream, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { homedir, cpus } from "node:os";
 import { createInterface } from "node:readline";
@@ -79,6 +79,10 @@ interface ConsolidatedSchemas { schemas: NodeSchemaFile[]; bundle: BundleSchemaF
 interface MbNode { name: string; fields: Record<string, unknown> }
 interface MbEdge { rel: string; from: string; to: string; fromType?: string; toType?: string }
 
+// Optional explicit node-type → filename-stem overrides. NOT required: the
+// resolver below discovers files from disk by each node's `entityType`, so this
+// script works for ANY schemagen output (MusicBrainz, places, …). These entries
+// just pin the MusicBrainz stems when present.
 const TYPE_FILE: Record<string, string> = {
     Artist: "artists", Recording: "recordings", ReleaseGroup: "releasegroups", Release: "releases", Work: "works",
 };
@@ -94,6 +98,34 @@ async function* streamJsonArray<T>(path: string, limit = 0): AsyncIterable<T> {
         try { yield JSON.parse(j) as T; } catch { continue; }
         if (limit && ++n >= limit) { rl.close(); return; }
     }
+}
+
+// ── dataset-agnostic type → file resolution ───────────────────────────────────
+// Discover each node file from disk and key it by the `entityType` its records
+// carry (mb_pg, places_pg, … all set this). This replaces a hardcoded type→stem
+// map, so the same script publishes any schemagen output. TYPE_FILE (if it names
+// an existing file) still wins as an explicit override; STEM_TYPE is the legacy
+// fallback for files whose records lack entityType.
+const STEM_TYPE: Record<string, string> = Object.fromEntries(Object.entries(TYPE_FILE).map(([t, f]) => [f, t]));
+async function makeTypeResolver(inputDir: string, volume: number): Promise<(type: string) => string | undefined> {
+    const prefix = `volume_${volume.toString()}_`;
+    const discovered = new Map<string, string>();
+    for (const f of readdirSync(inputDir)) {
+        if (!f.startsWith(prefix) || !f.endsWith(".json") || f === `${prefix}edges.json`) continue;
+        const path = join(inputDir, f);
+        let type: string | undefined;
+        for await (const node of streamJsonArray<MbNode>(path, 1)) {
+            const t = (node.fields as Record<string, unknown> | undefined)?.["entityType"];
+            if (typeof t === "string") type = t;
+        }
+        if (!type) { const stem = f.slice(prefix.length, -5); type = STEM_TYPE[stem] ?? (stem.charAt(0).toUpperCase() + stem.slice(1)); }
+        if (!discovered.has(type)) discovered.set(type, path);
+    }
+    return (type: string) => {
+        const explicit = TYPE_FILE[type];
+        if (explicit) { const p = join(inputDir, `${prefix}${explicit}.json`); if (existsSync(p)) return p; }
+        return discovered.get(type);
+    };
 }
 
 // ── schema conformance (schemas inferred from a sample → over-constrained) ─────
@@ -203,7 +235,7 @@ program
     .option("--skip-register", "Don't register missing schemas; resolve existing ids only", false)
     // ── sharded mode (laptop-buildable: a few large self-contained shards) ──
     .option("--shard-roots <n>", "Roots per shard (>0 enables sharded mode; each shard = one tx, builder-RAM-bounded)", "0")
-    .option("--root-type <type>", "Root node type for sharded mode", "Recording")
+    .option("--root-type <type>", "Root node type for sharded mode (default: first node type in the bundle)", "")
     .option("--dataset <name>", "Base dataset name for shards (default: ds.<bundle>)")
     .option("--index-dir <path>", "Work dir for sort spill (real disk, ~2x edge size free)", "tmp")
     .option("--sort-mem <size>", "GNU sort buffer (small = laptop-safe; spills to disk)", "256M")
@@ -233,15 +265,16 @@ async function publishSharded(
     bundle: BundleSchemaFile,
     bundleId: Hex,
     defByName: Map<string, SchemaDefinition>,
+    rootType: string,
+    typePath: (type: string) => string | undefined,
     o: { shardRoots: number; chunkSize: number; concurrency: number; limit: number },
 ): Promise<void> {
-    const rootType = opts.rootType;
     const rootSchemaName = bundle.bundle.nodes[rootType];
     if (!rootSchemaName) throw new Error(`--root-type "${rootType}" not in bundle.nodes (have: ${Object.keys(bundle.bundle.nodes).join(", ")})`);
     const rootDef = defByName.get(rootSchemaName);
     if (!rootDef) throw new Error(`no definition for ${rootSchemaName}`);
-    const rootPath = join(inputDir, `volume_${volume.toString()}_${TYPE_FILE[rootType] ?? rootType.toLowerCase()}.json`);
-    if (!existsSync(rootPath)) throw new Error(`Not found: ${rootPath}`);
+    const rootPath = typePath(rootType);
+    if (!rootPath || !existsSync(rootPath)) throw new Error(`No node file for root type "${rootType}"`);
     const edgesPath = join(inputDir, `volume_${volume.toString()}_edges.json`);
     if (!existsSync(edgesPath)) throw new Error(`Not found: ${edgesPath}`);
 
@@ -293,8 +326,8 @@ async function publishSharded(
         const neighborNode = new Map<string, { type: string; fields: string }>();
         for (const type of neighborTypes) {
             const def = defByName.get(bundle.bundle.nodes[type]);
-            const path = join(inputDir, `volume_${volume.toString()}_${TYPE_FILE[type] ?? type.toLowerCase()}.json`);
-            if (!def || !existsSync(path)) { console.warn(`   ⚠️  skipping neighbor type ${type}`); continue; }
+            const path = typePath(type);
+            if (!def || !path) { console.warn(`   ⚠️  skipping neighbor type ${type}`); continue; }
             for await (const node of streamJsonArray<MbNode>(path, o.limit)) {
                 if (neededIds.delete(node.name)) neighborNode.set(node.name, { type, fields: JSON.stringify(conformFields(node.fields, def)) });
             }
@@ -402,10 +435,17 @@ async function main(): Promise<void> {
     const { schemas, bundle } = JSON.parse(readFileSync(consolidatedPath, "utf8")) as ConsolidatedSchemas;
     const defByName = new Map(schemas.map(s => [s.name, s.definition]));
 
+    // discover node files from disk (dataset-agnostic) and pick a root type
+    const typePath = await makeTypeResolver(inputDir, volume);
+    const rootType = opts.rootType || Object.keys(bundle.bundle.nodes)[0] || "Recording";
+
     // node files present, in bundle.nodes order
     const typeFiles = Object.keys(bundle.bundle.nodes)
-        .map(type => ({ type, schemaName: bundle.bundle.nodes[type], path: join(inputDir, `volume_${volume.toString()}_${TYPE_FILE[type] ?? type.toLowerCase()}.json`) }))
-        .filter(f => { const ok = existsSync(f.path); if (!ok) console.warn(`   ⚠️  missing ${f.path} — skipping ${f.type}`); return ok; });
+        .map(type => ({ type, schemaName: bundle.bundle.nodes[type], path: typePath(type) }))
+        .filter((f): f is { type: string; schemaName: string; path: string } => {
+            if (!f.path) { console.warn(`   ⚠️  no file for node type ${f.type} — skipping`); return false; }
+            return true;
+        });
     const edgesPath = join(inputDir, `volume_${volume.toString()}_edges.json`);
     if (!existsSync(edgesPath)) throw new Error(`Not found: ${edgesPath}`);
 
@@ -438,7 +478,7 @@ async function main(): Promise<void> {
     }
 
     const shardRoots = parseInt(opts.shardRoots, 10) || 0;
-    if (shardRoots > 0) { await publishSharded(fangorn, inputDir, volume, bundle, bundleId, defByName, { shardRoots, chunkSize, concurrency, limit }); return; }
+    if (shardRoots > 0) { await publishSharded(fangorn, inputDir, volume, bundle, bundleId, defByName, rootType, typePath, { shardRoots, chunkSize, concurrency, limit }); return; }
 
     // ── stream nodes + edges into ONE publishBundle call (= one tx) ────────────
     let nodeCount = 0, edgeCount = 0;
@@ -484,7 +524,7 @@ async function main(): Promise<void> {
     console.log(`  leaves      : ${r.entryCount.toString()}`);
     console.log(`  manifest cid: ${r.manifestUri}`);
     console.log("\nBuild embeddings with:\n");
-    console.log(`  quickbeam build --bundle "${bundle.name}=${bundleId}" --root-type Recording --reset\n`);
+    console.log(`  quickbeam build --bundle "${bundle.name}=${bundleId}" --root-type ${rootType} --reset\n`);
 }
 
 main().catch((err: unknown) => { console.error("\n[publish] failed:", err); process.exit(1); });
