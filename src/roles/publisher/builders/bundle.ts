@@ -1,10 +1,11 @@
 import type { Hex } from "viem";
-import type { SchemaDefinition, SchemaDoc, TypeDefinition, ResolvedBundle } from "../../schema/types";
+import type { SchemaDefinition, SchemaDoc, TypeDefinition, ResolvedBundle, NodeIdentity } from "../../schema/types";
 import type { MetadataStorage } from "../../../providers/storage/types";
 import type { SchemaRegistry } from "../../../registries/schema-registry";
 import type { BundleManifest, BundleNode, FieldInput, PublishRecord, ResolvedField } from "../types";
-import type { ManifestBuilder, ChunkDraft, ChunkRef, BuildContext, ResolvedSchemaShape } from "./types";
+import type { ManifestBuilder, ChunkDraft, ChunkRef, BuildContext, ResolvedSchemaShape, CommitInfo } from "./types";
 import { validateRecord, resolveRecord } from "./utils";
+import { toEntityUri, resolveLocalId, extractAliases } from "../../schema/identity";
 
 type Node = { id: string; type: string; fields: Record<string, FieldInput> };
 type Edge = { rel: string; from: string; to: string };
@@ -50,11 +51,15 @@ export class BundleBuilder implements ManifestBuilder<BundleUploadInput, BundleM
      *    ctx.chunks[i], since leaves = chunks.map(...) after the sort). This is correct
      *    regardless of upload-completion ordering or the creation-index in leaf hashes.
      */
-    async *chunk(input: BundleUploadInput, schema: ResolvedSchemaShape): AsyncIterable<ChunkDraft> {
+    async *chunk(input: BundleUploadInput, schema: ResolvedSchemaShape, commit?: CommitInfo): AsyncIterable<ChunkDraft> {
         const bundle = schema as ResolvedBundle;
         // defaults to 1000
         const chunkSize = input.chunkSize && input.chunkSize > 0 ? input.chunkSize : 1000;
         const doValidate = input.validate ?? true;
+        // Phase 0: every node carries a global Entity URI prefixed with the
+        // committing datasource's resourceId. publish() always supplies it.
+        if (!commit) throw new Error("BundleBuilder.chunk requires commit context (resourceId) to stamp Entity URIs");
+        const { resourceId } = commit;
 
         const defByType = await this.resolveDefs(bundle);
         const declared = new Set(bundle.edges.map(e => `${e.rel}:${e.from}:${e.to}`));
@@ -84,9 +89,17 @@ export class BundleBuilder implements ManifestBuilder<BundleUploadInput, BundleM
             validateRecord(record, def); // per-record schema validation (always on)
             const resolved = resolveRecord(record, def);
 
+            // Phase 0 identity: localId (promoted via @id, else the node id),
+            // namespaced aliases, and the canonical Entity URI. No identity
+            // declaration → localId is the node id and aliases is empty.
+            const decl = def.identity ?? {};
+            const localId = resolveLocalId(node.id, node.fields, decl);
+            const aliases = extractAliases(node.fields, decl);
+            const entityUri = toEntityUri(resourceId, localId);
+
             let buf = buffers.get(node.type);
             if (!buf) { buf = []; buffers.set(node.type, buf); }
-            buf.push({ id: node.id, type: node.type, fields: resolved.fields as Record<string, ResolvedField> });
+            buf.push({ id: node.id, type: node.type, entityUri, aliases, fields: resolved.fields as Record<string, ResolvedField> });
             if (buf.length >= chunkSize) {
                 yield { name: `bundle-node:${node.type}:${seq.toString()}`, data: buf, meta: { kind: "node", type: node.type, seq } };
                 seq++; nodeChunkCount++;
@@ -182,9 +195,9 @@ export class BundleBuilder implements ManifestBuilder<BundleUploadInput, BundleM
         await Promise.all(
             Object.entries(bundle.nodes).map(async ([type, schemaId]: [string, Hex]) => {
                 const { specCid } = await this.schemaRegistry.getSchema(schemaId);
-                const blob = await this.storage.get<{ definition?: SchemaDefinition; types?: Record<string, TypeDefinition> }>(specCid);
+                const blob = await this.storage.get<{ definition?: SchemaDefinition; types?: Record<string, TypeDefinition>; identity?: NodeIdentity }>(specCid);
                 if (!blob.definition) throw new Error(`node schema ${schemaId} is not a resolver schema`);
-                defByType.set(type, { fields: blob.definition, types: blob.types });
+                defByType.set(type, { fields: blob.definition, types: blob.types, identity: blob.identity });
             }),
         );
         return defByType;

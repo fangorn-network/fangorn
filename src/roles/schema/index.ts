@@ -1,15 +1,16 @@
 import { type Hex, type WalletClient } from "viem";
 import { SchemaRegistry } from "../../registries/schema-registry";
 import { MetadataStorage } from "../../providers/storage/types.js";
-import { BundleInput, ResolvedBundle, SchemaBlob, SchemaDefinition, SchemaDoc, TypeDefinition } from "./types";
+import { BundleInput, NodeIdentity, ResolvedBundle, SchemaBlob, SchemaDefinition, SchemaDoc, TypeDefinition } from "./types";
 import { validate } from "./validate";
 
 export * from './types';
+export * from './identity';
 
 // Register either a 'resolver' (a standard flat schema, optionally with a
 // custom-type vocabulary) or a 'bundle' (the shape of how resolver schemas combine).
 export type RegisterSchemaParams =
-    | { kind?: "resolver"; name: string; definition: SchemaDefinition; types?: Record<string, TypeDefinition> }
+    | { kind?: "resolver"; name: string; definition: SchemaDefinition; types?: Record<string, TypeDefinition>; identity?: NodeIdentity }
     | { kind: "bundle"; name: string; bundle: BundleInput };
 
 interface RegisteredSchemaBase {
@@ -19,7 +20,7 @@ interface RegisteredSchemaBase {
     owner: Hex;
 }
 export type RegisteredSchema =
-    | (RegisteredSchemaBase & { kind: "resolver"; definition: SchemaDefinition; types?: Record<string, TypeDefinition> })
+    | (RegisteredSchemaBase & { kind: "resolver"; definition: SchemaDefinition; types?: Record<string, TypeDefinition>; identity?: NodeIdentity })
     | (RegisteredSchemaBase & { kind: "bundle"; bundle: ResolvedBundle });
 
 
@@ -39,7 +40,7 @@ export class SchemaRole {
             const bundle = await this.resolveBundle(params.bundle);
             blob = { kind: "bundle", name: params.name, owner, createdAt, bundle };
         } else {
-            blob = { kind: "resolver", name: params.name, owner, createdAt, definition: params.definition, types: params.types };
+            blob = { kind: "resolver", name: params.name, owner, createdAt, definition: params.definition, types: params.types, identity: params.identity };
         }
 
         const schemaCid = await this.storage.put(blob, { name: `schema:${params.name}` });
@@ -55,7 +56,7 @@ export class SchemaRole {
         const base = { schemaId, schemaCid, name: params.name, owner };
         return blob.kind === "bundle"
             ? { kind: "bundle", ...base, bundle: blob.bundle }
-            : { kind: "resolver", ...base, definition: blob.definition, types: blob.types };
+            : { kind: "resolver", ...base, definition: blob.definition, types: blob.types, identity: blob.identity };
     }
 
     async get(nameOrId: string): Promise<RegisteredSchema | undefined> {
@@ -68,7 +69,7 @@ export class SchemaRole {
             const base = { schemaId, schemaCid: record.specCid, name: blob.name, owner: blob.owner };
 
             if (blob.kind === "resolver") {
-                return { kind: "resolver", ...base, definition: blob.definition, types: blob.types };
+                return { kind: "resolver", ...base, definition: blob.definition, types: blob.types, identity: blob.identity };
             }
             return { kind: "bundle", ...base, bundle: blob.bundle };
         } catch (e) {

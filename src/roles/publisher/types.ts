@@ -138,6 +138,12 @@ export interface BundleManifest {
 export interface BundleNode {
     id: string;
     type: string;
+    // Phase 0 global identity (docs/CROSS_PUBLISHER_LINKING_PLAN.md §3): the
+    // canonical Entity URI `fangorn:<resourceId>/<localId>` and any namespaced
+    // aliases (e.g. "gplace:ChIJ…") declared on the node type. quickbeam keys
+    // cross-datasource adjacency on these.
+    entityUri: string;
+    aliases: string[];
     fields: Record<string, ResolvedField>;
 }
 

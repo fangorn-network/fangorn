@@ -34,10 +34,17 @@ export interface BaseManifest {
 
 export type ResolvedSchemaShape = SchemaDoc | ResolvedBundle;
 
+// Commit-time context known before chunking begins (owner + schema + dataset
+// name → the datasource resourceId). Builders that stamp global identity onto
+// records (e.g. BundleBuilder's Entity URIs) need it; others ignore it.
+export interface CommitInfo {
+    resourceId: Hex;
+}
+
 export interface ManifestBuilder<TInput, TManifest extends BaseManifest> {
     readonly kind: string;
     validate(schema: ResolvedSchemaShape, input: TInput): void | Promise<void>;
-    chunk(input: TInput, schema: ResolvedSchemaShape): AsyncIterable<ChunkDraft>;
+    chunk(input: TInput, schema: ResolvedSchemaShape, commit?: CommitInfo): AsyncIterable<ChunkDraft>;
     compareChunks(a: ChunkRef, b: ChunkRef): number;
     assemble(context: BuildContext, input: TInput, schema: ResolvedSchemaShape): TManifest;
 }

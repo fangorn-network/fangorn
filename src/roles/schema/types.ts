@@ -75,12 +75,28 @@ export interface FieldDefinition {
     items?: FieldDefinition | Record<string, FieldDefinition>;
 }
 
+// Cross-publisher identity (docs/CROSS_PUBLISHER_LINKING.md, Phase 0).
+// Declares how a node type exposes *global* identity so foreign edges can
+// reference its entities and so two datasources can join on a shared key.
+export interface NodeIdentity {
+    // Field whose value supplies the node's localId. Defaults to the node id
+    // itself when omitted. Lets a publisher promote an existing field (e.g. a
+    // Google Place ID) to the canonical local key. Reserved key: "@id".
+    "@id"?: string;
+    // Maps an alias namespace (e.g. "isrc") to the field carrying its value.
+    // The join contract is the namespace, not the field name: A may store the
+    // value in `isrc`, B in `isrcCode`, and they still join on `isrc:`.
+    aliases?: Record<string, string>;
+}
+
 // A schema document that pairs the flat field map with a custom-type vocabulary.
 // `validate` accepts either this or a bare SchemaDefinition (back-compat); the
 // latter is treated as `{ fields }` with no custom types.
 export interface SchemaDoc {
     types?: Record<string, TypeDefinition>;
     fields: SchemaDefinition;
+    // Optional Phase-0 identity declaration for this node type.
+    identity?: NodeIdentity;
 }
 
 // bundle "shape" types inspired by SHACL
@@ -131,6 +147,8 @@ export interface ResolverSchemaBlob extends SchemaBlobBase {
     definition: SchemaDefinition;
     // optional custom-type vocabulary referenced by fields in `definition`
     types?: Record<string, TypeDefinition>;
+    // optional Phase-0 identity declaration (Entity URI @id + namespaced aliases)
+    identity?: NodeIdentity;
 }
 export interface BundleSchemaBlob extends SchemaBlobBase {
     kind: "bundle";

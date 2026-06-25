@@ -1,5 +1,10 @@
 # Basic Usage
 
+TODO: This is really really outdated! Do not do any of these things - need to update!
+
+---
+
+
 This guide walks you through the end-to-end flow from schema registration to datasource consumption.
 
 ## The Flow

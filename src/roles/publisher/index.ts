@@ -68,6 +68,13 @@ export class PublisherRole {
 
         await builder.validate(schema, input);
 
+        // Commit context known before chunking: the datasource resourceId that
+        // Phase-0 Entity URIs are prefixed with. Derived from the same
+        // (owner, schemaId, datasetName) used to publish the datasource below.
+        const owner = this.requireAccount();
+        const ds = datasetName ?? `${schemaId}:${owner}`;
+        const resourceId = DataSourceRegistry.resourceId(owner, schemaId, ds);
+
         // CAR-batched upload: instead of one HTTP POST per chunk, we pack many
         // chunks into a single locally-built CAR (one pin = one request) and run
         // up to `concurrency` such CAR uploads in flight. Chunks are pre-serialized
@@ -98,7 +105,7 @@ export class PublisherRole {
             void task.finally(() => inFlight.delete(task));
         };
 
-        for await (const draft of builder.chunk(input, schema)) {
+        for await (const draft of builder.chunk(input, schema, { resourceId })) {
             if (firstErr) break;
             const myIdx = idx++; // assigned in generation order — preserves leaf indexing
             const data = serialize(draft.data);
@@ -132,11 +139,9 @@ export class PublisherRole {
         };
 
         const manifest = builder.assemble(context, input, schema);
-        const owner = this.requireAccount();
         const manifestCid = await this.storage.put(manifest, {
             name: `manifest:${builder.kind}:${schemaId}:${Date.now().toString()}`,
         });
-        const ds = datasetName ?? `${schemaId}:${owner}`;
         await this.dataSourceRegistry.publish(manifestCid, context.root, schemaId, ds);
 
         return { manifestUri: manifestCid, schemaId, owner, entryCount: chunks.length };
