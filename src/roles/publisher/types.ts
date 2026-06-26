@@ -57,6 +57,7 @@ export interface PublishRecord {
  * wait do I really even need this?
  * Resolved manifest fields
  */
+
 export interface ResolvedHandleField {
     "@type": "handle";
     uri: string;

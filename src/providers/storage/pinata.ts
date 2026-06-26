@@ -69,6 +69,9 @@ export class PinataBackend implements MetadataStorage {
     }
 
     async get<T>(uri: string): Promise<T> {
+        // Use the dedicated Pinata gateway — freshly pinned content is served
+        // immediately there, whereas the public ipfs.io gateway lags propagation
+        // and times out on just-published CIDs.
         return retrieveByCid<T>(uri, this.gateway);
     }
 
