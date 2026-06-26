@@ -9,8 +9,7 @@
  * The builder consumes it with the bundle as the shape:
  *   quickbeam build --bundle "fangorn.mb.creativecore.v1=<id>" --root-type Recording
  *
- *   dotenvx run -f .env -- tsx src/test/publish_bundle.ts \
- *     --input-dir /home/driemworks/fangorn/embeddings/stage_volumes
+ *   pnpm dotenvx run -f .env -- tsx src/test/publish_bundle.ts --input-dir /home/driemworks/fangorn/embeddings/stage_volumes
  *
  * Requires env (or ~/.fangorn/config.json): DELEGATOR_ETH_PRIVATE_KEY, PINATA_JWT,
  * PINATA_GATEWAY, CHAIN_NAME[, RPC_URL].
@@ -107,25 +106,54 @@ async function* streamJsonArray<T>(path: string, limit = 0): AsyncIterable<T> {
 // an existing file) still wins as an explicit override; STEM_TYPE is the legacy
 // fallback for files whose records lack entityType.
 const STEM_TYPE: Record<string, string> = Object.fromEntries(Object.entries(TYPE_FILE).map(([t, f]) => [f, t]));
-async function makeTypeResolver(inputDir: string, volume: number): Promise<(type: string) => string | undefined> {
+// volume 0 = "all volumes" (mirrors `schemagen --volume 0`): scan node files
+// across every volume_<n>_*.json so a merged multi-volume bundle resolves all its
+// node types. A specific volume keeps the single-prefix behavior.
+function volumePrefixMatch(file: string, volume: number): { match: boolean; prefix: string } {
+    if (volume === 0) {
+        const m = /^volume_\d+_/.exec(file);
+        return { match: m !== null, prefix: m ? m[0] : "" };
+    }
     const prefix = `volume_${volume.toString()}_`;
+    return { match: file.startsWith(prefix), prefix };
+}
+async function makeTypeResolver(inputDir: string, volume: number): Promise<(type: string) => string | undefined> {
     const discovered = new Map<string, string>();
     for (const f of readdirSync(inputDir)) {
-        if (!f.startsWith(prefix) || !f.endsWith(".json") || f === `${prefix}edges.json`) continue;
+        const { match, prefix } = volumePrefixMatch(f, volume);
+        if (!match || !f.endsWith(".json") || f.endsWith("_edges.json")) continue;
         const path = join(inputDir, f);
         let type: string | undefined;
         for await (const node of streamJsonArray<MbNode>(path, 1)) {
             const t = (node.fields as Record<string, unknown> | undefined)?.["entityType"];
             if (typeof t === "string") type = t;
         }
-        if (!type) { const stem = f.slice(prefix.length, -5); type = STEM_TYPE[stem] ?? (stem.charAt(0).toUpperCase() + stem.slice(1)); }
+        // stem fallback (file had no records / no entityType): capitalize each
+        // `_`-separated segment so e.g. `event_categories` → `Event_Categories`.
+        if (!type) {
+            const stem = f.slice(prefix.length, -5);
+            type = STEM_TYPE[stem] ?? stem.split("_").map(s => s.charAt(0).toUpperCase() + s.slice(1)).join("_");
+        }
         if (!discovered.has(type)) discovered.set(type, path);
     }
     return (type: string) => {
-        const explicit = TYPE_FILE[type];
-        if (explicit) { const p = join(inputDir, `${prefix}${explicit}.json`); if (existsSync(p)) return p; }
+        if (volume !== 0) {
+            const explicit = TYPE_FILE[type];
+            if (explicit) { const p = join(inputDir, `volume_${volume.toString()}_${explicit}.json`); if (existsSync(p)) return p; }
+        }
         return discovered.get(type);
     };
+}
+
+// Edge files for the run: every volume's edges when volume 0, else just one.
+function edgeFilesFor(inputDir: string, volume: number): string[] {
+    if (volume === 0) {
+        return readdirSync(inputDir)
+            .filter(f => /^volume_\d+_edges\.json$/.test(f))
+            .sort()
+            .map(f => join(inputDir, f));
+    }
+    return [join(inputDir, `volume_${volume.toString()}_edges.json`)];
 }
 
 // ── schema conformance (schemas inferred from a sample → over-constrained) ─────
@@ -227,7 +255,7 @@ function saveLedger(path: string, ledger: Ledger): void { mkdirSync("tmp", { rec
 program
     .option("--input-dir <path>", "Directory with volume_<n>_*.json + schemas/", "./stage_volumes")
     .option("--schemas-dir <path>", "Schema definitions dir (default <input-dir>/schemas)")
-    .option("--volume <n>", "Volume number", "1")
+    .option("--volume <n>", "Volume number (0 = all volumes, for a merged multi-volume bundle)", "1")
     .option("--limit <n>", "Max entries per file (0 = all) — small value for a cheap dry run", "0")
     .option("--chunk-size <n>", "Entries per merkle leaf", "1000")
     .option("--concurrency <n>", "Parallel chunk uploads (low on a modest uplink)", "4")
@@ -275,8 +303,8 @@ async function publishSharded(
     if (!rootDef) throw new Error(`no definition for ${rootSchemaName}`);
     const rootPath = typePath(rootType);
     if (!rootPath || !existsSync(rootPath)) throw new Error(`No node file for root type "${rootType}"`);
-    const edgesPath = join(inputDir, `volume_${volume.toString()}_edges.json`);
-    if (!existsSync(edgesPath)) throw new Error(`Not found: ${edgesPath}`);
+    const edgesPaths = edgeFilesFor(inputDir, volume);
+    for (const p of edgesPaths) if (!existsSync(p)) throw new Error(`Not found: ${p}`);
 
     const declaredEdges = new Set(bundle.bundle.edges.map(e => `${e.rel}:${e.from}:${e.to}`));
     const neighborTypes = new Set<string>();
@@ -303,13 +331,15 @@ async function publishSharded(
         {
             const out = createWriteStream(edgesTsv);
             let scanned = 0, kept = 0;
-            for await (const e of streamJsonArray<MbEdge>(edgesPath, o.limit)) {
-                scanned++;
-                if (scanned % 5_000_000 === 0) process.stdout.write(`\r   scanned ${scanned.toLocaleString()}, kept ${kept.toLocaleString()}...   `);
-                if (!(e.from && e.to && e.fromType === rootType)) continue;
-                if (!declaredEdges.has(`${e.rel}:${e.fromType}:${e.toType ?? ""}`)) continue;
-                neededIds.add(e.to); kept++;
-                if (!out.write(`${e.from}\t${e.rel}\t${e.to}\n`)) await once(out, "drain");
+            for (const edgesPath of edgesPaths) {
+                for await (const e of streamJsonArray<MbEdge>(edgesPath, o.limit)) {
+                    scanned++;
+                    if (scanned % 5_000_000 === 0) process.stdout.write(`\r   scanned ${scanned.toLocaleString()}, kept ${kept.toLocaleString()}...   `);
+                    if (!(e.from && e.to && e.fromType === rootType)) continue;
+                    if (!declaredEdges.has(`${e.rel}:${e.fromType}:${e.toType ?? ""}`)) continue;
+                    neededIds.add(e.to); kept++;
+                    if (!out.write(`${e.from}\t${e.rel}\t${e.to}\n`)) await once(out, "drain");
+                }
             }
             await new Promise<void>((res, rej) => { out.end((err?: Error | null) => { if (err) rej(err); else res(); }); });
             process.stdout.write("\n");
@@ -446,8 +476,9 @@ async function main(): Promise<void> {
             if (!f.path) { console.warn(`   ⚠️  no file for node type ${f.type} — skipping`); return false; }
             return true;
         });
-    const edgesPath = join(inputDir, `volume_${volume.toString()}_edges.json`);
-    if (!existsSync(edgesPath)) throw new Error(`Not found: ${edgesPath}`);
+    const edgesPaths = edgeFilesFor(inputDir, volume);
+    for (const p of edgesPaths) if (!existsSync(p)) throw new Error(`Not found: ${p}`);
+    if (edgesPaths.length === 0) throw new Error(`No volume_*_edges.json in ${inputDir}`);
 
     // ── register node schemas + bundle (idempotent) ───────────────────────────
     for (const { schemaName } of typeFiles) {
@@ -494,11 +525,13 @@ async function main(): Promise<void> {
         }
     }
     async function* edges(): AsyncIterable<MbEdge> {
-        for await (const e of streamJsonArray<MbEdge>(edgesPath, limit)) {
-            if (!(e.rel && e.from && e.to)) continue;
-            edgeCount++;
-            if (edgeCount % 1_000_000 === 0) process.stdout.write(`\r   ${nodeCount.toLocaleString()} nodes, ${edgeCount.toLocaleString()} edges streamed...   `);
-            yield { rel: e.rel, from: e.from, to: e.to };
+        for (const edgesPath of edgesPaths) {
+            for await (const e of streamJsonArray<MbEdge>(edgesPath, limit)) {
+                if (!(e.rel && e.from && e.to)) continue;
+                edgeCount++;
+                if (edgeCount % 1_000_000 === 0) process.stdout.write(`\r   ${nodeCount.toLocaleString()} nodes, ${edgeCount.toLocaleString()} edges streamed...   `);
+                yield { rel: e.rel, from: e.from, to: e.to };
+            }
         }
     }
 

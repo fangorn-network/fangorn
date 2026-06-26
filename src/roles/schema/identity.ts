@@ -42,6 +42,15 @@ const RESOURCE_ID_RE = /^0x[0-9a-fA-F]{64}$/;
 // lowercase, alphanumeric, must start with a letter.
 const NAMESPACE_RE = /^[a-z][a-z0-9]*$/;
 
+/**
+ * Non-throwing predicate: is `s` a well-formed datasource resourceId (or schemaId)
+ * — a 0x-prefixed 32-byte hex hash? Shared by Phase-1 `view` resolution, which
+ * pins a set of source resourceIds.
+ */
+export function isResourceId(s: string): boolean {
+    return RESOURCE_ID_RE.test(s);
+}
+
 /** Build the canonical Entity URI for a node in a datasource. */
 export function toEntityUri(resourceId: Hex, localId: string): string {
     if (!RESOURCE_ID_RE.test(resourceId)) {

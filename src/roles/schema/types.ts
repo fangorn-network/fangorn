@@ -8,7 +8,7 @@ import { type Hex } from "viem";
 // there are two 'kind' of schemas
 // the resolver type refers to 'raw' schemas that need to be resolved (e.g. a well-defined schema def)
 // while bundle refers to a BundleInput
-export type SchemaKind = "resolver" | "bundle";
+export type SchemaKind = "resolver" | "bundle" | "view";
 
 // A schema is simply a set of KV-pairs
 export type SchemaDefinition = Record<string, FieldDefinition>;
@@ -137,6 +137,31 @@ export interface BundleShape {
     bundle: ResolvedBundle;
 }
 
+// Composed View (docs/CROSS_PUBLISHER_LINKING.md, Phase 1).
+//
+// A view is *just another datasource* whose content is the fusion of several
+// existing datasources. It composes them by their global identity (Entity URIs +
+// aliases from Phase 0) — no ML, deterministic. It registers/publishes through
+// the same schema/registry path as a resolver or bundle.
+
+/** Author-facing input: the datasource resourceIds to fuse, plus optional
+ *  linksets (asserted cross-edges, Phase 2) and a trust policy (Phase 4). */
+export interface ViewInput {
+    // datasource resourceIds to compose (0x + 64 hex each)
+    sources: Hex[];
+    // asserted-edge linkset artifact ids; unused until Phase 2
+    linksets?: Hex[];
+    // trust policy; opaque + unused until Phase 4
+    trust?: Record<string, unknown>;
+}
+
+/** Committed form: sources validated, deduped + sorted; linksets/trust defaulted. */
+export interface ResolvedView {
+    sources: Hex[];
+    linksets: Hex[];
+    trust: Record<string, unknown>;
+}
+
 interface SchemaBlobBase {
     name: string;
     owner: Hex;
@@ -154,7 +179,11 @@ export interface BundleSchemaBlob extends SchemaBlobBase {
     kind: "bundle";
     bundle: ResolvedBundle;
 }
-export type SchemaBlob = ResolverSchemaBlob | BundleSchemaBlob;
+export interface ViewSchemaBlob extends SchemaBlobBase {
+    kind: "view";
+    view: ResolvedView;
+}
+export type SchemaBlob = ResolverSchemaBlob | BundleSchemaBlob | ViewSchemaBlob;
 
 export interface SchemaRoleConfig {
     chainId: number;

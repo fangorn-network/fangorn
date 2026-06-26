@@ -70,3 +70,57 @@ describe("SchemaRole — Phase 0 identity round-trip", () => {
         expect((got as Extract<RegisteredSchema, { kind: "resolver" }>).identity).toBeUndefined();
     });
 });
+
+describe("SchemaRole — Phase 1 view artifact", () => {
+    const A = ("0x" + "a".repeat(64)) as Hex;
+    const B = ("0x" + "b".repeat(64)) as Hex;
+    type ViewSchema = Extract<RegisteredSchema, { kind: "view" }>;
+
+    it("registers a view and pins resolved sources (sorted + deduped)", async () => {
+        const role = makeRole();
+        const reg = await role.register({
+            kind: "view",
+            name: "creative.view.v1",
+            view: { sources: [B, A, A] },
+        });
+        expect(reg.kind).toBe("view");
+        const v = reg as ViewSchema;
+        expect(v.view.sources).toEqual([A, B]);
+        expect(v.view.linksets).toEqual([]);
+        expect(v.view.trust).toEqual({});
+    });
+
+    it("round-trips a view through register → get", async () => {
+        const role = makeRole();
+        await role.register({ kind: "view", name: "creative.view.v1", view: { sources: [A, B] } });
+        const got = await role.get("creative.view.v1");
+        expect(got?.kind).toBe("view");
+        expect((got as ViewSchema).view.sources).toEqual([A, B]);
+    });
+
+    it("carries linksets + trust through when provided", async () => {
+        const role = makeRole();
+        const reg = await role.register({
+            kind: "view",
+            name: "v.with.extras",
+            view: { sources: [A], linksets: [B], trust: { policy: "min-2-attestations" } },
+        });
+        const v = reg as ViewSchema;
+        expect(v.view.linksets).toEqual([B]);
+        expect(v.view.trust).toEqual({ policy: "min-2-attestations" });
+    });
+
+    it("rejects a view with no sources", async () => {
+        const role = makeRole();
+        await expect(
+            role.register({ kind: "view", name: "empty.view", view: { sources: [] } }),
+        ).rejects.toThrow(/at least one source/i);
+    });
+
+    it("rejects a malformed source resourceId", async () => {
+        const role = makeRole();
+        await expect(
+            role.register({ kind: "view", name: "bad.view", view: { sources: ["0xnothex" as Hex] } }),
+        ).rejects.toThrow(/invalid source resourceId/i);
+    });
+});

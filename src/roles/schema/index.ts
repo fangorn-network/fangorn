@@ -1,7 +1,8 @@
 import { type Hex, type WalletClient } from "viem";
 import { SchemaRegistry } from "../../registries/schema-registry";
 import { MetadataStorage } from "../../providers/storage/types.js";
-import { BundleInput, NodeIdentity, ResolvedBundle, SchemaBlob, SchemaDefinition, SchemaDoc, TypeDefinition } from "./types";
+import { BundleInput, NodeIdentity, ResolvedBundle, ResolvedView, SchemaBlob, SchemaDefinition, SchemaDoc, TypeDefinition, ViewInput } from "./types";
+import { isResourceId } from "./identity";
 import { validate } from "./validate";
 
 export * from './types';
@@ -11,7 +12,8 @@ export * from './identity';
 // custom-type vocabulary) or a 'bundle' (the shape of how resolver schemas combine).
 export type RegisterSchemaParams =
     | { kind?: "resolver"; name: string; definition: SchemaDefinition; types?: Record<string, TypeDefinition>; identity?: NodeIdentity }
-    | { kind: "bundle"; name: string; bundle: BundleInput };
+    | { kind: "bundle"; name: string; bundle: BundleInput }
+    | { kind: "view"; name: string; view: ViewInput };
 
 interface RegisteredSchemaBase {
     schemaId: Hex;
@@ -21,7 +23,8 @@ interface RegisteredSchemaBase {
 }
 export type RegisteredSchema =
     | (RegisteredSchemaBase & { kind: "resolver"; definition: SchemaDefinition; types?: Record<string, TypeDefinition>; identity?: NodeIdentity })
-    | (RegisteredSchemaBase & { kind: "bundle"; bundle: ResolvedBundle });
+    | (RegisteredSchemaBase & { kind: "bundle"; bundle: ResolvedBundle })
+    | (RegisteredSchemaBase & { kind: "view"; view: ResolvedView });
 
 
 export class SchemaRole {
@@ -39,6 +42,9 @@ export class SchemaRole {
         if (params.kind === "bundle") {
             const bundle = await this.resolveBundle(params.bundle);
             blob = { kind: "bundle", name: params.name, owner, createdAt, bundle };
+        } else if (params.kind === "view") {
+            const view = this.resolveView(params.view);
+            blob = { kind: "view", name: params.name, owner, createdAt, view };
         } else {
             blob = { kind: "resolver", name: params.name, owner, createdAt, definition: params.definition, types: params.types, identity: params.identity };
         }
@@ -54,9 +60,9 @@ export class SchemaRole {
         }
 
         const base = { schemaId, schemaCid, name: params.name, owner };
-        return blob.kind === "bundle"
-            ? { kind: "bundle", ...base, bundle: blob.bundle }
-            : { kind: "resolver", ...base, definition: blob.definition, types: blob.types, identity: blob.identity };
+        if (blob.kind === "bundle") return { kind: "bundle", ...base, bundle: blob.bundle };
+        if (blob.kind === "view") return { kind: "view", ...base, view: blob.view };
+        return { kind: "resolver", ...base, definition: blob.definition, types: blob.types, identity: blob.identity };
     }
 
     async get(nameOrId: string): Promise<RegisteredSchema | undefined> {
@@ -70,6 +76,9 @@ export class SchemaRole {
 
             if (blob.kind === "resolver") {
                 return { kind: "resolver", ...base, definition: blob.definition, types: blob.types, identity: blob.identity };
+            }
+            if (blob.kind === "view") {
+                return { kind: "view", ...base, view: blob.view };
             }
             return { kind: "bundle", ...base, bundle: blob.bundle };
         } catch (e) {
@@ -105,6 +114,26 @@ export class SchemaRole {
 
         if (errors.length) throw new Error("Invalid bundle shape:\n" + errors.map(e => ` - ${e}`).join("\n"));
         return { nodes, edges: input.edges };
+    }
+
+    /** Validate + pin a view's source set. A view is just another datasource,
+     *  so resolution is light: every source must be a well-formed resourceId;
+     *  the set is deduped + sorted for a deterministic committed form. linksets
+     *  (Phase 2) and trust (Phase 4) are carried through, defaulted empty. */
+    private resolveView(input: ViewInput): ResolvedView {
+        const errors: string[] = [];
+        for (const s of input.sources) {
+            if (!isResourceId(s)) errors.push(`invalid source resourceId "${s}" (expected 0x + 64 hex chars)`);
+        }
+        for (const l of input.linksets ?? []) {
+            if (!isResourceId(l)) errors.push(`invalid linkset id "${l}" (expected 0x + 64 hex chars)`);
+        }
+        const sources = [...new Set(input.sources)].sort();
+        if (sources.length === 0) errors.push("view must reference at least one source");
+        if (errors.length) throw new Error("Invalid view:\n" + errors.map(e => ` - ${e}`).join("\n"));
+
+        const linksets = [...new Set(input.linksets ?? [])].sort();
+        return { sources, linksets, trust: input.trust ?? {} };
     }
 
     validate(data: Record<string, unknown>, definition: SchemaDefinition | SchemaDoc): string[] {
