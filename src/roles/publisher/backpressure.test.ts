@@ -1,6 +1,5 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import type { Hex } from "viem";
-import { PublisherRole } from "./index.js";
 import type { PublishRecord } from "./types.js";
 
 /**
@@ -10,9 +9,19 @@ import type { PublishRecord } from "./types.js";
  * a bounded number of chunks ahead of in-flight uploads, so peak memory is
  * proportional to `concurrency`, not to the total dataset size. Before the fix
  * the loop drained the entire generator up front, pinning every chunk.
+ *
+ * publish() now packs up to FANGORN_CAR_GROUP_FILES chunks into one CAR per
+ * upload, so backpressure bounds in-flight *CAR uploads*, not chunks. We force
+ * one chunk per CAR (FILES=1) so each chunk is its own upload and the
+ * per-chunk backpressure invariant is exercised directly. The env is read at
+ * module load, so reset + stub before importing PublisherRole.
  */
 describe("PublisherRole.publish backpressure", () => {
     it("bounds generation by upload concurrency and builds a correct manifest", async () => {
+        vi.resetModules();
+        vi.stubEnv("FANGORN_CAR_GROUP_FILES", "1");
+        const { PublisherRole } = await import("./index.js");
+
         const TOTAL = 20_000;
         const CHUNK_SIZE = 1000;
         const CONCURRENCY = 4;
@@ -45,6 +54,22 @@ describe("PublisherRole.publish backpressure", () => {
                 inFlight--;
                 completedUploads++;
                 return `cid-${completedUploads.toString()}-${Math.random().toString(36).slice(2, 8)}`;
+            },
+
+            // Maps the items concurrently, then reduces them into a lookup object
+            async putMany(items: { name: string; data: any }[]): Promise<Record<string, string>> {
+                const results = await Promise.all(
+                    items.map(async (item) => {
+                        const cid = await this.put();
+                        return { name: item.name, cid };
+                    })
+                );
+
+                // Convert the array of results into a { name: cid } lookup dictionary
+                return results.reduce<Record<string, string>>((acc, curr) => {
+                    acc[curr.name] = curr.cid;
+                    return acc;
+                }, {});
             },
 
             get(): unknown {
@@ -92,5 +117,7 @@ describe("PublisherRole.publish backpressure", () => {
         // generation stays within a small constant of completed uploads (not the whole dataset)
         expect(maxLeadChunks).toBeLessThanOrEqual(CONCURRENCY + 2);
         expect(maxLeadChunks).toBeLessThan(expectedChunks);
-    });
+
+        vi.unstubAllEnvs();
+    }, 120_000);
 });

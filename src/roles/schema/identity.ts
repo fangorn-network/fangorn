@@ -3,8 +3,7 @@
 // Licensed under the MIT license. See LICENSE file in the project root for details.
 //
 
-// Phase 0 of cross-publisher linking (docs/CROSS_PUBLISHER_LINKING.md): give every
-// entity a *global* name so foreign edges can reference it. Two name forms:
+// give every entity a *global* name so foreign edges can reference it. Two name forms:
 //
 //   1. Entity URI      fangorn:<resourceId>/<localId>   — always exists, derived
 //                      from the datasource (resourceId = keccak256(owner ‖
@@ -17,7 +16,7 @@
 import type { Hex } from "viem";
 import type { NodeIdentity } from "./types.js";
 
-/** URI scheme that identifies a Fangorn-native Entity URI. */
+/** URI scheme that identifies a Fangorn-native Entity URI. e.g. fangorn://*/
 export const FANGORN_SCHEME = "fangorn" as const;
 
 /** Reserved node-field key: declares which field carries the node's canonical id. */

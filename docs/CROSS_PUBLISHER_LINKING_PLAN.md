@@ -53,8 +53,8 @@ case. Shared-id joins need **neither** a linkset nor `quickbeam link`.
 | 0.1 Identity primitives (Entity URI, aliases, reserved keys) | ✅ **done** | `src/roles/schema/identity.ts` + 30 passing tests |
 | 0.2 Node identity *declaration* type | ✅ **done** | `NodeIdentity` on `SchemaDoc` in `types.ts` |
 | 0.3 Carry identity from schema registration into the published bundle | ✅ **done** | schema round-trip + builder emits `entityUri`/`aliases`; tests below |
-| 0.4 [quickbeam] key adjacency on global id + Place-ID backfill | ⏳ **next** | out-of-repo; SDK contract now satisfied |
-| Phase 1+ | ☐ not started | see below |
+| 0.4 [quickbeam] key adjacency on global id + Place-ID backfill | ✅  | out-of-repo; SDK contract now satisfied |
+| Phase 1+ | ✅  | see below |
 
 **Slice 0.3 landed** in this repo:
 - `entityUri` + `aliases` added to `BundleNode` (`src/roles/publisher/types.ts`).
@@ -190,7 +190,7 @@ No joining happens yet — this is purely *naming*.
   added to `SchemaDoc`. Join contract is the **namespace**, not the field name.
 - **DoD:** ✅ typechecks; `extractAliases`/`resolveLocalId` consume it.
 
-### Slice 0.3 — Carry identity from schema registration into the published bundle ⏳ NEXT
+### Slice 0.3 — Carry identity from schema registration into the published bundle ✅ 
 This is the slice that makes 0.1/0.2 actually *do something* end-to-end.
 
 **Plain-English goal:** when a publisher registers a node schema (say
@@ -262,7 +262,7 @@ couple of test files; no new infra.
 > The per-node duplication is the price of keeping quickbeam's "read the record"
 > model intact — accept it.
 
-### Slice 0.4 — [quickbeam] key adjacency on the Entity URI + Place-ID backfill ☐
+### Slice 0.4 — [quickbeam] key adjacency on the Entity URI + Place-ID backfill ✅ 
 - **Out of this repo** (lives in `~/fangorn/embeddings`). Concrete seams:
   - `embeddings.py:build_bundle_joined_data()` (~1092–1098): index nodes by
     `node["entityUri"]` (falling back to `node["id"]` for pre-0.3 data), and
