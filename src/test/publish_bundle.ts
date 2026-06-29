@@ -9,7 +9,7 @@
  * The builder consumes it with the bundle as the shape:
  *   quickbeam build --bundle "fangorn.mb.creativecore.v1=<id>" --root-type Recording
  *
- *   pnpm dotenvx run -f .env -- tsx src/test/publish_bundle.ts --input-dir /home/driemworks/fangorn/embeddings/stage_volumes
+ *   pnpm dotenvx run -f .env -- tsx src/test/publish_bundle.ts --input-dir /home/driemworks/fangorn/embeddings/stage_volumes --volume 0
  *
  * Requires env (or ~/.fangorn/config.json): DELEGATOR_ETH_PRIVATE_KEY, PINATA_JWT,
  * PINATA_GATEWAY, CHAIN_NAME[, RPC_URL].
@@ -86,16 +86,45 @@ const TYPE_FILE: Record<string, string> = {
     Artist: "artists", Recording: "recordings", ReleaseGroup: "releasegroups", Release: "releases", Work: "works",
 };
 
+// Stream the top-level elements of a JSON array, robust to formatting: it works
+// whether each record is on its own line (the JsonArrayWriter convention) OR the
+// file is pretty-printed with records spanning many lines (some volume files are
+// indent=2). It scans char-by-char tracking string/escape state and brace depth,
+// yielding each complete top-level object — so a single reformatted file can't
+// silently stream zero records (which previously also broke type→file resolution).
 async function* streamJsonArray<T>(path: string, limit = 0): AsyncIterable<T> {
-    const rl = createInterface({ input: createReadStream(path, { highWaterMark: 1 << 20 }), crlfDelay: Infinity });
-    let n = 0;
-    for await (const line of rl) {
-        const s = line.trim();
-        if (!s || s === "[" || s === "]") continue;
-        const j = s.endsWith(",") ? s.slice(0, -1) : s;
-        if (!j) continue;
-        try { yield JSON.parse(j) as T; } catch { continue; }
-        if (limit && ++n >= limit) { rl.close(); return; }
+    const stream = createReadStream(path, { encoding: "utf8", highWaterMark: 1 << 20 });
+    let n = 0, depth = 0;
+    let inString = false, escape = false, started = false, capturing = false, buf = "";
+    for await (const chunk of stream as AsyncIterable<string>) {
+        for (let i = 0; i < chunk.length; i++) {
+            const ch = chunk[i];
+            if (capturing) buf += ch;
+            if (inString) {
+                if (escape) escape = false;
+                else if (ch === "\\") escape = true;
+                else if (ch === "\"") inString = false;
+                continue;
+            }
+            if (ch === "\"") { inString = true; continue; }
+            if (ch === "{" || ch === "[") {
+                if (!started) { started = true; continue; }   // the outer array container
+                if (!capturing) { capturing = true; buf = ch; } // begin a top-level element
+                depth++;
+            } else if (ch === "}" || ch === "]") {
+                if (!capturing) continue;                       // outer ']' / whitespace
+                depth--;
+                if (depth === 0) {
+                    capturing = false;
+                    try {
+                        const v = JSON.parse(buf) as T;
+                        yield v;
+                        if (limit && ++n >= limit) { stream.destroy(); return; }
+                    } catch { /* skip a malformed element, keep streaming */ }
+                    buf = "";
+                }
+            }
+        }
     }
 }
 
