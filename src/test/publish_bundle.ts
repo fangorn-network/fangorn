@@ -14,7 +14,7 @@
  * Requires env (or ~/.fangorn/config.json): DELEGATOR_ETH_PRIVATE_KEY, PINATA_JWT,
  * PINATA_GATEWAY, CHAIN_NAME[, RPC_URL].
  */
-
+ 
 import { readFileSync, writeFileSync, existsSync, readdirSync, createReadStream, createWriteStream, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { homedir, cpus } from "node:os";
@@ -26,8 +26,9 @@ import { type Hex } from "viem";
 import "dotenv/config";
 
 import { Fangorn } from "../fangorn.js";
+import { DataSourceRegistry } from "../registries/datasource-registry/index.js";
 import { type AppConfig, FangornConfig, SupportedNetworks } from "../config.js";
-import { type BundleInput, type SchemaDefinition } from "../roles/schema/types.js";
+import { type BundleInput, type NodeIdentity, type SchemaDefinition } from "../roles/schema/types.js";
 import { type FieldInput } from "../roles/publisher/types.js";
 
 // ── config (env-first, then ~/.fangorn/config.json) ───────────────────────────
@@ -72,7 +73,11 @@ function makeFangorn(c: ResolvedConfig): Fangorn {
 }
 
 // ── schema files + data shapes ────────────────────────────────────────────────
-interface NodeSchemaFile { name: string; definition: SchemaDefinition }
+// `identity` is emitted by `quickbeam data schemagen` (Phase 0 / slice 0.4):
+// the node type's global-identity declaration (@id promotion + namespaced
+// aliases). It must ride through registration so published nodes carry their
+// Entity URI localId + aliases — the keys a Composed View fuses on.
+interface NodeSchemaFile { name: string; definition: SchemaDefinition; identity?: NodeIdentity }
 interface BundleSchemaFile { name: string; kind: "bundle"; bundle: BundleInput }
 interface ConsolidatedSchemas { schemas: NodeSchemaFile[]; bundle: BundleSchemaFile }
 interface MbNode { name: string; fields: Record<string, unknown> }
@@ -174,15 +179,16 @@ async function makeTypeResolver(inputDir: string, volume: number): Promise<(type
     };
 }
 
-// Edge files for the run: every volume's edges when volume 0, else just one.
+// Edge files for the run. A volume's edges file may carry a source infix
+// (`volume_3_osm_edges.json`) or not (`volume_2_edges.json`), and a single volume
+// can have more than one — so match any `volume_<n>_*edges.json`, not one exact
+// name. volume 0 = every volume's edges; else just this volume's.
 function edgeFilesFor(inputDir: string, volume: number): string[] {
-    if (volume === 0) {
-        return readdirSync(inputDir)
-            .filter(f => /^volume_\d+_edges\.json$/.test(f))
-            .sort()
-            .map(f => join(inputDir, f));
-    }
-    return [join(inputDir, `volume_${volume.toString()}_edges.json`)];
+    const prefix = volume === 0 ? /^volume_\d+_/ : new RegExp(`^volume_${volume.toString()}_`);
+    return readdirSync(inputDir)
+        .filter(f => f.endsWith("edges.json") && prefix.test(f))
+        .sort()
+        .map(f => join(inputDir, f));
 }
 
 // ── schema conformance (schemas inferred from a sample → over-constrained) ─────
@@ -207,8 +213,7 @@ function conformFields(raw: Record<string, unknown>, def: SchemaDefinition): Rec
     return out;
 }
 
-const ZERO = `0x${"0".repeat(64)}`;
-async function ensureResolver(fangorn: Fangorn, name: string, definition: SchemaDefinition, skip: boolean): Promise<Hex> {
+async function ensureResolver(fangorn: Fangorn, name: string, definition: SchemaDefinition, identity: NodeIdentity | undefined, skip: boolean): Promise<Hex> {
     let id: Hex | null = null;
     try {
         const registry = fangorn.getSchemaRegistry();
@@ -222,13 +227,40 @@ async function ensureResolver(fangorn: Fangorn, name: string, definition: Schema
 
     if (id) {
         console.log(`[publish] schema "${name}" already registered → ${id}`);
+        // Drift guard. On-chain schemas are IMMUTABLE by name, so an already-
+        // registered schema whose field set differs from the local (schemagen)
+        // definition means every node would be validated against the WRONG shape —
+        // surfacing as cryptic per-field "missing required field" errors deep in
+        // chunk(). Catch it here with an actionable message instead. (A common
+        // cause: two datasets reuse one `<prefix>.<type>.<version>` name for
+        // different shapes, e.g. Google-Business vs OSM-Business.)
+        const onchain = await fangorn.schema.get(name).catch((e: unknown) => {
+            console.warn(`[publish]   ⚠️  could not read on-chain schema "${name}" to verify its shape: ${(e as Error).message}`);
+            return undefined;
+        });
+        if (onchain?.kind === "resolver") {
+            const localKeys = new Set(Object.keys(definition));
+            const chainKeys = new Set(Object.keys(onchain.definition));
+            const onlyChain = [...chainKeys].filter(k => !localKeys.has(k));
+            const onlyLocal = [...localKeys].filter(k => !chainKeys.has(k));
+            if (onlyChain.length || onlyLocal.length) {
+                throw new Error(
+                    `schema "${name}" is already registered on-chain with a DIFFERENT shape — ` +
+                    `schemas are immutable by name, so this data cannot be published under it.\n` +
+                    (onlyChain.length ? `  fields only on-chain : ${onlyChain.sort().join(", ")}\n` : "") +
+                    (onlyLocal.length ? `  fields only in local : ${onlyLocal.sort().join(", ")}\n` : "") +
+                    `  → Give this dataset its own schema namespace: re-run \`quickbeam data schemagen\` ` +
+                    `with a distinct --prefix (or --version), then publish again.`,
+                );
+            }
+        }
         return id;
     }
 
     if (skip) throw new Error(`--skip-register but "${name}" not registered`);
 
-    const { schemaId } = await fangorn.schema.register({ name, definition });
-    console.log(`[publish] registered "${name}" → ${schemaId}`);
+    const { schemaId } = await fangorn.schema.register({ name, definition, identity });
+    console.log(`[publish] registered "${name}" → ${schemaId}${identity ? `  [identity: ${JSON.stringify(identity)}]` : ""}`);
     return schemaId;
 }
 
@@ -293,7 +325,7 @@ program
     // ── sharded mode (laptop-buildable: a few large self-contained shards) ──
     .option("--shard-roots <n>", "Roots per shard (>0 enables sharded mode; each shard = one tx, builder-RAM-bounded)", "0")
     .option("--root-type <type>", "Root node type for sharded mode (default: first node type in the bundle)", "")
-    .option("--dataset <name>", "Base dataset name for shards (default: ds.<bundle>)")
+    .option("--dataset <name>", "Datasource name under the bundle schema. Set it to host MULTIPLE datasources on ONE schema (e.g. eventbrite vs tribe events). Default: `${schemaId}:${owner}` (normal mode) / ds.<bundle> (sharded).")
     .option("--index-dir <path>", "Work dir for sort spill (real disk, ~2x edge size free)", "tmp")
     .option("--sort-mem <size>", "GNU sort buffer (small = laptop-safe; spills to disk)", "256M")
     .option("--sort-parallel <n>", "GNU sort threads (default: CPU count)", "")
@@ -493,6 +525,7 @@ async function main(): Promise<void> {
     if (!existsSync(consolidatedPath)) throw new Error(`Not found: ${consolidatedPath} — run \`quickbeam data schemagen\` first.`);
     const { schemas, bundle } = JSON.parse(readFileSync(consolidatedPath, "utf8")) as ConsolidatedSchemas;
     const defByName = new Map(schemas.map(s => [s.name, s.definition]));
+    const identityByName = new Map(schemas.map(s => [s.name, s.identity]));
 
     // discover node files from disk (dataset-agnostic) and pick a root type
     const typePath = await makeTypeResolver(inputDir, volume);
@@ -513,7 +546,7 @@ async function main(): Promise<void> {
     for (const { schemaName } of typeFiles) {
         const def = defByName.get(schemaName);
         if (!def) throw new Error(`No definition for ${schemaName} in ${consolidatedPath}`);
-        await ensureResolver(fangorn, schemaName, def, opts.skipRegister);
+        await ensureResolver(fangorn, schemaName, def, identityByName.get(schemaName), opts.skipRegister);
     }
     let bundleId: Hex | null = null;
     try {
@@ -568,20 +601,32 @@ async function main(): Promise<void> {
     console.log(`[publish]   node types: ${typeFiles.map(f => f.type).join(", ")} + edges${limit ? `  (limit ${limit.toLocaleString()}/file)` : ""}`);
     if (!opts.validate) console.log(`[publish]   validate=false (per-record schema validation still on; skips the in-memory node-id graph checks)`);
 
+    // datasetName picks WHICH datasource under this bundle schema we commit to.
+    // Default (undefined) = the single dataset `${schemaId}:${owner}`. Pass
+    // --dataset to host MULTIPLE datasources under ONE schema — e.g. publish
+    // Eventbrite events and Tribe events as two separate datasources (two
+    // resourceIds) that reuse the same event schema, so a View can fuse them and
+    // neither republish touches the other.
+    const datasetName = opts.dataset || undefined;
+    if (datasetName) console.log(`[publish]   dataset: "${datasetName}" (a distinct datasource under this schema)`);
     const r = await fangorn.publisher.publishBundle({
         bundleName: bundle.name,
         nodes: nodes(),
         edges: edges(),
-        datasetName: undefined, // single dataset under the bundle schema
+        datasetName,
         chunkSize,
         concurrency,
         validate: opts.validate,
     });
     process.stdout.write("\n");
 
+    const owner = fangorn.getAddress();
+    const resourceId = DataSourceRegistry.resourceId(owner, bundleId, datasetName ?? `${bundleId}:${owner}`);
     console.log(`\n✅ Committed the full graph as ONE bundle tx.\n`);
     console.log(`  bundle name : ${bundle.name}`);
     console.log(`  bundle id   : ${bundleId}`);
+    console.log(`  dataset     : ${datasetName ?? `${bundleId}:${owner} (default)`}`);
+    console.log(`  resourceId  : ${resourceId}   ← use this as a view --source-resource`);
     console.log(`  nodes/edges : ${nodeCount.toLocaleString()} / ${edgeCount.toLocaleString()}`);
     console.log(`  leaves      : ${r.entryCount.toString()}`);
     console.log(`  manifest cid: ${r.manifestUri}`);

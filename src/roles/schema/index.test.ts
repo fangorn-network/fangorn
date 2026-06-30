@@ -88,6 +88,7 @@ describe("SchemaRole — Phase 1 view artifact", () => {
         expect(v.view.sources).toEqual([A, B]);
         expect(v.view.linksets).toEqual([]);
         expect(v.view.trust).toEqual({});
+        expect(v.view.sourceSchemas).toEqual([]);
     });
 
     it("round-trips a view through register → get", async () => {
@@ -103,11 +104,12 @@ describe("SchemaRole — Phase 1 view artifact", () => {
         const reg = await role.register({
             kind: "view",
             name: "v.with.extras",
-            view: { sources: [A], linksets: [B], trust: { policy: "min-2-attestations" } },
+            view: { sources: [A], linksets: [B], trust: { policy: "min-2-attestations" }, sourceSchemas: [B, A, A] },
         });
         const v = reg as ViewSchema;
         expect(v.view.linksets).toEqual([B]);
         expect(v.view.trust).toEqual({ policy: "min-2-attestations" });
+        expect(v.view.sourceSchemas).toEqual([A, B]); // deduped + sorted
     });
 
     it("rejects a view with no sources", async () => {
@@ -122,5 +124,31 @@ describe("SchemaRole — Phase 1 view artifact", () => {
         await expect(
             role.register({ kind: "view", name: "bad.view", view: { sources: ["0xnothex" as Hex] } }),
         ).rejects.toThrow(/invalid source resourceId/i);
+    });
+});
+
+describe("SchemaRole — Phase 2 linkset artifact", () => {
+    type LinksetSchema = Extract<RegisteredSchema, { kind: "linkset" }>;
+
+    it("registers a linkset and defaults rels to empty (any relation)", async () => {
+        const role = makeRole();
+        const reg = await role.register({ kind: "linkset", name: "venue.links.v1" });
+        expect(reg.kind).toBe("linkset");
+        expect((reg as LinksetSchema).linkset.rels).toEqual([]);
+    });
+
+    it("dedupes + sorts a declared relation allowlist and round-trips it", async () => {
+        const role = makeRole();
+        await role.register({ kind: "linkset", name: "rel.links", linkset: { rels: ["sameAs", "near", "sameAs"] } });
+        const got = await role.get("rel.links");
+        expect(got?.kind).toBe("linkset");
+        expect((got as LinksetSchema).linkset.rels).toEqual(["near", "sameAs"]);
+    });
+
+    it("rejects an empty relation name", async () => {
+        const role = makeRole();
+        await expect(
+            role.register({ kind: "linkset", name: "bad.links", linkset: { rels: [" "] } }),
+        ).rejects.toThrow(/empty relation/i);
     });
 });

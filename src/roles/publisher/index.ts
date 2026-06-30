@@ -1,5 +1,5 @@
 import { type Address, type Hex, type WalletClient } from "viem";
-import { ResolvedBundle, SchemaDefinition, TypeDefinition } from "../schema/types";
+import { LinkRecord, ResolvedBundle, ResolvedLinkset, ResolvedView, SchemaDefinition, TypeDefinition } from "../schema/types";
 import { DataSourceRegistry, MerkleTree } from "../../registries/datasource-registry";
 import { MetadataStorage } from "../../providers/storage/types";
 import { serialize } from "../../providers/storage/utils";
@@ -12,17 +12,25 @@ import {
     BundleManifest,
     BundleNode,
     HydratedBundle,
-    BundleEdge
+    BundleEdge,
+    ViewManifest,
+    LinksetManifest
 } from "./types";
 import { ManifestBuilder, BuildContext, ResolvedSchemaShape, ChunkRef } from "./builders/types";
 import { RecordSetBuilder, RecordSetInput } from "./builders/record-set";
 import { BundleBuilder, BundleUploadInput } from "./builders/bundle";
+import { ViewBuilder, ViewUploadInput } from "./builders/view";
+import { LinksetBuilder, LinksetUploadInput } from "./builders/linkset";
 
 export { RecordSetBuilder } from "./builders/record-set";
 export { BundleBuilder } from "./builders/bundle";
+export { ViewBuilder } from "./builders/view";
+export { LinksetBuilder } from "./builders/linkset";
 export type { ManifestBuilder, BuildContext, ChunkDraft, ChunkRef, BaseManifest, ResolvedSchemaShape } from "./builders/types";
 export type { RecordSetInput } from "./builders/record-set";
 export type { BundleUploadInput } from "./builders/bundle";
+export type { ViewUploadInput } from "./builders/view";
+export type { LinksetUploadInput } from "./builders/linkset";
 
 // CAR grouping bounds: how many chunks (and how many bytes) we pack into one
 // CAR / one Pinata pin. A flat UnixFS directory of this many entries stays well
@@ -194,6 +202,82 @@ export class PublisherRole {
         });
     }
 
+    /**
+     * Publish a composed view as a datasource. The view must already be
+     * registered (kind:"view") — its resolved declaration (sources/linksets/
+     * trust) is read back via resolveSchema and committed as a single-leaf
+     * manifest. See docs/CROSS_PUBLISHER_LINKING_PLAN.md §4.
+     */
+    async publishView(params: {
+        viewName: string;
+        datasetName?: string;
+    }): Promise<CommitResult> {
+        return this.publish({
+            schemaName: params.viewName,
+            builder: new ViewBuilder(),
+            input: { viewName: params.viewName } satisfies ViewUploadInput,
+            datasetName: params.datasetName,
+        });
+    }
+
+    /**
+     * Publish a linkset (asserted cross-edges) as a datasource. The linkset must
+     * already be registered (kind:"linkset"). Each link is validated (well-formed
+     * global endpoints, allowed relation, sane confidence) before commit. See
+     * docs/CROSS_PUBLISHER_LINKING_PLAN.md §5.
+     */
+    async publishLinkset(params: {
+        linksetName: string;
+        links: LinkRecord[] | AsyncIterable<LinkRecord>;
+        datasetName?: string;
+        chunkSize?: number;
+        concurrency?: number;
+    }): Promise<CommitResult> {
+        return this.publish({
+            schemaName: params.linksetName,
+            builder: new LinksetBuilder(),
+            input: { linksetName: params.linksetName, links: params.links, chunkSize: params.chunkSize } satisfies LinksetUploadInput,
+            datasetName: params.datasetName,
+            concurrency: params.concurrency,
+        });
+    }
+
+    async getLinksetManifestByCid(manifestCid: string): Promise<LinksetManifest | undefined> {
+        try {
+            const manifest = await this.storage.get<LinksetManifest>(manifestCid);
+            if ((manifest as { kind?: unknown }).kind !== "linkset") return undefined;
+            return manifest;
+        } catch { return undefined; }
+    }
+
+    async getLinksetManifest(linksetName: string, datasetName: string): Promise<LinksetManifest | undefined> {
+        const linksetSchemaId = await this.schemaRegistry.schemaId(linksetName);
+        const owner = this.requireAccount();
+        try {
+            const ds = await this.dataSourceRegistry.get(owner, linksetSchemaId, datasetName);
+            if (!ds.manifestCid) return undefined;
+            return await this.getLinksetManifestByCid(ds.manifestCid);
+        } catch { return undefined; }
+    }
+
+    async getViewManifestByCid(manifestCid: string): Promise<ViewManifest | undefined> {
+        try {
+            const manifest = await this.storage.get<ViewManifest>(manifestCid);
+            if ((manifest as { kind?: unknown }).kind !== "view") return undefined;
+            return manifest;
+        } catch { return undefined; }
+    }
+
+    async getViewManifest(viewName: string, datasetName: string): Promise<ViewManifest | undefined> {
+        const viewSchemaId = await this.schemaRegistry.schemaId(viewName);
+        const owner = this.requireAccount();
+        try {
+            const ds = await this.dataSourceRegistry.get(owner, viewSchemaId, datasetName);
+            if (!ds.manifestCid) return undefined;
+            return await this.getViewManifestByCid(ds.manifestCid);
+        } catch { return undefined; }
+    }
+
     async readBundle(manifest: BundleManifest): Promise<HydratedBundle> {
         const nodeArrays = await Promise.all(
             manifest.nodeChunks.map(chunk => this.storage.get<BundleNode[]>(chunk.dataCid)),
@@ -265,10 +349,12 @@ export class PublisherRole {
                 this.schemaRegistry.getSchema(name),
                 this.schemaRegistry.schemaId(name),
             ]).then(async ([{ specCid }, schemaId]) => {
-                const blob = await this.storage.get<{ definition?: SchemaDefinition; types?: Record<string, TypeDefinition>; bundle?: ResolvedBundle }>(specCid);
-                const schema: ResolvedSchemaShape = blob.bundle
+                const blob = await this.storage.get<{ definition?: SchemaDefinition; types?: Record<string, TypeDefinition>; bundle?: ResolvedBundle; view?: ResolvedView; linkset?: ResolvedLinkset }>(specCid);
+                const schema: ResolvedSchemaShape = blob.view
+                    ?? blob.linkset
+                    ?? blob.bundle
                     ?? (blob.definition ? { fields: blob.definition, types: blob.types } : undefined)!;
-                if (!schema) throw new Error(`schema "${name}" has neither definition nor bundle`);
+                if (!schema) throw new Error(`schema "${name}" has no definition, bundle, view, nor linkset`);
                 return { schema, schemaId };
             }).catch(err => { this.schemaCache.delete(name); throw err; });
             this.schemaCache.set(name, p);

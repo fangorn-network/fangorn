@@ -1,7 +1,7 @@
 import { type Hex, type WalletClient } from "viem";
 import { SchemaRegistry } from "../../registries/schema-registry";
 import { MetadataStorage } from "../../providers/storage/types.js";
-import { BundleInput, NodeIdentity, ResolvedBundle, ResolvedView, SchemaBlob, SchemaDefinition, SchemaDoc, TypeDefinition, ViewInput } from "./types";
+import { BundleInput, LinksetInput, NodeIdentity, ResolvedBundle, ResolvedLinkset, ResolvedView, SchemaBlob, SchemaDefinition, SchemaDoc, TypeDefinition, ViewInput } from "./types";
 import { isResourceId } from "./identity";
 import { validate } from "./validate";
 
@@ -13,7 +13,8 @@ export * from './identity';
 export type RegisterSchemaParams =
     | { kind?: "resolver"; name: string; definition: SchemaDefinition; types?: Record<string, TypeDefinition>; identity?: NodeIdentity }
     | { kind: "bundle"; name: string; bundle: BundleInput }
-    | { kind: "view"; name: string; view: ViewInput };
+    | { kind: "view"; name: string; view: ViewInput }
+    | { kind: "linkset"; name: string; linkset?: LinksetInput };
 
 interface RegisteredSchemaBase {
     schemaId: Hex;
@@ -24,7 +25,8 @@ interface RegisteredSchemaBase {
 export type RegisteredSchema =
     | (RegisteredSchemaBase & { kind: "resolver"; definition: SchemaDefinition; types?: Record<string, TypeDefinition>; identity?: NodeIdentity })
     | (RegisteredSchemaBase & { kind: "bundle"; bundle: ResolvedBundle })
-    | (RegisteredSchemaBase & { kind: "view"; view: ResolvedView });
+    | (RegisteredSchemaBase & { kind: "view"; view: ResolvedView })
+    | (RegisteredSchemaBase & { kind: "linkset"; linkset: ResolvedLinkset });
 
 
 export class SchemaRole {
@@ -45,6 +47,9 @@ export class SchemaRole {
         } else if (params.kind === "view") {
             const view = this.resolveView(params.view);
             blob = { kind: "view", name: params.name, owner, createdAt, view };
+        } else if (params.kind === "linkset") {
+            const linkset = this.resolveLinkset(params.linkset ?? {});
+            blob = { kind: "linkset", name: params.name, owner, createdAt, linkset };
         } else {
             blob = { kind: "resolver", name: params.name, owner, createdAt, definition: params.definition, types: params.types, identity: params.identity };
         }
@@ -62,6 +67,7 @@ export class SchemaRole {
         const base = { schemaId, schemaCid, name: params.name, owner };
         if (blob.kind === "bundle") return { kind: "bundle", ...base, bundle: blob.bundle };
         if (blob.kind === "view") return { kind: "view", ...base, view: blob.view };
+        if (blob.kind === "linkset") return { kind: "linkset", ...base, linkset: blob.linkset };
         return { kind: "resolver", ...base, definition: blob.definition, types: blob.types, identity: blob.identity };
     }
 
@@ -79,6 +85,9 @@ export class SchemaRole {
             }
             if (blob.kind === "view") {
                 return { kind: "view", ...base, view: blob.view };
+            }
+            if (blob.kind === "linkset") {
+                return { kind: "linkset", ...base, linkset: blob.linkset };
             }
             return { kind: "bundle", ...base, bundle: blob.bundle };
         } catch (e) {
@@ -128,12 +137,26 @@ export class SchemaRole {
         for (const l of input.linksets ?? []) {
             if (!isResourceId(l)) errors.push(`invalid linkset id "${l}" (expected 0x + 64 hex chars)`);
         }
+        for (const s of input.sourceSchemas ?? []) {
+            if (!isResourceId(s)) errors.push(`invalid source schemaId "${s}" (expected 0x + 64 hex chars)`);
+        }
         const sources = [...new Set(input.sources)].sort();
         if (sources.length === 0) errors.push("view must reference at least one source");
         if (errors.length) throw new Error("Invalid view:\n" + errors.map(e => ` - ${e}`).join("\n"));
 
         const linksets = [...new Set(input.linksets ?? [])].sort();
-        return { sources, linksets, trust: input.trust ?? {} };
+        const sourceSchemas = [...new Set(input.sourceSchemas ?? [])].sort();
+        return { sources, linksets, trust: input.trust ?? {}, sourceSchemas };
+    }
+
+    /** Resolve a linkset schema. Light by design — a linkset is just another
+     *  datasource; the only declaration is an optional relation allowlist, which
+     *  we dedupe + sort for a deterministic committed form. Endpoint validation
+     *  happens per-record at publish time (LinksetBuilder), not here. */
+    private resolveLinkset(input: LinksetInput): ResolvedLinkset {
+        const rels = (input.rels ?? []).map(r => r.trim());
+        if (rels.some(r => r.length === 0)) throw new Error("Invalid linkset: empty relation name");
+        return { rels: [...new Set(rels)].sort() };
     }
 
     validate(data: Record<string, unknown>, definition: SchemaDefinition | SchemaDoc): string[] {

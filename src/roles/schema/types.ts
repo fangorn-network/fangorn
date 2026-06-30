@@ -8,7 +8,7 @@ import { type Hex } from "viem";
 // there are two 'kind' of schemas
 // the resolver type refers to 'raw' schemas that need to be resolved (e.g. a well-defined schema def)
 // while bundle refers to a BundleInput
-export type SchemaKind = "resolver" | "bundle" | "view";
+export type SchemaKind = "resolver" | "bundle" | "view" | "linkset";
 
 // A schema is simply a set of KV-pairs
 export type SchemaDefinition = Record<string, FieldDefinition>;
@@ -153,6 +153,14 @@ export interface ViewInput {
     linksets?: Hex[];
     // trust policy; opaque + unused until Phase 4
     trust?: Record<string, unknown>;
+    // OPTIONAL discovery hint: the schemaIds backing the sources/linksets above.
+    // resourceId = keccak(owner, schemaId, datasetName) is NOT indexed by the
+    // subgraph, so a consumer must otherwise scan the whole publish history to map
+    // a source resourceId → its manifest. Recording the schemaIds lets the consumer
+    // run cheap per-schema queries instead. A pure hint (not all sources need be
+    // covered — e.g. foreign resourceIds whose schemaId is unknown); the consumer
+    // falls back to a global scan for anything left unresolved.
+    sourceSchemas?: Hex[];
 }
 
 /** Committed form: sources validated, deduped + sorted; linksets/trust defaulted. */
@@ -160,6 +168,39 @@ export interface ResolvedView {
     sources: Hex[];
     linksets: Hex[];
     trust: Record<string, unknown>;
+    sourceSchemas: Hex[];
+}
+
+// Linkset (docs/CROSS_PUBLISHER_LINKING.md, Phase 2).
+//
+// A linkset is *just another datasource* whose records are asserted cross-edges
+// between entities — the **fuzzy** join, for when two publishers describe the
+// same thing with no shared id. Its endpoints are global (Entity URIs or
+// namespaced aliases) and may be **foreign** (point into someone else's
+// datasource). It publishes through the same Merkle/registry path; it is signed
+// by whoever commits it, so *who asserted a link* is a trust input (Phase 4).
+
+/** One asserted cross-edge. `from`/`to` are Entity URIs or namespaced aliases
+ *  (`isrc:…`), and may reference entities in foreign datasources. `rel` is the
+ *  asserted relation — `sameAs` (RESERVED_SAMEAS_REL) merges equivalence classes;
+ *  others just add edges. `confidence` ∈ [0,1]; `evidence` is opaque provenance. */
+export interface LinkRecord {
+    from: string;
+    rel: string;
+    to: string;
+    confidence?: number;
+    evidence?: Record<string, unknown>;
+}
+
+/** Author-facing input: an optional allowlist of relations this linkset asserts.
+ *  Empty/omitted = any non-empty relation is accepted. */
+export interface LinksetInput {
+    rels?: string[];
+}
+
+/** Committed form: rels deduped + sorted (empty = any relation allowed). */
+export interface ResolvedLinkset {
+    rels: string[];
 }
 
 interface SchemaBlobBase {
@@ -183,7 +224,11 @@ export interface ViewSchemaBlob extends SchemaBlobBase {
     kind: "view";
     view: ResolvedView;
 }
-export type SchemaBlob = ResolverSchemaBlob | BundleSchemaBlob | ViewSchemaBlob;
+export interface LinksetSchemaBlob extends SchemaBlobBase {
+    kind: "linkset";
+    linkset: ResolvedLinkset;
+}
+export type SchemaBlob = ResolverSchemaBlob | BundleSchemaBlob | ViewSchemaBlob | LinksetSchemaBlob;
 
 export interface SchemaRoleConfig {
     chainId: number;

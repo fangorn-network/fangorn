@@ -54,7 +54,12 @@ case. Shared-id joins need **neither** a linkset nor `quickbeam link`.
 | 0.2 Node identity *declaration* type | ✅ **done** | `NodeIdentity` on `SchemaDoc` in `types.ts` |
 | 0.3 Carry identity from schema registration into the published bundle | ✅ **done** | schema round-trip + builder emits `entityUri`/`aliases`; tests below |
 | 0.4 [quickbeam] key adjacency on global id + Place-ID backfill | ✅  | out-of-repo; SDK contract now satisfied |
-| Phase 1+ | ✅  | see below |
+| Phase 1 — Composed View artifact + `ViewBuilder` (SDK side) | ✅ **done** | register/get round-trip + builder/manifest; tests below |
+| Phase 1 — [quickbeam] multi-source bake + union-find | ✅ **done** | `build --view`, `build_view_joined_data`, `_fuse_nodes`, `_identity.resource_id`; in `~/fangorn/embeddings` |
+| Phase 2 — Linkset artifact + `LinksetBuilder` (SDK side) | ✅ **done** | register/get round-trip + builder w/ foreign-endpoint validation; tests below |
+| Phase 2 — [quickbeam] linkset ingest → `sameAs` into union-find | ✅ **done** | view fetches its linksets, feeds `sameAs` into `_fuse_nodes`; honors `minConfidence` |
+| Phase 2 — foreign endpoints on **bundle** `EdgeShape` | ⬜ deferred | linksets cover the foreign-edge need; see §5 note |
+| Phase 3+ | ⬜ not started | see below |
 
 **Slice 0.3 landed** in this repo:
 - `entityUri` + `aliases` added to `BundleNode` (`src/roles/publisher/types.ts`).
@@ -287,26 +292,53 @@ linking logic anywhere yet.
 
 **Goal:** fuse two shared-id datasources into one browsable graph, zero ML.
 
-- **SDK deliverables:**
+- **SDK deliverables (✅ done in this repo):**
   - New artifact `kind:"view"`: `{ sources: Hex[]; linksets: Hex[]; trust: {} }`
-    (`linksets`/`trust` present but unused until Phase 2/4).
+    (`linksets`/`trust` present but unused until Phase 2/4). `ViewInput` /
+    `ResolvedView` / `ViewSchemaBlob` in `schema/types.ts`; `resolveView()`
+    validates + dedupes + sorts the source set in `schema/index.ts`.
   - View registers/publishes via the **existing** schema/registry path — it is
-    *just another datasource*. New builder under
-    `src/roles/publisher/builders/` mirroring `bundle.ts`.
-- **Test-first checkpoint:** a `view` round-trips through register/get; its
-  resolved form pins each source `resourceId`.
-- **[quickbeam] deliverable + seams:** today `build_bundle_joined_data()` takes a
-  **single** `schema_id` and fetches one schema's manifests. Phase 1 generalizes
-  it to a *view*: resolve the view → its source `resourceId`s → each source's
-  manifests, fetch all node/edge chunks across sources into **one** node index
-  and **one** adjacency (both keyed on the Entity URI from §2.6).
-  - **Union-find on shared global key**: nodes from different sources sharing an
-    `alias` (e.g. same `isrc:`) or the same Entity URI collapse to one cluster
-    before the graph walk. This is the new code; the walk/projection
-    (`_walk_graph`/`_project`) is unchanged.
-  - New CLI `build --view <id>` (`cli.py`) routing to the multi-source path.
+    *just another datasource*. New `ViewBuilder`
+    (`src/roles/publisher/builders/view.ts`) mirrors `bundle.ts`: it emits the
+    resolved declaration as a **single merkle leaf**, so the committed root
+    attests exactly which inputs quickbeam is told to fuse. `PublisherRole`
+    gains `publishView()` / `getViewManifest()`; `resolveSchema()` now also
+    resolves `view` blobs into the builder's `ResolvedSchemaShape`.
+- **Test-first checkpoint (✅):** a `view` round-trips through register/get
+  (`schema/index.test.ts`) and its resolved form pins each source `resourceId`;
+  the builder emits the declaration chunk and assembles a `ViewManifest`
+  (`publisher/builders/view.test.ts`). Full suite green; `tsc --noEmit` clean.
+- **[quickbeam] deliverable + seams (✅ done in `~/fangorn/embeddings`):**
+  `build_bundle_joined_data()` (single `schema_id`) is now joined by
+  `build_view_joined_data()` (`quickbeam/embeddings.py`), which: resolves the
+  view's latest manifest → reads its `sources`; recomputes each on-chain
+  manifest's `resourceId` to discover the source manifests (the subgraph indexes
+  by `schemaId`, not `resourceId`, so it pages the full history and matches —
+  `_fetch_all_events_global`); fetches all sources' node/edge chunks into **one**
+  node index + **one** adjacency, both keyed on the Entity URI (§2.6).
+  - **resourceId off-chain:** `quickbeam/_identity.py` vendors a dependency-free
+    keccak256 + `resource_id(owner, schemaId, nameHash)`, locked to fangorn's
+    `DataSourceRegistry.resourceId` by a shared test vector.
+  - **Union-find on shared global key** (`_DSU` + `_fuse_nodes`): nodes from
+    different sources sharing an `alias` (e.g. same `isrc:`) collapse to one
+    cluster (identical Entity URIs already collapse via dict keying); members'
+    fields + aliases are merged and re-keyed to the cluster's canonical Entity
+    URI. The walk/projection (`_walk_graph`/`_project`) is unchanged — it just
+    operates on the fused graph.
+  - New CLI `build --view name=<schemaId>` (`embeddings.py` arg + `main()` branch
+    sharing the bundle path's embed/checkpoint loop; `cli.py build` already
+    passes args through).
+  - **Tests:** `tests/test_view_fusion.py` — keccak/resourceId vectors + DSU/
+    fusion behavior (alias-merge, distinct-entities-apart, canonical root).
 - **Deliverable (★ milestone):** music(isrc) + art(isrc) → one graph,
   deterministic, no linkset. **Risk: low–med.**
+
+> **Cross-repo note:** a view's `sources` are `resourceId`s, which the subgraph
+> does not index. quickbeam therefore pages the *full* ManifestPublished/Updated
+> history and recomputes each event's `resourceId` to match. Fine at dev/demo
+> scale; if a production subgraph adds a `resourceId` field (or the SDK records
+> source `schemaId`s alongside the resourceIds), swap the global scan for a
+> targeted query.
 
 ---
 
@@ -314,24 +346,39 @@ linking logic anywhere yet.
 
 **Goal:** let anyone publish signed cross-edges for the fuzzy case.
 
-- **SDK deliverables:**
+- **SDK deliverables (✅ done in this repo):**
   - New artifact `kind:"linkset"`; records `{ from, rel, to, confidence?, evidence? }`
     where `from`/`to` are **Entity URIs or namespaced ids** (may be foreign).
-  - `EdgeShape` / `builders/bundle.ts`: allow an edge endpoint to be a foreign
-    URI rather than a local node-type name. **This is the one genuinely new
-    model change** (per design §10).
-  - Publish linksets via the existing Merkle/registry path (signed).
-- **Test-first checkpoint:** a linkset with foreign endpoints validates,
-  chunks, and assembles into a manifest; an endpoint that is neither a valid
-  Entity URI nor a known alias is rejected.
-- **[quickbeam] deliverable + seams:** the multi-source ingest from Phase 1
-  additionally pulls each view-declared linkset's records and feeds its
-  `sameAs` edges into the **same union-find** (so asserted equivalences merge
-  clusters just like shared ids do). Honor `minConfidence`; optionally
-  Merkle-verify foreign endpoints against each source's committed root. Note
-  today's edge adjacency assumes `from`/`to` exist in the *same* manifest
-  (§2.6) — linkset edges are the first ones that legitimately cross that
-  boundary, so the adjacency builder must stop assuming co-location. **Risk: med.**
+    `LinkRecord` / `LinksetInput` / `ResolvedLinkset` / `LinksetSchemaBlob` in
+    `schema/types.ts`; `resolveLinkset()` (optional relation allowlist, deduped +
+    sorted) in `schema/index.ts`.
+  - `LinksetBuilder` (`builders/linkset.ts`) validates every record — endpoints
+    must be a well-formed Entity URI **or** namespaced alias, the relation must
+    be non-empty (and in the allowlist if the schema declares one), `confidence`
+    ∈ [0,1] — chunks links into many leaves, and assembles a `LinksetManifest`.
+    `PublisherRole.publishLinkset()` / `getLinksetManifest()`; `resolveSchema()`
+    resolves `linkset` blobs. Publishes via the existing Merkle/registry path.
+- **Test-first checkpoint (✅):** `linkset.test.ts` — foreign Entity-URI and
+  alias endpoints validate, chunk, and assemble; a non-URI/non-alias endpoint,
+  a disallowed relation, and an out-of-range confidence are each rejected.
+  `schema/index.test.ts` round-trips the artifact. Full suite green; `tsc` clean.
+- **[quickbeam] deliverable + seams (✅ done in `~/fangorn/embeddings`):**
+  `build_view_joined_data()` now also resolves the view's declared `linksets`
+  (same global-scan resourceId match as sources), fetches each linkset's
+  `linkChunks`, resolves every endpoint to a fused node by Entity URI **or**
+  namespaced alias (`_resolve_endpoint` + `_alias_index`), and feeds `sameAs`
+  links into the **same union-find** via `_fuse_nodes(..., extra_unions=…)` — so
+  asserted equivalences merge clusters exactly like shared ids. Non-`sameAs`
+  links become graph edges. Honors a view `trust.minConfidence` floor; links to
+  entities outside the loaded data are dropped. (Optional Merkle-verification of
+  foreign endpoints against each source root is left for Phase 4 trust.)
+  - **Tests:** `tests/test_view_fusion.py` — `sameAs` merges otherwise-distinct
+    nodes; endpoint resolution by URI and by alias; alias-index first-wins.
+- **Deferred:** foreign endpoints on a **bundle's** `EdgeShape` (an edge *shape*
+  pointing at a foreign node type). The linkset is the first-class vehicle for
+  foreign edges and covers the Phase-2 need, so this is intentionally left out;
+  revisit if a concrete bundle-level cross-datasource edge case appears.
+  **Risk: med (delivered).**
 
 ---
 

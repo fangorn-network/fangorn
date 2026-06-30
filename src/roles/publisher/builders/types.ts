@@ -1,5 +1,5 @@
 import type { Hex } from "viem";
-import type { SchemaDoc, ResolvedBundle } from "../../schema/types";
+import type { SchemaDoc, ResolvedBundle, ResolvedView, ResolvedLinkset } from "../../schema/types";
 
 export interface ChunkDraft {
     // storage object name passed to storage.put
@@ -32,7 +32,7 @@ export interface BaseManifest {
     tree: Hex[][];
 }
 
-export type ResolvedSchemaShape = SchemaDoc | ResolvedBundle;
+export type ResolvedSchemaShape = SchemaDoc | ResolvedBundle | ResolvedView | ResolvedLinkset;
 
 // Commit-time context known before chunking begins (owner + schema + dataset
 // name → the datasource resourceId). Builders that stamp global identity onto
