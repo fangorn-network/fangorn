@@ -1,5 +1,5 @@
 import type { ManifestBuilder, ChunkDraft, ChunkRef, BuildContext, ResolvedSchemaShape } from "./types";
-import type { SchemaDefinition } from "../../schema/types";
+import type { SchemaDoc } from "../../schema/types";
 import type { Manifest, PublishRecord } from "../types";
 import { resolveRecord, validateRecord } from "./utils";
 
@@ -46,6 +46,7 @@ export class RecordSetBuilder implements ManifestBuilder<RecordSetInput, Manifes
         return a.cid.localeCompare(b.cid);
     }
 
+    // builds a manifest from the build context
     assemble(ctx: BuildContext): Manifest {
         return {
             kind: "record-set",
@@ -63,6 +64,6 @@ export class RecordSetBuilder implements ManifestBuilder<RecordSetInput, Manifes
     }
 }
 
-function isRecordSchema(schema: ResolvedSchemaShape): schema is SchemaDefinition {
-    return !("nodes" in schema && "edges" in schema);
+function isRecordSchema(schema: ResolvedSchemaShape): schema is SchemaDoc {
+    return "fields" in schema;
 }

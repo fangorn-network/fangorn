@@ -3,7 +3,7 @@ import { createWalletClient, http, type Address, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { arbitrumSepolia } from "viem/chains";
 import { TestBed } from "./test/index.js";
-import { BundleInput, SchemaDefinition } from "./roles/schema/types.js";
+import { BundleInput, SchemaDefinition, TypeDefinition } from "./roles/schema/types.js";
 import { FieldInput, PublishRecord } from "./roles/publisher/types.js";
 
 const SK = process.env.DELEGATOR_ETH_PRIVATE_KEY as Hex;
@@ -158,42 +158,67 @@ describe("Fangorn Publisher E2E", () => {
 
         }, 120_000);
 
-        // it("should process and stream data seamlessly using an async iterable generator", async () => {
-        //     const totalRecords = 3500;
-        //     const chunkSize = 500; // Forces 7 full chunk cycles
+    });
 
-        //     // Create an async generator to stream chunks dynamically
-        //     async function* recordStreamGenerator() {
-        //         for (let i = 0; i < totalRecords; i++) {
-        //             yield {
-        //                 name: `stream-rec-${i}`,
-        //                 fields: { x: `Streaming generation line tracking element index: ${i}` }
-        //             } as PublishRecord;
-        //         }
-        //     }
+    describe.skipIf(!hasIpfs)("Constraints", () => {
+        let constrainedSchema: string;
 
-        //     const uniqueDatasetName = `ds.stream.${Date.now()}.${Math.random().toString(36).substring(2, 7)}`;
+        // a field-level constraint plus a `payment` custom type whose nested
+        // fields each carry their own constraints
+        const PRICED_SCHEMA: SchemaDefinition = {
+            title: { "@type": "string", constraints: [{ kind: "length", min: 1, max: 200 }] },
+            price: { "@type": "payment" },
+        };
+        const PRICED_TYPES: Record<string, TypeDefinition> = {
+            payment: {
+                shape: {
+                    amount: { "@type": "string", constraints: [{ kind: "regex", pattern: "^[0-9]+$" }] },
+                    currency: { "@type": "string", constraints: [{ kind: "enum", values: ["USDC", "USDT", "DAI"] }] },
+                },
+            },
+        };
 
-        //     const { manifestUri } = await testbed.getDelegatorFangorn().publisher.upload({
-        //         records: recordStreamGenerator(),
-        //         schemaName,
-        //         datasetName: uniqueDatasetName,
-        //         chunkSize,
-        //         concurrency: 5
-        //     });
+        beforeAll(async () => {
+            constrainedSchema = `fangorn.priced.${Date.now()}.${Math.random().toString(36).substring(2, 5)}`;
+            await testbed.registerSchema(constrainedSchema, PRICED_SCHEMA, PRICED_TYPES);
+            // custom types must survive the round-trip through storage
+            const reg = await testbed.getDelegatorFangorn().schema.get(constrainedSchema);
+            if (reg?.kind !== "resolver") throw new Error("expected resolver schema");
+            expect(reg.types?.payment).toBeDefined();
+        }, 90_000);
 
-        //     expect(manifestUri).toBeTruthy();
-        //     createdManifestCids.push(manifestUri);
+        it("publishes a record that satisfies all constraints", async () => {
+            const records: PublishRecord[] = [
+                {
+                    name: "priced-ok",
+                    fields: { title: "Atom Heart Mother", price: { amount: "5000000", currency: "USDC" } },
+                },
+            ];
+            const datasetName = `ds.priced.ok.${Date.now()}.${Math.random().toString(36).substring(2, 7)}`;
 
-        //     // Pull verification entries from disparate chunks out of the generated manifest
-        //     const intermediateEntry = await testbed.getDelegatorFangorn().publisher.getEntry(schemaName, "stream-rec-1750");
-        //     expect(intermediateEntry).toBeDefined();
-        //     expect(intermediateEntry.fields.x).toContain("1750");
+            const manifestUri = await testbed.publish(records, constrainedSchema, datasetName);
+            expect(manifestUri).toBeTruthy();
+            createdManifestCids.push(manifestUri);
 
-        //     const finalEntry = await testbed.getDelegatorFangorn().publisher.getEntry(schemaName, `stream-rec-${totalRecords - 1}`);
-        //     expect(finalEntry).toBeDefined();
-        // }, 180_000);
+            const entry = await testbed.getDelegatorFangorn()
+                .publisher.getEntry(constrainedSchema, datasetName, "priced-ok");
+            expect(entry).toBeDefined();
+        }, 90_000);
 
+        it("rejects a record that violates a nested constraint at publish time", async () => {
+            const records: PublishRecord[] = [
+                {
+                    name: "priced-bad",
+                    // amount has a decimal — fails the payment.amount regex
+                    fields: { title: "Atom Heart Mother", price: { amount: "5.5", currency: "USDC" } },
+                },
+            ];
+            const datasetName = `ds.priced.bad.${Date.now()}.${Math.random().toString(36).substring(2, 7)}`;
+
+            await expect(
+                testbed.publish(records, constrainedSchema, datasetName),
+            ).rejects.toThrow(/price\.amount/);
+        }, 60_000);
     });
 
     describe.skipIf(!hasIpfs)("Bundle", () => {
@@ -258,14 +283,14 @@ describe("Fangorn Publisher E2E", () => {
             // defines how edges are connected
             const edges = [{ rel: "performed_by", from: "track-1", to: "artist-1" }];
 
-            // publish tthe bundle onchain
+            // publish the bundle onchain
             const manifestUri = await testbed.publishBundle(bundleName, nodes, edges, datasetName);
             expect(manifestUri).toBeTruthy();
             createdManifestCids.push(manifestUri);
 
-            // manifest is a v3 bundle manifest: node chunks per type + one edge chunk
             const manifest = await testbed.getDelegatorFangorn()
                 .publisher.getBundleManifestByCid(manifestUri);
+            // 'unbundle'     
             const graph = await testbed.getDelegatorFangorn()
                 .publisher.readBundle(manifest!);
 
@@ -274,7 +299,7 @@ describe("Fangorn Publisher E2E", () => {
             expect(graph.edges).toContainEqual({ rel: "performed_by", from: "track-1", to: "artist-1" });
             expect(manifest!.kind).toBe("bundle");
             expect(manifest!.nodeChunks).toHaveLength(2);           // Track + Artist
-            expect(manifest!.edgeChunk?.dataCid).toBeTruthy();
+            expect(manifest!.edgeChunks[0].dataCid).toBeTruthy();
         }, 90_000);
 
         it("rejects a bundle whose edge violates min cardinality", async () => {
