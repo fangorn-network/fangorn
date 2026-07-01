@@ -132,6 +132,12 @@ export class Fangorn {
 	}
 
 	getConfig(): AppConfig { return this.ctx.config; }
+	getStorage(): MetadataStorage {
+		if (!this.ctx.metadataStorage) {
+			throw new Error("storage is not configured. Pass { pinata: { ... } } to Fangorn.create()");
+		}
+		return this.ctx.metadataStorage;
+	}
 	getSchemaRegistry(): SchemaRegistry { return this.ctx.schemaRegistry; }
 	getDatasourceRegistry(): DataSourceRegistry { return this.ctx.dataSourceRegistry; }
 	getSettlementRegistry(): SettlementRegistry { return this.ctx.settlementRegistry; }

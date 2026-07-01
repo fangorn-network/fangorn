@@ -37,6 +37,8 @@ import type { SchemaDefinition } from "../roles/schema/index.js";
 import { AgentConfig } from "../types/index.js";
 import { AppConfig, FangornConfig, SupportedNetworks } from "../config.js";
 import { PublishRecord } from "../roles/publisher/types.js";
+import { LocalRepo } from "../roles/repo/index.js";
+import { ObjectStore } from "../objects/store.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -134,8 +136,6 @@ function getFangorn(): Fangorn {
     if (_fangorn) return _fangorn;
 
     const cfg = loadConfig();
-
-    console.log(JSON.stringify(cfg))
 
     const agentConfig: AgentConfig = { privateKey: cfg.privateKey, pinataJwt: cfg.pinataJwt };
 
@@ -344,6 +344,24 @@ function peekFirstNonWsByte(filepath: string): number | undefined {
         }
     } finally {
         closeSync(fd);
+    }
+}
+
+/**
+ * Lazily stream PublishRecords out of one or more JSON files. A file whose first
+ * non-whitespace byte is "[" is streamed as an array (never fully resident);
+ * anything else is read as a single top-level object.
+ */
+async function* streamRecordsFromFiles(files: string[]): AsyncIterable<PublishRecord> {
+    for (const filepath of files) {
+        if (peekFirstNonWsByte(filepath) === 0x5b /* "[" */) {
+            const pipeline = createReadStream(filepath).pipe(streamArray.withParserAsStream());
+            for await (const { value } of pipeline as AsyncIterable<{ value: PublishRecord }>) {
+                yield value;
+            }
+        } else {
+            yield JSON.parse(readFileSync(filepath, "utf-8")) as PublishRecord;
+        }
     }
 }
 
@@ -706,6 +724,251 @@ datasourceCmd
             console.log(`Schema ID:    ${schemaId}`);
             console.log(`Version:      ${String(ds.version)}`);
             console.log(`Manifest CID: ${ds.manifestCid || "(none yet)"}`);
+            process.exit(0);
+        } catch (err) {
+            console.error("Failed:", (err as Error).message);
+            process.exit(1);
+        }
+    });
+
+// ─── repo (git-native data model) ───────────────────────────────────────────
+//
+// A dataset is a repository: a local `.fangorn/` tracks a schema-typed dataset and
+// its tip commit. `commit` builds history locally (permissionless); `push` moves
+// the on-chain pointer (permissioned). See docs/PROTOCOL.md §5, §7, §11.
+//
+// NOTE: repo creation lives under `fangorn repo init` because top-level `init`
+// already configures wallet/credentials. (Naming to be reconciled later.)
+
+const repoCmd = program.command("repo").description("Dataset repository operations");
+
+repoCmd
+    .command("init")
+    .description("Create a local dataset repo in the current directory")
+    .argument("<name>", "Dataset (repo) name")
+    .requiredOption("-s, --schema <schemaName>", "Schema name or bytes32 ID this repo conforms to")
+    .action(async (name: string, options: { schema: string }) => {
+        try {
+            if (LocalRepo.exists()) throw new Error("a Fangorn repo already exists here");
+            const fangorn = getFangorn();
+            const owner = getAccount().address;
+            const schemaId = await resolveSchemaId(fangorn, options.schema);
+            LocalRepo.init({ name, schema: options.schema, schemaId, owner });
+            note(
+                `Repo:    ${name}\nSchema:  ${options.schema}\nSchemaId:${schemaId}\nOwner:   ${owner}`,
+                "Initialized empty Fangorn repo (.fangorn/)",
+            );
+            process.exit(0);
+        } catch (err) {
+            console.error("Failed:", (err as Error).message);
+            process.exit(1);
+        }
+    });
+
+program
+    .command("clone")
+    .description("Reconstruct a dataset repo from its on-chain tip + IPFS history")
+    .argument("<owner>", "Owner (publisher) address of the dataset")
+    .requiredOption("-s, --schema <schemaName>", "Schema name or bytes32 ID")
+    .requiredOption("-d, --dataset <name>", "Dataset (repo) name")
+    .option("--dir <path>", "Directory to clone into (default: ./<dataset>)")
+    .action(async (owner: Address, options: { schema: string; dataset: string; dir?: string }) => {
+        try {
+            const fangorn = getFangorn();
+            const schemaId = await resolveSchemaId(fangorn, options.schema);
+            const s = spinner();
+
+            s.start("Resolving on-chain tip...");
+            const tip = await fangorn.publisher.resolveTip(owner, schemaId, options.dataset);
+            if (!tip) { s.stop(); throw new Error(`no on-chain tip for ${owner}/${options.dataset} — nothing to clone`); }
+
+            // Reconstruct history from IPFS alone — no subgraph. Walking the parent
+            // chain proves the whole history is retrievable and self-verifying.
+            const objects = new ObjectStore(fangorn.getStorage());
+            let count = 0;
+            for await (const step of objects.walkParents(tip)) { void step; count++; }
+            s.stop();
+
+            const dir = options.dir ?? join(process.cwd(), options.dataset);
+            if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+            if (LocalRepo.exists(dir)) throw new Error(`a Fangorn repo already exists at ${dir}`);
+            const repo = LocalRepo.init({ name: options.dataset, schema: options.schema, schemaId, owner }, dir);
+            repo.setHead(tip);
+
+            note(
+                `Into:    ${dir}\nTip:     ${tip}\nCommits: ${count.toString()} (reconstructed from IPFS)`,
+                "Cloned",
+            );
+            process.exit(0);
+        } catch (err) {
+            console.error("Failed:", (err as Error).message);
+            process.exit(1);
+        }
+    });
+
+program
+    .command("commit")
+    .description("Snapshot data into a new local commit (does not push)")
+    .argument("<files...>", "JSON file(s) of records to commit")
+    .requiredOption("-m, --message <msg>", "Commit message")
+    .option("--chunk-size <n>", "Records per chunk (default 1000)", (v) => parseInt(v, 10))
+    .option("--concurrency <n>", "Parallel chunk uploads (default 10)", (v) => parseInt(v, 10))
+    .action(async (files: string[], options: { message: string; chunkSize?: number; concurrency?: number }) => {
+        try {
+            const repo = LocalRepo.open();
+            const cfg = repo.config();
+            const fangorn = getFangorn();
+            const head = repo.head();
+            const parents = head ? [head] : [];
+            const s = spinner();
+
+            s.start(parents.length ? "Committing (building on local HEAD)..." : "Committing (initial)...");
+            const result = await fangorn.publisher.commitRecords({
+                records: streamRecordsFromFiles(files),
+                schemaName: cfg.schema,
+                datasetName: cfg.name,
+                parents,
+                message: options.message,
+                chunkSize: options.chunkSize,
+                concurrency: options.concurrency,
+            });
+            s.stop();
+
+            repo.setHead(result.commitCid);
+            note(
+                `Commit:   ${result.commitCid}\n` +
+                `Parent:   ${parents[0] ?? "(root)"}\n` +
+                `Tree:     ${result.manifestCid}\n` +
+                `Chunks:   ${result.entryCount.toString()} (${result.uploadedCount.toString()} uploaded, ${result.reusedCount.toString()} reused)\n` +
+                `Message:  ${options.message}`,
+                "Committed (local)",
+            );
+            process.exit(0);
+        } catch (err) {
+            console.error("Failed:", (err as Error).message);
+            process.exit(1);
+        }
+    });
+
+program
+    .command("push")
+    .description("Publish the local tip commit on-chain (the permissioned step)")
+    .option("--force", "Push even if it does not fast-forward the on-chain tip")
+    .action(async (options: { force?: boolean }) => {
+        try {
+            const repo = LocalRepo.open();
+            const cfg = repo.config();
+            const head = repo.head();
+            if (!head) throw new Error("nothing to push — no commits yet");
+            const fangorn = getFangorn();
+            const objects = new ObjectStore(fangorn.getStorage());
+            const commit = await objects.getCommit(head);
+            const s = spinner();
+
+            s.start("Pushing...");
+            const { txHash, onChainTip } = await fangorn.publisher.push({
+                commitCid: head,
+                root: commit.root,
+                schemaId: cfg.schemaId,
+                datasetName: cfg.name,
+                expectedParent: commit.parents[0],
+                force: options.force,
+            });
+            s.stop();
+
+            note(`Tx:   ${txHash}\nTip:  ${onChainTip}`, "Pushed");
+            process.exit(0);
+        } catch (err) {
+            console.error("Failed:", (err as Error).message);
+            process.exit(1);
+        }
+    });
+
+program
+    .command("status")
+    .description("Compare the local tip with the on-chain tip")
+    .action(async () => {
+        try {
+            const repo = LocalRepo.open();
+            const cfg = repo.config();
+            const localHead = repo.head();
+            const fangorn = getFangorn();
+
+            let onChainTip: string | undefined;
+            try {
+                onChainTip = (await fangorn.getDatasourceRegistry().get(cfg.owner, cfg.schemaId, cfg.name)).manifestCid || undefined;
+            } catch { onChainTip = undefined; }
+
+            const state = localHead === onChainTip
+                ? "up to date"
+                : localHead && !onChainTip
+                    ? "local commits not yet pushed"
+                    : localHead !== onChainTip
+                        ? "local tip differs from on-chain tip"
+                        : "no local commits";
+
+            console.log(`Repo:         ${cfg.name}`);
+            console.log(`Local HEAD:   ${localHead ?? "(none)"}`);
+            console.log(`On-chain tip: ${onChainTip ?? "(none)"}`);
+            console.log(`Status:       ${state}`);
+            process.exit(0);
+        } catch (err) {
+            console.error("Failed:", (err as Error).message);
+            process.exit(1);
+        }
+    });
+
+program
+    .command("log")
+    .description("Walk commit history from the local tip")
+    .option("-n, --max <n>", "Limit number of commits", (v) => parseInt(v, 10))
+    .action(async (options: { max?: number }) => {
+        try {
+            const repo = LocalRepo.open();
+            const head = repo.head();
+            if (!head) { console.log("(no commits yet)"); process.exit(0); }
+            const fangorn = getFangorn();
+            const objects = new ObjectStore(fangorn.getStorage());
+
+            for await (const { cid, commit } of objects.walkParents(head, options.max)) {
+                const when = new Date(commit.timestamp).toISOString();
+                console.log(`commit ${cid}`);
+                console.log(`Author: ${commit.author}`);
+                console.log(`Date:   ${when}`);
+                console.log(`Tree:   ${commit.tree}`);
+                console.log(`\n    ${commit.message}\n`);
+            }
+            process.exit(0);
+        } catch (err) {
+            console.error("Failed:", (err as Error).message);
+            process.exit(1);
+        }
+    });
+
+program
+    .command("show")
+    .description("Show a commit and what it changed vs. its parent")
+    .argument("[commit]", "Commit CID (default: local HEAD)")
+    .action(async (commitArg: string | undefined) => {
+        try {
+            const repo = LocalRepo.open();
+            const target = commitArg ?? repo.head();
+            if (!target) throw new Error("no commit to show — no commits yet");
+            const fangorn = getFangorn();
+            const objects = new ObjectStore(fangorn.getStorage());
+
+            const commit = await objects.getCommit(target);
+            const diff = await objects.diffCommit(target);
+
+            console.log(`commit ${target}`);
+            console.log(`Author:  ${commit.author}`);
+            console.log(`Date:    ${new Date(commit.timestamp).toISOString()}`);
+            console.log(`Parents: ${commit.parents.length ? commit.parents.join(", ") : "(root)"}`);
+            console.log(`Tree:    ${commit.tree}`);
+            console.log(`\n    ${commit.message}\n`);
+            console.log(`Changes vs. parent:  +${diff.added.length.toString()} blob(s), -${diff.removed.length.toString()} blob(s)`);
+            for (const c of diff.added) console.log(`  + ${c}`);
+            for (const c of diff.removed) console.log(`  - ${c}`);
             process.exit(0);
         } catch (err) {
             console.error("Failed:", (err as Error).message);

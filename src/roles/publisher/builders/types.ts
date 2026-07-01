@@ -12,7 +12,13 @@ export interface ChunkDraft {
 
 export interface ChunkRef {
     index: bigint;
+    /** Retrieval reference — the `ipfs://<carRoot>/<entry>` path URI, or a reused
+     *  parent URI for an unchanged chunk. Used for fetching and merkle leaves. */
     cid: string;
+    /** Stable content identity — sha256 of the serialized chunk bytes, independent
+     *  of which CAR it was packed into. Two byte-identical chunks share this even
+     *  across commits, which is what makes structural sharing / diffing work. */
+    contentId: string;
     name: string;
     meta?: Record<string, unknown>;
 }

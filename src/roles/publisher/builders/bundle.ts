@@ -174,12 +174,12 @@ export class BundleBuilder implements ManifestBuilder<BundleUploadInput, BundleM
     assemble(ctx: BuildContext): BundleManifest {
         // After publish()'s sort, ctx.chunks[i] and ctx.leaves[i] are position-aligned
         // (leaves = chunks.map(...)). Map by index i — robust to upload ordering.
-        const nodeChunks: { type: string; dataCid: string; leaf: Hex }[] = [];
-        const edgeChunks: { dataCid: string; leaf: Hex }[] = [];
+        const nodeChunks: { type: string; dataCid: string; leaf: Hex; contentId?: string }[] = [];
+        const edgeChunks: { dataCid: string; leaf: Hex; contentId?: string }[] = [];
         ctx.chunks.forEach((c, i) => {
             const leaf = ctx.leaves[i];
-            if (c.meta?.kind === "edges") edgeChunks.push({ dataCid: c.cid, leaf });
-            else nodeChunks.push({ type: typeof c.meta?.type === "string" ? c.meta.type : "", dataCid: c.cid, leaf });
+            if (c.meta?.kind === "edges") edgeChunks.push({ dataCid: c.cid, leaf, contentId: c.contentId });
+            else nodeChunks.push({ type: typeof c.meta?.type === "string" ? c.meta.type : "", dataCid: c.cid, leaf, contentId: c.contentId });
         });
         if (edgeChunks.length === 0) throw new Error("Missing edge chunk during assembly");
 

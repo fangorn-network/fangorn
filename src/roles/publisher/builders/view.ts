@@ -50,7 +50,7 @@ export class ViewBuilder implements ManifestBuilder<ViewUploadInput, ViewManifes
             linksets: schema.linksets,
             trust: schema.trust,
             sourceSchemas: schema.sourceSchemas,
-            viewChunk: { dataCid: chunk.cid, leaf: ctx.leaves[0] },
+            viewChunk: { dataCid: chunk.cid, leaf: ctx.leaves[0], contentId: chunk.contentId },
             tree: ctx.layers,
         };
     }

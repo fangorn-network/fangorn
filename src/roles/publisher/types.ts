@@ -130,9 +130,9 @@ export interface BundleManifest {
   kind: "bundle";
   schemaId: Hex;
   root: Hex;
-  nodeChunks: { type: string; dataCid: string; leaf: Hex }[];
+  nodeChunks: { type: string; dataCid: string; leaf: Hex; contentId?: string }[];
   /** Edges chunked into many leaves (one bundle = one merkle root over all of them). */
-  edgeChunks: { dataCid: string; leaf: Hex }[];
+  edgeChunks: { dataCid: string; leaf: Hex; contentId?: string }[];
   tree: Hex[][];
 }
 
@@ -172,7 +172,7 @@ export interface ViewManifest {
     // resolve each source via cheap per-schema queries instead of scanning the
     // whole publish history. May be empty / incomplete (see ViewInput.sourceSchemas).
     sourceSchemas: Hex[];
-    viewChunk: { dataCid: string; leaf: Hex };
+    viewChunk: { dataCid: string; leaf: Hex; contentId?: string };
     tree: Hex[][];
 }
 
@@ -186,7 +186,7 @@ export interface LinksetManifest {
     kind: "linkset";
     schemaId: Hex;
     root: Hex;
-    linkChunks: { dataCid: string; leaf: Hex }[];
+    linkChunks: { dataCid: string; leaf: Hex; contentId?: string }[];
     tree: Hex[][];
 }
 

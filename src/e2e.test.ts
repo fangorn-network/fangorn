@@ -1,10 +1,15 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { mkdtempSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import { createWalletClient, http, type Address, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { arbitrumSepolia } from "viem/chains";
 import { TestBed } from "./test/index.js";
 import { BundleInput, SchemaDefinition, TypeDefinition } from "./roles/schema/types.js";
 import { FieldInput, PublishRecord } from "./roles/publisher/types.js";
+import { ObjectStore, blobCids, blobRefs } from "./objects/store.js";
+import { LocalRepo } from "./roles/repo/index.js";
 
 const SK = process.env.DELEGATOR_ETH_PRIVATE_KEY as Hex;
 const RPC_URL = process.env.RPC_URL ?? "https://sepolia-rollup.arbitrum.io/rpc";
@@ -312,6 +317,171 @@ describe("Fangorn Publisher E2E", () => {
                 testbed.publishBundle(bundleName, nodes, [], datasetName),
             ).rejects.toThrow(/min 1|cardinality/i);
         }, 60_000);
+    });
+
+    // ── Git-native repo flow (slice 1): commit → push → history → diff → clone ──
+    //
+    // Exercises the whole S1 acceptance list against real IPFS + the deployed
+    // contract: parented commits with the commit CID riding in the manifest_cid
+    // slot, structural sharing across commits, deletes via omission, the
+    // client-side fast-forward guard, and reconstructing full history from IPFS
+    // alone (no subgraph). See docs/GIT_NATIVE_IMPLEMENTATION_PLAN.md S1.
+    describe.skipIf(!hasIpfs)("Git-native repo", () => {
+        let repoSchema: string;
+        let datasetName: string;
+        let commit1: string;
+        let commit2: string;
+        let root1: Hex;
+
+        const publisher = () => testbed.getDelegatorFangorn().publisher;
+        const store = () => new ObjectStore(testbed.getDelegatorFangorn().getStorage());
+
+        beforeAll(async () => {
+            repoSchema = `fangorn.repo.${Date.now()}.${Math.random().toString(36).substring(2, 5)}`;
+            await testbed.registerSchema(repoSchema, ULTRA_SIMPLE_SCHEMA);
+            datasetName = `ds.repo.${Date.now()}.${Math.random().toString(36).substring(2, 7)}`;
+        }, 90_000);
+
+        it("commits an initial snapshot and pushes it as the tip", async () => {
+            // chunkSize:1 → one blob per record, so a later edit can *share* the
+            // unchanged record's blob and only re-upload what changed.
+            const c1 = await publisher().commitRecords({
+                records: [
+                    { name: "rec-a", fields: { x: "alpha" } },
+                    { name: "rec-b", fields: { x: "bravo" } },
+                ],
+                schemaName: repoSchema,
+                datasetName,
+                parents: [],
+                message: "initial import",
+                chunkSize: 1,
+            });
+            commit1 = c1.commitCid;
+            root1 = c1.root;
+            createdManifestCids.push(c1.commitCid, c1.manifestCid);
+            expect(c1.parents).toEqual([]);
+
+            await publisher().push({
+                commitCid: c1.commitCid,
+                root: c1.root,
+                schemaId: c1.schemaId,
+                datasetName,
+                expectedParent: undefined,
+            });
+
+            const owner = testbed.getDelegatorAddress();
+            const tip = await publisher().resolveTip(owner, c1.schemaId, datasetName);
+            expect(tip).toBe(commit1);
+        }, 120_000);
+
+        it("commits a second snapshot (drop rec-a, add rec-c) that fast-forwards the tip", async () => {
+            const c2 = await publisher().commitRecords({
+                records: [
+                    { name: "rec-b", fields: { x: "bravo" } }, // unchanged → shared blob
+                    { name: "rec-c", fields: { x: "charlie" } }, // new
+                    // rec-a omitted → deleted from current state
+                ],
+                schemaName: repoSchema,
+                datasetName,
+                parents: [commit1],
+                message: "drop rec-a, add rec-c",
+                chunkSize: 1,
+            });
+            commit2 = c2.commitCid;
+            createdManifestCids.push(c2.commitCid, c2.manifestCid);
+            expect(c2.parents).toEqual([commit1]);
+            // Structural sharing: rec-b was byte-identical to the parent's chunk, so
+            // it was reused (not re-uploaded); only rec-c hit the network.
+            expect(c2.reusedCount).toBe(1);
+            expect(c2.uploadedCount).toBe(1);
+
+            await publisher().push({
+                commitCid: c2.commitCid,
+                root: c2.root,
+                schemaId: c2.schemaId,
+                datasetName,
+                expectedParent: commit1, // fast-forward from the current tip
+            });
+
+            const owner = testbed.getDelegatorAddress();
+            expect(await publisher().resolveTip(owner, c2.schemaId, datasetName)).toBe(commit2);
+        }, 120_000);
+
+        it("walks parented history from the tip using IPFS only", async () => {
+            const messages: string[] = [];
+            for await (const { commit } of store().walkParents(commit2)) messages.push(commit.message);
+            expect(messages).toEqual(["drop rec-a, add rec-c", "initial import"]);
+        }, 90_000);
+
+        it("diffs the second commit: rec-c added, rec-a removed, rec-b shared", async () => {
+            const diff = await store().diffCommit(commit2);
+            // Row-fine diff: exactly one chunk added (rec-c) and one removed (rec-a).
+            expect(diff.added).toHaveLength(1);
+            expect(diff.removed).toHaveLength(1);
+
+            // Structural sharing holds: rec-b's chunk has the same contentId in both
+            // commits even though its retrieval uri differs (new CAR). Diffing on
+            // contentId (not the uri) makes it shared — so quickbeam re-embeds only
+            // the delta (PROTOCOL.md §4).
+            const c1Tree = await store().getTree(await store().getCommit(commit1));
+            const c2Tree = await store().getTree(await store().getCommit(commit2));
+            const shared = blobCids(c1Tree).filter(c => blobCids(c2Tree).includes(c));
+            expect(shared).toHaveLength(1); // rec-b's chunk, reused byte-for-byte
+        }, 90_000);
+
+        it("rejects a stale push (non-fast-forward guard)", async () => {
+            // Re-pushing commit1 now: on-chain tip is commit2, but commit1 claims
+            // no parent → not a fast-forward, must be refused.
+            await expect(
+                publisher().push({
+                    commitCid: commit1,
+                    root: root1,
+                    schemaId: await testbed.getDelegatorFangorn().getSchemaRegistry().schemaId(repoSchema),
+                    datasetName,
+                    expectedParent: undefined,
+                }),
+            ).rejects.toThrow(/non-fast-forward/);
+        }, 60_000);
+
+        it("clones: reconstructs HEAD, history, and current records from IPFS alone", async () => {
+            const owner = testbed.getDelegatorAddress();
+            const schemaId = await testbed.getDelegatorFangorn().getSchemaRegistry().schemaId(repoSchema);
+            const storage = testbed.getDelegatorFangorn().getStorage();
+
+            // 1) resolve the single trusted pointer, then rebuild everything below it
+            const tip = await publisher().resolveTip(owner, schemaId, datasetName);
+            expect(tip).toBe(commit2);
+
+            // 2) write a fresh local repo pointed at the tip (what `fangorn clone` does)
+            const dir = mkdtempSync(join(tmpdir(), "fangorn-clone-"));
+            try {
+                const repo = LocalRepo.init({ name: datasetName, schema: repoSchema, schemaId, owner }, dir);
+                repo.setHead(tip!);
+                // reopen to prove it persisted, and walk history from the cloned HEAD
+                const reopened = LocalRepo.open(dir);
+                expect(reopened.head()).toBe(commit2);
+
+                let count = 0;
+                for await (const _s of store().walkParents(reopened.head()!)) { void _s; count++; }
+                expect(count).toBe(2);
+
+                // 3) reconstruct the *current* record set from the tip's tree blobs.
+                //    Fetch by the retrieval uri (blobRefs.uri) — note rec-b's uri is
+                //    the parent commit's, reused via structural sharing, and still
+                //    resolves because that CAR stays pinned.
+                const tree = await store().getTree(await store().getCommit(tip!));
+                const names = new Set<string>();
+                for (const { uri } of blobRefs(tree)) {
+                    const chunk = await storage.get<{ name: string }[]>(uri);
+                    for (const rec of chunk) names.add(rec.name);
+                }
+                expect(names.has("rec-b")).toBe(true);
+                expect(names.has("rec-c")).toBe(true);
+                expect(names.has("rec-a")).toBe(false); // deleted in commit2
+            } finally {
+                rmSync(dir, { recursive: true, force: true });
+            }
+        }, 120_000);
     });
 });
 

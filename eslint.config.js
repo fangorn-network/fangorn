@@ -38,6 +38,20 @@ export default defineConfig(
                 tsconfigRootDir: import.meta.dirname,
             },
         },
+        // Honor the repo-wide convention: a leading underscore marks an
+        // intentionally-unused binding (interface-required params, ignored
+        // destructured fields, ignored catch vars).
+        rules: {
+            "@typescript-eslint/no-unused-vars": [
+                "error",
+                {
+                    argsIgnorePattern: "^_",
+                    varsIgnorePattern: "^_",
+                    caughtErrorsIgnorePattern: "^_",
+                    destructuredArrayIgnorePattern: "^_",
+                },
+            ],
+        },
     },
     {
         extends: [vitest.configs.recommended],

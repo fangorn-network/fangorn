@@ -14,6 +14,7 @@ replace them. Each section here is a synthesis with a pointer to the deep-dive.
 | [`DATASOURCE_GIT_MODEL.md`](./DATASOURCE_GIT_MODEL.md) | **Code-grounded** v0.2 — exact seams in the current contract/SDK/quickbeam. |
 | [`GIT_NATIVE_ACCESS_CONTROL.md`](./GIT_NATIVE_ACCESS_CONTROL.md) | The **gadget predicate layer** — one predicate form gates writes *and* reads. |
 | [`GIT_NATIVE_IMPLEMENTATION_PLAN.md`](./GIT_NATIVE_IMPLEMENTATION_PLAN.md) | The **vertical slices** (data-model track S0–S7). |
+| [`GIT_NATIVE_PRIOR_ART.md`](./GIT_NATIVE_PRIOR_ART.md) | **Prior art & tooling** — LakeFS/Dolt/Ceramic/Qri/Radicle + IPLD/Iroh/Lit/RISC Zero/Substreams; the substrate decisions (Prolly tree, dag-cbor, …). |
 | **this doc** | The unified model + the **merged roadmap** (S-track ⋈ AC-track) + consolidated decisions. |
 
 Also upstream: [`FRAMEWORK.md`](./FRAMEWORK.md) (the ecosystem theory and its four gaps)
@@ -271,7 +272,21 @@ The forks that gate specific slices, gathered from all four docs:
 | 7 | **Anonymous-push nullifier scope** — bind external nullifier to commit CID vs. counter; distinct domains for read vs. write nullifiers | S6, AC3 | commit-CID scope; separate read/write nullifier domains |
 | 8 | **Force-update / rollback** with a single ref — permitted? gated how? | S3 | owner-gated non-fast-forward only; default reject |
 | 9 | **Default-open vs default-closed** when a commit/handle names no policy | AC1 | explicit repo default; unset handle inherits, never implicitly public |
-| 10 | **Re-price path** — `set_price_root` as an empty-diff commit vs. side channel | S3 | model as a real (empty-tree-diff) commit for a uniform history |
+| 10 | **Re-price path** — `set_price_root` as an empty-diff commit vs. side channel | S3 | model as a real (empty-tree-diff) commit for a uniform history — like `git commit --allow-empty` (Ceramic/Git precedent) |
+
+**Substrate decisions from the prior-art scan** (full analysis in `GIT_NATIVE_PRIOR_ART.md` §3):
+
+| # | Decision | Gates | Recommendation |
+|---|---|---|---|
+| 11 | **What the Tree object is** — flat leaf list vs. **Prolly tree / Merkle-search tree** | S0, S1, S2, S4 | **Prolly tree** (Dolt/LakeFS): log-scale diff, deterministic root, native 3-way merge. Highest-leverage borrow. |
+| 12 | **Object codec** — hand-rolled JSON vs **IPLD dag-cbor + IPLD Schema** | S0 | IPLD dag-cbor; carry the **Poseidon2 root alongside the CID** (dual-hash — CID for addressing, Poseidon2 for ZK/on-chain) |
+| 13 | **Core language** — TS/Py vs a **Rust `fangorn-core`** (Prolly + Iroh) with bindings | cross-cutting | prototype the Prolly diff engine in `fangorn-rs/`; commit if diff perf demands |
+| 14 | **Push anchoring** — one tx/push vs **batched anchor** of many tips | S3, scale | one-tx first; add Ceramic-style batched anchoring as a gas slice when volume warrants |
+| 15 | **Read gate: build vs buy** — custom worker/TEE vs **Lit Protocol** network | AC2 | buy Lit for read decryption; keep ZK gadget chains for the on-chain write gate (see Decision 4) |
+| 16 | **Proving stack** — Noir only vs **Noir + RISC Zero zkVM** | AC3, S6 | hybrid: Noir for cheap common gadgets, zkVM for arbitrary-logic gadgets; keep the registry interface stack-agnostic |
+
+Decision 4 (read-gate verifier) is reinforced by the scan: **TEE-first, then hybrid**, with
+Lit Protocol as the concrete off-the-shelf network (Decision 15).
 
 ---
 
