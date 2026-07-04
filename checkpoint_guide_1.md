@@ -2,8 +2,8 @@
 
 *A practical walkthrough of what cross-publisher linking lets you do **today**
 (Phases 0–1) and what comes **next** (Phase 2, linksets). Companion to the design
-in [`docs/CROSS_PUBLISHER_LINKING.md`](./docs/CROSS_PUBLISHER_LINKING.md) and the
-build plan in [`docs/CROSS_PUBLISHER_LINKING_PLAN.md`](./docs/CROSS_PUBLISHER_LINKING_PLAN.md).*
+in [`docs/archive/CROSS_PUBLISHER_LINKING.md`](./docs/archive/CROSS_PUBLISHER_LINKING.md) and the
+build plan in [`docs/archive/CROSS_PUBLISHER_LINKING_PLAN.md`](./docs/archive/CROSS_PUBLISHER_LINKING_PLAN.md).*
 
 Status at this checkpoint:
 

@@ -94,6 +94,23 @@ fangorn clone <owner> -s schema.name.v1 -d rusty-anchor
 
 Each commit records its parent, so history is real and walkable. Deleting a record is just a later commit that omits it — earlier history is retained. Chunks are content-addressed, so unchanged data is reused byte-for-byte across commits and a `commit` only re-uploads what actually changed (`fangorn commit` reports `N uploaded, M reused`).
 
+`commit` isn't limited to record-sets — the same `commit`/`push` rail versions **bundles** (typed node+edge graphs) and **views** (cross-source fusion), so graphs and views gain the same parented history and structural sharing:
+
+```sh
+# Commit a typed graph from a `quickbeam data schemagen` stage dir (nodes + edges as one commit)
+fangorn commit --bundle ./stage_volumes --volume 0 -m "places+events v1" \
+  --embed-model nomic-ai/nomic-embed-text-v1.5 --embed-dim 768   # optional: the embed contract quickbeam inherits
+
+# Commit a composed view fusing already-published sources
+fangorn commit --view my.localview.v1 \
+  --source-bundle my.placecore.v1 \
+  --source-bundle my.eventcore.v1:tribe -m "local view v1"
+
+fangorn push   # same permissioned pointer-move, whatever tree kind the commit wraps
+```TR
+
+Both modes register any missing schemas (idempotent), then build the tree and wrap it in a commit on your local tip. The optional `--embed-model/--embed-dim/--embed-distance` flags (available in every `commit` mode) stamp an embedding contract onto the commit so downstream indexers inherit how to index it rather than hardcoding it.
+
 ### Publish Data
 
 The `publish` path overwrites a dataset's pointer in place (no history). For versioned datasets use `commit`/`push` above.
@@ -324,6 +341,34 @@ const diff = await objects.diffCommit(tip!);
 
 > The fast-forward check in `push` is client-side in this release; on-chain
 > compare-and-swap + write authorization land in a later slice.
+
+`commitRecords` has counterparts for the other tree kinds — `commitBundle` and
+`commitView` — so bundles and views commit through the exact same rail (each accepts
+`parents`/`message` and an optional `embed` contract, and returns the same
+`{ commitCid, root, reusedCount, uploadedCount, … }`). The `publishBundle`/`publishView`
+convenience wrappers remain as the in-place, no-history path.
+
+```ts
+// A typed graph, versioned as a commit (structural sharing across commits, like records)
+const cb = await fangorn.publisher.commitBundle({
+  bundleName: "my.bundle.v1",
+  datasetName: "my-graph",
+  parents: [prevTip],           // [] for the first commit
+  message: "add taxonomy edges",
+  nodes: [ /* { id, type, fields } */ ],
+  edges: [ /* { rel, from, to } */ ],
+  embed: { model: "nomic-ai/nomic-embed-text-v1.5", dim: 768, distance: "Cosine" },
+});
+await fangorn.publisher.push({ commitCid: cb.commitCid, root: cb.root, schemaId: cb.schemaId, datasetName: "my-graph", expectedParent: prevTip });
+
+// A composed view, versioned as a (merge) commit
+const cv = await fangorn.publisher.commitView({
+  viewName: "my.localview.v1",
+  datasetName: "my-view",
+  parents: [],
+  message: "fuse places + events",
+});
+```
 
 #### Custom builders
 

@@ -39,6 +39,8 @@ import { AppConfig, FangornConfig, SupportedNetworks } from "../config.js";
 import { PublishRecord } from "../roles/publisher/types.js";
 import { LocalRepo } from "../roles/repo/index.js";
 import { ObjectStore } from "../objects/store.js";
+import { EmbedContract } from "../objects/types.js";
+import { prepareBundleSource, resolveViewSources, ensureView } from "./bundle-source.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -806,22 +808,173 @@ program
         }
     });
 
+/** commander repeatable-option collector. */
+const collectOpt = (val: string, prev: string[]): string[] => { prev.push(val); return prev; };
+
+/**
+ * Build the optional embed contract a commit carries so quickbeam inherits how to
+ * index it (Gap A) instead of hardcoding the model/dim/distance. All three flags
+ * are optional; absent ⇒ no contract ⇒ quickbeam falls back to its own CLI flags.
+ */
+function embedFromOpts(o: { embedModel?: string; embedDim?: number; embedDistance?: string }): EmbedContract | undefined {
+    if (!o.embedModel && o.embedDim === undefined && !o.embedDistance) return undefined;
+    if (!o.embedModel || o.embedDim === undefined) {
+        throw new Error("--embed-model and --embed-dim must be given together to set an embed contract");
+    }
+    return { model: o.embedModel, dim: o.embedDim, distance: o.embedDistance ?? "Cosine" };
+}
+
+interface CommitOptions {
+    message: string;
+    chunkSize?: number;
+    concurrency?: number;
+    // mode selectors
+    bundle?: string;
+    view?: string;
+    // bundle shaping
+    volume: number;
+    schemasDir?: string;
+    rootType?: string;
+    limit?: number;
+    validate?: boolean;
+    skipRegister?: boolean;
+    // view sources
+    sourceBundle: string[];
+    sourceResource: string[];
+    linksetName: string[];
+    linksetResource: string[];
+    trust?: string;
+    // embed contract (all modes)
+    embedModel?: string;
+    embedDim?: number;
+    embedDistance?: string;
+}
+
 program
     .command("commit")
     .description("Snapshot data into a new local commit (does not push)")
-    .argument("<files...>", "JSON file(s) of records to commit")
+    .argument("[files...]", "JSON file(s) of records to commit (record-set mode; omit for --bundle/--view)")
     .requiredOption("-m, --message <msg>", "Commit message")
     .option("--chunk-size <n>", "Records per chunk (default 1000)", (v) => parseInt(v, 10))
     .option("--concurrency <n>", "Parallel chunk uploads (default 10)", (v) => parseInt(v, 10))
-    .action(async (files: string[], options: { message: string; chunkSize?: number; concurrency?: number }) => {
+    // ── bundle mode: commit a typed graph from a `quickbeam data schemagen` dir ──
+    .option("--bundle <inputDir>", "Commit a graph bundle from a schemagen stage dir (nodes+edges as ONE commit)")
+    .option("--volume <n>", "Bundle: volume number (0 = all volumes, for a merged multi-volume bundle)", (v) => parseInt(v, 10), 0)
+    .option("--schemas-dir <path>", "Bundle: schema definitions dir (default <inputDir>/schemas)")
+    .option("--root-type <type>", "Bundle: root node type (default: first node type in the bundle)")
+    .option("--limit <n>", "Bundle: max entries per file (0 = all) — small value for a cheap dry run", (v) => parseInt(v, 10))
+    .option("--validate", "Bundle: run full cross-node graph validation (needs all node ids in RAM)")
+    .option("--skip-register", "Bundle/view: don't register missing schemas; resolve existing ids only")
+    // ── view mode: commit a composed view fusing already-published sources ──
+    .option("--view <viewName>", "Commit a composed view (merge commit) fusing the given sources")
+    .option("--source-bundle <name[:dataset]>", "View: same-owner source bundle (repeatable)", collectOpt, [])
+    .option("--source-resource <0xRid>", "View: raw source resourceId for a FOREIGN publisher (repeatable)", collectOpt, [])
+    .option("--linkset-name <name[:dataset]>", "View: same-owner linkset (repeatable)", collectOpt, [])
+    .option("--linkset-resource <0xRid>", "View: raw linkset resourceId for a foreign linkset (repeatable)", collectOpt, [])
+    .option("--trust <json>", "View: trust policy JSON")
+    // ── embed contract (all modes; inherited by quickbeam, Gap A) ──
+    .option("--embed-model <model>", "Embed contract: embedding model quickbeam should inherit")
+    .option("--embed-dim <n>", "Embed contract: vector dimensionality", (v) => parseInt(v, 10))
+    .option("--embed-distance <distance>", "Embed contract: distance metric (default Cosine)")
+    .action(async (files: string[], options: CommitOptions) => {
         try {
             const repo = LocalRepo.open();
             const cfg = repo.config();
             const fangorn = getFangorn();
             const head = repo.head();
             const parents = head ? [head] : [];
+            const embed = embedFromOpts(options);
             const s = spinner();
 
+            // ── bundle mode ────────────────────────────────────────────────────
+            if (options.bundle !== undefined) {
+                if (files.length) throw new Error("--bundle takes no file arguments (nodes/edges come from the stage dir)");
+                if (options.view !== undefined) throw new Error("pass either --bundle or --view, not both");
+                const inputDir = options.bundle;
+                const schemasDir = options.schemasDir ?? join(inputDir, "schemas");
+
+                s.start("Preparing bundle source (registering schemas)...");
+                const source = await prepareBundleSource(fangorn, {
+                    inputDir, schemasDir, volume: options.volume,
+                    rootType: options.rootType, limit: options.limit,
+                    skipRegister: options.skipRegister,
+                    log: (m) => { s.message(m); },
+                });
+                if (source.bundleName !== cfg.schema) {
+                    log.warn(`repo schema is "${cfg.schema}" but the bundle is "${source.bundleName}" — committing under the bundle schema`);
+                }
+                s.message(parents.length ? "Committing bundle (building on local HEAD)..." : "Committing bundle (initial)...");
+                const result = await fangorn.publisher.commitBundle({
+                    bundleName: source.bundleName,
+                    nodes: source.nodes(),
+                    edges: source.edges(),
+                    datasetName: cfg.name,
+                    parents,
+                    message: options.message,
+                    chunkSize: options.chunkSize,
+                    concurrency: options.concurrency,
+                    validate: options.validate ?? false,
+                    embed,
+                });
+                s.stop();
+                repo.setHead(result.commitCid);
+                note(
+                    `Commit:   ${result.commitCid}\n` +
+                    `Parent:   ${parents[0] ?? "(root)"}\n` +
+                    `Tree:     ${result.manifestCid}\n` +
+                    `Bundle:   ${source.bundleName} (root ${source.rootType})\n` +
+                    `Nodes:    ${source.stats.nodes.toLocaleString()}   Edges: ${source.stats.edges.toLocaleString()}\n` +
+                    `Chunks:   ${result.entryCount.toString()} (${result.uploadedCount.toString()} uploaded, ${result.reusedCount.toString()} reused)\n` +
+                    (embed ? `Embed:    ${embed.model} dim=${embed.dim.toString()} ${embed.distance}\n` : "") +
+                    `Message:  ${options.message}`,
+                    "Committed bundle (local)",
+                );
+                process.exit(0);
+            }
+
+            // ── view mode ──────────────────────────────────────────────────────
+            if (options.view !== undefined) {
+                if (files.length) throw new Error("--view takes no file arguments");
+                const viewName = options.view;
+
+                s.start("Resolving view sources (registering view)...");
+                const resolved = await resolveViewSources(fangorn, {
+                    sourceBundle: options.sourceBundle,
+                    sourceResource: options.sourceResource,
+                    linksetName: options.linksetName,
+                    linksetResource: options.linksetResource,
+                    trust: options.trust,
+                    log: (m) => { s.message(m); },
+                });
+                await ensureView(fangorn, viewName, resolved, options.skipRegister ?? false, (m) => { s.message(m); });
+                if (viewName !== cfg.schema) {
+                    log.warn(`repo schema is "${cfg.schema}" but the view is "${viewName}" — committing under the view schema`);
+                }
+                s.message(parents.length ? "Committing view (building on local HEAD)..." : "Committing view (initial)...");
+                const result = await fangorn.publisher.commitView({
+                    viewName,
+                    datasetName: cfg.name,
+                    parents,
+                    message: options.message,
+                    embed,
+                });
+                s.stop();
+                repo.setHead(result.commitCid);
+                note(
+                    `Commit:   ${result.commitCid}\n` +
+                    `Parent:   ${parents[0] ?? "(root)"}\n` +
+                    `Tree:     ${result.manifestCid}\n` +
+                    `View:     ${viewName}\n` +
+                    `Sources:  ${resolved.sources.length.toString()}${resolved.linksets.length ? ` + ${resolved.linksets.length.toString()} linkset(s)` : ""}\n` +
+                    (embed ? `Embed:    ${embed.model} dim=${embed.dim.toString()} ${embed.distance}\n` : "") +
+                    `Message:  ${options.message}`,
+                    "Committed view (local)",
+                );
+                process.exit(0);
+            }
+
+            // ── record-set mode (default) ──────────────────────────────────────
+            if (!files.length) throw new Error("nothing to commit — pass record file(s), or use --bundle / --view");
             s.start(parents.length ? "Committing (building on local HEAD)..." : "Committing (initial)...");
             const result = await fangorn.publisher.commitRecords({
                 records: streamRecordsFromFiles(files),
@@ -831,6 +984,7 @@ program
                 message: options.message,
                 chunkSize: options.chunkSize,
                 concurrency: options.concurrency,
+                embed,
             });
             s.stop();
 
@@ -840,6 +994,7 @@ program
                 `Parent:   ${parents[0] ?? "(root)"}\n` +
                 `Tree:     ${result.manifestCid}\n` +
                 `Chunks:   ${result.entryCount.toString()} (${result.uploadedCount.toString()} uploaded, ${result.reusedCount.toString()} reused)\n` +
+                (embed ? `Embed:    ${embed.model} dim=${embed.dim.toString()} ${embed.distance}\n` : "") +
                 `Message:  ${options.message}`,
                 "Committed (local)",
             );

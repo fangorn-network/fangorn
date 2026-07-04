@@ -15,7 +15,7 @@
  * PINATA_GATEWAY, CHAIN_NAME[, RPC_URL].
  */
  
-import { readFileSync, writeFileSync, existsSync, readdirSync, createReadStream, createWriteStream, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, createReadStream, createWriteStream, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { homedir, cpus } from "node:os";
 import { createInterface } from "node:readline";
@@ -28,8 +28,14 @@ import "dotenv/config";
 import { Fangorn } from "../fangorn.js";
 import { DataSourceRegistry } from "../registries/datasource-registry/index.js";
 import { type AppConfig, FangornConfig, SupportedNetworks } from "../config.js";
-import { type BundleInput, type NodeIdentity, type SchemaDefinition } from "../roles/schema/types.js";
+import { type SchemaDefinition } from "../roles/schema/types.js";
 import { type FieldInput } from "../roles/publisher/types.js";
+// Data-shaping helpers shared with `fangorn commit --bundle` so the two can't
+// drift (streaming, type→file resolution, schema conformance, registration).
+import {
+    type MbNode, type MbEdge, type BundleSchemaFile, type ConsolidatedSchemas,
+    streamJsonArray, makeTypeResolver, edgeFilesFor, conformFields, ensureResolver,
+} from "../cli/bundle-source.js";
 
 // ── config (env-first, then ~/.fangorn/config.json) ───────────────────────────
 interface StoredConfig { privateKey: Hex; chainName: string; pinataJwt: string; pinataGateway: string; workerUrl: string }
@@ -70,198 +76,6 @@ function makeFangorn(c: ResolvedConfig): Fangorn {
         config: cfg,
         agentConfig: { privateKey: c.privateKey, pinataJwt: c.pinataJwt },
     });
-}
-
-// ── schema files + data shapes ────────────────────────────────────────────────
-// `identity` is emitted by `quickbeam data schemagen` (Phase 0 / slice 0.4):
-// the node type's global-identity declaration (@id promotion + namespaced
-// aliases). It must ride through registration so published nodes carry their
-// Entity URI localId + aliases — the keys a Composed View fuses on.
-interface NodeSchemaFile { name: string; definition: SchemaDefinition; identity?: NodeIdentity }
-interface BundleSchemaFile { name: string; kind: "bundle"; bundle: BundleInput }
-interface ConsolidatedSchemas { schemas: NodeSchemaFile[]; bundle: BundleSchemaFile }
-interface MbNode { name: string; fields: Record<string, unknown> }
-interface MbEdge { rel: string; from: string; to: string; fromType?: string; toType?: string }
-
-// Optional explicit node-type → filename-stem overrides. NOT required: the
-// resolver below discovers files from disk by each node's `entityType`, so this
-// script works for ANY schemagen output (MusicBrainz, places, …). These entries
-// just pin the MusicBrainz stems when present.
-const TYPE_FILE: Record<string, string> = {
-    Artist: "artists", Recording: "recordings", ReleaseGroup: "releasegroups", Release: "releases", Work: "works",
-};
-
-// Stream the top-level elements of a JSON array, robust to formatting: it works
-// whether each record is on its own line (the JsonArrayWriter convention) OR the
-// file is pretty-printed with records spanning many lines (some volume files are
-// indent=2). It scans char-by-char tracking string/escape state and brace depth,
-// yielding each complete top-level object — so a single reformatted file can't
-// silently stream zero records (which previously also broke type→file resolution).
-async function* streamJsonArray<T>(path: string, limit = 0): AsyncIterable<T> {
-    const stream = createReadStream(path, { encoding: "utf8", highWaterMark: 1 << 20 });
-    let n = 0, depth = 0;
-    let inString = false, escape = false, started = false, capturing = false, buf = "";
-    for await (const chunk of stream as AsyncIterable<string>) {
-        for (let i = 0; i < chunk.length; i++) {
-            const ch = chunk[i];
-            if (capturing) buf += ch;
-            if (inString) {
-                if (escape) escape = false;
-                else if (ch === "\\") escape = true;
-                else if (ch === "\"") inString = false;
-                continue;
-            }
-            if (ch === "\"") { inString = true; continue; }
-            if (ch === "{" || ch === "[") {
-                if (!started) { started = true; continue; }   // the outer array container
-                if (!capturing) { capturing = true; buf = ch; } // begin a top-level element
-                depth++;
-            } else if (ch === "}" || ch === "]") {
-                if (!capturing) continue;                       // outer ']' / whitespace
-                depth--;
-                if (depth === 0) {
-                    capturing = false;
-                    try {
-                        const v = JSON.parse(buf) as T;
-                        yield v;
-                        if (limit && ++n >= limit) { stream.destroy(); return; }
-                    } catch { /* skip a malformed element, keep streaming */ }
-                    buf = "";
-                }
-            }
-        }
-    }
-}
-
-// ── dataset-agnostic type → file resolution ───────────────────────────────────
-// Discover each node file from disk and key it by the `entityType` its records
-// carry (mb_pg, places_pg, … all set this). This replaces a hardcoded type→stem
-// map, so the same script publishes any schemagen output. TYPE_FILE (if it names
-// an existing file) still wins as an explicit override; STEM_TYPE is the legacy
-// fallback for files whose records lack entityType.
-const STEM_TYPE: Record<string, string> = Object.fromEntries(Object.entries(TYPE_FILE).map(([t, f]) => [f, t]));
-// volume 0 = "all volumes" (mirrors `schemagen --volume 0`): scan node files
-// across every volume_<n>_*.json so a merged multi-volume bundle resolves all its
-// node types. A specific volume keeps the single-prefix behavior.
-function volumePrefixMatch(file: string, volume: number): { match: boolean; prefix: string } {
-    if (volume === 0) {
-        const m = /^volume_\d+_/.exec(file);
-        return { match: m !== null, prefix: m ? m[0] : "" };
-    }
-    const prefix = `volume_${volume.toString()}_`;
-    return { match: file.startsWith(prefix), prefix };
-}
-async function makeTypeResolver(inputDir: string, volume: number): Promise<(type: string) => string | undefined> {
-    const discovered = new Map<string, string>();
-    for (const f of readdirSync(inputDir)) {
-        const { match, prefix } = volumePrefixMatch(f, volume);
-        if (!match || !f.endsWith(".json") || f.endsWith("_edges.json")) continue;
-        const path = join(inputDir, f);
-        let type: string | undefined;
-        for await (const node of streamJsonArray<MbNode>(path, 1)) {
-            const t = (node.fields as Record<string, unknown> | undefined)?.["entityType"];
-            if (typeof t === "string") type = t;
-        }
-        // stem fallback (file had no records / no entityType): capitalize each
-        // `_`-separated segment so e.g. `event_categories` → `Event_Categories`.
-        if (!type) {
-            const stem = f.slice(prefix.length, -5);
-            type = STEM_TYPE[stem] ?? stem.split("_").map(s => s.charAt(0).toUpperCase() + s.slice(1)).join("_");
-        }
-        if (!discovered.has(type)) discovered.set(type, path);
-    }
-    return (type: string) => {
-        if (volume !== 0) {
-            const explicit = TYPE_FILE[type];
-            if (explicit) { const p = join(inputDir, `volume_${volume.toString()}_${explicit}.json`); if (existsSync(p)) return p; }
-        }
-        return discovered.get(type);
-    };
-}
-
-// Edge files for the run. A volume's edges file may carry a source infix
-// (`volume_3_osm_edges.json`) or not (`volume_2_edges.json`), and a single volume
-// can have more than one — so match any `volume_<n>_*edges.json`, not one exact
-// name. volume 0 = every volume's edges; else just this volume's.
-function edgeFilesFor(inputDir: string, volume: number): string[] {
-    const prefix = volume === 0 ? /^volume_\d+_/ : new RegExp(`^volume_${volume.toString()}_`);
-    return readdirSync(inputDir)
-        .filter(f => f.endsWith("edges.json") && prefix.test(f))
-        .sort()
-        .map(f => join(inputDir, f));
-}
-
-// ── schema conformance (schemas inferred from a sample → over-constrained) ─────
-function defaultFor(b: string): FieldInput { return b === "number" ? 0 : b === "boolean" ? false : b === "array" ? [] : b === "object" ? {} : ""; }
-function coerce(v: unknown, b: string, nul: boolean): FieldInput {
-    if (v === undefined || v === null) return nul ? null : defaultFor(b);
-    switch (b) {
-        case "string": return typeof v === "string" ? v : (typeof v === "number" || typeof v === "boolean") ? String(v) : JSON.stringify(v);
-        case "number": if (typeof v === "number") return v; if (typeof v === "string" && v.trim() !== "") { const n = Number(v); if (Number.isFinite(n)) return n; } return nul ? null : 0;
-        case "boolean": return typeof v === "boolean" ? v : typeof v === "string" ? v === "true" : Boolean(v);
-        case "array": return Array.isArray(v) ? (v as FieldInput) : (nul ? null : []);
-        case "object": return typeof v === "object" ? (v as FieldInput) : (nul ? null : {});
-        default: return v as FieldInput;
-    }
-}
-function conformFields(raw: Record<string, unknown>, def: SchemaDefinition): Record<string, FieldInput> {
-    const out: Record<string, FieldInput> = {};
-    for (const [name, fd] of Object.entries(def)) {
-        const rt = String(fd["@type"]);
-        out[name] = coerce(raw[name], rt.replace("| null", "").trim(), rt.includes("| null"));
-    }
-    return out;
-}
-
-async function ensureResolver(fangorn: Fangorn, name: string, definition: SchemaDefinition, identity: NodeIdentity | undefined, skip: boolean): Promise<Hex> {
-    let id: Hex | null = null;
-    try {
-        const registry = fangorn.getSchemaRegistry();
-        const computedId = await registry.schemaId(name);
-        const exists = await registry.schemaExists(computedId);
-
-        if (exists) {
-            id = computedId;
-        }
-    } catch { /* none */ }
-
-    if (id) {
-        console.log(`[publish] schema "${name}" already registered → ${id}`);
-        // Drift guard. On-chain schemas are IMMUTABLE by name, so an already-
-        // registered schema whose field set differs from the local (schemagen)
-        // definition means every node would be validated against the WRONG shape —
-        // surfacing as cryptic per-field "missing required field" errors deep in
-        // chunk(). Catch it here with an actionable message instead. (A common
-        // cause: two datasets reuse one `<prefix>.<type>.<version>` name for
-        // different shapes, e.g. Google-Business vs OSM-Business.)
-        const onchain = await fangorn.schema.get(name).catch((e: unknown) => {
-            console.warn(`[publish]   ⚠️  could not read on-chain schema "${name}" to verify its shape: ${(e as Error).message}`);
-            return undefined;
-        });
-        if (onchain?.kind === "resolver") {
-            const localKeys = new Set(Object.keys(definition));
-            const chainKeys = new Set(Object.keys(onchain.definition));
-            const onlyChain = [...chainKeys].filter(k => !localKeys.has(k));
-            const onlyLocal = [...localKeys].filter(k => !chainKeys.has(k));
-            if (onlyChain.length || onlyLocal.length) {
-                throw new Error(
-                    `schema "${name}" is already registered on-chain with a DIFFERENT shape — ` +
-                    `schemas are immutable by name, so this data cannot be published under it.\n` +
-                    (onlyChain.length ? `  fields only on-chain : ${onlyChain.sort().join(", ")}\n` : "") +
-                    (onlyLocal.length ? `  fields only in local : ${onlyLocal.sort().join(", ")}\n` : "") +
-                    `  → Give this dataset its own schema namespace: re-run \`quickbeam data schemagen\` ` +
-                    `with a distinct --prefix (or --version), then publish again.`,
-                );
-            }
-        }
-        return id;
-    }
-
-    if (skip) throw new Error(`--skip-register but "${name}" not registered`);
-
-    const { schemaId } = await fangorn.schema.register({ name, definition, identity });
-    console.log(`[publish] registered "${name}" → ${schemaId}${identity ? `  [identity: ${JSON.stringify(identity)}]` : ""}`);
-    return schemaId;
 }
 
 // ── sharding helpers (sort-merge to build self-contained shards) ──────────────
@@ -546,7 +360,7 @@ async function main(): Promise<void> {
     for (const { schemaName } of typeFiles) {
         const def = defByName.get(schemaName);
         if (!def) throw new Error(`No definition for ${schemaName} in ${consolidatedPath}`);
-        await ensureResolver(fangorn, schemaName, def, identityByName.get(schemaName), opts.skipRegister);
+        await ensureResolver(fangorn, schemaName, def, identityByName.get(schemaName), opts.skipRegister, (m) => { console.log(`[publish] ${m}`); });
     }
     let bundleId: Hex | null = null;
     try {

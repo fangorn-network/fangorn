@@ -25,8 +25,10 @@ from "last-write-wins pointer" to "CAS ref with auth," but nothing above it has 
 ```mermaid
 flowchart LR
     S0["S0 · shared object spec"] --> S1["S1 · commit model + local repo\n(existing contract)"]
+    S1 --> S1b["S1b · bundle & view commits\n(commit/push for every tree kind)"]
     S1 --> S2["S2 · quickbeam commit-diff builds"]
     S1 --> S3["S3 · contract: refs + CAS + auth\n(redeploy #1, closes Gap D)"]
+    S1b --> S4
     S2 --> S4
     S3 --> S4["S4 · views = merge commits"]
     S4 --> S5["S5 · linksets (foreign edges)"]
@@ -34,8 +36,8 @@ flowchart LR
     S2 --> S7["S7 · index-as-a-repo"]
 ```
 
-Redeploys: **exactly two**, both isolated (S3 required; S6 optional/opt-in). S1, S2,
-S4, S5, S7 touch no contract.
+Redeploys: **exactly two**, both isolated (S3 required; S6 optional/opt-in). S1, S1b,
+S2, S4, S5, S7 touch no contract.
 
 ---
 
@@ -85,6 +87,55 @@ Runs against today's deployed contract.
   clone reconstructs full history from IPFS alone.
 
 **Risk:** low — pure addition; no redeploy; existing publish path preserved as alias.
+
+---
+
+## Slice 1b — Bundle & View commits (generalize commit/push to every tree kind)
+
+**Value:** the git-native `commit`/`push` primitives from S1 stop being record-set-only.
+A **bundle** (typed node+edge graph) and a **view** (cross-source fusion recipe) become
+just other tree kinds you `commit` and `push` — so graphs and views gain the same
+parented history, structural sharing, and inheritable `embed` contract (Gap A) that
+record-sets already have. This is what lets NEW_QUICKSTART §B/§C run on the CLI instead
+of the one-shot `publish_bundle.ts` / `publish_view.ts` scripts. Runs against today's
+contract (still the "commit CID in the `manifest_cid` slot" trick).
+
+**SDK (`fangorn`)**
+- `roles/publisher/index.ts`: `commitBundle(...)` and `commitView(...)` — thin wrappers
+  over the existing generic `commit()` (same chunk→assemble→wrap-commit pipeline) with the
+  `BundleBuilder` / `ViewBuilder` and `parents/message/embed` threaded through. The raw
+  `publishBundle` / `publishView` (on-chain, no history) stay as back-compat aliases.
+- `cli/bundle-source.ts` (new): the **data-shaping** half of the old scripts, extracted so
+  the CLI and the scripts share ONE implementation and can't drift — schemagen streaming,
+  type→file resolution, schema conformance, idempotent schema registration
+  (`prepareBundleSource`), and view source/linkset resolution (`resolveViewSources`,
+  `ensureView`). `publish_bundle.ts` / `publish_view.ts` now import these instead of
+  defining their own copies.
+
+**CLI (`src/cli/cli.ts`)**
+- `commit` grows two modes alongside record-sets:
+  `commit --bundle <stageDir> [--volume n] [--root-type T] -m <msg>` and
+  `commit --view <name> --source-bundle <n[:ds]>… [--source-resource 0x…] -m <msg>`.
+  Both accept `--embed-model/--embed-dim/--embed-distance` to stamp the Gap-A contract.
+  `push` is unchanged — it moves the tip for whatever tree kind the commit wraps.
+
+**Demo / acceptance**
+- `repo init -s <bundle>`; `commit --bundle $STAGE -m …`; `push`; `log`/`show` show the
+  bundle commit + its leaf diff; a second `--bundle` commit that drops nodes re-uploads
+  only changed chunks (structural sharing) and tombstones the removed entities via S2's
+  watcher; `commit --view … --source-bundle …` produces a view commit whose tree is the
+  fuse recipe. `publish_bundle.ts` / `publish_view.ts` still work byte-identically
+  (shared helpers), now as the sharded / one-shot escape hatch.
+
+**Deferred to later slices (called out so this slice's scope is honest):**
+- The **sharded** bundle path (laptop-sized transactions via sort-merge, `--shard-roots`)
+  still lives in `publish_bundle.ts`; porting it behind `quickbeam data publish` (which
+  shells out to `fangorn commit`) is the follow-on that fully retires the scripts.
+- A view commit's `parents` are the local HEAD here; making them the **exact source tips**
+  it fused (true merge commit) is **S4**. 1b lays the `commitView` rail that S4 rides.
+
+**Risk:** low — pure addition on the S1 rail; no redeploy; scripts preserved via shared
+helpers. Depends on S1.
 
 ---
 
@@ -157,9 +208,10 @@ in production first.
 **Value:** attested, reproducible cross-publisher fusion — a view commit pins the *exact
 source tips* it fused.
 
-- SDK: `fangorn view create <name> -s <sourceRid…>` produces a commit with
-  `parents = [tip(sourceA), tip(sourceB), …]` and a tree = fuse recipe (+ trust policy
-  slot). Re-express `publishView` over the commit path.
+- SDK: build on S1b's `commitView` — upgrade a view commit's `parents` from `[localHEAD]`
+  to `parents = [tip(sourceA), tip(sourceB), …]` (the exact source tips it fuses), keeping
+  the tree = fuse recipe (+ trust policy slot). `publishView` already re-expressed over the
+  commit path in S1b; S4 adds the merge-commit parent semantics.
 - quickbeam: view build walks the merge commit's parents as the fuse inputs (instead of
   re-deriving sources from a manifest); union-find on Entity URIs/aliases is the existing
   `build_view_joined_data`, now keyed off commit parents.
@@ -230,17 +282,19 @@ lands on the exact data commit; re-bake of the same data commit is reproducible.
 | Order | Slice | Redeploy | Blocks | Can parallelize with |
 |---|---|---|---|---|
 | 1 | S0 spec | — | S1, S2 | — |
-| 2 | S1 commit model | — | S2, S3, S4, S7 | — |
-| 3 | S2 quickbeam diff | — | S7 | S3 |
-| 4 | S3 refs+CAS+auth | **#1** | S4, S6 | S2 |
-| 5 | S4 views | — | S5 | S7 |
-| 6 | S5 linksets | — | — | S7 |
-| 7 | S6 group push | **#2** | — | S5, S7 |
-| 8 | S7 index-as-repo | — | — | S4–S6 |
+| 2 | S1 commit model | — | S1b, S2, S3, S4, S7 | — |
+| 3 | S1b bundle/view commits | — | S4 | S2, S3 |
+| 4 | S2 quickbeam diff | — | S7 | S1b, S3 |
+| 5 | S3 refs+CAS+auth | **#1** | S4, S6 | S1b, S2 |
+| 6 | S4 views | — | S5 | S7 |
+| 7 | S5 linksets | — | — | S7 |
+| 8 | S6 group push | **#2** | — | S5, S7 |
+| 9 | S7 index-as-repo | — | — | S4–S6 |
 
-**Recommended critical path:** S0 → S1 → S3 → S4 → S5, with S2 running alongside S3 and
-S6/S7 as opt-in follow-ons. First shippable value (versioned history + incremental
-embeds) lands after **S1+S2**, before any redeploy.
+**Recommended critical path:** S0 → S1 → S1b → S3 → S4 → S5, with S2 running alongside
+S1b/S3 and S6/S7 as opt-in follow-ons. First shippable value (versioned history +
+incremental embeds) lands after **S1+S2**; S1b makes graphs and views first-class on the
+same rail before any redeploy.
 
 ---
 

@@ -325,7 +325,7 @@ describe("Fangorn Publisher E2E", () => {
     // contract: parented commits with the commit CID riding in the manifest_cid
     // slot, structural sharing across commits, deletes via omission, the
     // client-side fast-forward guard, and reconstructing full history from IPFS
-    // alone (no subgraph). See docs/GIT_NATIVE_IMPLEMENTATION_PLAN.md S1.
+    // alone (no subgraph). See docs/archive/GIT_NATIVE_IMPLEMENTATION_PLAN.md S1.
     describe.skipIf(!hasIpfs)("Git-native repo", () => {
         let repoSchema: string;
         let datasetName: string;

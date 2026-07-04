@@ -12,7 +12,7 @@ export interface ViewUploadInput {
 }
 
 /**
- * Publishes a composed view as a datasource (docs/CROSS_PUBLISHER_LINKING_PLAN.md
+ * Publishes a composed view as a datasource (docs/archive/CROSS_PUBLISHER_LINKING_PLAN.md
  * §4). A view is "just another datasource" — it reuses the entire publish/commit
  * pipeline. Its only content is the declaration `{ sources, linksets, trust }`,
  * emitted as a single merkle leaf so the committed root attests exactly which

@@ -393,10 +393,57 @@ export class PublisherRole {
     }
 
     /**
+     * Commit a bundle locally (build the graph tree + wrap in a Commit parented on
+     * the local HEAD, no on-chain push). The git-native counterpart of
+     * `publishBundle`: bundles gain parented history, structural sharing (only the
+     * chunks that changed vs. the parent tip re-upload), and an inheritable `embed`
+     * contract (Gap A) — none of which the raw `publishBundle` path provides. The
+     * caller (CLI) moves HEAD; `push` registers the tip. See PROTOCOL.md §7.
+     */
+    async commitBundle(params: {
+        bundleName: string;
+        nodes: {
+            id: string;
+            type: string;
+            fields: Record<string, FieldInput> }[] | AsyncIterable<{ id: string; type: string; fields: Record<string, FieldInput> }>;
+        edges?: {
+            rel: string;
+            from: string; to: string }[] | AsyncIterable<{ rel: string; from: string; to: string }>;
+        parents: string[];
+        message: string;
+        datasetName?: string;
+        concurrency?: number;
+        /** Entries per merkle leaf (default 1000). */
+        chunkSize?: number;
+        /** Cross-node graph validation; set false for huge streamed inputs. */
+        validate?: boolean;
+        embed?: EmbedContract;
+        timestamp?: number;
+    }): Promise<RepoCommitResult> {
+        return this.commit({
+            schemaName: params.bundleName,
+            builder: new BundleBuilder(this.storage, this.schemaRegistry),
+            input: {
+                bundleName: params.bundleName,
+                nodes: params.nodes,
+                edges: params.edges,
+                chunkSize: params.chunkSize,
+                validate: params.validate,
+            } satisfies BundleUploadInput,
+            datasetName: params.datasetName,
+            concurrency: params.concurrency,
+            parents: params.parents,
+            message: params.message,
+            embed: params.embed,
+            timestamp: params.timestamp,
+        });
+    }
+
+    /**
      * Publish a composed view as a datasource. The view must already be
      * registered (kind:"view") — its resolved declaration (sources/linksets/
      * trust) is read back via resolveSchema and committed as a single-leaf
-     * manifest. See docs/CROSS_PUBLISHER_LINKING_PLAN.md §4.
+     * manifest. See docs/archive/CROSS_PUBLISHER_LINKING_PLAN.md §4.
      */
     async publishView(params: {
         viewName: string;
@@ -411,10 +458,38 @@ export class PublisherRole {
     }
 
     /**
+     * Commit a composed view locally (a merge commit: its tree is the fuse recipe,
+     * its `parents` are the local HEAD, no on-chain push). The git-native
+     * counterpart of `publishView`. The view must already be registered
+     * (kind:"view"). Fusing the exact source *tips* as commit parents is slice S4;
+     * here we thread the same `parents` the record-set/bundle paths use so a view
+     * repo gets parented history today.
+     */
+    async commitView(params: {
+        viewName: string;
+        parents: string[];
+        message: string;
+        datasetName?: string;
+        embed?: EmbedContract;
+        timestamp?: number;
+    }): Promise<RepoCommitResult> {
+        return this.commit({
+            schemaName: params.viewName,
+            builder: new ViewBuilder(),
+            input: { viewName: params.viewName } satisfies ViewUploadInput,
+            datasetName: params.datasetName,
+            parents: params.parents,
+            message: params.message,
+            embed: params.embed,
+            timestamp: params.timestamp,
+        });
+    }
+
+    /**
      * Publish a linkset (asserted cross-edges) as a datasource. The linkset must
      * already be registered (kind:"linkset"). Each link is validated (well-formed
      * global endpoints, allowed relation, sane confidence) before commit. See
-     * docs/CROSS_PUBLISHER_LINKING_PLAN.md §5.
+     * docs/archive/CROSS_PUBLISHER_LINKING_PLAN.md §5.
      */
     async publishLinkset(params: {
         linksetName: string;

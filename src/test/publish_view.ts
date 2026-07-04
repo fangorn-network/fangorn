@@ -28,12 +28,12 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { program } from "commander";
-import { type Address, type Hex } from "viem";
+import { type Hex } from "viem";
 import "dotenv/config";
 
 import { Fangorn } from "../fangorn.js";
 import { type AppConfig, FangornConfig, SupportedNetworks } from "../config.js";
-import { DataSourceRegistry } from "../registries/datasource-registry/index.js";
+import { resolveViewSources, ensureView } from "../cli/bundle-source.js";
 
 // ── config (env-first, then ~/.fangorn/config.json) — mirrors publish_bundle.ts ──
 interface StoredConfig { privateKey: Hex; chainName: string; pinataJwt: string; pinataGateway: string; workerUrl: string }
@@ -96,81 +96,26 @@ const opts = program.opts<{
     trust?: string; viewDataset?: string; skipRegister: boolean;
 }>();
 
-const isRid = (s: string): s is Hex => /^0x[0-9a-fA-F]{64}$/.test(s);
-
 async function main(): Promise<void> {
     const fangorn = makeFangorn(loadConfig());
-    const registry = fangorn.getSchemaRegistry();
-    const owner = fangorn.getAddress() as Address;
-
-    // schemaIds we resolve along the way — recorded in the view as a discovery hint
-    // (ResolvedView.sourceSchemas) so the consumer can do per-schema queries instead
-    // of scanning the whole publish history. Only NAME-resolved sources contribute;
-    // a foreign --source-resource is a bare resourceId whose schema we can't know.
-    const sourceSchemas = new Set<Hex>();
-
-    // Resolve a same-owner "schemaName" or "schemaName:dataset" spec → its datasource
-    // resourceId. Default dataset (no suffix) = `${schemaId}:${owner}`, matching
-    // publish_bundle.ts's non-sharded default; a ":dataset" suffix matches what you
-    // passed to publish_bundle.ts --dataset. Schema names never contain ':', so the
-    // first colon unambiguously separates the dataset label.
-    const resolveOwnedRid = async (spec: string, kind: string): Promise<Hex> => {
-        const colon = spec.indexOf(":");
-        const name = colon >= 0 ? spec.slice(0, colon) : spec;
-        const datasetLabel = colon >= 0 ? spec.slice(colon + 1) : undefined;
-        const schemaId = await registry.schemaId(name);
-        if (!(await registry.schemaExists(schemaId))) {
-            throw new Error(`${kind} "${name}" is not registered — publish it first.`);
-        }
-        sourceSchemas.add(schemaId);
-        const ds = datasetLabel ?? `${schemaId}:${owner}`;
-        const rid = DataSourceRegistry.resourceId(owner, schemaId, ds);
-        console.log(`[publish-view]   ${kind} "${name}"${datasetLabel ? ` dataset="${datasetLabel}"` : " (default dataset)"} → resourceId ${rid}`);
-        return rid;
-    };
 
     // ── 1. assemble sources + linksets (owned names resolved, raw rids validated) ──
+    // Shared with `fangorn commit --view` (src/cli/bundle-source.ts) so the two can't
+    // drift: same name[:dataset] resolution, same foreign-resourceId validation, same
+    // sourceSchemas discovery hint recorded in the view.
     console.log(`[publish-view] resolving sources for view "${opts.name}"...`);
-    const sources: Hex[] = [];
-    for (const name of opts.sourceBundle) sources.push(await resolveOwnedRid(name, "source-bundle"));
-    for (const r of opts.sourceResource) {
-        if (!isRid(r)) throw new Error(`--source-resource "${r}" is not a 32-byte 0x… resourceId`);
-        sources.push(r);
-        console.log(`[publish-view]   source-resource (foreign) → ${r}`);
-    }
-    if (sources.length === 0) throw new Error("a view needs at least one source — pass --source-bundle and/or --source-resource");
-
-    const linksets: Hex[] = [];
-    for (const name of opts.linksetName) linksets.push(await resolveOwnedRid(name, "linkset-name"));
-    for (const r of opts.linksetResource) {
-        if (!isRid(r)) throw new Error(`--linkset-resource "${r}" is not a 32-byte 0x… resourceId`);
-        linksets.push(r);
-    }
-
-    let trust: Record<string, unknown> | undefined;
-    if (opts.trust) {
-        try { trust = JSON.parse(opts.trust) as Record<string, unknown>; }
-        catch { throw new Error(`--trust is not valid JSON: ${opts.trust}`); }
-    }
+    const resolved = await resolveViewSources(fangorn, {
+        sourceBundle: opts.sourceBundle,
+        sourceResource: opts.sourceResource,
+        linksetName: opts.linksetName,
+        linksetResource: opts.linksetResource,
+        trust: opts.trust,
+        log: (m) => { console.log(`[publish-view]   ${m}`); },
+    });
+    const { sources, linksets } = resolved;
 
     // ── 2. register the view (idempotent by name) ─────────────────────────────
-    let viewId: Hex;
-    const computedViewId = await registry.schemaId(opts.name);
-    const exists = await registry.schemaExists(computedViewId);
-    if (exists) {
-        viewId = computedViewId;
-        console.log(`[publish-view] view "${opts.name}" already registered → ${viewId}`);
-        console.log(`[publish-view]   (registration is idempotent by name; to CHANGE sources, bump the view name/version)`);
-    } else if (opts.skipRegister) {
-        throw new Error(`--skip-register but view "${opts.name}" is not registered`);
-    } else {
-        const reg = await fangorn.schema.register({ kind: "view", name: opts.name, view: { sources, linksets, trust, sourceSchemas: [...sourceSchemas] } });
-        viewId = reg.schemaId;
-        const v = reg as Extract<typeof reg, { kind: "view" }>;
-        console.log(`[publish-view] registered view "${opts.name}" → ${viewId}`);
-        console.log(`[publish-view]   sources : ${v.view.sources.join(", ")}`);
-        if (v.view.linksets.length) console.log(`[publish-view]   linksets: ${v.view.linksets.join(", ")}`);
-    }
+    const viewId = await ensureView(fangorn, opts.name, resolved, opts.skipRegister, (m) => { console.log(`[publish-view] ${m}`); });
 
     // ── 3. publish the view's datasource manifest ─────────────────────────────
     console.log(`[publish-view] publishing view manifest...`);

@@ -146,7 +146,7 @@ gadgetId → {
 
 **Recommendation:** a **governed router table** (`gadgetId → verifier`) rather than baking a
 verifier address into each binding leaf. It is upgradeable, discoverable, and matches "gadgets
-registered against a schema" from `docs/encryption.md`. Publishers reference a `gadgetId` +
+registered against a schema" from `docs/archive/encryption.md`. Publishers reference a `gadgetId` +
 params at publish time and never deploy anything.
 
 **Universal public-input convention:** every gadget's public inputs MUST include at least

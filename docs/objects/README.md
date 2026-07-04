@@ -1,13 +1,10 @@
 # Shared object spec (Slice 0)
 
-Fangorn stores data as a Merkle DAG in IPFS, the same shape git uses for code:
+Fangorn stores data as a Merkle DAG in IPFS.
 
-- **blob** — one immutable chunk of records/nodes/edges, named by the hash of its
-  bytes. These already exist as the chunk CIDs the publisher uploads.
-- **tree** — a snapshot: the set of blobs that make up the dataset at one moment,
-  plus one Poseidon2 root that fingerprints the whole set. In v1 an existing
-  *manifest* (record-set / bundle / view / linkset) already *is* the tree — it lists
-  the blob CIDs and carries the root. We wrap it, not reinvent it.
+- **blob** - an immutable chunk of records/nodes/edges, identified poseidon hash of its content.
+- **tree** - Each Merkle tree is a snapshot: the set of blobs that make up the dataset at one moment,
+  plus the Poseidon2 root.
 - **commit** — a tree plus provenance: who, when, the parent it was built on, the
   schema it conforms to, and (optionally) the embedding contract the indexer should
   use. This is the one genuinely new object.

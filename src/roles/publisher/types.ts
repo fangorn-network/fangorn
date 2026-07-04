@@ -139,7 +139,7 @@ export interface BundleManifest {
 export interface BundleNode {
     id: string;
     type: string;
-    // Phase 0 global identity (docs/CROSS_PUBLISHER_LINKING_PLAN.md §3): the
+    // Phase 0 global identity (docs/archive/CROSS_PUBLISHER_LINKING_PLAN.md §3): the
     // canonical Entity URI `fangorn:<resourceId>/<localId>` and any namespaced
     // aliases (e.g. "gplace:ChIJ…") declared on the node type. quickbeam keys
     // cross-datasource adjacency on these.
@@ -155,7 +155,7 @@ export interface BundleEdge {
 }
 
 /**
- * Composed-view manifest (docs/CROSS_PUBLISHER_LINKING_PLAN.md §4). A view is
+ * Composed-view manifest (docs/archive/CROSS_PUBLISHER_LINKING_PLAN.md §4). A view is
  * just another datasource whose published content is its *declaration* — the
  * set of source datasources (plus optional linksets/trust) that a downstream
  * indexer (quickbeam) fuses into one graph. The single `viewChunk` leaf is what
@@ -177,7 +177,7 @@ export interface ViewManifest {
 }
 
 /**
- * Linkset manifest (docs/CROSS_PUBLISHER_LINKING_PLAN.md §5). A linkset is a
+ * Linkset manifest (docs/archive/CROSS_PUBLISHER_LINKING_PLAN.md §5). A linkset is a
  * datasource whose records are asserted cross-edges; like a bundle's edges they
  * are chunked into many merkle leaves under one root, so the committed root
  * attests the exact set of asserted links (and who signed them).
