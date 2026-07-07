@@ -1,7 +1,7 @@
 import type { Hex } from "viem";
 import type { SchemaDefinition, SchemaDoc, TypeDefinition, ResolvedBundle, NodeIdentity } from "../../schema/types";
 import type { MetadataStorage } from "../../../providers/storage/types";
-import type { SchemaRegistry } from "../../../registries/schema-registry";
+import type { PublisherRegistry } from "../../../contracts/publisher-registry";
 import type { BundleManifest, BundleNode, FieldInput, PublishRecord, ResolvedField } from "../types";
 import type { ManifestBuilder, ChunkDraft, ChunkRef, BuildContext, ResolvedSchemaShape, CommitInfo } from "./types";
 import { validateRecord, resolveRecord } from "./utils";
@@ -30,7 +30,7 @@ export class BundleBuilder implements ManifestBuilder<BundleUploadInput, BundleM
 
     constructor(
         private readonly storage: MetadataStorage,
-        private readonly schemaRegistry: SchemaRegistry,
+        private readonly schemaRegistry: PublisherRegistry,
     ) { }
 
     validate(schema: ResolvedSchemaShape, _input: BundleUploadInput): void {

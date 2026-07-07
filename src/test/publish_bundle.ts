@@ -26,7 +26,7 @@ import { type Hex } from "viem";
 import "dotenv/config";
 
 import { Fangorn } from "../fangorn.js";
-import { DataSourceRegistry } from "../registries/datasource-registry/index.js";
+import { DataSourceRegistry } from "../contracts/datasource-registry/index.js";
 import { type AppConfig, FangornConfig, SupportedNetworks } from "../config.js";
 import { type BundleInput, type NodeIdentity, type SchemaDefinition } from "../roles/schema/types.js";
 import { type FieldInput } from "../roles/publisher/types.js";

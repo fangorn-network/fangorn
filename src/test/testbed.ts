@@ -10,10 +10,10 @@ import { arbitrumSepolia, baseSepolia } from "viem/chains";
 import { Fangorn } from "../fangorn.js";
 import { type AppConfig } from "../config.js";
 import { BundleInput, type SchemaDefinition, type TypeDefinition } from "../roles/schema/index.js";
-import { SettlementRegistry } from "../registries/settlement-registry/index.js";
+import { SettlementRegistry } from "../contracts/settlement-registry/index.js";
 import { privateKeyToAccount } from "viem/accounts";
 import { FieldInput, PublishRecord } from "../roles/publisher/types.js";
-import { PrepareSettleResult, TransferWithAuthPayload } from "../registries/settlement-registry/types.js";
+import { PrepareSettleResult, TransferWithAuthPayload } from "../contracts/settlement-registry/types.js";
 
 export class TestBed {
     private constructor(

@@ -30,7 +30,7 @@ import "dotenv/config";
 
 import { Fangorn } from "../fangorn.js";
 import { type AppConfig, FangornConfig, SupportedNetworks } from "../config.js";
-import { DataSourceRegistry } from "../registries/datasource-registry/index.js";
+import { DataSourceRegistry } from "../contracts/datasource-registry/index.js";
 import { type LinkRecord } from "../roles/schema/types.js";
 
 // ── config (env-first, then ~/.fangorn/config.json) — mirrors publish_bundle.ts ──

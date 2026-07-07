@@ -9,10 +9,8 @@ import {
 import { AppConfig, FangornConfig } from "./config.js";
 import { SchemaRole, SchemaRoleConfig } from "./roles/schema/index.js";
 import { PublisherRole } from "./roles/publisher/index.js";
-import { ConsumerRole } from "./roles/consumer/index.js";
-import { SchemaRegistry } from "./registries/schema-registry/index.js";
-import { DataSourceRegistry } from "./registries/datasource-registry/index.js";
-import { SettlementRegistry } from "./registries/settlement-registry/index.js";
+// import { ConsumerRole } from "./roles/consumer/index.js";
+import { PublisherRegistry } from "./contracts/publisher-registry/index.js";
 import { FangornContext, FangornCreateOptions, StorageConfig } from "./types/index.js";
 import { privateKeyToAccount } from "viem/accounts";
 import { MetadataStorage } from "./providers/storage/types.js";
@@ -33,7 +31,7 @@ export class Fangorn {
 
 	private _schema: SchemaRole | null = null;
 	private _publisher: PublisherRole | null = null;
-	private _consumer: ConsumerRole | null = null;
+	// private _consumer: ConsumerRole | null = null;
 
 	private constructor(ctx: FangornContext) {
 		this.ctx = ctx;
@@ -44,7 +42,7 @@ export class Fangorn {
 			throw new Error("fangorn.schema requires storage. Pass { pinata: { ... } } to Fangorn.create()");
 		}
 		return this._schema ??= new SchemaRole(
-			this.ctx.schemaRegistry,
+			this.ctx.publisherRegistry,
 			this.ctx.metadataStorage,
 			this.ctx.walletClient,
 		);
@@ -55,26 +53,25 @@ export class Fangorn {
 			throw new Error("fangorn.publisher requires storage. Pass { pinata: { ... } } to Fangorn.create()");
 		}
 		return this._publisher ??= new PublisherRole(
-			this.ctx.dataSourceRegistry,
-			this.ctx.schemaRegistry,
+			this.ctx.publisherRegistry,
 			this.ctx.metadataStorage,
 			this.ctx.walletClient,
 		);
 	}
 
-	get consumer(): ConsumerRole {
-		return this._consumer ??= new ConsumerRole(
-			this.ctx.dataSourceRegistry,
-			this.ctx.settlementRegistry,
-		);
-	}
+	// get consumer(): ConsumerRole {
+	// 	return this._consumer ??= new ConsumerRole(
+	// 		this.ctx.dataSourceRegistry,
+	// 		this.ctx.settlementRegistry,
+	// 	);
+	// }
 
 	static create(options: FangornCreateOptions): Fangorn {
 		if (!options.privateKey && !options.walletClient) {
 			throw new Error("Either privateKey or walletClient must be provided");
 		}
 
-		const resolvedConfig = options.config ?? FangornConfig.ArbitrumSepolia;
+		const resolvedConfig = options.config ?? FangornConfig;
 
 		const walletClient = options.walletClient ?? createWalletClient({
 			account: privateKeyToAccount(options.privateKey ?? "0x0"),
@@ -89,20 +86,8 @@ export class Fangorn {
 			transport: http(resolvedConfig.rpcUrl),
 		}) as PublicClient;
 
-		const schemaRegistry = new SchemaRegistry(
-			resolvedConfig.schemaRegistryContractAddress,
-			publicClient,
-			walletClient,
-		);
-
-		const dataSourceRegistry = new DataSourceRegistry(
-			resolvedConfig.dataSourceRegistryContractAddress,
-			publicClient,
-			walletClient,
-		);
-
-		const settlementRegistry = new SettlementRegistry(
-			resolvedConfig.settlementRegistryContractAddress,
+		const publisherRegistry = new PublisherRegistry(
+			resolvedConfig.publisherRegistryContractAddress,
 			publicClient,
 			walletClient,
 		);
@@ -122,9 +107,7 @@ export class Fangorn {
 			walletClient,
 			metadataStorage,
 			domain,
-			schemaRegistry,
-			dataSourceRegistry,
-			settlementRegistry			,
+			publisherRegistry,
 			schemaRoleConfig,
 			config: resolvedConfig,
 			// workerUrl: options.				,
@@ -132,9 +115,7 @@ export class Fangorn {
 	}
 
 	getConfig(): AppConfig { return this.ctx.config; }
-	getSchemaRegistry(): SchemaRegistry { return this.ctx.schemaRegistry; }
-	getDatasourceRegistry(): DataSourceRegistry { return this.ctx.dataSourceRegistry; }
-	getSettlementRegistry(): SettlementRegistry { return this.ctx.settlementRegistry; }
+	getPublisherRegistry(): PublisherRegistry { return this.ctx.publisherRegistry; }
 	getWalletClient(): WalletClient { return this.ctx.walletClient; }
 
 	getAddress(): Hex {

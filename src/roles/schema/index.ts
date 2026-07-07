@@ -1,15 +1,25 @@
 import { type Hex, type WalletClient } from "viem";
-import { SchemaRegistry } from "../../registries/schema-registry";
 import { MetadataStorage } from "../../providers/storage/types.js";
-import { BundleInput, LinksetInput, NodeIdentity, ResolvedBundle, ResolvedLinkset, ResolvedView, SchemaBlob, SchemaDefinition, SchemaDoc, TypeDefinition, ViewInput } from "./types";
+import {
+    BundleInput,
+    LinksetInput,
+    NodeIdentity,
+    ResolvedBundle,
+    ResolvedLinkset,
+    ResolvedView,
+    SchemaBlob,
+    SchemaDefinition,
+    SchemaDoc,
+    TypeDefinition,
+    ViewInput
+} from "./types";
 import { isResourceId } from "./identity";
 import { validate } from "./validate";
+import { PublisherRegistry } from "../../contracts/publisher-registry/index.js";
 
 export * from './types';
 export * from './identity';
 
-// Register either a 'resolver' (a standard flat schema, optionally with a
-// custom-type vocabulary) or a 'bundle' (the shape of how resolver schemas combine).
 export type RegisterSchemaParams =
     | { kind?: "resolver"; name: string; definition: SchemaDefinition; types?: Record<string, TypeDefinition>; identity?: NodeIdentity }
     | { kind: "bundle"; name: string; bundle: BundleInput }
@@ -22,21 +32,29 @@ interface RegisteredSchemaBase {
     name: string;
     owner: Hex;
 }
+
 export type RegisteredSchema =
     | (RegisteredSchemaBase & { kind: "resolver"; definition: SchemaDefinition; types?: Record<string, TypeDefinition>; identity?: NodeIdentity })
     | (RegisteredSchemaBase & { kind: "bundle"; bundle: ResolvedBundle })
     | (RegisteredSchemaBase & { kind: "view"; view: ResolvedView })
     | (RegisteredSchemaBase & { kind: "linkset"; linkset: ResolvedLinkset });
 
-
 export class SchemaRole {
     constructor(
-        private readonly schemaRegistry: SchemaRegistry,
+        private readonly schemaRegistry: PublisherRegistry,
         private readonly storage: MetadataStorage,
         private readonly walletClient: WalletClient,
     ) { }
 
-    async register(params: RegisterSchemaParams): Promise<RegisteredSchema> {
+    /**
+     * Deploy a new schema to your bucket.
+     * A schema defines the 'shape' of the data. 
+     * Data uploaded against the schema is verified against the schema.
+     * 
+     * @param params 
+     * @returns 
+     */
+    async deploy(params: RegisterSchemaParams): Promise<RegisteredSchema> {
         const owner = this.requireAccount();
         const createdAt = new Date().toISOString();
 
@@ -56,12 +74,18 @@ export class SchemaRole {
 
         const schemaCid = await this.storage.put(blob, { name: `schema:${params.name}` });
 
-        let schemaId: Hex;
+        // schemaId is whatever the contract mints — capture it from registerSchema's
+        // return. If already on-chain, read it back via schemaId(name).
+        let schemaId: Hex = "0x0";
         try {
             ({ schemaId } = await this.schemaRegistry.registerSchema(params.name, schemaCid));
         } catch (err) {
-            if (!isSchemaAlreadyExists(err)) throw err;
-            schemaId = await this.schemaRegistry.schemaId(params.name);
+            // why paper this over with a false positive?
+            // if something actually, we should bubble this up
+            throw err;
+            // if (!isAlreadyRegistered(err)) throw err;
+            // if a schema is already registered, then we fetch the schema id
+            // schemaId = await this.schemaRegistry.schemaId(params.name);
         }
 
         const base = { schemaId, schemaCid, name: params.name, owner };
@@ -71,14 +95,26 @@ export class SchemaRole {
         return { kind: "resolver", ...base, definition: blob.definition, types: blob.types, identity: blob.identity };
     }
 
-    async get(nameOrId: string): Promise<RegisteredSchema | undefined> {
+    async getByName(schemaName: string): Promise<RegisteredSchema> {
         try {
-            const schemaId = await this.schemaRegistry.schemaId(nameOrId as Hex);
-            const record = await this.schemaRegistry.getSchema(nameOrId);
-            if (!record.specCid) return undefined;
+            // Note: Since off-chain state reading directly from the mapping isn't directly exposed in the 
+            // Registry API surface for deep inner objects, reading metadata relies on looking up the 
+            // schema definition payload saved inside your decentralized `storage` provider using the specCid.
+            // If explicit on-chain record properties are ever needed, add a view function to your Stylus contract.
 
-            const blob = await this.storage.get<SchemaBlob>(record.specCid);
-            const base = { schemaId, schemaCid: record.specCid, name: blob.name, owner: blob.owner };
+            const owner = this.requireAccount();
+
+            const { name, schemaId, specCid, agentId } = await this.schemaRegistry.getBucketSchema(owner, schemaName);
+
+            // Assumes identifier matches structure path
+            const blob = await this.storage.get<SchemaBlob>(specCid);
+            // throw error if the schema can't be r
+            if (!blob) throw new Error(
+                `Schema not found for name ${name} with resolved cid: ${specCid}! Is the json pinned?`
+            );
+
+
+            const base = { schemaId, schemaCid: specCid, name: blob.name, owner: blob.owner };
 
             if (blob.kind === "resolver") {
                 return { kind: "resolver", ...base, definition: blob.definition, types: blob.types, identity: blob.identity };
@@ -96,7 +132,6 @@ export class SchemaRole {
         }
     }
 
-    /** Resolve node refs → registered resolver schemaIds and enforce edge closure. */
     private async resolveBundle(input: BundleInput): Promise<ResolvedBundle> {
         const errors: string[] = [];
         if (Object.keys(input.nodes).length === 0) errors.push("bundle declares no node types");
@@ -104,7 +139,7 @@ export class SchemaRole {
         const nodes: Record<string, Hex> = {};
         await Promise.all(
             Object.entries(input.nodes).map(async ([typeName, ref]) => {
-                const existing = await this.get(ref);
+                const existing = await this.getByName(ref);
                 if (!existing) errors.push(`node "${typeName}" → unknown schema "${ref}"`);
                 else if (existing.kind !== "resolver") errors.push(`node "${typeName}" → "${ref}" is a bundle; nodes must be resolver schemas`);
                 else nodes[typeName] = existing.schemaId;
@@ -125,10 +160,6 @@ export class SchemaRole {
         return { nodes, edges: input.edges };
     }
 
-    /** Validate + pin a view's source set. A view is just another datasource,
-     *  so resolution is light: every source must be a well-formed resourceId;
-     *  the set is deduped + sorted for a deterministic committed form. linksets
-     *  (Phase 2) and trust (Phase 4) are carried through, defaulted empty. */
     private resolveView(input: ViewInput): ResolvedView {
         const errors: string[] = [];
         for (const s of input.sources) {
@@ -149,10 +180,6 @@ export class SchemaRole {
         return { sources, linksets, trust: input.trust ?? {}, sourceSchemas };
     }
 
-    /** Resolve a linkset schema. Light by design — a linkset is just another
-     *  datasource; the only declaration is an optional relation allowlist, which
-     *  we dedupe + sort for a deterministic committed form. Endpoint validation
-     *  happens per-record at publish time (LinksetBuilder), not here. */
     private resolveLinkset(input: LinksetInput): ResolvedLinkset {
         const rels = (input.rels ?? []).map(r => r.trim());
         if (rels.some(r => r.length === 0)) throw new Error("Invalid linkset: empty relation name");
@@ -170,16 +197,17 @@ export class SchemaRole {
     }
 }
 
-function isSchemaAlreadyExists(err: unknown): boolean {
+function isAlreadyRegistered(err: unknown): boolean {
     if (!(err instanceof Error)) return false;
 
     const causeObj = (err.cause) as Record<string, unknown> | undefined;
     const causeData = causeObj?.data as Record<string, unknown> | undefined;
- 
+
     const errorObj = (err as unknown) as Record<string, unknown>;
     const errorData = errorObj.data as Record<string, unknown> | undefined;
 
     const data = causeData ?? errorData;
 
-    return data?.errorName === "SchemaAlreadyExists";
+    // Matches against the standard Custom Error property returned from Viem execution failures
+    return data?.errorName === "AlreadyRegistered";
 }

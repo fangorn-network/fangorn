@@ -1,4 +1,4 @@
-	import { Chain, Hex } from "viem";
+import { Chain, Hex } from "viem";
 import { arbitrumSepolia, baseSepolia } from "viem/chains";
 
 /**
@@ -17,25 +17,17 @@ export const SupportedNetworks = {
 
 /**
  * Get the network based on the string name
- * @param name "arbitrumSepolia" or "baseSepolia"
+ * @param name "arbitrumSepolia" is the only one supported right now 
  * @returns The corresponding network if it is supported, otherwise an error
  */
 export default function getNetwork(name: string) {
 	if (name === SupportedNetworks.ArbitrumSepolia.name) return arbitrumSepolia;
-	else if (name === SupportedNetworks.BaseSepolia.name) return baseSepolia;
-
 	throw new Error(`Chain ${name} is not supported`);
 }
 
 export interface AppConfig {
-	// The deployed dataSourceRegistry contract address
-	dataSourceRegistryContractAddress: Hex;
-	// The deployed schemaRegistry contract address
-	schemaRegistryContractAddress: Hex;
-	// The deployed settlementRegistry contract adddress
-	settlementRegistryContractAddress: Hex;
-	// The name of the chain for LIT action execution (does not always match what is defined by viem)
-	chainName: string;
+	// The deployed publisher_registry contract address
+	publisherRegistryContractAddress: Hex;
 	// The viem chain
 	chain: Chain;
 	// The public rpc address of the chain we are connecting to
@@ -47,31 +39,10 @@ export interface AppConfig {
 }
 
 export const FangornConfig = {
-	// Arbitrum Sepolia config
-ArbitrumSepolia: {
-		dataSourceRegistryContractAddress: 
-			"0x207ab1866704b2adc34e8ec1069fb8febafff2fd",
-		schemaRegistryContractAddress: 
-			"0xecafc21ca3ec41c020287fb8c2126b1a9af9d220",
-		settlementRegistryContractAddress: 
-			"0x93a5e93e76a3c150d35d4cd40029e4f45f3e650f",
-		chainName: "arbitrumSepolia",
-		chain: arbitrumSepolia,
-		rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
-		caip2: 421614,
-		ipfsGateway: 'https://ipfs.io'
-	} satisfies AppConfig,
-	// Base Sepolia config (incomplete :| do not use)
-	BaseSepolia: {
-		dataSourceRegistryContractAddress:
-			"0x6fd0e50073dbd8169bcaf066bb4a4991bfa48eeb",
-		// TODO
-		schemaRegistryContractAddress: "0x0",
-		settlementRegistryContractAddress: "0x0",
-		chainName: "baseSepolia",
-		chain: baseSepolia,
-		rpcUrl: "https://sepolia.base.org",
-		caip2: 84532,
-		ipfsGateway: 'https://ipfs.io'
-	} satisfies AppConfig
-}
+	publisherRegistryContractAddress:
+		"0x207ab1866704b2adc34e8ec1069fb8febafff2fd",
+	chain: arbitrumSepolia,
+	rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
+	caip2: 421614,
+	ipfsGateway: 'https://ipfs.io'
+} satisfies AppConfig

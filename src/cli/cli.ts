@@ -65,13 +65,6 @@ let _config: Config | null = null;
 let _account: PrivateKeyAccount | null = null;
 let _fangorn: Fangorn | null = null;
 
-function resolveAppConfig(chainName: string): AppConfig {
-    if (chainName === SupportedNetworks.ArbitrumSepolia.name) {
-        return FangornConfig.ArbitrumSepolia;
-    }
-    return FangornConfig.BaseSepolia;
-}
-
 function loadConfig(): Config {
     if (_config) return _config;
 
@@ -97,7 +90,7 @@ function loadConfig(): Config {
 
         _config = {
             privateKey: privateKey as Hex,
-            cfg: resolveAppConfig(chainName ?? ""),
+            cfg: FangornConfig,
             pinataJwt: pinataJwt ?? "",
             pinataGateway: pinataGateway ?? "",
             workerUrl: workerUrl ?? "",
@@ -110,7 +103,7 @@ function loadConfig(): Config {
         const stored = JSON.parse(readFileSync(CONFIG_PATH, "utf-8")) as StoredConfig;
         _config = {
             privateKey: stored.privateKey,
-            cfg: resolveAppConfig(stored.chainName),
+            cfg: FangornConfig,
             pinataJwt: stored.pinataJwt,
             pinataGateway: stored.pinataGateway,
             workerUrl: stored.workerUrl,
@@ -154,16 +147,13 @@ function getFangorn(): Fangorn {
     return _fangorn;
 }
 
-async function resolveSchemaId(fangorn: Fangorn, schemaNameOrId: string): Promise<Hex> {
+async function resolveSchemaId(fangorn: Fangorn, schemaName: string): Promise<Hex> {
     try {
-        return await fangorn.getSchemaRegistry().schemaId(
-            /^0x[0-9a-fA-F]{64}$/.test(schemaNameOrId)
-                ? (schemaNameOrId as Hex)
-                : schemaNameOrId,
-        );
+        const schema = await fangorn.schema.getByName(schemaName);
+        return schema.schemaId;
     } catch {
         throw new Error(
-            `Schema "${schemaNameOrId}" not found on-chain. Register it with \`fangorn schema register\`.`,
+            `Schema "${schemaName}" not found on-chain. Register it with \`fangorn schema register\`.`,
         );
     }
 }
@@ -173,8 +163,7 @@ async function resolveSchemaId(fangorn: Fangorn, schemaNameOrId: string): Promis
 const program = new Command();
 program.name("fangorn").description("Fangorn Network CLI").version("0.2.1");
 
-// ─── init ─────────────────────────────────────────────────────────────────────
-
+/// initialize the fangorn cli
 program
     .command("init")
     .description("Configure your Fangorn credentials")
@@ -192,13 +181,7 @@ program
         });
         handleCancel(privateKey);
 
-        const chainName = await select({
-            message: "Default chain:",
-            options: [
-                { value: SupportedNetworks.ArbitrumSepolia.name, label: "Arbitrum Sepolia" },
-                { value: SupportedNetworks.BaseSepolia.name, label: "Base Sepolia" },
-            ],
-        });
+        const chainName = "Arbitrum Sepolia";
         handleCancel(chainName);
 
         const pinataJwt = await text({
@@ -438,55 +421,55 @@ publishCmd
         }
     });
 
-// ─── consume ──────────────────────────────────────────────────────────────────
+// // ─── consume ──────────────────────────────────────────────────────────────────
 
-const consumeCmd = program
-    .command("consume")
-    .description("Consumer operations");
+// const consumeCmd = program
+//     .command("consume")
+//     .description("Consumer operations");
 
-consumeCmd
-    .command("list")
-    .description("List a publisher's manifest entries")
-    .requiredOption("-s, --schema <schemaName>", "Schema name or bytes32 ID")
-    .requiredOption("--owner <address>", "Publisher address")
-    .action(async (options: { schema: string; owner: Address }) => {
-        try {
-            const fangorn = getFangorn();
-            const schemaId = await resolveSchemaId(fangorn, options.schema);
-            const manifest = await fangorn.consumer.getEntry(options.owner, schemaId, options.schema);
+// consumeCmd
+//     .command("list")
+//     .description("List a publisher's manifest entries")
+//     .requiredOption("-s, --schema <schemaName>", "Schema name or bytes32 ID")
+//     .requiredOption("--owner <address>", "Publisher address")
+//     .action(async (options: { schema: string; owner: Address }) => {
+//         try {
+//             const fangorn = getFangorn();
+//             const schemaId = await resolveSchemaId(fangorn, options.schema);
+//             const manifest = await fangorn.consumer.getEntry(options.owner, schemaId, options.schema);
 
-            if (!manifest) {
-                log.warn("No manifest found.");
-                process.exit(0);
-            }
+//             if (!manifest) {
+//                 log.warn("No manifest found.");
+//                 process.exit(0);
+//             }
 
-            console.log(`Owner:   ${options.owner}`);
-            console.log(`Schema:  ${options.schema}`);
-            process.exit(0);
-        } catch (err) {
-            console.error("Failed:", (err as Error).message);
-            process.exit(1);
-        }
-    });
+//             console.log(`Owner:   ${options.owner}`);
+//             console.log(`Schema:  ${options.schema}`);
+//             process.exit(0);
+//         } catch (err) {
+//             console.error("Failed:", (err as Error).message);
+//             process.exit(1);
+//         }
+//     });
 
-consumeCmd
-    .command("entry")
-    .description("Show a publisher's manifest entry")
-    .argument("<tag>", "Entry tag / name")
-    .requiredOption("-s, --schema <schemaName>", "Schema name or bytes32 ID")
-    .requiredOption("--owner <address>", "Publisher address")
-    .action(async (tag: string, options: { schema: string; owner: Address }) => {
-        try {
-            const fangorn = getFangorn();
-            const schemaId = await resolveSchemaId(fangorn, options.schema);
-            const entry = await fangorn.consumer.getEntry(options.owner, schemaId, tag);
-            note(JSON.stringify(entry, null, 2), `Entry: ${tag}`);
-            process.exit(0);
-        } catch (err) {
-            console.error("Failed:", (err as Error).message);
-            process.exit(1);
-        }
-    });
+// consumeCmd
+//     .command("entry")
+//     .description("Show a publisher's manifest entry")
+//     .argument("<tag>", "Entry tag / name")
+//     .requiredOption("-s, --schema <schemaName>", "Schema name or bytes32 ID")
+//     .requiredOption("--owner <address>", "Publisher address")
+//     .action(async (tag: string, options: { schema: string; owner: Address }) => {
+//         try {
+//             const fangorn = getFangorn();
+//             const schemaId = await resolveSchemaId(fangorn, options.schema);
+//             const entry = await fangorn.consumer.getEntry(options.owner, schemaId, tag);
+//             note(JSON.stringify(entry, null, 2), `Entry: ${tag}`);
+//             process.exit(0);
+//         } catch (err) {
+//             console.error("Failed:", (err as Error).message);
+//             process.exit(1);
+//         }
+//     });
 
 // consumeCmd
 //     .command("purchase")
@@ -706,6 +689,67 @@ datasourceCmd
             console.log(`Schema ID:    ${schemaId}`);
             console.log(`Version:      ${String(ds.version)}`);
             console.log(`Manifest CID: ${ds.manifestCid || "(none yet)"}`);
+            process.exit(0);
+        } catch (err) {
+            console.error("Failed:", (err as Error).message);
+            process.exit(1);
+        }
+    });
+
+// ─── bucket ───────────────────────────────────────────────────────────────────
+
+const bucketCmd = program
+    .command("bucket")
+    .description("Publisher registry / bucket operations");
+
+bucketCmd
+    .command("deploy")
+    .description("Register as a publisher and deploy your bucket")
+    .action(async () => {
+        try {
+            const self = getAccount().address;
+            const registry = getFangorn().getPublisherRegistry();
+            const s = spinner();
+
+            if (await registry.isRegistered(self)) {
+                const bucket = await registry.bucketOf(self);
+                note(`Already registered.\nBucket: ${bucket}`, "Nothing to do");
+                process.exit(0);
+            }
+
+            s.start("Registering publisher...");
+            const txHash = await registry.register();
+            const bucket = await registry.bucketOf(self);
+            s.stop();
+
+            note(`Publisher: ${self}\nBucket:    ${bucket}\nTx:        ${txHash}`, "Bucket deployed");
+            process.exit(0);
+        } catch (err) {
+            console.error("Failed:", (err as Error).message);
+            process.exit(1);
+        }
+    });
+
+bucketCmd
+    .command("log")
+    .description("Show your publisher registration and bucket")
+    .option("--owner <address>", "Publisher address (defaults to your wallet)")
+    .action(async (options: { owner?: Address }) => {
+        try {
+            const self = getAccount().address;
+            const owner = options.owner ?? self;
+            const registry = getFangorn().getPublisherRegistry();
+
+            const registered = await registry.isRegistered(owner);
+            if (!registered) {
+                log.warn(`${owner} is not registered. Run \`fangorn bucket deploy\`.`);
+                process.exit(0);
+            }
+
+            const bucket = await registry.bucketOf(owner);
+            console.log(`Publisher:  ${owner}`);
+            console.log(`Registered: yes`);
+            console.log(`Bucket:     ${bucket}`);
             process.exit(0);
         } catch (err) {
             console.error("Failed:", (err as Error).message);

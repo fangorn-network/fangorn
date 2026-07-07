@@ -1,9 +1,9 @@
 import { type Address, type Hex, type WalletClient } from "viem";
 import { LinkRecord, ResolvedBundle, ResolvedLinkset, ResolvedView, SchemaDefinition, TypeDefinition } from "../schema/types";
-import { DataSourceRegistry, MerkleTree } from "../../registries/datasource-registry";
+import { MerkleTree, resourceId as datasourceResourceId } from "../../utils/manifest";
 import { MetadataStorage } from "../../providers/storage/types";
 import { serialize } from "../../providers/storage/utils";
-import { SchemaRegistry } from "../../registries/schema-registry";
+import { PublisherRegistry } from "../../contracts/publisher-registry";
 import {
     FieldInput,
     Manifest,
@@ -58,11 +58,10 @@ export class PublisherRole {
     >();
 
     constructor(
-        private readonly dataSourceRegistry: DataSourceRegistry,
-        private readonly schemaRegistry: SchemaRegistry,
+        private readonly publisherRegistry: PublisherRegistry,
         private readonly storage: MetadataStorage,
         private readonly walletClient: WalletClient,
-    ) {}
+    ) { }
 
     async publish<TIn, TMan extends { kind: string; schemaId: Hex; root: Hex; tree: Hex[][] }>(params: {
         schemaName: string;
@@ -71,17 +70,17 @@ export class PublisherRole {
         datasetName?: string;
         concurrency?: number;
     }): Promise<CommitResult> {
+        const owner = this.requireAccount();
         const { schemaName, builder, input, datasetName, concurrency = 10 } = params;
-        const { schema, schemaId } = await this.resolveSchema(schemaName);
+        const { schema, schemaId } = await this.resolveSchema(owner, schemaName);
 
         await builder.validate(schema, input);
 
         // Commit context known before chunking: the datasource resourceId that
         // Phase-0 Entity URIs are prefixed with. Derived from the same
         // (owner, schemaId, datasetName) used to publish the datasource below.
-        const owner = this.requireAccount();
         const ds = datasetName ?? `${schemaId}:${owner}`;
-        const resourceId = DataSourceRegistry.resourceId(owner, schemaId, ds);
+        const resourceId = datasourceResourceId(owner, schemaId, ds);
 
         // CAR-batched upload: instead of one HTTP POST per chunk, we pack many
         // chunks into a single locally-built CAR (one pin = one request) and run
@@ -150,7 +149,7 @@ export class PublisherRole {
         const manifestCid = await this.storage.put(manifest, {
             name: `manifest:${builder.kind}:${schemaId}:${Date.now().toString()}`,
         });
-        await this.dataSourceRegistry.publish(manifestCid, context.root, schemaId, ds);
+        await this.publisherRegistry.publish(manifestCid, context.root, schemaName, ds);
 
         return { manifestUri: manifestCid, schemaId, owner, entryCount: chunks.length };
     }
@@ -161,7 +160,7 @@ export class PublisherRole {
         chunkSize?: number;
         concurrency?: number;
         datasetName?: string;
-    }): Promise<CommitResult> { 
+    }): Promise<CommitResult> {
         return this.publish({
             schemaName: params.schemaName,
             builder: new RecordSetBuilder(),
@@ -173,13 +172,15 @@ export class PublisherRole {
 
     async publishBundle(params: {
         bundleName: string;
-        nodes: { 
-            id: string; 
-            type: string; 
-            fields: Record<string, FieldInput> }[] | AsyncIterable<{ id: string; type: string; fields: Record<string, FieldInput> }>;
-        edges?: { 
-            rel: string; 
-            from: string; to: string }[] | AsyncIterable<{ rel: string; from: string; to: string }>;
+        nodes: {
+            id: string;
+            type: string;
+            fields: Record<string, FieldInput>
+        }[] | AsyncIterable<{ id: string; type: string; fields: Record<string, FieldInput> }>;
+        edges?: {
+            rel: string;
+            from: string; to: string
+        }[] | AsyncIterable<{ rel: string; from: string; to: string }>;
         datasetName?: string;
         concurrency?: number;
         /** Entries per merkle leaf (default 1000). */
@@ -189,7 +190,7 @@ export class PublisherRole {
     }): Promise<CommitResult> {
         return this.publish({
             schemaName: params.bundleName,
-            builder: new BundleBuilder(this.storage, this.schemaRegistry),
+            builder: new BundleBuilder(this.storage, this.publisherRegistry),
             input: {
                 bundleName: params.bundleName,
                 nodes: params.nodes,
@@ -251,13 +252,9 @@ export class PublisherRole {
     }
 
     async getLinksetManifest(linksetName: string, datasetName: string): Promise<LinksetManifest | undefined> {
-        const linksetSchemaId = await this.schemaRegistry.schemaId(linksetName);
-        const owner = this.requireAccount();
-        try {
-            const ds = await this.dataSourceRegistry.get(owner, linksetSchemaId, datasetName);
-            if (!ds.manifestCid) return undefined;
-            return await this.getLinksetManifestByCid(ds.manifestCid);
-        } catch { return undefined; }
+        const manifestCid = await this.publishedManifestCid(linksetName, datasetName);
+        if (!manifestCid) return undefined;
+        return this.getLinksetManifestByCid(manifestCid);
     }
 
     async getViewManifestByCid(manifestCid: string): Promise<ViewManifest | undefined> {
@@ -269,13 +266,9 @@ export class PublisherRole {
     }
 
     async getViewManifest(viewName: string, datasetName: string): Promise<ViewManifest | undefined> {
-        const viewSchemaId = await this.schemaRegistry.schemaId(viewName);
-        const owner = this.requireAccount();
-        try {
-            const ds = await this.dataSourceRegistry.get(owner, viewSchemaId, datasetName);
-            if (!ds.manifestCid) return undefined;
-            return await this.getViewManifestByCid(ds.manifestCid);
-        } catch { return undefined; }
+        const manifestCid = await this.publishedManifestCid(viewName, datasetName);
+        if (!manifestCid) return undefined;
+        return this.getViewManifestByCid(manifestCid);
     }
 
     async readBundle(manifest: BundleManifest): Promise<HydratedBundle> {
@@ -299,12 +292,10 @@ export class PublisherRole {
     }
 
     async getManifest(schemaName: string, datasetName: string): Promise<Manifest | undefined> {
-        const schemaId = (await this.resolveSchema(schemaName)).schemaId;
-        const owner = this.requireAccount();
+        const manifestCid = await this.publishedManifestCid(schemaName, datasetName);
+        if (!manifestCid) return undefined;
         try {
-            const ds = await this.dataSourceRegistry.get(owner, schemaId, datasetName);
-            if (!ds.manifestCid) return undefined;
-            return await this.storage.get<Manifest>(ds.manifestCid);
+            return await this.storage.get<Manifest>(manifestCid);
         } catch {
             return undefined;
         }
@@ -334,32 +325,48 @@ export class PublisherRole {
     }
 
     async getBundleManifest(bundleName: string, datasetName: string): Promise<BundleManifest | undefined> {
-        const bundleSchemaId = await this.schemaRegistry.schemaId(bundleName);
-        const owner = this.requireAccount();
-        try {
-            const ds = await this.dataSourceRegistry.get(owner, bundleSchemaId, datasetName);
-            if (!ds.manifestCid) return undefined;
-            return await this.getBundleManifestByCid(ds.manifestCid);
-        } catch { return undefined; }
+        const manifestCid = await this.publishedManifestCid(bundleName, datasetName);
+        if (!manifestCid) return undefined;
+        return this.getBundleManifestByCid(manifestCid);
     }
 
-    private resolveSchema(name: string): Promise<{ schema: ResolvedSchemaShape; schemaId: Hex }> {
-        if (!this.schemaCache.has(name)) {
+    // ponytail: the new publisher-registry ABI exposes no manifest read-back —
+    // the old DataSourceRegistry.get(owner, schemaId, name) is gone. Every
+    // manifest getter routes through this one point. Wire it once the read path
+    // is decided: a contract view keyed by (bucket, schema_name, name), or an
+    // event/subgraph query. Returns undefined until then (getters report "not
+    // found" rather than erroring).
+    private async publishedManifestCid(
+        schemaName: string,
+        datasetName: string,
+    ): Promise<string | undefined> {
+        void schemaName;
+        void datasetName;
+        return undefined;
+    }
+
+    private resolveSchema(owner: Address, schemaName: string): Promise<{ schema: ResolvedSchemaShape; schemaId: Hex }> {
+        if (!this.schemaCache.has(schemaName)) {
             const p = Promise.all([
-                this.schemaRegistry.getSchema(name),
-                this.schemaRegistry.schemaId(name),
-            ]).then(async ([{ specCid }, schemaId]) => {
-                const blob = await this.storage.get<{ definition?: SchemaDefinition; types?: Record<string, TypeDefinition>; bundle?: ResolvedBundle; view?: ResolvedView; linkset?: ResolvedLinkset }>(specCid);
+                this.publisherRegistry.getBucketSchema(owner, schemaName)
+            ]).then(async ([{ name, schemaId, specCid, agentId }]) => {
+                const blob = await this.storage.get<{
+                    definition?: SchemaDefinition;
+                    types?: Record<string, TypeDefinition>;
+                    bundle?: ResolvedBundle;
+                    view?: ResolvedView;
+                    linkset?: ResolvedLinkset
+                }>(specCid);
                 const schema: ResolvedSchemaShape = blob.view
                     ?? blob.linkset
                     ?? blob.bundle
                     ?? (blob.definition ? { fields: blob.definition, types: blob.types } : undefined)!;
                 if (!schema) throw new Error(`schema "${name}" has no definition, bundle, view, nor linkset`);
                 return { schema, schemaId };
-            }).catch(err => { this.schemaCache.delete(name); throw err; });
-            this.schemaCache.set(name, p);
+            }).catch(err => { this.schemaCache.delete(schemaName); throw err; });
+            this.schemaCache.set(schemaName, p);
         }
-        return this.schemaCache.get(name)!;
+        return this.schemaCache.get(schemaName)!;
     }
 
     private requireAccount(): Address {

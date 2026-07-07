@@ -1,50 +1,47 @@
-import { WalletClient, type Address, type Hex } from "viem";
-import { ManifestEntry } from "../publisher/types";
-import { PrepareSettleResult, TransferWithAuthPayload } from "../../registries/settlement-registry/types";
+// import { WalletClient, type Address, type Hex } from "viem";
+// import { ManifestEntry } from "../publisher/types";
 
-export interface PurchaseParams {
-    owner: Address;
-    schemaId: Hex;
-    name: string;
-    identityCommitment: bigint;
-    relayerPrivateKey: Hex;
-    preparedRegister: TransferWithAuthPayload;
-}
+// export interface PurchaseParams {
+//     owner: Address;
+//     schemaId: Hex;
+//     name: string;
+//     identityCommitment: bigint;
+//     relayerPrivateKey: Hex;
+// }
 
-export interface ClaimParams {
-    owner: Address;
-    schemaId: Hex;
-    name: string;
-    relayerPrivateKey: Hex;
-    preparedSettle: PrepareSettleResult;
-}
+// export interface ClaimParams {
+//     owner: Address;
+//     schemaId: Hex;
+//     name: string;
+//     relayerPrivateKey: Hex;
+// }
 
-export interface PurchaseResult {
-    txHash: Hex;
-    resourceId: Hex;
-}
+// export interface PurchaseResult {
+//     txHash: Hex;
+//     resourceId: Hex;
+// }
 
-export interface ClaimResult {
-    txHash: Hex;
-	nullifier: bigint,
-    resourceId: Hex;
-}
+// export interface ClaimResult {
+//     txHash: Hex;
+// 	nullifier: bigint,
+//     resourceId: Hex;
+// }
 
-export interface AccessResult {
-    data: Uint8Array;
-    resourceId: Hex;
-    entry: ManifestEntry;
-}
+// export interface AccessResult {
+//     data: Uint8Array;
+//     resourceId: Hex;
+//     entry: ManifestEntry;
+// }
 
-export interface FetchParams {
-    nullifier: string
-    resourceId: Hex
-    objectKey: string
-	    workerUrl: string
-    walletClient: WalletClient
-}
+// export interface FetchParams {
+//     nullifier: string
+//     resourceId: Hex
+//     objectKey: string
+// 	    workerUrl: string
+//     walletClient: WalletClient
+// }
 
-export interface FetchResult {
-    data: Uint8Array
-    contentType: string
-}
+// export interface FetchResult {
+//     data: Uint8Array
+//     contentType: string
+// }
