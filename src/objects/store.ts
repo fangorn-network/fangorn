@@ -9,7 +9,6 @@ import type {
     LinksetManifest,
 } from "../roles/publisher/types.js";
 
-/** Any manifest kind doubles as a tree object in v1 (see objects/types.ts). */
 export type AnyManifest = Manifest | BundleManifest | ViewManifest | LinksetManifest;
 
 /**

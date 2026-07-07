@@ -1,5 +1,85 @@
 # Fangorn SDK
 
+
+# TODO 
+
+- need to add permissions to the contracts
+
+- should we implement a 'streaming consumer'? 
+
+
+Some big epics I'm thinking of:
+
+- Gadgets + Encryption
+  - need to impl the TEE (entmoot), host it, test it, create gadgets, etc
+- modularization of quickbeam (specifically embeddings)
+- modularization of schema verifier + zkps
+  - can impl as plugins
+    - json representation
+    - owl repr
+    - rdf
+    - sql
+    - git
+    - etc 
+
+``` rs
+trait Representation {
+    type Object;
+
+    fn canonicalize(&self) -> CanonicalObject;
+
+    fn verify(&self) -> Result<()>;
+
+    fn commit(&self) -> Commitment;
+
+    fn prove(&self, statement: Statement) -> Proof;
+
+    fn query(&self, q: Query) -> Result<Subgraph>;
+}
+```
+
+``` rs
+trait Verifier {
+
+    fn verify(object: SemanticObject) -> VerificationResult;
+
+}
+```
+
+``` 
+Semantic Object
+        │
+        ├────────────┐
+        │            │
+Representation   Commitment
+        │            │
+        └────┬───────┘
+             │
+      Verification
+             │
+         Publication
+```
+
+and the schema reg becomes
+
+``` ru st
+RepresentationDescriptor {
+
+    id,
+
+    verifier,
+
+    commitment_scheme,
+
+    canonicalizer,
+
+    proof_system,
+
+    query_engine
+
+}
+```
+
 commit → index → discover → prove → settle → fetch
 
 Intent-bound data for the agentic web.
@@ -107,7 +187,7 @@ fangorn commit --view my.localview.v1 \
   --source-bundle my.eventcore.v1:tribe -m "local view v1"
 
 fangorn push   # same permissioned pointer-move, whatever tree kind the commit wraps
-```TR
+```
 
 Both modes register any missing schemas (idempotent), then build the tree and wrap it in a commit on your local tip. The optional `--embed-model/--embed-dim/--embed-distance` flags (available in every `commit` mode) stamp an embedding contract onto the commit so downstream indexers inherit how to index it rather than hardcoding it.
 
