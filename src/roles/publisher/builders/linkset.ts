@@ -12,8 +12,7 @@ export interface LinksetUploadInput {
 }
 
 /**
- * Publishes a linkset — asserted cross-edges — as a datasource
- * (docs/archive/CROSS_PUBLISHER_LINKING_PLAN.md §5). Each link's endpoints are global
+ * Publishes a linkset — asserted cross-edges — as a datasource. Each link's endpoints are global
  * (Entity URI or namespaced alias) and may be **foreign**; the builder validates
  * every record (well-formed endpoints, allowed relation, sane confidence) and
  * chunks them into many merkle leaves under one root. Fusion of the asserted
