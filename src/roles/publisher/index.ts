@@ -1,7 +1,8 @@
 import { type Address, type Hex, type WalletClient } from "viem";
-import { ResolvedBundle, SchemaDefinition } from "../schema/types";
+import { LinkRecord, ResolvedBundle, ResolvedLinkset, ResolvedView, SchemaDefinition, TypeDefinition } from "../schema/types";
 import { DataSourceRegistry, MerkleTree } from "../../registries/datasource-registry";
 import { MetadataStorage } from "../../providers/storage/types";
+import { serialize } from "../../providers/storage/utils";
 import { SchemaRegistry } from "../../registries/schema-registry";
 import {
     FieldInput,
@@ -11,17 +12,37 @@ import {
     BundleManifest,
     BundleNode,
     HydratedBundle,
-    BundleEdge
+    BundleEdge,
+    ViewManifest,
+    LinksetManifest
 } from "./types";
 import { ManifestBuilder, BuildContext, ResolvedSchemaShape, ChunkRef } from "./builders/types";
 import { RecordSetBuilder, RecordSetInput } from "./builders/record-set";
 import { BundleBuilder, BundleUploadInput } from "./builders/bundle";
+import { ViewBuilder, ViewUploadInput } from "./builders/view";
+import { LinksetBuilder, LinksetUploadInput } from "./builders/linkset";
 
 export { RecordSetBuilder } from "./builders/record-set";
 export { BundleBuilder } from "./builders/bundle";
+export { ViewBuilder } from "./builders/view";
+export { LinksetBuilder } from "./builders/linkset";
 export type { ManifestBuilder, BuildContext, ChunkDraft, ChunkRef, BaseManifest, ResolvedSchemaShape } from "./builders/types";
 export type { RecordSetInput } from "./builders/record-set";
 export type { BundleUploadInput } from "./builders/bundle";
+export type { ViewUploadInput } from "./builders/view";
+export type { LinksetUploadInput } from "./builders/linkset";
+
+// CAR grouping bounds: how many chunks (and how many bytes) we pack into one
+// CAR / one Pinata pin. A flat UnixFS directory of this many entries stays well
+// under the 1 MiB block limit, and the byte cap keeps peak memory predictable.
+//
+// Peak CAR-layer memory ≈ concurrency × ~3 × CAR_GROUP_BYTES (serialized group +
+// encoded blocks + concatenated CAR bytes), and in sharded mode this lands ON TOP
+// of the whole shard already buffered in RAM. So keep the byte cap modest — even
+// at 16 MB / 256 files this is still a ~256× request reduction over per-chunk PUTs.
+// Raise it on a roomy box; lower it (or drop concurrency) if you OOM.
+const CAR_GROUP_FILES = Math.max(1, Number(process.env.FANGORN_CAR_GROUP_FILES ?? 256));
+const CAR_GROUP_BYTES = Math.max(1, Number(process.env.FANGORN_CAR_GROUP_BYTES ?? 16 * 1024 * 1024));
 
 export interface CommitResult {
     manifestUri: string;
@@ -43,8 +64,6 @@ export class PublisherRole {
         private readonly walletClient: WalletClient,
     ) {}
 
-    // ── Core generic publish ──────────────────────────────────────────────────
-
     async publish<TIn, TMan extends { kind: string; schemaId: Hex; root: Hex; tree: Hex[][] }>(params: {
         schemaName: string;
         builder: ManifestBuilder<TIn, TMan>;
@@ -57,27 +76,55 @@ export class PublisherRole {
 
         await builder.validate(schema, input);
 
-        // Bounded-inflight upload: the chunk generator is pulled only as fast as
-        // uploads drain, so at most `concurrency` chunks (their `draft.data`) are
-        // held in memory at once — regardless of total dataset size.
+        // Commit context known before chunking: the datasource resourceId that
+        // Phase-0 Entity URIs are prefixed with. Derived from the same
+        // (owner, schemaId, datasetName) used to publish the datasource below.
+        const owner = this.requireAccount();
+        const ds = datasetName ?? `${schemaId}:${owner}`;
+        const resourceId = DataSourceRegistry.resourceId(owner, schemaId, ds);
+
+        // CAR-batched upload: instead of one HTTP POST per chunk, we pack many
+        // chunks into a single locally-built CAR (one pin = one request) and run
+        // up to `concurrency` such CAR uploads in flight. Chunks are pre-serialized
+        // once here (the string passes straight through the storage layer), so we
+        // know each group's exact byte size and bound it two ways — peak memory
+        // stays ~`concurrency` × CAR_GROUP_BYTES regardless of dataset size.
         const chunks: ChunkRef[] = [];
         const inFlight = new Set<Promise<unknown>>();
         let firstErr: unknown;
         let idx = 0n;
 
-        for await (const draft of builder.chunk(input, schema)) {
-            if (firstErr) break;
-            const myIdx = idx++; // assigned in generation order — preserves leaf indexing
+        let group: { index: bigint; name: string; data: string; meta: ChunkRef["meta"] }[] = [];
+        let groupBytes = 0;
+        const flushGroup = (): void => {
+            if (group.length === 0) return;
+            const g = group;
+            group = [];
+            groupBytes = 0;
             const task = (async () => {
-                const cid = await this.storage.put(draft.data, { name: draft.name });
-                chunks.push({ index: myIdx, cid, name: draft.name, meta: draft.meta });
+                const cidByName = await this.storage.putMany(g.map(c => ({ data: c.data, name: c.name })));
+                for (const c of g) {
+                    const cid = cidByName[c.name];
+                    if (!cid) throw new Error(`CAR upload returned no CID for chunk "${c.name}"`);
+                    chunks.push({ index: c.index, cid, name: c.name, meta: c.meta });
+                }
             })().catch((e: unknown) => { firstErr ??= e; });
             inFlight.add(task);
             void task.finally(() => inFlight.delete(task));
+        };
+
+        for await (const draft of builder.chunk(input, schema, { resourceId })) {
+            if (firstErr) break;
+            const myIdx = idx++; // assigned in generation order — preserves leaf indexing
+            const data = serialize(draft.data);
+            group.push({ index: myIdx, name: draft.name, data, meta: draft.meta });
+            groupBytes += data.length;
+            if (group.length >= CAR_GROUP_FILES || groupBytes >= CAR_GROUP_BYTES) flushGroup();
             // `while`, not `if`: the settled task's `.finally` delete may not have
             // run yet when Promise.race resolves, so keep draining until under cap.
             while (inFlight.size >= concurrency) await Promise.race(inFlight);
         }
+        if (!firstErr) flushGroup();
 
         await Promise.all(inFlight);
         // Rethrow the first upload rejection verbatim (matches prior Promise.all behavior).
@@ -100,17 +147,13 @@ export class PublisherRole {
         };
 
         const manifest = builder.assemble(context, input, schema);
-        const owner = this.requireAccount();
         const manifestCid = await this.storage.put(manifest, {
             name: `manifest:${builder.kind}:${schemaId}:${Date.now().toString()}`,
         });
-        const ds = datasetName ?? `${schemaId}:${owner}`;
         await this.dataSourceRegistry.publish(manifestCid, context.root, schemaId, ds);
 
         return { manifestUri: manifestCid, schemaId, owner, entryCount: chunks.length };
     }
-
-    // ── Convenience wrappers ──────────────────────────────────────────────────
 
     async publishRecords(params: {
         records: PublishRecord[] | AsyncIterable<PublishRecord>;
@@ -118,7 +161,7 @@ export class PublisherRole {
         chunkSize?: number;
         concurrency?: number;
         datasetName?: string;
-    }): Promise<CommitResult> {
+    }): Promise<CommitResult> { 
         return this.publish({
             schemaName: params.schemaName,
             builder: new RecordSetBuilder(),
@@ -130,10 +173,19 @@ export class PublisherRole {
 
     async publishBundle(params: {
         bundleName: string;
-        nodes: { id: string; type: string; fields: Record<string, FieldInput> }[];
-        edges?: { rel: string; from: string; to: string }[];
+        nodes: { 
+            id: string; 
+            type: string; 
+            fields: Record<string, FieldInput> }[] | AsyncIterable<{ id: string; type: string; fields: Record<string, FieldInput> }>;
+        edges?: { 
+            rel: string; 
+            from: string; to: string }[] | AsyncIterable<{ rel: string; from: string; to: string }>;
         datasetName?: string;
         concurrency?: number;
+        /** Entries per merkle leaf (default 1000). */
+        chunkSize?: number;
+        /** Cross-node graph validation; set false for huge streamed inputs (see BundleUploadInput). */
+        validate?: boolean;
     }): Promise<CommitResult> {
         return this.publish({
             schemaName: params.bundleName,
@@ -142,22 +194,106 @@ export class PublisherRole {
                 bundleName: params.bundleName,
                 nodes: params.nodes,
                 edges: params.edges,
+                chunkSize: params.chunkSize,
+                validate: params.validate,
             } satisfies BundleUploadInput,
             datasetName: params.datasetName,
             concurrency: params.concurrency,
         });
     }
 
-    // ── Read methods ──────────────────────────────────────────────────────────
+    /**
+     * Publish a composed view as a datasource. The view must already be
+     * registered (kind:"view") — its resolved declaration (sources/linksets/
+     * trust) is read back via resolveSchema and committed as a single-leaf
+     * manifest. See docs/CROSS_PUBLISHER_LINKING_PLAN.md §4.
+     */
+    async publishView(params: {
+        viewName: string;
+        datasetName?: string;
+    }): Promise<CommitResult> {
+        return this.publish({
+            schemaName: params.viewName,
+            builder: new ViewBuilder(),
+            input: { viewName: params.viewName } satisfies ViewUploadInput,
+            datasetName: params.datasetName,
+        });
+    }
+
+    /**
+     * Publish a linkset (asserted cross-edges) as a datasource. The linkset must
+     * already be registered (kind:"linkset"). Each link is validated (well-formed
+     * global endpoints, allowed relation, sane confidence) before commit. See
+     * docs/CROSS_PUBLISHER_LINKING_PLAN.md §5.
+     */
+    async publishLinkset(params: {
+        linksetName: string;
+        links: LinkRecord[] | AsyncIterable<LinkRecord>;
+        datasetName?: string;
+        chunkSize?: number;
+        concurrency?: number;
+    }): Promise<CommitResult> {
+        return this.publish({
+            schemaName: params.linksetName,
+            builder: new LinksetBuilder(),
+            input: { linksetName: params.linksetName, links: params.links, chunkSize: params.chunkSize } satisfies LinksetUploadInput,
+            datasetName: params.datasetName,
+            concurrency: params.concurrency,
+        });
+    }
+
+    async getLinksetManifestByCid(manifestCid: string): Promise<LinksetManifest | undefined> {
+        try {
+            const manifest = await this.storage.get<LinksetManifest>(manifestCid);
+            if ((manifest as { kind?: unknown }).kind !== "linkset") return undefined;
+            return manifest;
+        } catch { return undefined; }
+    }
+
+    async getLinksetManifest(linksetName: string, datasetName: string): Promise<LinksetManifest | undefined> {
+        const linksetSchemaId = await this.schemaRegistry.schemaId(linksetName);
+        const owner = this.requireAccount();
+        try {
+            const ds = await this.dataSourceRegistry.get(owner, linksetSchemaId, datasetName);
+            if (!ds.manifestCid) return undefined;
+            return await this.getLinksetManifestByCid(ds.manifestCid);
+        } catch { return undefined; }
+    }
+
+    async getViewManifestByCid(manifestCid: string): Promise<ViewManifest | undefined> {
+        try {
+            const manifest = await this.storage.get<ViewManifest>(manifestCid);
+            if ((manifest as { kind?: unknown }).kind !== "view") return undefined;
+            return manifest;
+        } catch { return undefined; }
+    }
+
+    async getViewManifest(viewName: string, datasetName: string): Promise<ViewManifest | undefined> {
+        const viewSchemaId = await this.schemaRegistry.schemaId(viewName);
+        const owner = this.requireAccount();
+        try {
+            const ds = await this.dataSourceRegistry.get(owner, viewSchemaId, datasetName);
+            if (!ds.manifestCid) return undefined;
+            return await this.getViewManifestByCid(ds.manifestCid);
+        } catch { return undefined; }
+    }
 
     async readBundle(manifest: BundleManifest): Promise<HydratedBundle> {
         const nodeArrays = await Promise.all(
             manifest.nodeChunks.map(chunk => this.storage.get<BundleNode[]>(chunk.dataCid)),
         );
-        const edges = await this.storage.get<BundleEdge[]>(manifest.edgeChunk.dataCid);
+
+        const edgeRefs = manifest.edgeChunks;
+        const edgeArrays = await Promise.all(
+            edgeRefs.map(chunk => this.storage.get<BundleEdge[]>(chunk.dataCid)),
+        );
         const nodesById = new Map<string, BundleNode>();
         for (const nodes of nodeArrays) {
             for (const node of nodes) nodesById.set(node.id, node);
+        }
+        const edges: BundleEdge[] = [];
+        for (const arr of edgeArrays) {
+            for (const e of arr) edges.push(e);
         }
         return { nodesById, edges };
     }
@@ -207,23 +343,23 @@ export class PublisherRole {
         } catch { return undefined; }
     }
 
-    // ── Private helpers ───────────────────────────────────────────────────────
-
     private resolveSchema(name: string): Promise<{ schema: ResolvedSchemaShape; schemaId: Hex }> {
-        const cached = this.schemaCache.get(name);
-        if (cached) return cached;
-
-        const p = Promise.all([
-            this.schemaRegistry.getSchema(name),
-            this.schemaRegistry.schemaId(name),
-        ]).then(async ([{ specCid }, schemaId]) => {
-            const blob = await this.storage.get<{ definition?: SchemaDefinition; bundle?: ResolvedBundle }>(specCid);
-            const schema = blob.bundle ?? blob.definition;
-            if (!schema) throw new Error(`schema "${name}" has neither definition nor bundle`);
-            return { schema, schemaId };
-        }).catch((err: unknown) => { this.schemaCache.delete(name); throw err; });
-        this.schemaCache.set(name, p);
-        return p;
+        if (!this.schemaCache.has(name)) {
+            const p = Promise.all([
+                this.schemaRegistry.getSchema(name),
+                this.schemaRegistry.schemaId(name),
+            ]).then(async ([{ specCid }, schemaId]) => {
+                const blob = await this.storage.get<{ definition?: SchemaDefinition; types?: Record<string, TypeDefinition>; bundle?: ResolvedBundle; view?: ResolvedView; linkset?: ResolvedLinkset }>(specCid);
+                const schema: ResolvedSchemaShape = blob.view
+                    ?? blob.linkset
+                    ?? blob.bundle
+                    ?? (blob.definition ? { fields: blob.definition, types: blob.types } : undefined)!;
+                if (!schema) throw new Error(`schema "${name}" has no definition, bundle, view, nor linkset`);
+                return { schema, schemaId };
+            }).catch(err => { this.schemaCache.delete(name); throw err; });
+            this.schemaCache.set(name, p);
+        }
+        return this.schemaCache.get(name)!;
     }
 
     private requireAccount(): Address {

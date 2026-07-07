@@ -1,15 +1,20 @@
 import { type Hex, type WalletClient } from "viem";
 import { SchemaRegistry } from "../../registries/schema-registry";
 import { MetadataStorage } from "../../providers/storage/types.js";
-import { BundleInput, PlainField, ResolvedBundle, SchemaBlob, SchemaDefinition } from "./types";
+import { BundleInput, LinksetInput, NodeIdentity, ResolvedBundle, ResolvedLinkset, ResolvedView, SchemaBlob, SchemaDefinition, SchemaDoc, TypeDefinition, ViewInput } from "./types";
+import { isResourceId } from "./identity";
+import { validate } from "./validate";
 
 export * from './types';
+export * from './identity';
 
-// Register either a 'resolver' (a standard flat schema)
-// or a 'bundle' (the shape of how resolver schemas combine).
+// Register either a 'resolver' (a standard flat schema, optionally with a
+// custom-type vocabulary) or a 'bundle' (the shape of how resolver schemas combine).
 export type RegisterSchemaParams =
-    | { kind?: "resolver"; name: string; definition: SchemaDefinition }
-    | { kind: "bundle"; name: string; bundle: BundleInput };
+    | { kind?: "resolver"; name: string; definition: SchemaDefinition; types?: Record<string, TypeDefinition>; identity?: NodeIdentity }
+    | { kind: "bundle"; name: string; bundle: BundleInput }
+    | { kind: "view"; name: string; view: ViewInput }
+    | { kind: "linkset"; name: string; linkset?: LinksetInput };
 
 interface RegisteredSchemaBase {
     schemaId: Hex;
@@ -18,8 +23,10 @@ interface RegisteredSchemaBase {
     owner: Hex;
 }
 export type RegisteredSchema =
-    | (RegisteredSchemaBase & { kind: "resolver"; definition: SchemaDefinition })
-    | (RegisteredSchemaBase & { kind: "bundle"; bundle: ResolvedBundle });
+    | (RegisteredSchemaBase & { kind: "resolver"; definition: SchemaDefinition; types?: Record<string, TypeDefinition>; identity?: NodeIdentity })
+    | (RegisteredSchemaBase & { kind: "bundle"; bundle: ResolvedBundle })
+    | (RegisteredSchemaBase & { kind: "view"; view: ResolvedView })
+    | (RegisteredSchemaBase & { kind: "linkset"; linkset: ResolvedLinkset });
 
 
 export class SchemaRole {
@@ -37,8 +44,14 @@ export class SchemaRole {
         if (params.kind === "bundle") {
             const bundle = await this.resolveBundle(params.bundle);
             blob = { kind: "bundle", name: params.name, owner, createdAt, bundle };
+        } else if (params.kind === "view") {
+            const view = this.resolveView(params.view);
+            blob = { kind: "view", name: params.name, owner, createdAt, view };
+        } else if (params.kind === "linkset") {
+            const linkset = this.resolveLinkset(params.linkset ?? {});
+            blob = { kind: "linkset", name: params.name, owner, createdAt, linkset };
         } else {
-            blob = { kind: "resolver", name: params.name, owner, createdAt, definition: params.definition };
+            blob = { kind: "resolver", name: params.name, owner, createdAt, definition: params.definition, types: params.types, identity: params.identity };
         }
 
         const schemaCid = await this.storage.put(blob, { name: `schema:${params.name}` });
@@ -52,9 +65,10 @@ export class SchemaRole {
         }
 
         const base = { schemaId, schemaCid, name: params.name, owner };
-        return blob.kind === "bundle"
-            ? { kind: "bundle", ...base, bundle: blob.bundle }
-            : { kind: "resolver", ...base, definition: blob.definition };
+        if (blob.kind === "bundle") return { kind: "bundle", ...base, bundle: blob.bundle };
+        if (blob.kind === "view") return { kind: "view", ...base, view: blob.view };
+        if (blob.kind === "linkset") return { kind: "linkset", ...base, linkset: blob.linkset };
+        return { kind: "resolver", ...base, definition: blob.definition, types: blob.types, identity: blob.identity };
     }
 
     async get(nameOrId: string): Promise<RegisteredSchema | undefined> {
@@ -67,7 +81,13 @@ export class SchemaRole {
             const base = { schemaId, schemaCid: record.specCid, name: blob.name, owner: blob.owner };
 
             if (blob.kind === "resolver") {
-                return { kind: "resolver", ...base, definition: blob.definition };
+                return { kind: "resolver", ...base, definition: blob.definition, types: blob.types, identity: blob.identity };
+            }
+            if (blob.kind === "view") {
+                return { kind: "view", ...base, view: blob.view };
+            }
+            if (blob.kind === "linkset") {
+                return { kind: "linkset", ...base, linkset: blob.linkset };
             }
             return { kind: "bundle", ...base, bundle: blob.bundle };
         } catch (e) {
@@ -105,49 +125,42 @@ export class SchemaRole {
         return { nodes, edges: input.edges };
     }
 
-    validate(data: Record<string, unknown>, definition: SchemaDefinition): string[] {
+    /** Validate + pin a view's source set. A view is just another datasource,
+     *  so resolution is light: every source must be a well-formed resourceId;
+     *  the set is deduped + sorted for a deterministic committed form. linksets
+     *  (Phase 2) and trust (Phase 4) are carried through, defaulted empty. */
+    private resolveView(input: ViewInput): ResolvedView {
         const errors: string[] = [];
-        for (const [field, fieldDef] of Object.entries(definition)) {
-            const value = data[field];
-            if (value === undefined || value === null) {
-                errors.push(`Missing required field: "${field}"`);
-                continue;
-            }
-            switch (fieldDef["@type"]) {
-                case "string":
-                    if (typeof value !== "string") errors.push(`Field "${field}" must be a string, got ${typeof value}`);
-                    break;
-                case "number":
-                    if (typeof value !== "number") errors.push(`Field "${field}" must be a number, got ${typeof value}`);
-                    break;
-                case "boolean":
-                    if (typeof value !== "boolean") errors.push(`Field "${field}" must be a boolean, got ${typeof value}`);
-                    break;
-                case "bytes":
-                    if (!(value instanceof Uint8Array) && !ArrayBuffer.isView(value)) errors.push(`Field "${field}" must be bytes (Uint8Array)`);
-                    break;
-                case "handle": {
-                    const asObj = value as Record<string, unknown>;
-                    if (typeof asObj.uri !== "string") errors.push(`Field "${field}" is a handle — expected { uri: string }`);
-                    break;
-                }
-                case "array": {
-                    if (!Array.isArray(value)) {
-                        errors.push(`Field "${field}" must be an array, got ${typeof value}`);
-                        break;
-                    }
-                    const items: PlainField = fieldDef.items as PlainField;
-                    value.forEach((item: unknown, i) =>
-                        errors.push(...this.validate(
-                            { [`${field}[${i.toString()}]`]: item },
-                            { [`${field}[${i.toString()}]`]: items },
-                        )),
-                    );
-                    break;
-                }
-            }
+        for (const s of input.sources) {
+            if (!isResourceId(s)) errors.push(`invalid source resourceId "${s}" (expected 0x + 64 hex chars)`);
         }
-        return errors;
+        for (const l of input.linksets ?? []) {
+            if (!isResourceId(l)) errors.push(`invalid linkset id "${l}" (expected 0x + 64 hex chars)`);
+        }
+        for (const s of input.sourceSchemas ?? []) {
+            if (!isResourceId(s)) errors.push(`invalid source schemaId "${s}" (expected 0x + 64 hex chars)`);
+        }
+        const sources = [...new Set(input.sources)].sort();
+        if (sources.length === 0) errors.push("view must reference at least one source");
+        if (errors.length) throw new Error("Invalid view:\n" + errors.map(e => ` - ${e}`).join("\n"));
+
+        const linksets = [...new Set(input.linksets ?? [])].sort();
+        const sourceSchemas = [...new Set(input.sourceSchemas ?? [])].sort();
+        return { sources, linksets, trust: input.trust ?? {}, sourceSchemas };
+    }
+
+    /** Resolve a linkset schema. Light by design — a linkset is just another
+     *  datasource; the only declaration is an optional relation allowlist, which
+     *  we dedupe + sort for a deterministic committed form. Endpoint validation
+     *  happens per-record at publish time (LinksetBuilder), not here. */
+    private resolveLinkset(input: LinksetInput): ResolvedLinkset {
+        const rels = (input.rels ?? []).map(r => r.trim());
+        if (rels.some(r => r.length === 0)) throw new Error("Invalid linkset: empty relation name");
+        return { rels: [...new Set(rels)].sort() };
+    }
+
+    validate(data: Record<string, unknown>, definition: SchemaDefinition | SchemaDoc): string[] {
+        return validate(data, definition);
     }
 
     private requireAccount(): Hex {
@@ -162,7 +175,7 @@ function isSchemaAlreadyExists(err: unknown): boolean {
 
     const causeObj = (err.cause) as Record<string, unknown> | undefined;
     const causeData = causeObj?.data as Record<string, unknown> | undefined;
-
+ 
     const errorObj = (err as unknown) as Record<string, unknown>;
     const errorData = errorObj.data as Record<string, unknown> | undefined;
 

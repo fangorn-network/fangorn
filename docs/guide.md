@@ -1,5 +1,10 @@
 # Basic Usage
 
+TODO: This is really really outdated! Do not do any of these things - need to update!
+
+---
+
+
 This guide walks you through the end-to-end flow from schema registration to datasource consumption.
 
 ## The Flow
@@ -61,4 +66,4 @@ fangorn publish upload ./data.json \
     -p 1 -o
 ```
 
-Verify the upload is committed by running `fangorn publish list -s noagent-fangorn.test.music.v0 -c arbitrumSepolia`
+Verify the upload is committed by running `fangorn publish list -s noagent-fangorn.test.music.v0 -c arbitrumSepolia -p 0.000001`

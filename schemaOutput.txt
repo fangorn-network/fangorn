@@ -1,0 +1,1997 @@
+{"privateKey":"0xde0e6c1c331fcd8692463d6ffcf20f9f2e1847264f7a3f578cf54f62f05196cb","cfg":{"dataSourceRegistryContractAddress":"0x207ab1866704b2adc34e8ec1069fb8febafff2fd","schemaRegistryContractAddress":"0xecafc21ca3ec41c020287fb8c2126b1a9af9d220","settlementRegistryContractAddress":"0x93a5e93e76a3c150d35d4cd40029e4f45f3e650f","chainName":"arbitrumSepolia","chain":{"id":421614,"name":"Arbitrum Sepolia","blockTime":250,"nativeCurrency":{"name":"Arbitrum Sepolia Ether","symbol":"ETH","decimals":18},"rpcUrls":{"default":{"http":["https://sepolia-rollup.arbitrum.io/rpc"]}},"blockExplorers":{"default":{"name":"Arbiscan","url":"https://sepolia.arbiscan.io","apiUrl":"https://api-sepolia.arbiscan.io/api"}},"contracts":{"multicall3":{"address":"0xca11bde05977b3631167028862be2a173976ca11","blockCreated":81930}},"testnet":true},"rpcUrl":"https://sepolia-rollup.arbitrum.io/rpc","caip2":421614,"ipfsGateway":"https://ipfs.io"},"pinataJwt":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySW5mb3JtYXRpb24iOnsiaWQiOiI1YmE1NTE5MS0yZDNmLTQ3ZGQtYmZlMy0zOTYzMDFjOGRiNzAiLCJlbWFpbCI6ImZhbmdvcm5AZmFuZ29ybi5uZXR3b3JrIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsInBpbl9wb2xpY3kiOnsicmVnaW9ucyI6W3siZGVzaXJlZFJlcGxpY2F0aW9uQ291bnQiOjEsImlkIjoiRlJBMSJ9LHsiZGVzaXJlZFJlcGxpY2F0aW9uQ291bnQiOjEsImlkIjoiTllDMSJ9XSwidmVyc2lvbiI6MX0sIm1mYV9lbmFibGVkIjpmYWxzZSwic3RhdHVzIjoiQUNUSVZFIn0sImF1dGhlbnRpY2F0aW9uVHlwZSI6InNjb3BlZEtleSIsInNjb3BlZEtleUtleSI6ImE1NmI1MzcyMGQ5MzA3N2RiMWI5Iiwic2NvcGVkS2V5U2VjcmV0IjoiNmZhYWU5MjAyMjJjNGIxZGFkNGU4YjZjZGM1NWE0MmNlOTU2MDJmZDlhYTI0ZjkwNWM0YTFiMGUzOTVmMmYwYiIsImV4cCI6MTgxMjgxMjExNn0.i9KNjWrcKKDQiFnjXDbWZm0PgYzPXUEX3u2U3tWt9VM","pinataGateway":"green-reasonable-heron-957.mypinata.cloud","workerUrl":""}
+[?25l│
+◒  Fetching schema "fangorn.mb.creativecore.v3"[1G[J◐  Fetching schema "fangorn.mb.creativecore.v3"[1G[J◓  Fetching schema "fangorn.mb.creativecore.v3"[1G[J◑  Fetching schema "fangorn.mb.creativecore.v3"[1G[J◒  Fetching schema "fangorn.mb.creativecore.v3"[1G[J◐  Fetching schema "fangorn.mb.creativecore.v3"[1G[J◓  Fetching schema "fangorn.mb.creativecore.v3"[1G[J◑  Fetching schema "fangorn.mb.creativecore.v3"[1G[J◒  Fetching schema "fangorn.mb.creativecore.v3".[1G[J◐  Fetching schema "fangorn.mb.creativecore.v3".[1G[J◓  Fetching schema "fangorn.mb.creativecore.v3".[1G[J◑  Fetching schema "fangorn.mb.creativecore.v3".[1G[J◒  Fetching schema "fangorn.mb.creativecore.v3".[1G[J◐  Fetching schema "fangorn.mb.creativecore.v3".[1G[J◇  
+[?25h│
+◇  Schema: fangorn.mb.creativecore.v3 ────────────────────────────────────╮
+│                                                                         │
+│  {                                                                      │ 
+│    "kind": "bundle",                                                    │
+│    "schemaId":                                                          │
+│  "0xf82d090e49d7139088b98b972b001f964919ab75bc65cab7b523b85204048904",  │
+│    "schemaCid":                                                         │
+│  "bafkreie2n46ethy3rn5j3hdvl3joicqjuiodmn4qrtydflziymtla6pswa",         │
+│    "name": "fangorn.mb.creativecore.v3",                                │
+│    "owner": "0x147c24c5Ea2f1EE1ac42AD16820De23bBba45Ef6",               │
+│    "bundle": {                                                          │
+│      "nodes": {                                                         │
+│        "Work":                                                          │
+│  "0x0b1c04e946a4d5c21e11f92f46af1adf53af2452bee103bacdda01203087d3e3",  │
+│        "Artist":                                                        │
+│  "0x4cd1afbed0a49f166e73e9b944cfd0023ae873ec81d615443cec9bd4e12d615c",  │
+│        "Area":                                                          │
+│  "0x3723187c76af35178c716a013cf3b5d66ac799e397cb71f8d1be78afe8967f3b",  │
+│        "ReleaseGroup":                                                  │
+│  "0x827507b5c97055330619ff371f066f88e37ee96695b3d48d6c8aedb40a90475c",  │
+│        "Release":                                                       │
+│  "0x7c37cb6a8c63283667fde46c6e5b08245f4a046974487eb5216d555460ceacaa",  │
+│        "Instrument":                                                    │
+│  "0x782cdf97bcf57dad3bb70b52a355e07febeae80448575eeb61fc1202e27fd3d0",  │
+│        "Place":                                                         │
+│  "0x4f6b6da120029c080472a0c627d9576958afa23d675d474f8fdd189a11603b3b",  │
+│        "Recording":                                                     │
+│  "0xab5e1a6e0cf1ec8d29fc11f1b6f5ade54a13fa7ce08fa9e307330c3238ef7f7d",  │
+│        "Event":                                                         │
+│  "0x1b174a269304a4e1a5f0ae5e690dde326f1ff66ea292ccbee975d98dd3d15ca1"   │
+│      },                                                                 │
+│      "edges": [                                                         │
+│        {                                                                │
+│          "rel": "hasTrack",                                             │
+│          "from": "Release",                                             │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "hasRelease",                                           │
+│          "from": "ReleaseGroup",                                        │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "byArtist",                                             │
+│          "from": "Release",                                             │
+│          "to": "Artist",                                                │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "byArtist",                                             │
+│          "from": "ReleaseGroup",                                        │
+│          "to": "Artist",                                                │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "byArtist",                                             │
+│          "from": "Recording",                                           │
+│          "to": "Artist",                                                │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "instrument",                                           │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "performance",                                          │
+│          "from": "Recording",                                           │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "producer",                                             │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "vocal",                                                │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "composer",                                             │
+│          "from": "Artist",                                              │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "recorded at",                                          │
+│          "from": "Place",                                               │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "writer",                                               │
+│          "from": "Artist",                                              │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "mix",                                                  │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "engineer",                                             │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "recording",                                            │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "lyricist",                                             │
+│          "from": "Artist",                                              │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "instrument",                                           │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "main performer",                                       │
+│          "from": "Artist",                                              │
+│          "to": "Event",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "arranger",                                             │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "member of band",                                       │
+│          "from": "Artist",                                              │
+│          "to": "Artist",                                                │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "conductor",                                            │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "mixed at",                                             │
+│          "from": "Place",                                               │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "performing orchestra",                                 │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "performer",                                            │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "vocal",                                                │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "producer",                                             │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "recorded at",                                          │
+│          "from": "Event",                                               │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "mastering",                                            │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "part of",                                              │
+│          "from": "Area",                                                │
+│          "to": "Area",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "remixer",                                              │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "held at",                                              │
+│          "from": "Event",                                               │
+│          "to": "Place",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "parts",                                                │
+│          "from": "Work",                                                │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "editor",                                               │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "photography",                                          │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "single from",                                          │
+│          "from": "ReleaseGroup",                                        │
+│          "to": "ReleaseGroup",                                          │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "recorded in",                                          │
+│          "from": "Area",                                                │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "programming",                                          │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "liner notes",                                          │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "design",                                               │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "mastered at",                                          │
+│          "from": "Place",                                               │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "engineer",                                             │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "recorded at",                                          │
+│          "from": "Place",                                               │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "support act",                                          │
+│          "from": "Artist",                                              │
+│          "to": "Event",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "included in",                                          │
+│          "from": "ReleaseGroup",                                        │
+│          "to": "ReleaseGroup",                                          │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "phonographic copyright",                               │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "mix",                                                  │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "artwork",                                              │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "recording",                                            │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "manufactured in",                                      │
+│          "from": "Area",                                                │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "arranger",                                             │
+│          "from": "Artist",                                              │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "sound",                                                │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "copyright",                                            │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "art direction",                                        │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "balance",                                              │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "graphic design",                                       │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "illustration",                                         │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "phonographic copyright",                               │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "instrument arranger",                                  │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "remix",                                                │
+│          "from": "Recording",                                           │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "parts",                                                │
+│          "from": "Event",                                               │
+│          "to": "Event",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "design/illustration",                                  │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "misc",                                                 │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "mix-DJ",                                               │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "orchestrator",                                         │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "transl-tracklisting",                                  │
+│          "from": "Release",                                             │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "composer",                                             │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "engineered at",                                        │
+│          "from": "Place",                                               │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "teacher",                                              │
+│          "from": "Artist",                                              │
+│          "to": "Artist",                                                │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "other version",                                        │
+│          "from": "Work",                                                │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "writer",                                               │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "is person",                                            │
+│          "from": "Artist",                                              │
+│          "to": "Artist",                                                │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "performer",                                            │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "mix-DJ",                                               │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "produced at",                                          │
+│          "from": "Place",                                               │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "orchestrator",                                         │
+│          "from": "Artist",                                              │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "studied at",                                           │
+│          "from": "Artist",                                              │
+│          "to": "Place",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "arrangement",                                          │
+│          "from": "Work",                                                │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "music video",                                          │
+│          "from": "Recording",                                           │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "based on",                                             │
+│          "from": "Work",                                                │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "arranger",                                             │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "printed in",                                           │
+│          "from": "Area",                                                │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "compiler",                                             │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "translator",                                           │
+│          "from": "Artist",                                              │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "samples material",                                     │
+│          "from": "Recording",                                           │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "misc",                                                 │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "mixed at",                                             │
+│          "from": "Place",                                               │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "karaoke",                                              │
+│          "from": "Recording",                                           │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "video shot at",                                        │
+│          "from": "Event",                                               │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "recorded at",                                          │
+│          "from": "Event",                                               │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "guest performer",                                      │
+│          "from": "Artist",                                              │
+│          "to": "Event",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "edited at",                                            │
+│          "from": "Place",                                               │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "video shot at",                                        │
+│          "from": "Place",                                               │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "programming",                                          │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "lyricist",                                             │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "vocal arranger",                                       │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "available at",                                         │
+│          "from": "Event",                                               │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "chorus master",                                        │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "remaster",                                             │
+│          "from": "Release",                                             │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "remix",                                                │
+│          "from": "ReleaseGroup",                                        │
+│          "to": "ReleaseGroup",                                          │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "parent",                                               │
+│          "from": "Artist",                                              │
+│          "to": "Artist",                                                │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "held in",                                              │
+│          "from": "Area",                                                │
+│          "to": "Event",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "editor",                                               │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "tribute",                                              │
+│          "from": "Artist",                                              │
+│          "to": "ReleaseGroup",                                          │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "sibling",                                              │
+│          "from": "Artist",                                              │
+│          "to": "Artist",                                                │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "edit",                                                 │
+│          "from": "Recording",                                           │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "audio",                                                │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "librettist",                                           │
+│          "from": "Artist",                                              │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "artists and repertoire",                               │
+│          "from": "Artist",                                              │
+│          "to": "ReleaseGroup",                                          │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "concertmaster",                                        │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "collaboration",                                        │
+│          "from": "Artist",                                              │
+│          "to": "Artist",                                                │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "engineer position",                                    │
+│          "from": "Artist",                                              │
+│          "to": "Place",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "taught at",                                            │
+│          "from": "Artist",                                              │
+│          "to": "Place",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "video appearance",                                     │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "conductor",                                            │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "instrument arranger",                                  │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "parts",                                                │
+│          "from": "Place",                                               │
+│          "to": "Place",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "married",                                              │
+│          "from": "Artist",                                              │
+│          "to": "Artist",                                                │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "remixed at",                                           │
+│          "from": "Place",                                               │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "instrument technician",                                │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "dedication",                                           │
+│          "from": "Artist",                                              │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "conductor position",                                   │
+│          "from": "Artist",                                              │
+│          "to": "Artist",                                                │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "video director",                                       │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "voice actor",                                          │
+│          "from": "Artist",                                              │
+│          "to": "Artist",                                                │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "pressed at",                                           │
+│          "from": "Place",                                               │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "booklet editor",                                       │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "instrumental supporting musician",                     │
+│          "from": "Artist",                                              │
+│          "to": "Artist",                                                │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "founder",                                              │
+│          "from": "Artist",                                              │
+│          "to": "Artist",                                                │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "host",                                                 │
+│          "from": "Artist",                                              │
+│          "to": "Event",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "DJ-mix",                                               │
+│          "from": "Recording",                                           │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "audio director",                                       │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "compilation",                                          │
+│          "from": "Recording",                                           │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "founder",                                              │
+│          "from": "Artist",                                              │
+│          "to": "Place",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "premiere",                                             │
+│          "from": "Event",                                               │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "publishing",                                           │
+│          "from": "Artist",                                              │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "mixed in",                                             │
+│          "from": "Area",                                                │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "glass mastered at",                                    │
+│          "from": "Place",                                               │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "instrument arranger",                                  │
+│          "from": "Artist",                                              │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "sound",                                                │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "remixer",                                              │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "composed in",                                          │
+│          "from": "Area",                                                │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "performing orchestra",                                 │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "participant",                                          │
+│          "from": "Artist",                                              │
+│          "to": "Event",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "mashes up",                                            │
+│          "from": "Recording",                                           │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "owner",                                                │
+│          "from": "Artist",                                              │
+│          "to": "Place",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "orchestrator",                                         │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "medley",                                               │
+│          "from": "Work",                                                │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "samples from artist",                                  │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "conductor",                                            │
+│          "from": "Artist",                                              │
+│          "to": "Event",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "recorded in",                                          │
+│          "from": "Area",                                                │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "premiere",                                             │
+│          "from": "Place",                                               │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "produced in",                                          │
+│          "from": "Area",                                                │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "engineered at",                                        │
+│          "from": "Place",                                               │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "legal representation",                                 │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "lacquer cut at",                                       │
+│          "from": "Place",                                               │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "lacquer cut",                                          │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "art direction",                                        │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "booking",                                              │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "musical quotation",                                    │
+│          "from": "Work",                                                │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "orchestra",                                            │
+│          "from": "Artist",                                              │
+│          "to": "Event",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "creative direction",                                   │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "artists and repertoire",                               │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "instrumental",                                         │
+│          "from": "Recording",                                           │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "field recordist",                                      │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "creative direction",                                   │
+│          "from": "Artist",                                              │
+│          "to": "ReleaseGroup",                                          │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "premiere",                                             │
+│          "from": "Artist",                                              │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "dedicated to",                                         │
+│          "from": "Artist",                                              │
+│          "to": "ReleaseGroup",                                          │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "revised by",                                           │
+│          "from": "Artist",                                              │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "audio director",                                       │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "written in",                                           │
+│          "from": "Area",                                                │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "mastering",                                            │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "audio",                                                │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "composed at",                                          │
+│          "from": "Place",                                               │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "replaced by",                                          │
+│          "from": "Release",                                             │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "premiere",                                             │
+│          "from": "Area",                                                │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "supporting musician",                                  │
+│          "from": "Artist",                                              │
+│          "to": "Artist",                                                │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "subgroup",                                             │
+│          "from": "Artist",                                              │
+│          "to": "Artist",                                                │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "manufactured at",                                      │
+│          "from": "Place",                                               │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "commissioned",                                         │
+│          "from": "Artist",                                              │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "engineered in",                                        │
+│          "from": "Area",                                                │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "vocal supporting musician",                            │
+│          "from": "Artist",                                              │
+│          "to": "Artist",                                                │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "produced at",                                          │
+│          "from": "Place",                                               │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "supporting release",                                   │
+│          "from": "Release",                                             │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "involved with",                                        │
+│          "from": "Artist",                                              │
+│          "to": "Artist",                                                │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "arranged at",                                          │
+│          "from": "Place",                                               │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "orchestration",                                        │
+│          "from": "Work",                                                │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "sound effects",                                        │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "mastering engineer position",                          │
+│          "from": "Artist",                                              │
+│          "to": "Place",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "previous attribution",                                 │
+│          "from": "Artist",                                              │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "video shot in",                                        │
+│          "from": "Area",                                                │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "instrument technician",                                │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "cover",                                                │
+│          "from": "ReleaseGroup",                                        │
+│          "to": "ReleaseGroup",                                          │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "rescheduled as",                                       │
+│          "from": "Event",                                               │
+│          "to": "Event",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "samples from artist",                                  │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "revision of",                                          │
+│          "from": "Work",                                                │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "samples material",                                     │
+│          "from": "Recording",                                           │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "edited at",                                            │
+│          "from": "Place",                                               │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "subtype",                                              │
+│          "from": "Instrument",                                          │
+│          "to": "Instrument",                                            │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "video director",                                       │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "live performance",                                     │
+│          "from": "ReleaseGroup",                                        │
+│          "to": "ReleaseGroup",                                          │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "vocal arranger",                                       │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "licensor",                                             │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "tribute",                                              │
+│          "from": "Artist",                                              │
+│          "to": "Artist",                                                │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "organist",                                             │
+│          "from": "Artist",                                              │
+│          "to": "Place",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "launch event",                                         │
+│          "from": "Event",                                               │
+│          "to": "ReleaseGroup",                                          │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "translator",                                           │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "supporting DJ",                                        │
+│          "from": "Artist",                                              │
+│          "to": "Event",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "primary concert venue",                                │
+│          "from": "Artist",                                              │
+│          "to": "Place",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "vocal arranger",                                       │
+│          "from": "Artist",                                              │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "chorus master",                                        │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "publishing",                                           │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "instrument origin",                                    │
+│          "from": "Area",                                                │
+│          "to": "Instrument",                                            │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "artist rename",                                        │
+│          "from": "Artist",                                              │
+│          "to": "Artist",                                                │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "lyrical quotation",                                    │
+│          "from": "Work",                                                │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "concertmaster",                                        │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "misc",                                                 │
+│          "from": "Artist",                                              │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "artistic director",                                    │
+│          "from": "Artist",                                              │
+│          "to": "Artist",                                                │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "performance of",                                       │
+│          "from": "Event",                                               │
+│          "to": "ReleaseGroup",                                          │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "translated version",                                   │
+│          "from": "ReleaseGroup",                                        │
+│          "to": "ReleaseGroup",                                          │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "production coordinator",                               │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "associated with",                                      │
+│          "from": "Artist",                                              │
+│          "to": "Place",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "recording engineer position",                          │
+│          "from": "Artist",                                              │
+│          "to": "Place",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "mastered in",                                          │
+│          "from": "Area",                                                │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "transfer",                                             │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "relocated to",                                         │
+│          "from": "Place",                                               │
+│          "to": "Place",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "sound effects",                                        │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "artwork",                                              │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "written at",                                           │
+│          "from": "Place",                                               │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "compiler",                                             │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "named after artist",                                   │
+│          "from": "Artist",                                              │
+│          "to": "Artist",                                                │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "composer-in-residence",                                │
+│          "from": "Artist",                                              │
+│          "to": "Place",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "part of set",                                          │
+│          "from": "Release",                                             │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "illustration",                                         │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "arranged in",                                          │
+│          "from": "Area",                                                │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "remixed at",                                           │
+│          "from": "Place",                                               │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "anthem",                                               │
+│          "from": "Area",                                                │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "commentary",                                           │
+│          "from": "Recording",                                           │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "named after artist",                                   │
+│          "from": "Artist",                                              │
+│          "to": "Place",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "produced in",                                          │
+│          "from": "Area",                                                │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "lyrics written in",                                    │
+│          "from": "Area",                                                │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "excerpt from",                                         │
+│          "from": "ReleaseGroup",                                        │
+│          "to": "ReleaseGroup",                                          │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "tribute to",                                           │
+│          "from": "Artist",                                              │
+│          "to": "Event",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "adapter",                                              │
+│          "from": "Artist",                                              │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "re‐recording",                                         │
+│          "from": "ReleaseGroup",                                        │
+│          "to": "ReleaseGroup",                                          │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "edited in",                                            │
+│          "from": "Area",                                                │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "mixing engineer position",                             │
+│          "from": "Artist",                                              │
+│          "to": "Place",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "animation",                                            │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "reconstructed by",                                     │
+│          "from": "Artist",                                              │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "VJ",                                                   │
+│          "from": "Artist",                                              │
+│          "to": "Event",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "included works",                                       │
+│          "from": "Work",                                                │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "mixed in",                                             │
+│          "from": "Area",                                                │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "a cappella",                                           │
+│          "from": "Recording",                                           │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "balance",                                              │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "artwork",                                              │
+│          "from": "Artist",                                              │
+│          "to": "Event",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "field recordist",                                      │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "launch event",                                         │
+│          "from": "Event",                                               │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "video copyright",                                      │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "named after artist",                                   │
+│          "from": "Artist",                                              │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "composer-in-residence",                                │
+│          "from": "Artist",                                              │
+│          "to": "Artist",                                                │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "parts",                                                │
+│          "from": "Instrument",                                          │
+│          "to": "Instrument",                                            │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "dedication",                                           │
+│          "from": "Area",                                                │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "named after work",                                     │
+│          "from": "Work",                                                │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "design",                                               │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "named after work",                                     │
+│          "from": "Artist",                                              │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "design/illustration",                                  │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "remaster",                                             │
+│          "from": "Recording",                                           │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "school director at",                                   │
+│          "from": "Artist",                                              │
+│          "to": "Place",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "commissioned",                                         │
+│          "from": "Place",                                               │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "graphic design",                                       │
+│          "from": "Artist",                                              │
+│          "to": "Event",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "derivation",                                           │
+│          "from": "Instrument",                                          │
+│          "to": "Instrument",                                            │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "first track release",                                  │
+│          "from": "Recording",                                           │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "jury member",                                          │
+│          "from": "Artist",                                              │
+│          "to": "Event",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "DJ-mix",                                               │
+│          "from": "ReleaseGroup",                                        │
+│          "to": "ReleaseGroup",                                          │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "mashes up",                                            │
+│          "from": "ReleaseGroup",                                        │
+│          "to": "ReleaseGroup",                                          │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "engineered in",                                        │
+│          "from": "Area",                                                │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "named after release group",                            │
+│          "from": "Artist",                                              │
+│          "to": "ReleaseGroup",                                          │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "illustration",                                         │
+│          "from": "Artist",                                              │
+│          "to": "Event",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "named after work",                                     │
+│          "from": "ReleaseGroup",                                        │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "transferred at",                                       │
+│          "from": "Place",                                               │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "related to",                                           │
+│          "from": "Instrument",                                          │
+│          "to": "Instrument",                                            │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "lyrics written at",                                    │
+│          "from": "Place",                                               │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "teacher",                                              │
+│          "from": "Artist",                                              │
+│          "to": "Event",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "cinematographer",                                      │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "librettist",                                           │
+│          "from": "Artist",                                              │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "invented",                                             │
+│          "from": "Artist",                                              │
+│          "to": "Instrument",                                            │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "graphic design",                                       │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "scriptwriter",                                         │
+│          "from": "Artist",                                              │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "legal representation",                                 │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "remixed in",                                           │
+│          "from": "Area",                                                │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "arranged in",                                          │
+│          "from": "Area",                                                │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "engineer",                                             │
+│          "from": "Artist",                                              │
+│          "to": "Event",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "adaptation",                                           │
+│          "from": "Work",                                                │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "arranged at",                                          │
+│          "from": "Place",                                               │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "choreographer",                                        │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "commentary",                                           │
+│          "from": "ReleaseGroup",                                        │
+│          "to": "ReleaseGroup",                                          │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "choreographer",                                        │
+│          "from": "Artist",                                              │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "edited in",                                            │
+│          "from": "Area",                                                │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "artist-in-residence",                                  │
+│          "from": "Artist",                                              │
+│          "to": "Place",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "dedication",                                           │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "booking",                                              │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "children",                                             │
+│          "from": "Instrument",                                          │
+│          "to": "Instrument",                                            │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "arranged at",                                          │
+│          "from": "Place",                                               │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "hybrid of",                                            │
+│          "from": "Instrument",                                          │
+│          "to": "Instrument",                                            │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "dedication",                                           │
+│          "from": "Place",                                               │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "design",                                               │
+│          "from": "Artist",                                              │
+│          "to": "Event",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "arranged in",                                          │
+│          "from": "Area",                                                │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "revised in",                                           │
+│          "from": "Area",                                                │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "transferred in",                                       │
+│          "from": "Area",                                                │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "photography",                                          │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "written at",                                           │
+│          "from": "Place",                                               │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "named after place",                                    │
+│          "from": "Artist",                                              │
+│          "to": "Place",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "composed at",                                          │
+│          "from": "Place",                                               │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "carillonneur",                                         │
+│          "from": "Artist",                                              │
+│          "to": "Place",                                                 │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "written in",                                           │
+│          "from": "Area",                                                │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "composed in",                                          │
+│          "from": "Area",                                                │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "translated in",                                        │
+│          "from": "Area",                                                │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "publishing",                                           │
+│          "from": "Artist",                                              │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "lacquer cut in",                                       │
+│          "from": "Area",                                                │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "lyrics written at",                                    │
+│          "from": "Place",                                               │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "commissioned",                                         │
+│          "from": "Area",                                                │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "artist-in-residence",                                  │
+│          "from": "Artist",                                              │
+│          "to": "Artist",                                                │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "revised at",                                           │
+│          "from": "Place",                                               │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "remixed in",                                           │
+│          "from": "Area",                                                │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "performance",                                          │
+│          "from": "Recording",                                           │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "programmed at",                                        │
+│          "from": "Place",                                               │
+│          "to": "Recording",                                             │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "translated at",                                        │
+│          "from": "Place",                                               │
+│          "to": "Release",                                               │
+│          "min": 0                                                       │
+│        },                                                               │
+│        {                                                                │
+│          "rel": "libretto written in",                                  │
+│          "from": "Area",                                                │
+│          "to": "Work",                                                  │
+│          "min": 0                                                       │
+│        }                                                                │
+│      ]                                                                  │
+│    }                                                                    │
+│  }                                                                      │
+│                                                                         │
+├─────────────────────────────────────────────────────────────────────────╯

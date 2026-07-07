@@ -11,6 +11,15 @@ Content is stored in your own storage backend (Cloudflare R2, IPFS, or any compa
 
 Arbitrum Sepolia (Base Sepolia in progress).
 
+
+| Feature | Agent + SQL | Fangorn Stack |
+| --- | --- | --- |
+| **Primary Use Case** | Ad-hoc internal data exploration. | Distributed, verifiable knowledge graphs. |
+| **Trust Model** | Centralized (Must trust the DB admin & the AI). | Decentralized (Trustless, cryptographically verifiable). |
+| **Read Latency** | High (Network hop + SQL execution + LLM loop). | Microseconds (Queried locally via edge snapshots). |
+| **Data Integrity** | Enforced by standard DB constraints (if configured). | Strict graph-wide schema, cardinality, & Merkle validation. |
+| **Scalability** | Vertical/Horizontal DB scaling required. | Infinite scale via Semantic CDN distribution. |
+
 ---
 
 ## Installation
@@ -415,4 +424,5 @@ Phase 3 tests are skipped unless `WORKER_URL` is set. Run the access worker loca
 
 ## License
 
-MITSonnet 4.6Claude is AI and can make mistakes. Please double-check responses.
+MIT
++++

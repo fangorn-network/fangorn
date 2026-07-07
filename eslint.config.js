@@ -11,6 +11,7 @@ export default defineConfig(
             "dist",
             "lib",
             "node_modules",
+            "examples/**",
             "pnpm-lock.yaml",
             "src/lit-actions/**",
             "src/e2e.test.ts",
