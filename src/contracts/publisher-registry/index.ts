@@ -4,9 +4,20 @@ import {
     type Hex,
     type PublicClient,
     type WalletClient,
+    keccak256,
+    toBytes,
 } from "viem";
 
 import { PUBLISHER_REGISTRY_ABI } from "./abi.js";
+
+/**
+ * The schema id for a name — computed locally, exactly as the on-chain Bucket
+ * does: `keccak256(name.as_bytes())` over the raw UTF-8 bytes (NOT abi-encoded).
+ * No round-trip needed; the contract mints the same value.
+ */
+export function schemaIdOf(name: string): Hex {
+    return keccak256(toBytes(name));
+}
 
 export class PublisherRegistry {
     constructor(
@@ -132,6 +143,11 @@ export class PublisherRegistry {
     }
 
     // ── Reads ────────────────────────────────────────────────────────────────
+
+    /** Local schema-id derivation, identical to the on-chain Bucket. No RPC. */
+    schemaId(name: string): Hex {
+        return schemaIdOf(name);
+    }
 
     async bucketOf(publisher: Address): Promise<Address> {
         return this.publicClient.readContract({

@@ -56,6 +56,7 @@ export class RecordSetBuilder implements ManifestBuilder<RecordSetInput, Manifes
                 name: chunk.name,
                 fields: {
                     dataCid: chunk.cid,
+                    contentId: chunk.contentId,
                     leaf: ctx.leaves[i],
                 },
             })),

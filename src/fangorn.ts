@@ -116,6 +116,12 @@ export class Fangorn {
 
 	getConfig(): AppConfig { return this.ctx.config; }
 	getPublisherRegistry(): PublisherRegistry { return this.ctx.publisherRegistry; }
+	getStorage(): MetadataStorage {
+		if (!this.ctx.metadataStorage) {
+			throw new Error("storage is not configured. Pass { pinata: { ... } } to Fangorn.create()");
+		}
+		return this.ctx.metadataStorage;
+	}
 	getWalletClient(): WalletClient { return this.ctx.walletClient; }
 
 	getAddress(): Hex {

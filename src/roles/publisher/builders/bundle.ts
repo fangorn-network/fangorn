@@ -1,4 +1,4 @@
-import type { Hex } from "viem";
+import type { Address, Hex } from "viem";
 import type { SchemaDefinition, SchemaDoc, TypeDefinition, ResolvedBundle, NodeIdentity } from "../../schema/types";
 import type { MetadataStorage } from "../../../providers/storage/types";
 import type { PublisherRegistry } from "../../../contracts/publisher-registry";
@@ -40,7 +40,7 @@ export class BundleBuilder implements ManifestBuilder<BundleUploadInput, BundleM
 
     /**
      * Stream nodes (chunked per type) then edges (chunked) into ~chunkSize-entry leaves
-     * i.e. so a 50M-edge bundle becomes many small leaves under ONE merkle root
+     * i.e. so a million-edge bundle becomes many small leaves under ONE merkle root
      * With a stream input + `validate:false`, peak memory is ~one chunk regardless of size.
      *
      * Merkle correctness:
@@ -51,7 +51,10 @@ export class BundleBuilder implements ManifestBuilder<BundleUploadInput, BundleM
      *    ctx.chunks[i], since leaves = chunks.map(...) after the sort). This is correct
      *    regardless of upload-completion ordering or the creation-index in leaf hashes.
      */
-    async *chunk(input: BundleUploadInput, schema: ResolvedSchemaShape, commit?: CommitInfo): AsyncIterable<ChunkDraft> {
+    async *chunk(input: BundleUploadInput, schema: ResolvedSchemaShape, commit?: CommitInfo, owner?: Address): AsyncIterable<ChunkDraft> {
+
+        if (!owner) throw new Error("owner required")
+
         const bundle = schema as ResolvedBundle;
         // defaults to 1000
         const chunkSize = input.chunkSize && input.chunkSize > 0 ? input.chunkSize : 1000;
@@ -61,7 +64,7 @@ export class BundleBuilder implements ManifestBuilder<BundleUploadInput, BundleM
         if (!commit) throw new Error("BundleBuilder.chunk requires commit context (resourceId) to stamp Entity URIs");
         const { resourceId } = commit;
 
-        const defByType = await this.resolveDefs(bundle);
+        const defByType = await this.resolveDefs(owner, bundle);
         const declared = new Set(bundle.edges.map(e => `${e.rel}:${e.from}:${e.to}`));
         const constrained = bundle.edges.filter(s => (s.min ?? 0) > 0 || (s.max ?? null) !== null);
 
@@ -174,12 +177,12 @@ export class BundleBuilder implements ManifestBuilder<BundleUploadInput, BundleM
     assemble(ctx: BuildContext): BundleManifest {
         // After publish()'s sort, ctx.chunks[i] and ctx.leaves[i] are position-aligned
         // (leaves = chunks.map(...)). Map by index i — robust to upload ordering.
-        const nodeChunks: { type: string; dataCid: string; leaf: Hex }[] = [];
-        const edgeChunks: { dataCid: string; leaf: Hex }[] = [];
+        const nodeChunks: { type: string; dataCid: string; leaf: Hex; contentId?: string }[] = [];
+        const edgeChunks: { dataCid: string; leaf: Hex; contentId?: string }[] = [];
         ctx.chunks.forEach((c, i) => {
             const leaf = ctx.leaves[i];
-            if (c.meta?.kind === "edges") edgeChunks.push({ dataCid: c.cid, leaf });
-            else nodeChunks.push({ type: typeof c.meta?.type === "string" ? c.meta.type : "", dataCid: c.cid, leaf });
+            if (c.meta?.kind === "edges") edgeChunks.push({ dataCid: c.cid, leaf, contentId: c.contentId });
+            else nodeChunks.push({ type: typeof c.meta?.type === "string" ? c.meta.type : "", dataCid: c.cid, leaf, contentId: c.contentId });
         });
         if (edgeChunks.length === 0) throw new Error("Missing edge chunk during assembly");
 
@@ -190,13 +193,13 @@ export class BundleBuilder implements ManifestBuilder<BundleUploadInput, BundleM
      * Resolve each bundle node type to its `SchemaDoc` ({ fields, types }) so
      * `chunk()` can validate/resolve records per type. Fetched once up front.
      */
-    private async resolveDefs(bundle: ResolvedBundle): Promise<Map<string, SchemaDoc>> {
+    private async resolveDefs(owner: Address, bundle: ResolvedBundle): Promise<Map<string, SchemaDoc>> {
         const defByType = new Map<string, SchemaDoc>();
         await Promise.all(
-            Object.entries(bundle.nodes).map(async ([type, schemaId]: [string, Hex]) => {
-                const { specCid } = await this.schemaRegistry.getSchema(schemaId);
+            Object.entries(bundle.nodes).map(async ([type, schemaName]: [string, string]) => {
+                const { specCid } = await this.schemaRegistry.getBucketSchema(owner, schemaName);
                 const blob = await this.storage.get<{ definition?: SchemaDefinition; types?: Record<string, TypeDefinition>; identity?: NodeIdentity }>(specCid);
-                if (!blob.definition) throw new Error(`node schema ${schemaId} is not a resolver schema`);
+                if (!blob.definition) throw new Error(`node schema "${schemaName}" is not a resolver schema`);
                 defByType.set(type, { fields: blob.definition, types: blob.types, identity: blob.identity });
             }),
         );

@@ -40,7 +40,7 @@ export interface AppConfig {
 
 export const FangornConfig = {
 	publisherRegistryContractAddress:
-		"0x207ab1866704b2adc34e8ec1069fb8febafff2fd",
+		"0x72e798cd0bfd19118c53767d3f7be509b22e7168",
 	chain: arbitrumSepolia,
 	rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
 	caip2: 421614,

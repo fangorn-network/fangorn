@@ -75,7 +75,7 @@ export interface FieldDefinition {
     items?: FieldDefinition | Record<string, FieldDefinition>;
 }
 
-// Cross-publisher identity (docs/CROSS_PUBLISHER_LINKING.md, Phase 0).
+// Cross-publisher identity
 // Declares how a node type exposes *global* identity so foreign edges can
 // reference its entities and so two datasources can join on a shared key.
 export interface NodeIdentity {
@@ -124,10 +124,10 @@ export interface BundleInput {
     edges: EdgeShape[];
 }
 
-/** Committed form: node refs resolved + pinned to schemaIds. */
+/** Committed form: node type -> resolver schema NAME (the on-chain key). */
 export interface ResolvedBundle {
-    // "Track" -> schemaId
-    nodes: Record<string, Hex>;      
+    // "Track" -> schema name
+    nodes: Record<string, string>;
     edges: EdgeShape[];
 }
 
@@ -137,7 +137,7 @@ export interface BundleShape {
     bundle: ResolvedBundle;
 }
 
-// Composed View (docs/CROSS_PUBLISHER_LINKING.md, Phase 1).
+// Composed View
 //
 // A view is *just another datasource* whose content is the fusion of several
 // existing datasources. It composes them by their global identity (Entity URIs +
@@ -171,7 +171,7 @@ export interface ResolvedView {
     sourceSchemas: Hex[];
 }
 
-// Linkset (docs/CROSS_PUBLISHER_LINKING.md, Phase 2).
+// Linkset
 //
 // A linkset is *just another datasource* whose records are asserted cross-edges
 // between entities — the **fuzzy** join, for when two publishers describe the

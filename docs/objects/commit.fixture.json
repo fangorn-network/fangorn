@@ -1,0 +1,11 @@
+{
+  "kind": "commit",
+  "parents": ["bafyParentCommitCID"],
+  "tree": "bafyTreeManifestCID",
+  "root": "0xabc123",
+  "schemaId": "0xdeadbeef",
+  "author": "0x1234567890abcdef1234567890abcdef12345678",
+  "message": "remove 10 stale places; add café dataset",
+  "timestamp": 1700000000000,
+  "embed": { "model": "nomic-ai/nomic-embed-text-v1.5", "dim": 256, "distance": "Cosine" }
+}

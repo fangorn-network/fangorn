@@ -54,7 +54,7 @@ export class SchemaRole {
      * @param params 
      * @returns 
      */
-    async deploy(params: RegisterSchemaParams): Promise<RegisteredSchema> {
+    async register(params: RegisterSchemaParams): Promise<RegisteredSchema> {
         const owner = this.requireAccount();
         const createdAt = new Date().toISOString();
 
@@ -95,7 +95,7 @@ export class SchemaRole {
         return { kind: "resolver", ...base, definition: blob.definition, types: blob.types, identity: blob.identity };
     }
 
-    async getByName(schemaName: string): Promise<RegisteredSchema> {
+    async get(schemaName: string): Promise<RegisteredSchema> {
         try {
             // Note: Since off-chain state reading directly from the mapping isn't directly exposed in the 
             // Registry API surface for deep inner objects, reading metadata relies on looking up the 
@@ -128,7 +128,7 @@ export class SchemaRole {
             return { kind: "bundle", ...base, bundle: blob.bundle };
         } catch (e) {
             console.error(e);
-            return undefined;
+            throw e
         }
     }
 
@@ -136,13 +136,13 @@ export class SchemaRole {
         const errors: string[] = [];
         if (Object.keys(input.nodes).length === 0) errors.push("bundle declares no node types");
 
-        const nodes: Record<string, Hex> = {};
+        const nodes: Record<string, string> = {};
         await Promise.all(
             Object.entries(input.nodes).map(async ([typeName, ref]) => {
-                const existing = await this.getByName(ref);
+                const existing = await this.get(ref);
                 if (!existing) errors.push(`node "${typeName}" → unknown schema "${ref}"`);
                 else if (existing.kind !== "resolver") errors.push(`node "${typeName}" → "${ref}" is a bundle; nodes must be resolver schemas`);
-                else nodes[typeName] = existing.schemaId;
+                else nodes[typeName] = ref;
             }),
         );
 

@@ -12,8 +12,7 @@ export interface LinksetUploadInput {
 }
 
 /**
- * Publishes a linkset — asserted cross-edges — as a datasource
- * (docs/CROSS_PUBLISHER_LINKING_PLAN.md §5). Each link's endpoints are global
+ * Publishes a linkset — asserted cross-edges — as a datasource. Each link's endpoints are global
  * (Entity URI or namespaced alias) and may be **foreign**; the builder validates
  * every record (well-formed endpoints, allowed relation, sane confidence) and
  * chunks them into many merkle leaves under one root. Fusion of the asserted
@@ -61,7 +60,7 @@ export class LinksetBuilder implements ManifestBuilder<LinksetUploadInput, Links
     }
 
     assemble(ctx: BuildContext): LinksetManifest {
-        const linkChunks = ctx.chunks.map((c, i) => ({ dataCid: c.cid, leaf: ctx.leaves[i] }));
+        const linkChunks = ctx.chunks.map((c, i) => ({ dataCid: c.cid, leaf: ctx.leaves[i], contentId: c.contentId }));
         if (linkChunks.length === 0) throw new Error("Missing link chunk during assembly");
         return { kind: "linkset", schemaId: ctx.schemaId, root: ctx.root, linkChunks, tree: ctx.layers };
     }

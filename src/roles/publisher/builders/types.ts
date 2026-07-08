@@ -1,4 +1,4 @@
-import type { Hex } from "viem";
+import type { Address, Hex } from "viem";
 import type { SchemaDoc, ResolvedBundle, ResolvedView, ResolvedLinkset } from "../../schema/types";
 
 export interface ChunkDraft {
@@ -12,7 +12,13 @@ export interface ChunkDraft {
 
 export interface ChunkRef {
     index: bigint;
+    /** Retrieval reference — the `ipfs://<carRoot>/<entry>` path URI, or a reused
+     *  parent URI for an unchanged chunk. Used for fetching and merkle leaves. */
     cid: string;
+    /** Stable content identity — sha256 of the serialized chunk bytes, independent
+     *  of which CAR it was packed into. Two byte-identical chunks share this even
+     *  across commits, which is what makes structural sharing / diffing work. */
+    contentId: string;
     name: string;
     meta?: Record<string, unknown>;
 }
@@ -44,7 +50,7 @@ export interface CommitInfo {
 export interface ManifestBuilder<TInput, TManifest extends BaseManifest> {
     readonly kind: string;
     validate(schema: ResolvedSchemaShape, input: TInput): void | Promise<void>;
-    chunk(input: TInput, schema: ResolvedSchemaShape, commit?: CommitInfo): AsyncIterable<ChunkDraft>;
+    chunk(input: TInput, schema: ResolvedSchemaShape, commit?: CommitInfo, owner?: Address): AsyncIterable<ChunkDraft>;
     compareChunks(a: ChunkRef, b: ChunkRef): number;
     assemble(context: BuildContext, input: TInput, schema: ResolvedSchemaShape): TManifest;
 }

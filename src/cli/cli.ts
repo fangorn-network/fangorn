@@ -37,6 +37,10 @@ import type { SchemaDefinition } from "../roles/schema/index.js";
 import { AgentConfig } from "../types/index.js";
 import { AppConfig, FangornConfig, SupportedNetworks } from "../config.js";
 import { PublishRecord } from "../roles/publisher/types.js";
+import { LocalRepo } from "../roles/repo/index.js";
+import { ObjectStore } from "../objects/store.js";
+import { EmbedContract } from "../objects/types.js";
+import { prepareBundleSource, resolveViewSources, ensureView } from "./bundle-source.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -128,8 +132,6 @@ function getFangorn(): Fangorn {
 
     const cfg = loadConfig();
 
-    console.log(JSON.stringify(cfg))
-
     const agentConfig: AgentConfig = { privateKey: cfg.privateKey, pinataJwt: cfg.pinataJwt };
 
     _fangorn = Fangorn.create({
@@ -149,7 +151,7 @@ function getFangorn(): Fangorn {
 
 async function resolveSchemaId(fangorn: Fangorn, schemaName: string): Promise<Hex> {
     try {
-        const schema = await fangorn.schema.getByName(schemaName);
+        const schema = await fangorn.schema.get(schemaName);
         return schema.schemaId;
     } catch {
         throw new Error(
@@ -327,6 +329,24 @@ function peekFirstNonWsByte(filepath: string): number | undefined {
         }
     } finally {
         closeSync(fd);
+    }
+}
+
+/**
+ * Lazily stream PublishRecords out of one or more JSON files. A file whose first
+ * non-whitespace byte is "[" is streamed as an array (never fully resident);
+ * anything else is read as a single top-level object.
+ */
+async function* streamRecordsFromFiles(files: string[]): AsyncIterable<PublishRecord> {
+    for (const filepath of files) {
+        if (peekFirstNonWsByte(filepath) === 0x5b /* "[" */) {
+            const pipeline = createReadStream(filepath).pipe(streamArray.withParserAsStream());
+            for await (const { value } of pipeline as AsyncIterable<{ value: PublishRecord }>) {
+                yield value;
+            }
+        } else {
+            yield JSON.parse(readFileSync(filepath, "utf-8")) as PublishRecord;
+        }
     }
 }
 
@@ -666,44 +686,17 @@ publishCmd
 //         }
 //     });
 
-// ─── datasource ───────────────────────────────────────────────────────────────
-
-const datasourceCmd = program
-    .command("datasource")
-    .description("Data source registry queries");
-
-datasourceCmd
-    .command("info")
-    .description("Show on-chain manifest info for an owner + schema")
-    .requiredOption("-s, --schema <schemaName>", "Schema name or bytes32 ID")
-    .option("--owner <address>", "Owner address (defaults to your wallet)")
-    .action(async (options: { schema: string; owner?: Address }) => {
-        try {
-            const self = getAccount().address;
-            const owner = options.owner ?? self;
-            const fangorn = getFangorn();
-            const schemaId = await resolveSchemaId(fangorn, options.schema);
-            const ds = await fangorn.getDatasourceRegistry().get(owner, schemaId, options.schema);
-
-            console.log(`Owner:        ${owner}`);
-            console.log(`Schema ID:    ${schemaId}`);
-            console.log(`Version:      ${String(ds.version)}`);
-            console.log(`Manifest CID: ${ds.manifestCid || "(none yet)"}`);
-            process.exit(0);
-        } catch (err) {
-            console.error("Failed:", (err as Error).message);
-            process.exit(1);
-        }
-    });
-
 // ─── bucket ───────────────────────────────────────────────────────────────────
+//
+// A publisher registers once (`bucket create`) — the registry deploys their
+// per-publisher Bucket and everything (schemas, datasources) forwards through it.
 
 const bucketCmd = program
     .command("bucket")
     .description("Publisher registry / bucket operations");
 
 bucketCmd
-    .command("deploy")
+    .command("create")
     .description("Register as a publisher and deploy your bucket")
     .action(async () => {
         try {
@@ -711,18 +704,18 @@ bucketCmd
             const registry = getFangorn().getPublisherRegistry();
             const s = spinner();
 
-            if (await registry.isRegistered(self)) {
-                const bucket = await registry.bucketOf(self);
-                note(`Already registered.\nBucket: ${bucket}`, "Nothing to do");
-                process.exit(0);
-            }
+            // if (await registry.isRegistered(self)) {
+            //     const bucket = await registry.bucketOf(self);
+            //     note(`Already registered.\nBucket: ${bucket}`, "Nothing to do");
+            //     process.exit(0);
+            // }
 
             s.start("Registering publisher...");
             const txHash = await registry.register();
             const bucket = await registry.bucketOf(self);
             s.stop();
 
-            note(`Publisher: ${self}\nBucket:    ${bucket}\nTx:        ${txHash}`, "Bucket deployed");
+            note(`Publisher: ${self}\nBucket:    ${bucket}\nTx:        ${txHash}`, "Bucket created");
             process.exit(0);
         } catch (err) {
             console.error("Failed:", (err as Error).message);
@@ -732,7 +725,7 @@ bucketCmd
 
 bucketCmd
     .command("log")
-    .description("Show your publisher registration and bucket")
+    .description("Show a publisher's registration and bucket")
     .option("--owner <address>", "Publisher address (defaults to your wallet)")
     .action(async (options: { owner?: Address }) => {
         try {
@@ -740,9 +733,8 @@ bucketCmd
             const owner = options.owner ?? self;
             const registry = getFangorn().getPublisherRegistry();
 
-            const registered = await registry.isRegistered(owner);
-            if (!registered) {
-                log.warn(`${owner} is not registered. Run \`fangorn bucket deploy\`.`);
+            if (!(await registry.isRegistered(owner))) {
+                log.warn(`${owner} is not registered. Run \`fangorn bucket create\`.`);
                 process.exit(0);
             }
 
@@ -750,6 +742,401 @@ bucketCmd
             console.log(`Publisher:  ${owner}`);
             console.log(`Registered: yes`);
             console.log(`Bucket:     ${bucket}`);
+            process.exit(0);
+        } catch (err) {
+            console.error("Failed:", (err as Error).message);
+            process.exit(1);
+        }
+    });
+
+// ─── repo (git-native data model) ───────────────────────────────────────────
+//
+// A dataset is a repository: a local `.fangorn/` tracks a schema-typed dataset and
+// its tip commit. `commit` builds history locally (permissionless); `push` moves
+// the on-chain pointer (permissioned). See docs/PROTOCOL.md §5, §7, §11.
+//
+// NOTE: repo creation lives under `fangorn repo init` because top-level `init`
+// already configures wallet/credentials. (Naming to be reconciled later.)
+
+const repoCmd = program.command("repo").description("Dataset repository operations");
+
+repoCmd
+    .command("init")
+    .description("Create a local dataset repo in the current directory")
+    .argument("<name>", "Dataset (repo) name")
+    .requiredOption("-s, --schema <schemaName>", "Schema name or bytes32 ID this repo conforms to")
+    .action(async (name: string, options: { schema: string }) => {
+        try {
+            if (LocalRepo.exists()) throw new Error("a Fangorn repo already exists here");
+            const fangorn = getFangorn();
+            const owner = getAccount().address;
+            const schemaId = await resolveSchemaId(fangorn, options.schema);
+            LocalRepo.init({ name, schema: options.schema, schemaId, owner });
+            note(
+                `Repo:    ${name}\nSchema:  ${options.schema}\nSchemaId:${schemaId}\nOwner:   ${owner}`,
+                "Initialized empty Fangorn repo (.fangorn/)",
+            );
+            process.exit(0);
+        } catch (err) {
+            console.error("Failed:", (err as Error).message);
+            process.exit(1);
+        }
+    });
+
+program
+    .command("clone")
+    .description("Reconstruct a dataset repo from its on-chain tip + IPFS history")
+    .argument("<owner>", "Owner (publisher) address of the dataset")
+    .requiredOption("-s, --schema <schemaName>", "Schema name or bytes32 ID")
+    .requiredOption("-d, --dataset <name>", "Dataset (repo) name")
+    .option("--dir <path>", "Directory to clone into (default: ./<dataset>)")
+    .action(async (owner: Address, options: { schema: string; dataset: string; dir?: string }) => {
+        try {
+            const fangorn = getFangorn();
+            const schemaId = await resolveSchemaId(fangorn, options.schema);
+            const s = spinner();
+
+            s.start("Resolving on-chain tip...");
+            const tip = await fangorn.publisher.resolveTip(owner, options.schema, options.dataset);
+            if (!tip) { s.stop(); throw new Error(`no on-chain tip for ${owner}/${options.dataset} — nothing to clone`); }
+
+            // Reconstruct history from IPFS alone — no subgraph. Walking the parent
+            // chain proves the whole history is retrievable and self-verifying.
+            const objects = new ObjectStore(fangorn.getStorage());
+            let count = 0;
+            for await (const step of objects.walkParents(tip)) { void step; count++; }
+            s.stop();
+
+            const dir = options.dir ?? join(process.cwd(), options.dataset);
+            if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+            if (LocalRepo.exists(dir)) throw new Error(`a Fangorn repo already exists at ${dir}`);
+            const repo = LocalRepo.init({ name: options.dataset, schema: options.schema, schemaId, owner }, dir);
+            repo.setHead(tip);
+
+            note(
+                `Into:    ${dir}\nTip:     ${tip}\nCommits: ${count.toString()} (reconstructed from IPFS)`,
+                "Cloned",
+            );
+            process.exit(0);
+        } catch (err) {
+            console.error("Failed:", (err as Error).message);
+            process.exit(1);
+        }
+    });
+
+/** commander repeatable-option collector. */
+const collectOpt = (val: string, prev: string[]): string[] => { prev.push(val); return prev; };
+
+/**
+ * Build the optional embed contract a commit carries so quickbeam inherits how to
+ * index it (Gap A) instead of hardcoding the model/dim/distance. All three flags
+ * are optional; absent ⇒ no contract ⇒ quickbeam falls back to its own CLI flags.
+ */
+function embedFromOpts(o: { embedModel?: string; embedDim?: number; embedDistance?: string }): EmbedContract | undefined {
+    if (!o.embedModel && o.embedDim === undefined && !o.embedDistance) return undefined;
+    if (!o.embedModel || o.embedDim === undefined) {
+        throw new Error("--embed-model and --embed-dim must be given together to set an embed contract");
+    }
+    return { model: o.embedModel, dim: o.embedDim, distance: o.embedDistance ?? "Cosine" };
+}
+
+interface CommitOptions {
+    message: string;
+    chunkSize?: number;
+    concurrency?: number;
+    // mode selectors
+    bundle?: string;
+    view?: string;
+    // bundle shaping
+    volume: number;
+    schemasDir?: string;
+    rootType?: string;
+    limit?: number;
+    validate?: boolean;
+    skipRegister?: boolean;
+    // view sources
+    sourceBundle: string[];
+    sourceResource: string[];
+    linksetName: string[];
+    linksetResource: string[];
+    trust?: string;
+    // embed contract (all modes)
+    embedModel?: string;
+    embedDim?: number;
+    embedDistance?: string;
+}
+
+program
+    .command("commit")
+    .description("Snapshot data into a new local commit (does not push)")
+    .argument("[files...]", "JSON file(s) of records to commit (record-set mode; omit for --bundle/--view)")
+    .requiredOption("-m, --message <msg>", "Commit message")
+    .option("--chunk-size <n>", "Records per chunk (default 1000)", (v) => parseInt(v, 10))
+    .option("--concurrency <n>", "Parallel chunk uploads (default 10)", (v) => parseInt(v, 10))
+    // ── bundle mode: commit a typed graph from a `quickbeam data schemagen` dir ──
+    .option("--bundle <inputDir>", "Commit a graph bundle from a schemagen stage dir (nodes+edges as ONE commit)")
+    .option("--volume <n>", "Bundle: volume number (0 = all volumes, for a merged multi-volume bundle)", (v) => parseInt(v, 10), 0)
+    .option("--schemas-dir <path>", "Bundle: schema definitions dir (default <inputDir>/schemas)")
+    .option("--root-type <type>", "Bundle: root node type (default: first node type in the bundle)")
+    .option("--limit <n>", "Bundle: max entries per file (0 = all) — small value for a cheap dry run", (v) => parseInt(v, 10))
+    .option("--validate", "Bundle: run full cross-node graph validation (needs all node ids in RAM)")
+    .option("--skip-register", "Bundle/view: don't register missing schemas; resolve existing ids only")
+    // ── view mode: commit a composed view fusing already-published sources ──
+    .option("--view <viewName>", "Commit a composed view (merge commit) fusing the given sources")
+    .option("--source-bundle <name[:dataset]>", "View: same-owner source bundle (repeatable)", collectOpt, [])
+    .option("--source-resource <0xRid>", "View: raw source resourceId for a FOREIGN publisher (repeatable)", collectOpt, [])
+    .option("--linkset-name <name[:dataset]>", "View: same-owner linkset (repeatable)", collectOpt, [])
+    .option("--linkset-resource <0xRid>", "View: raw linkset resourceId for a foreign linkset (repeatable)", collectOpt, [])
+    .option("--trust <json>", "View: trust policy JSON")
+    // ── embed contract (all modes; inherited by quickbeam, Gap A) ──
+    .option("--embed-model <model>", "Embed contract: embedding model quickbeam should inherit")
+    .option("--embed-dim <n>", "Embed contract: vector dimensionality", (v) => parseInt(v, 10))
+    .option("--embed-distance <distance>", "Embed contract: distance metric (default Cosine)")
+    .action(async (files: string[], options: CommitOptions) => {
+        try {
+            const repo = LocalRepo.open();
+            const cfg = repo.config();
+            const fangorn = getFangorn();
+            const head = repo.head();
+            const parents = head ? [head] : [];
+            const embed = embedFromOpts(options);
+            const s = spinner();
+
+            // ── bundle mode ────────────────────────────────────────────────────
+            if (options.bundle !== undefined) {
+                if (files.length) throw new Error("--bundle takes no file arguments (nodes/edges come from the stage dir)");
+                if (options.view !== undefined) throw new Error("pass either --bundle or --view, not both");
+                const inputDir = options.bundle;
+                const schemasDir = options.schemasDir ?? join(inputDir, "schemas");
+
+                s.start("Preparing bundle source (registering schemas)...");
+                const source = await prepareBundleSource(fangorn, {
+                    inputDir, schemasDir, volume: options.volume,
+                    rootType: options.rootType, limit: options.limit,
+                    skipRegister: options.skipRegister,
+                    log: (m) => { s.message(m); },
+                });
+                if (source.bundleName !== cfg.schema) {
+                    log.warn(`repo schema is "${cfg.schema}" but the bundle is "${source.bundleName}" — committing under the bundle schema`);
+                }
+                s.message(parents.length ? "Committing bundle (building on local HEAD)..." : "Committing bundle (initial)...");
+                const result = await fangorn.publisher.commitBundle({
+                    bundleName: source.bundleName,
+                    nodes: source.nodes(),
+                    edges: source.edges(),
+                    datasetName: cfg.name,
+                    parents,
+                    message: options.message,
+                    chunkSize: options.chunkSize,
+                    concurrency: options.concurrency,
+                    validate: options.validate ?? false,
+                    embed,
+                });
+                s.stop();
+                repo.setHead(result.commitCid);
+                note(
+                    `Commit:   ${result.commitCid}\n` +
+                    `Parent:   ${parents[0] ?? "(root)"}\n` +
+                    `Tree:     ${result.manifestCid}\n` +
+                    `Bundle:   ${source.bundleName} (root ${source.rootType})\n` +
+                    `Nodes:    ${source.stats.nodes.toLocaleString()}   Edges: ${source.stats.edges.toLocaleString()}\n` +
+                    `Chunks:   ${result.entryCount.toString()} (${result.uploadedCount.toString()} uploaded, ${result.reusedCount.toString()} reused)\n` +
+                    (embed ? `Embed:    ${embed.model} dim=${embed.dim.toString()} ${embed.distance}\n` : "") +
+                    `Message:  ${options.message}`,
+                    "Committed bundle (local)",
+                );
+                process.exit(0);
+            }
+
+            // ── view mode ──────────────────────────────────────────────────────
+            if (options.view !== undefined) {
+                if (files.length) throw new Error("--view takes no file arguments");
+                const viewName = options.view;
+
+                s.start("Resolving view sources (registering view)...");
+                const resolved = await resolveViewSources(fangorn, {
+                    sourceBundle: options.sourceBundle,
+                    sourceResource: options.sourceResource,
+                    linksetName: options.linksetName,
+                    linksetResource: options.linksetResource,
+                    trust: options.trust,
+                    log: (m) => { s.message(m); },
+                });
+                await ensureView(fangorn, viewName, resolved, options.skipRegister ?? false, (m) => { s.message(m); });
+                if (viewName !== cfg.schema) {
+                    log.warn(`repo schema is "${cfg.schema}" but the view is "${viewName}" — committing under the view schema`);
+                }
+                s.message(parents.length ? "Committing view (building on local HEAD)..." : "Committing view (initial)...");
+                const result = await fangorn.publisher.commitView({
+                    viewName,
+                    datasetName: cfg.name,
+                    parents,
+                    message: options.message,
+                    embed,
+                });
+                s.stop();
+                repo.setHead(result.commitCid);
+                note(
+                    `Commit:   ${result.commitCid}\n` +
+                    `Parent:   ${parents[0] ?? "(root)"}\n` +
+                    `Tree:     ${result.manifestCid}\n` +
+                    `View:     ${viewName}\n` +
+                    `Sources:  ${resolved.sources.length.toString()}${resolved.linksets.length ? ` + ${resolved.linksets.length.toString()} linkset(s)` : ""}\n` +
+                    (embed ? `Embed:    ${embed.model} dim=${embed.dim.toString()} ${embed.distance}\n` : "") +
+                    `Message:  ${options.message}`,
+                    "Committed view (local)",
+                );
+                process.exit(0);
+            }
+
+            // ── record-set mode (default) ──────────────────────────────────────
+            if (!files.length) throw new Error("nothing to commit — pass record file(s), or use --bundle / --view");
+            s.start(parents.length ? "Committing (building on local HEAD)..." : "Committing (initial)...");
+            const result = await fangorn.publisher.commitRecords({
+                records: streamRecordsFromFiles(files),
+                schemaName: cfg.schema,
+                datasetName: cfg.name,
+                parents,
+                message: options.message,
+                chunkSize: options.chunkSize,
+                concurrency: options.concurrency,
+                embed,
+            });
+            s.stop();
+
+            repo.setHead(result.commitCid);
+            note(
+                `Commit:   ${result.commitCid}\n` +
+                `Parent:   ${parents[0] ?? "(root)"}\n` +
+                `Tree:     ${result.manifestCid}\n` +
+                `Chunks:   ${result.entryCount.toString()} (${result.uploadedCount.toString()} uploaded, ${result.reusedCount.toString()} reused)\n` +
+                (embed ? `Embed:    ${embed.model} dim=${embed.dim.toString()} ${embed.distance}\n` : "") +
+                `Message:  ${options.message}`,
+                "Committed (local)",
+            );
+            process.exit(0);
+        } catch (err) {
+            console.error("Failed:", (err as Error).message);
+            process.exit(1);
+        }
+    });
+
+program
+    .command("push")
+    .description("Publish the local tip commit on-chain (the permissioned step)")
+    .option("--force", "Push even if it does not fast-forward the on-chain tip")
+    .action(async (options: { force?: boolean }) => {
+        try {
+            const repo = LocalRepo.open();
+            const cfg = repo.config();
+            const head = repo.head();
+            if (!head) throw new Error("nothing to push — no commits yet");
+            const fangorn = getFangorn();
+            const objects = new ObjectStore(fangorn.getStorage());
+            const commit = await objects.getCommit(head);
+            const s = spinner();
+
+            s.start("Pushing...");
+            const { txHash, onChainTip } = await fangorn.publisher.push({
+                commitCid: head,
+                root: commit.root,
+                schemaName: cfg.schema,
+                datasetName: cfg.name,
+                expectedParent: commit.parents[0],
+                force: options.force,
+            });
+            s.stop();
+
+            note(`Tx:   ${txHash}\nTip:  ${onChainTip}`, "Pushed");
+            process.exit(0);
+        } catch (err) {
+            console.error("Failed:", (err as Error).message);
+            process.exit(1);
+        }
+    });
+
+program
+    .command("status")
+    .description("Compare the local tip with the on-chain tip")
+    .action(async () => {
+        try {
+            const repo = LocalRepo.open();
+            const cfg = repo.config();
+            const localHead = repo.head();
+            const fangorn = getFangorn();
+
+            const onChainTip = await fangorn.publisher.resolveTip(cfg.owner, cfg.schema, cfg.name);
+
+            const state = localHead === onChainTip
+                ? "up to date"
+                : localHead && !onChainTip
+                    ? "local commits not yet pushed"
+                    : localHead !== onChainTip
+                        ? "local tip differs from on-chain tip"
+                        : "no local commits";
+
+            console.log(`Repo:         ${cfg.name}`);
+            console.log(`Local HEAD:   ${localHead ?? "(none)"}`);
+            console.log(`On-chain tip: ${onChainTip ?? "(none)"}`);
+            console.log(`Status:       ${state}`);
+            process.exit(0);
+        } catch (err) {
+            console.error("Failed:", (err as Error).message);
+            process.exit(1);
+        }
+    });
+
+program
+    .command("log")
+    .description("Walk commit history from the local tip")
+    .option("-n, --max <n>", "Limit number of commits", (v) => parseInt(v, 10))
+    .action(async (options: { max?: number }) => {
+        try {
+            const repo = LocalRepo.open();
+            const head = repo.head();
+            if (!head) { console.log("(no commits yet)"); process.exit(0); }
+            const fangorn = getFangorn();
+            const objects = new ObjectStore(fangorn.getStorage());
+
+            for await (const { cid, commit } of objects.walkParents(head, options.max)) {
+                const when = new Date(commit.timestamp).toISOString();
+                console.log(`commit ${cid}`);
+                console.log(`Author: ${commit.author}`);
+                console.log(`Date:   ${when}`);
+                console.log(`Tree:   ${commit.tree}`);
+                console.log(`\n    ${commit.message}\n`);
+            }
+            process.exit(0);
+        } catch (err) {
+            console.error("Failed:", (err as Error).message);
+            process.exit(1);
+        }
+    });
+
+program
+    .command("show")
+    .description("Show a commit and what it changed vs. its parent")
+    .argument("[commit]", "Commit CID (default: local HEAD)")
+    .action(async (commitArg: string | undefined) => {
+        try {
+            const repo = LocalRepo.open();
+            const target = commitArg ?? repo.head();
+            if (!target) throw new Error("no commit to show — no commits yet");
+            const fangorn = getFangorn();
+            const objects = new ObjectStore(fangorn.getStorage());
+
+            const commit = await objects.getCommit(target);
+            const diff = await objects.diffCommit(target);
+
+            console.log(`commit ${target}`);
+            console.log(`Author:  ${commit.author}`);
+            console.log(`Date:    ${new Date(commit.timestamp).toISOString()}`);
+            console.log(`Parents: ${commit.parents.length ? commit.parents.join(", ") : "(root)"}`);
+            console.log(`Tree:    ${commit.tree}`);
+            console.log(`\n    ${commit.message}\n`);
+            console.log(`Changes vs. parent:  +${diff.added.length.toString()} blob(s), -${diff.removed.length.toString()} blob(s)`);
+            for (const c of diff.added) console.log(`  + ${c}`);
+            for (const c of diff.removed) console.log(`  - ${c}`);
             process.exit(0);
         } catch (err) {
             console.error("Failed:", (err as Error).message);

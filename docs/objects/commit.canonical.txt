@@ -1,0 +1,1 @@
+{"author":"0x1234567890abcdef1234567890abcdef12345678","embed":{"dim":256,"distance":"Cosine","model":"nomic-ai/nomic-embed-text-v1.5"},"kind":"commit","message":"remove 10 stale places; add café dataset","parents":["bafyParentCommitCID"],"root":"0xabc123","schemaId":"0xdeadbeef","timestamp":1700000000000,"tree":"bafyTreeManifestCID"}
