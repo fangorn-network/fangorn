@@ -27,7 +27,7 @@ export default function getNetwork(name: string) {
 
 export interface AppConfig {
 	// The deployed publisher_registry contract address
-	publisherRegistryContractAddress: Hex;
+	dataRegistryContractAddress: Hex;
 	// The viem chain
 	chain: Chain;
 	// The public rpc address of the chain we are connecting to
@@ -39,8 +39,8 @@ export interface AppConfig {
 }
 
 export const FangornConfig = {
-	publisherRegistryContractAddress:
-		"0x72e798cd0bfd19118c53767d3f7be509b22e7168",
+	dataRegistryContractAddress:
+		"0x9a3811b365a4aeea1626eaad185b273424ae5e48",
 	chain: arbitrumSepolia,
 	rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
 	caip2: 421614,

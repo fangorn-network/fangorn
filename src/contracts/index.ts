@@ -1,2 +1,2 @@
-export * from "./publisher-registry/index.js";
-export { PUBLISHER_REGISTRY_ABI } from "./publisher-registry/abi.js";
+export * from "./data-registry/index.js";
+export { DATA_REGISTRY_ABI } from "./data-registry/abi.js";

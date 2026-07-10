@@ -1,16 +1,14 @@
 {
-	"compilerOptions": {
-		"outDir": "./dist",
-		"rootDir": "./src",
-		"target": "esnext",
-		"esModuleInterop": true,
-		"declaration": true,
-		"resolveJsonModule": true,
-		"module": "ESNext",
-		"moduleResolution": "bundler",
-		"strict": true,
-		"skipLibCheck": true
-	},
-	"include": ["src/**/*"],
-	"exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
+    "compilerOptions": {
+        "outDir": "./dist",
+        "rootDir": "./src",
+        "target": "esnext",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "skipLibCheck": true,
+        "types": ["node"],
+        "typeRoots": ["./node_modules/@types"]
+    },
+    "include": ["src/**/*"]
 }

@@ -1,7 +1,9 @@
 import { PinataSDK } from "pinata";
+import * as dagCbor from "@ipld/dag-cbor";
 import { MetadataStorage, StorageMeta } from "./types.js";
 import { serialize, retrieveByCid } from "./utils.js";
 import { packCar } from "./car.js";
+import { keccak256, stringToBytes } from "viem";
 
 // Pinata's upload endpoint intermittently drops connections (HTTP 408 "client
 // disconnected") and overloads (5xx/429), especially under parallel uploads on a
@@ -48,6 +50,31 @@ export class PinataBackend implements MetadataStorage {
         });
     }
 
+    async update(data: unknown, meta?: StorageMeta): Promise<string> {
+        const content = serialize(data);
+        const name = meta?.name ?? "file";
+
+        return withUploadRetry(name, async () => {
+            const file = new File([content], name, { type: "text/plain" });
+
+            // 1. Upload the file to get the CID and Pinata's internal File UUID
+            const upload = await this.pinata.upload.public.file(file).name(name);
+
+            // 2. Compute the state root deterministically from the generated CID
+            const stateRoot = keccak256(stringToBytes(upload.cid)).toLowerCase();
+
+            // 3. Automatically patch the metadata so it's instantly indexable by state root
+            await this.pinata.files.public.update({
+                // Must use the file's unique Pinata ID here
+                id: upload.id,
+                keyvalues: { stateRoot }
+            });
+
+            // 4. Return the clean CID back to Fangorn
+            return upload.cid;
+        });
+    }
+
     /**
      * Pack every item into ONE locally-built CAR and upload it as a single pin,
      * collapsing N uploads into one request. Returns each item's `ipfs://<root>/<name>`
@@ -68,15 +95,77 @@ export class PinataBackend implements MetadataStorage {
         return uriByName;
     }
 
+
     async get<T>(uri: string): Promise<T> {
-        // Use the dedicated Pinata gateway — freshly pinned content is served
-        // immediately there, whereas the public ipfs.io gateway lags propagation
-        // and times out on just-published CIDs.
-        return retrieveByCid<T>(uri, this.gateway);
+        let attempts = 5;
+        let lastError: any;
+
+        while (attempts > 0) {
+            try {
+                // Let the SDK perform its signed fetch
+                const { data, contentType } = await this.pinata.gateways.public.get(uri);
+
+                // Handle binary data payloads natively
+                if (uri.startsWith('bafyrei') || contentType === 'application/octet-stream') {
+                    const buffer = data instanceof Blob
+                        ? await data.arrayBuffer()
+                        : data;
+
+                    return dagCbor.decode(new Uint8Array(buffer as ArrayBuffer)) as T;
+                }
+
+                return data as T;
+            } catch (error: any) {
+                // If it's a Pinata replication lag error (ERR_ID:00006 or 403/404), back off and retry
+                lastError = error;
+                attempts--;
+
+                if (attempts === 0) break;
+
+                // Wait 1 second before trying again to allow the gateway ledger to sync
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        }
+
+        throw new Error(`Pinata SDK failed to retrieve block ${uri} after multiple attempts. Internal Error: ${lastError?.message || lastError}`);
     }
+
+    // async get<T>(uri: string): Promise<T> {
+    //     // Use the dedicated Pinata gateway — freshly pinned content is served
+    //     // immediately there, whereas the public ipfs.io gateway lags propagation
+    //     // and times out on just-published CIDs.
+    //     return retrieveByCid<T>(uri, this.gateway);
+    // }
 
     static async getStatic<T>(uri: string, gateway?: string): Promise<T> {
         return retrieveByCid<T>(uri, gateway);
+    }
+
+    /// Queries Pinata's indexed metadata for the matching EVM root hash
+    async getCidByStateRoot(stateRoot: string, retries = 5, delay = 1000): Promise<string> {
+        const formattedRoot = stateRoot.toLowerCase();
+
+        for (let i = 0; i < retries; i++) {
+            const response = await this.pinata.files.public
+                .list()
+                .keyvalues({ stateRoot: formattedRoot });
+
+            if (response && response.files && response.files.length > 0) {
+                return response.files[0].cid;
+            }
+
+            // If we haven't found it yet, pause and let the cloud indexer propagate
+            if (i < retries - 1) {
+                console.warn(
+                    `
+                    [Pinata] Indexing lag detected for root ${formattedRoot}. Retrying in ${delay * (i + 1)}ms...
+                    `
+                );
+                await new Promise(resolve => setTimeout(resolve, delay * (i + 1)));
+            }
+        }
+
+        throw new Error(`No matching IPFS CID found for state root: ${stateRoot} after ${retries} retrieval attempts.`);
     }
 
     async delete(uri: string): Promise<void> {

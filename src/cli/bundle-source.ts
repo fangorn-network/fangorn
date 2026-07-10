@@ -19,7 +19,7 @@ import { type Hex } from "viem";
 
 import { type Fangorn } from "../fangorn.js";
 import { type BundleInput, type NodeIdentity, type SchemaDefinition } from "../roles/schema/types.js";
-import { type FieldInput } from "../roles/publisher/types.js";
+import { type FieldInput } from "../roles/old_publisher/types.js";
 import { resourceId } from "../utils/manifest.js";
 
 // ── data shapes (schemagen output + the streamed node/edge records) ────────────
@@ -167,7 +167,7 @@ export async function ensureResolver(
 ): Promise<Hex> {
     let id: Hex | null = null;
     try {
-        const registry = fangorn.getPublisherRegistry();
+        const registry = fangorn.getDataRegistry();
         const owner = fangorn.getAddress();
         const computedId = registry.schemaId(name);
         if (await registry.getBucketSchemaExists(owner, computedId)) id = computedId;
@@ -270,7 +270,7 @@ export async function prepareBundleSource(
     }
     let bundleId: Hex | null = null;
     try {
-        const registry = fangorn.getPublisherRegistry();
+        const registry = fangorn.getDataRegistry();
         const owner = fangorn.getAddress();
         const computedId = registry.schemaId(bundle.name);
         if (await registry.getBucketSchemaExists(owner, computedId)) bundleId = computedId;
@@ -335,7 +335,7 @@ export async function resolveViewSources(
     },
 ): Promise<ResolvedViewSources> {
     const log = opts.log ?? (() => { /* silent */ });
-    const registry = fangorn.getPublisherRegistry();
+    const registry = fangorn.getDataRegistry();
     const owner = fangorn.getAddress();
     const sourceSchemas = new Set<Hex>();
 
@@ -388,7 +388,7 @@ export async function ensureView(
     skip: boolean,
     log: (msg: string) => void = () => { /* silent */ },
 ): Promise<Hex> {
-    const registry = fangorn.getPublisherRegistry();
+    const registry = fangorn.getDataRegistry();
     const owner = fangorn.getAddress();
     const computedViewId = registry.schemaId(name);
     if (await registry.getBucketSchemaExists(owner, computedViewId)) {

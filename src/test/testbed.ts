@@ -7,131 +7,111 @@ import {
 import { arbitrumSepolia, baseSepolia } from "viem/chains";
 import { Fangorn } from "../fangorn.js";
 import { type AppConfig, FangornConfig } from "../config.js";
-import { BundleInput, type SchemaDefinition, type TypeDefinition } from "../roles/schema/index.js";
-import { FieldInput, PublishRecord } from "../roles/publisher/types.js";
+import { StringDecoder } from "node:string_decoder";
 
 export class TestBed {
     private constructor(
-        private readonly delegatorAddress: Address,
-        private readonly delegatorFangorn: Fangorn,
-        private readonly delegateeFangorn: Fangorn,
+        private readonly f_list: Fangorn[],
     ) { }
 
-    // NOTE: the legacy 10-arg shape is kept so existing callers (e2e + the
-    // embeddings test scripts) don't have to change. The datasource/schema/
-    // settlement/usdc addresses are dead now that everything proxies through the
-    // publisher registry — accepted and ignored. Pass the publisher registry via
-    // `publisherRegistryContractAddress` (the old dataSourceRegistry slot); it
-    // falls back to the deployed default.
     static init(
-        delegatorWalletClient: WalletClient,
-        publisherRegistryContractAddress: Hex,
-        _schemaRegistryContractAddress: Hex,
-        _settlementRegistryContractAddress: Hex,
-        _usdcContractAddress: Hex,
-        _usdcDomainName: string,
-        rpcUrl: string,
-        chain: string,
-        caip2: number,
-        _workerUrl: string,
+        sks: Hex[],
     ): TestBed {
-        let chainImpl: Chain = arbitrumSepolia;
-        if (chain === "baseSepolia") chainImpl = baseSepolia;
-
-        const config: AppConfig = {
-            publisherRegistryContractAddress:
-                publisherRegistryContractAddress || FangornConfig.publisherRegistryContractAddress,
-            chain: chainImpl,
-            rpcUrl,
-            caip2,
-            ipfsGateway: process.env.PINATA_GATEWAY ?? "https://ipfs.io",
-        };
-
-        const delegatorFangorn = Fangorn.create({
-            privateKey: (process.env.DELEGATOR_ETH_PRIVATE_KEY ?? "0x0") as Hex,
-            storage: {
-                pinata: {
-                    jwt: process.env.PINATA_JWT ?? "",
-                    gateway: process.env.PINATA_GATEWAY ?? "",
+        // populate fangorn forest
+        let f_list: Fangorn[] = [];
+        sks.forEach(sk => {
+            f_list.push(Fangorn.create({
+                privateKey: sk,
+                storage: {
+                    pinata: {
+                        jwt: process.env.PINATA_JWT ?? "",
+                        gateway: process.env.PINATA_GATEWAY ?? "",
+                    },
                 },
-            },
-            config,
-            domain: "localhost"
-        });
+            }));
+        })
 
-        const delegateeFangorn = Fangorn.create({
-            privateKey: (process.env.DELEGATEE_ETH_PRIVATE_KEY ?? "0x0") as Hex,
-            config,
-            domain: "localhost",
-        });
-
-        if (!delegatorWalletClient.account) throw new Error("Delegator account not found");
-
-        return new TestBed(
-            delegatorWalletClient.account.address,
-            delegatorFangorn,
-            delegateeFangorn,
-        );
+        return new TestBed(f_list)
     }
 
-    // Schema owner
-    async registerSchema(
+    getFangorn(index: number): Fangorn {
+        if (index > this.f_list.length) throw new Error("index out of bounds")
+        const fangorn = this.f_list[index];
+        return fangorn;
+    }
+
+    // register as a publisher
+    async register(
+        index: number
+    ) {
+        const fangorn = this.getFangorn(index)
+        const accountAddress = fangorn.getAddress();
+
+        const registry = fangorn.getDataRegistry();
+        const isRegistered = await registry.isRegistered(accountAddress);
+        if (!isRegistered) {
+            console.log("Registering publisher on-chain...");
+            await registry.register();
+        }
+    }
+
+    async initRepo(index: number, name: string) {
+        const fangorn = this.getFangorn(index)
+        const res = await fangorn.initRepo(name);
+        // cid, root, txhash
+        return res;
+    }
+
+    // 
+    async upload(
+        /// the f_list index
+        index: number,
+        // the repo/namespace
+        namespace: string,
+        // the payload itseld
+        payload: any,
+        // name of the payload
         name: string,
-        definition: SchemaDefinition,
-        types?: Record<string, TypeDefinition>,
-    ): Promise<Hex> {
-        const { schemaId } = await this.delegatorFangorn.schema.register({
-            name,
-            definition,
-            types,
-        });
-        return schemaId;
+    ) {
+        throw new Error("fail")
+        // const fangorn = this.getFangorn(index);
+        // const res = await fangorn.upload(namespace, payload, name);
+        // // cid, root, txhash, newHead
+        // return res;
     }
 
-    // Publisher
-    async publish(
-        records: PublishRecord[],
-        schemaName: string,
-        datasetName: string,
-        chunkSize?: number,
-        concurrency?: number
-    ): Promise<string> {
-        const { manifestUri } = await this.delegatorFangorn.publisher.publishRecords({
-            records,
-            schemaName,
-            datasetName,
-            chunkSize,
-            concurrency,
-        });
-        return manifestUri;
+    async fetch(index: number, cid: string) {
+        const fangorn = this.getFangorn(index);
+        const retrieved = fangorn.getStorage().get<any>(cid);
+        return retrieved;
     }
 
-    // "bundle" funcs
-    async registerBundle(name: string, bundle: BundleInput): Promise<Hex> {
-        const { schemaId } = await this.delegatorFangorn.schema.register({
-            kind: "bundle",
-            name,
-            bundle,
-        });
-        return schemaId;
-    }
+    // // "bundle" funcs
+    // async registerBundle(name: string, bundle: BundleInput): Promise<Hex> {
+    //     const { schemaId } = await this.delegatorFangorn.schema.register({
+    //         kind: "bundle",
+    //         name,
+    //         bundle,
+    //     });
+    //     return schemaId;
+    // }
 
-    async publishBundle(
-        bundleName: string,
-        nodes: { id: string; type: string; fields: Record<string, FieldInput> }[],
-        edges: { rel: string; from: string; to: string }[],
-        datasetName?: string,
-    ): Promise<string> {
-        const { manifestUri } = await this.getDelegatorFangorn().publisher.publishBundle({
-            bundleName,
-            nodes,
-            edges,
-            datasetName,
-        });
-        return manifestUri;
-    }
+    // async publishBundle(
+    //     bundleName: string,
+    //     nodes: { id: string; type: string; fields: Record<string, FieldInput> }[],
+    //     edges: { rel: string; from: string; to: string }[],
+    //     datasetName?: string,
+    // ): Promise<string> {
+    //     const { manifestUri } = await this.getDelegatorFangorn().publisher.publishBundle({
+    //         bundleName,
+    //         nodes,
+    //         edges,
+    //         datasetName,
+    //     });
+    //     return manifestUri;
+    // }
 
-    getDelegatorAddress(): Address { return this.delegatorAddress; }
-    getDelegatorFangorn(): Fangorn { return this.delegatorFangorn; }
-    getDelegateeFangorn(): Fangorn { return this.delegateeFangorn; }
+    // getDelegatorAddress(): Address { return this.delegatorAddress; }
+    // getDelegatorFangorn(): Fangorn { return this.delegatorFangorn; }
+    // getDelegateeFangorn(): Fangorn { return this.delegateeFangorn; }
 }

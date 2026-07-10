@@ -1,6 +1,6 @@
 import { Hex, WalletClient } from "viem";
 import { AppConfig } from "../config.js";
-import { PublisherRegistry } from "../contracts/publisher-registry/index.js";
+import { PublisherRegistry } from "../contracts/data-registry/index.js";
 // import { SchemaRoleConfig } from "../registries/settlement-registry/types.js";
 import { MetadataStorage } from "../providers/storage/types.js";
 import { SchemaRoleConfig } from "../roles/schema/types.js";
@@ -11,7 +11,7 @@ export interface FangornContext {
     metadataStorage: MetadataStorage | undefined;
     // workerUrl: string | undefined;
     domain: string;
-    publisherRegistry: PublisherRegistry;
+    dataRegistry: PublisherRegistry;
     schemaRoleConfig: SchemaRoleConfig | undefined;
 }
 

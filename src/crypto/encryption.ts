@@ -2,7 +2,7 @@ import { x25519 } from "@noble/curves/ed25519";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { hkdf } from "@noble/hashes/hkdf.js";
 import { bytesToHex, hexToBytes, type Hex } from "viem";
-import { HandleFieldInput } from "../roles/publisher/types";
+import { HandleFieldInput } from "../roles/old_publisher/types";
 import { aesGcmEncrypt, aesGcmDecrypt, GCM_NONCE_LENGTH } from "./aes.js";
 import { getRandomValues } from "./rand.js";
 

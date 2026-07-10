@@ -7,7 +7,7 @@ import type {
     BundleManifest,
     ViewManifest,
     LinksetManifest,
-} from "../roles/publisher/types.js";
+} from "../roles/old_publisher/types.js";
 
 export type AnyManifest = Manifest | BundleManifest | ViewManifest | LinksetManifest;
 

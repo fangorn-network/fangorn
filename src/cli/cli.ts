@@ -36,7 +36,7 @@ import { handleCancel, selectChain } from "./index.js";
 import type { SchemaDefinition } from "../roles/schema/index.js";
 import { AgentConfig } from "../types/index.js";
 import { AppConfig, FangornConfig, SupportedNetworks } from "../config.js";
-import { PublishRecord } from "../roles/publisher/types.js";
+import { PublishRecord } from "../roles/old_publisher/types.js";
 import { LocalRepo } from "../roles/repo/index.js";
 import { ObjectStore } from "../objects/store.js";
 import { EmbedContract } from "../objects/types.js";
@@ -701,7 +701,7 @@ bucketCmd
     .action(async () => {
         try {
             const self = getAccount().address;
-            const registry = getFangorn().getPublisherRegistry();
+            const registry = getFangorn().getDataRegistry();
             const s = spinner();
 
             // if (await registry.isRegistered(self)) {
@@ -731,7 +731,7 @@ bucketCmd
         try {
             const self = getAccount().address;
             const owner = options.owner ?? self;
-            const registry = getFangorn().getPublisherRegistry();
+            const registry = getFangorn().getDataRegistry();
 
             if (!(await registry.isRegistered(owner))) {
                 log.warn(`${owner} is not registered. Run \`fangorn bucket create\`.`);

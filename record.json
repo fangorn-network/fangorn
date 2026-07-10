@@ -3,120 +3,136 @@
         "name": "red_book_index",
         "fields": {
             "filename": "index.md",
-            "parentId": "",
-            "content": "# The Red Book of Westmarch\n\nThis volume contains the compiled chronicles of the Third Age, detailing the War of the Ring. Use these indexes to navigate the localized knowledge base:\n\n* **Geopolitical Realms:** [[lothlorien]], [[khazad_dum]], [[mordor_realm]]\n* **Key Artifacts:** [[the_one_ring]], [[phial_of_galadriel]], [[mithril_ore]]\n* **Historical Records:** [[council_of_elrond]], [[disaster_gladden_fields]]\n* **Personnel Profiles:** [[gandalf_the_grey]], [[sauron_the_deceiver]], [[galadriel_lady]], [[gollum_creature]]"
+            "parent": "",
+            "text": "# The Red Book of Westmarch\n\nThis volume contains the compiled chronicles of the Third Age, detailing the War of the Ring. Use these indexes to navigate the localized knowledge base:\n\n* **Geopolitical Realms:** [[lothlorien]], [[khazad_dum]], [[mordor_realm]]\n* **Key Artifacts:** [[the_one_ring]], [[phial_of_galadriel]], [[mithril_ore]]\n* **Historical Records:** [[council_of_elrond]], [[disaster_gladden_fields]]\n* **Personnel Profiles:** [[gandalf_the_grey]], [[sauron_the_deceiver]], [[galadriel_lady]], [[gollum_creature]]"
         }
     },
     {
         "name": "the_one_ring",
         "fields": {
             "filename": "items/the_one_ring.md",
-            "parentId": "index.md",
-            "content": "# Isildur's Bane (The One Ring)\n\nForged surreptitiously in the fires of Orodruin by [[sauron_the_deceiver]], this talisman was designed to dominate the thoughts and wills of the Elven, Dwarven, and Mortal kings who wore the lesser Rings of Power.\n\n### Historical Vector Traversal\n- **Lost:** Traced to the Anduin river during the [[disaster_gladden_fields]].\n- **Recovered:** Spent centuries hidden in the Misty Mountains by [[gollum_creature]].\n- **Current Status:** Formally debated at length during the [[council_of_elrond]].\n\n### Material Characteristics\nThough appearing as plain gold, exposure to intense heat reveals an inscription in the Black Speech of Mordor, a language banned in civilized realms."
+            "parent": "index.md",
+            "text": "# Isildur's Bane (The One Ring)\n\nForged surreptitiously in the fires of Orodruin by [[sauron_the_deceiver]], this talisman was designed to dominate the thoughts and wills of the Elven, Dwarven, and Mortal kings who wore the lesser Rings of Power.\n\n### Historical Vector Traversal\n- **Lost:** Traced to the Anduin river during the [[disaster_gladden_fields]].\n- **Recovered:** Spent centuries hidden in the Misty Mountains by [[gollum_creature]].\n- **Current Status:** Formally debated at length during the [[council_of_elrond]].\n\n### Material Characteristics\nThough appearing as plain gold, exposure to intense heat reveals an inscription in the Black Speech of Mordor, a language banned in civilized realms."
         }
     },
     {
         "name": "sauron_the_deceiver",
         "fields": {
             "filename": "factions/mordor/sauron.md",
-            "parentId": "index.md",
-            "content": "# Sauron, The Lord of the Earth\n\nOnce a noble Maia named Mairon, he was corrupted by Morgoth. Operating from his dark seat at Barad-dûr within [[mordor_realm]], he orchestrates the global assault against the Free Peoples. \n\nHe requires the physical return of [[the_one_ring]] to reconstitute his total dominion. He uses the Nazgûl (Ringwraiths) as his primary agents to hunt the current bearer. He maintains deep enmity toward [[gandalf_the_grey]], whom he recognizes as a primary strategic adversary."
+            "parent": "index.md",
+            "text": "# Sauron, The Lord of the Earth\n\nOnce a noble Maia named Mairon, he was corrupted by Morgoth. Operating from his dark seat at Barad-dûr within [[mordor_realm]], he orchestrates the global assault against the Free Peoples. \n\nHe requires the physical return of [[the_one_ring]] to reconstitute his total dominion. He uses the Nazgûl (Ringwraiths) as his primary agents to hunt the current bearer. He maintains deep enmity toward [[gandalf_the_grey]], whom he recognizes as a primary strategic adversary."
         }
     },
     {
         "name": "gandalf_the_grey",
         "fields": {
             "filename": "personnel/gandalf.md",
-            "parentId": "index.md",
-            "content": "# Gandalf (Mithrandir)\n\nAn Istar (wizard) sent by the Valar to counsel and mobilize resistance against [[sauron_the_deceiver]]. He does not match Sauron with military might, but through diplomatic influence, historical insight, and encouragement.\n\n### Strategic Intersections\n- Uncovered the truth of [[the_one_ring]] by researching ancient archives in Minas Tirith.\n- Orchestrated the security parameters for the [[council_of_elrond]].\n- Fell into the subterranean abyss of [[khazad_dum]] while defending the Fellowship from a primordial Balrog.\n- Visited [[lothlorien]] post-resurrection to receive new raiment."
+            "parent": "index.md",
+            "text": "# Gandalf (Mithrandir)\n\nAn Istar (wizard) sent by the Valar to counsel and mobilize resistance against [[sauron_the_deceiver]]. He does not match Sauron with military might, but through diplomatic influence, historical insight, and encouragement.\n\n### Strategic Intersections\n- Uncovered the truth of [[the_one_ring]] by researching ancient archives in Minas Tirith.\n- Orchestrated the security parameters for the [[council_of_elrond]].\n- Fell into the subterranean abyss of [[khazad_dum]] while defending the Fellowship from a primordial Balrog.\n- Visited [[lothlorien]] post-resurrection to receive new raiment."
         }
     },
     {
         "name": "gollum_creature",
         "fields": {
             "filename": "personnel/gollum.md",
-            "parentId": "index.md",
-            "content": "# The Creature Gollum (Sméagol)\n\nOriginally a Stoor Hobbit dwelling near the Anduin River, adjacent to the location of the [[disaster_gladden_fields]]. He murdered his kin, Déagol, to possess [[the_one_ring]].\n\n### Behavioral Profile\nExtended exposure to the artifact warped his anatomy and mind, generating a split personality: the submissive 'Sméagol' and the murderous 'Gollum'. He lost the artifact to Bilbo Baggins inside the roots of the Misty Mountains near [[khazad_dum]]. He was later captured and tortured in [[mordor_realm]], where he revealed the words 'Shire' and 'Baggins' under duress."
+            "parent": "index.md",
+            "text": "# The Creature Gollum (Sméagol)\n\nOriginally a Stoor Hobbit dwelling near the Anduin River, adjacent to the location of the [[disaster_gladden_fields]]. He murdered his kin, Déagol, to possess [[the_one_ring]].\n\n### Behavioral Profile\nExtended exposure to the artifact warped his anatomy and mind, generating a split personality: the submissive 'Sméagol' and the murderous 'Gollum'. He lost the artifact to Bilbo Baggins inside the roots of the Misty Mountains near [[khazad_dum]]. He was later captured and tortured in [[mordor_realm]], where he revealed the words 'Shire' and 'Baggins' under duress."
         }
     },
     {
         "name": "council_of_elrond",
         "fields": {
             "filename": "events/council_of_elrond.md",
-            "parentId": "index.md",
-            "content": "# The Council of Elrond (Logistics & Outcomes)\n\nConvened in Imladris (Rivendell) to resolve the geopolitical crisis surrounding [[the_one_ring]]. \n\n### Intelligence Briefings\n- **Gimli** reported the suspicious silence from Balin's colony in [[khazad_dum]].\n- **Legolas** revealed that [[gollum_creature]] had escaped confinement from Mirkwood.\n- **[[gandalf_the_grey]]** presented proof of the Ring's identity.\n\n### Strategic Resolutions\nThe Council rejected options to send the Ring to [[lothlorien]] or to hide it indefinitely, determining that it must be physically transported to [[mordor_realm]] for total destruction."
+            "parent": "index.md",
+            "text": "# The Council of Elrond (Logistics & Outcomes)\n\nConvened in Imladris (Rivendell) to resolve the geopolitical crisis surrounding [[the_one_ring]]. \n\n### Intelligence Briefings\n- **Gimli** reported the suspicious silence from Balin's colony in [[khazad_dum]].\n- **Legolas** revealed that [[gollum_creature]] had escaped confinement from Mirkwood.\n- **[[gandalf_the_grey]]** presented proof of the Ring's identity.\n\n### Strategic Resolutions\nThe Council rejected options to send the Ring to [[lothlorien]] or to hide it indefinitely, determining that it must be physically transported to [[mordor_realm]] for total destruction."
         }
     },
     {
         "name": "khazad_dum",
         "fields": {
             "filename": "geography/khazad_dum.md",
-            "parentId": "index.md",
-            "content": "# Khazad-dûm (The Mansions of Aulë)\n\nA vast underground city beneath the Misty Mountains. Once a thriving trade hub with the Elves of Eregion, it was abandoned due to the awakening of a subterranean terror.\n\n### Resource Profile\nThe global epicenter for [[mithril_ore]]. The mining operations inadvertently ruptured a deep chamber housing a dormant demon from the First Age. Centuries later, the Fellowship attempted passage through its dark halls, resulting in the temporary destruction of [[gandalf_the_grey]]."
+            "parent": "index.md",
+            "text": "# Khazad-dûm (The Mansions of Aulë)\n\nA vast underground city beneath the Misty Mountains. Once a thriving trade hub with the Elves of Eregion, it was abandoned due to the awakening of a subterranean terror.\n\n### Resource Profile\nThe global epicenter for [[mithril_ore]]. The mining operations inadvertently ruptured a deep chamber housing a dormant demon from the First Age. Centuries later, the Fellowship attempted passage through its dark halls, resulting in the temporary destruction of [[gandalf_the_grey]]."
         }
     },
     {
         "name": "mithril_ore",
         "fields": {
             "filename": "items/mithril.md",
-            "parentId": "geography/khazad_dum.md",
-            "content": "# Mithril (True-Silver)\n\nA highly malleable, impossibly light, and nearly indestructible metallic ore unique to the deep veins of [[khazad_dum]]. \n\nIts geopolitical value is immeasurable. The Elves of Eregion used it to create Ithildin, an alloy that reflects only starlight and moonlight, used on the West-gate of Moria. The physical scarcity of this material directly caused the Dwarves to delve dangerously deep into the roots of the world."
+            "parent": "geography/khazad_dum.md",
+            "text": "# Mithril (True-Silver)\n\nA highly malleable, impossibly light, and nearly indestructible metallic ore unique to the deep veins of [[khazad_dum]]. \n\nIts geopolitical value is immeasurable. The Elves of Eregion used it to create Ithildin, an alloy that reflects only starlight and moonlight, used on the West-gate of Moria. The physical scarcity of this material directly caused the Dwarves to delve dangerously deep into the roots of the world."
         }
     },
     {
         "name": "disaster_gladden_fields",
         "fields": {
             "filename": "history/gladden_fields.md",
-            "parentId": "index.md",
-            "content": "# The Disaster of the Gladden Fields\n\nA pivotal military ambush occurring in the year 2 of the Third Age. Orc remnants fleeing the fall of [[sauron_the_deceiver]] attacked the host of High King Isildur.\n\n### Semantic Significance\nIsildur attempted to escape by using [[the_one_ring]] to turn invisible and swim across the Anduin. However, the Ring slipped from his finger, betraying him to Orc archers. The Ring settled into the river muck for millennia until discovered by the ancestors of [[gollum_creature]]. This event directly caused the fracturing of the Northern Kingdom of Arnor."
+            "parent": "index.md",
+            "text": "# The Disaster of the Gladden Fields\n\nA pivotal military ambush occurring in the year 2 of the Third Age. Orc remnants fleeing the fall of [[sauron_the_deceiver]] attacked the host of High King Isildur.\n\n### Semantic Significance\nIsildur attempted to escape by using [[the_one_ring]] to turn invisible and swim across the Anduin. However, the Ring slipped from his finger, betraying him to Orc archers. The Ring settled into the river muck for millennia until discovered by the ancestors of [[gollum_creature]]. This event directly caused the fracturing of the Northern Kingdom of Arnor."
         }
     },
     {
         "name": "lothlorien",
         "fields": {
             "filename": "geography/lothlorien.md",
-            "parentId": "index.md",
-            "content": "# Lothlórien (The Golden Wood)\n\nAn Elven realm guarded by [[galadriel_lady]]. It acts as a temporal and spiritual sanctuary against the shadow of [[sauron_the_deceiver]].\n\n### Environmental Properties\nThe forest is preserved using Nenya, one of the three Elven Rings of Power. Time flows differently within its borders. The realm produces critical survival resources, including [[lembas_bread]], which are gifted to travelers defying the military forces of [[mordor_realm]]."
+            "parent": "index.md",
+            "text": "# Lothlórien (The Golden Wood)\n\nAn Elven realm guarded by [[galadriel_lady]]. It acts as a temporal and spiritual sanctuary against the shadow of [[sauron_the_deceiver]].\n\n### Environmental Properties\nThe forest is preserved using Nenya, one of the three Elven Rings of Power. Time flows differently within its borders. The realm produces critical survival resources, including [[lembas_bread]], which are gifted to travelers defying the military forces of [[mordor_realm]]."
         }
     },
     {
         "name": "galadriel_lady",
         "fields": {
             "filename": "personnel/galadriel.md",
-            "parentId": "geography/lothlorien.md",
-            "content": "# Galadriel, Lady of the Galadhrim\n\nOne of the greatest of the Eldar remaining in Middle-earth. She co-rules [[lothlorien]] alongside Celeborn. \n\n### Intelligence & Artifacts\nShe possesses a mirror that reveals past, present, and potential futures—a tool used to provide guidance to the Fellowship. Upon their departure, she distributed critical assets, including the [[phial_of_galadriel]] to Frodo Baggins, and authorized the provisions of [[lembas_bread]]. She successfully resisted the temptation to claim [[the_one_ring]] when it was offered freely to her."
+            "parent": "geography/lothlorien.md",
+            "text": "# Galadriel, Lady of the Galadhrim\n\nOne of the greatest of the Eldar remaining in Middle-earth. She co-rules [[lothlorien]] alongside Celeborn. \n\n### Intelligence & Artifacts\nShe possesses a mirror that reveals past, present, and potential futures—a tool used to provide guidance to the Fellowship. Upon their departure, she distributed critical assets, including the [[phial_of_galadriel]] to Frodo Baggins, and authorized the provisions of [[lembas_bread]]. She successfully resisted the temptation to claim [[the_one_ring]] when it was offered freely to her."
         }
     },
     {
         "name": "phial_of_galadriel",
         "fields": {
             "filename": "items/phial.md",
-            "parentId": "geography/lothlorien.md",
-            "content": "# The Phial of Galadriel\n\nA crystal vessel containing water from [[galadriel_lady]]'s mirror, capturing the light of Eärendil’s Star (the Silmaril).\n\n### Functional Architecture\nIt was engineered to provide illumination in places where all other lights go out. It acts as a direct counter-measure to the psychological and physical gloom generated by [[sauron_the_deceiver]]. It proves critical during infiltrations into the mountain passes guarding [[mordor_realm]]."
+            "parent": "geography/lothlorien.md",
+            "text": "# The Phial of Galadriel\n\nA crystal vessel containing water from [[galadriel_lady]]'s mirror, capturing the light of Eärendil’s Star (the Silmaril).\n\n### Functional Architecture\nIt was engineered to provide illumination in places where all other lights go out. It acts as a direct counter-measure to the psychological and physical gloom generated by [[sauron_the_deceiver]]. It proves critical during infiltrations into the mountain passes guarding [[mordor_realm]]."
         }
     },
     {
         "name": "mordor_realm",
         "fields": {
             "filename": "geography/mordor.md",
-            "parentId": "index.md",
-            "content": "# The Land of Mordor\n\nA volcanic plateau fortified by mountain ranges, serving as the sovereign base of operations for [[sauron_the_deceiver]].\n\n### Key Inclusions\nContains the active volcano Orodruin (Mount Doom), the exclusive site capable of smelting or un-making [[the_one_ring]]. The ecosystem is heavily industrialized, completely hostile to life, and choked with ash. Its borders are constantly searched by the forces exposed during the [[council_of_elrond]]."
+            "parent": "index.md",
+            "text": "# The Land of Mordor\n\nA volcanic plateau fortified by mountain ranges, serving as the sovereign base of operations for [[sauron_the_deceiver]].\n\n### Key Inclusions\nContains the active volcano Orodruin (Mount Doom), the exclusive site capable of smelting or un-making [[the_one_ring]]. The ecosystem is heavily industrialized, completely hostile to life, and choked with ash. Its borders are constantly searched by the forces exposed during the [[council_of_elrond]]."
         }
     },
     {
         "name": "recipes_hub",
         "fields": {
             "filename": "recipes/index.md",
-            "parentId": "index.md",
-            "content": "# Waybread & Provisions\n\nA catalogue of survival items utilized by rangers, wanderers, and military companies across Middle-earth.\n\n* [[lembas_bread]] - High-density Elven ration."
+            "parent": "index.md",
+            "text": "# Waybread & Provisions\n\nA catalogue of survival items utilized by rangers, wanderers, and military companies across Middle-earth.\n\n* [[lembas_bread]] - High-density Elven ration."
         }
     },
     {
         "name": "lembas_bread",
         "fields": {
             "filename": "recipes/lembas.md",
-            "parentId": "recipes/index.md",
-            "content": "# Lembas (Elven Waybread)\n\nBaked under strict tradition in [[lothlorien]], this nutrient-dense sustenance is wrapped in mallorn leaves to maintain freshness. Breaking the wrapping is considered symbolic of entering a state of active transit or warfare.\n\nIngredients\n\n    300g cups of flour\n    1/2 tablespoon of baking powder\n    1/4 teaspoon of salt\n    113g of cold butter\n    60g cup of brown sugar\n    1 teaspoon of cinnamon\n    1/2 teaspoon honey\n    100ml of milk\n\nMethod\n\n    Preheat baking surface to 220°C\n    2) Combine dry ingredients including cinnamon.\n    3) Cut cold butter into the flour until granulated.\n    4) Bind using milk and liquid honey until a heavy dough forms.\n    5) Roll to uniform thickness and score diagonal cross-hatching.\n    6) Bake until hardened and pale gold."
+            "parent": "recipes/index.md",
+            "text": "# Lembas (Elven Waybread)\n\nBaked under strict tradition in [[lothlorien]], this nutrient-dense sustenance is wrapped in mallorn leaves to maintain freshness. Breaking the wrapping is considered symbolic of entering a state of active transit or warfare.\n\nIngredients\n\n    300g cups of flour\n    1/2 tablespoon of baking powder\n    1/4 teaspoon of salt\n    113g of cold butter\n    60g cup of brown sugar\n    1 teaspoon of cinnamon\n    1/2 teaspoon honey\n    100ml of milk\n\nMethod\n\n    Preheat baking surface to 220°C\n    2) Combine dry ingredients including cinnamon.\n    3) Cut cold butter into the flour until granulated.\n    4) Bind using milk and liquid honey until a heavy dough forms.\n    5) Roll to uniform thickness and score diagonal cross-hatching.\n    6) Bake until hardened and pale gold."
+        }
+    },
+    {
+        "name": "frodo_baggins",
+        "fields": {
+            "filename": "frodo_baggins.md",
+            "parent": "index.md",
+            "text": "# Frodo Baggins \n ## The ring bearer."
+        }
+    },
+     {
+        "name": "samwise_gamgee",
+        "fields": {
+            "filename": "samwise_gamgee.md",
+            "parent": "index.md",
+            "text": "# Samwise Gamgee \n ## The ring bearer... bearer"
         }
     }
 ]

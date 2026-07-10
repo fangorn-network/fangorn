@@ -32,7 +32,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { arbitrumSepolia } from "viem/chains";
 import { TestBed } from "./testbed.js";
 import { BundleInput, SchemaDefinition } from "../roles/schema/types.js";
-import { FieldInput } from "../roles/publisher/types.js";
+import { FieldInput } from "../roles/old_publisher/types.js";
 
 // Ledger of what each run created, so the cleanup script can unpin it later.
 export const LEDGER_FILE = process.env.EMBEDDINGS_TESTDATA_LEDGER ?? "tmp/embeddings-testdata.json";
