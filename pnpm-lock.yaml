@@ -23,6 +23,9 @@ importers:
       '@ipld/car':
         specifier: ^5.4.6
         version: 5.4.6
+      '@ipld/dag-cbor':
+        specifier: ^10.0.1
+        version: 10.0.1
       '@ipld/unixfs':
         specifier: ^3.0.0
         version: 3.0.0
@@ -59,6 +62,12 @@ importers:
       ethers:
         specifier: ^6.16.0
         version: 6.16.0
+      interface-blockstore:
+        specifier: ^7.0.1
+        version: 7.0.1
+      interface-store:
+        specifier: ^8.0.0
+        version: 8.0.0
       ipfs-car:
         specifier: ^3.1.0
         version: 3.1.0
@@ -80,6 +89,9 @@ importers:
       stream-json:
         specifier: ^3.4.0
         version: 3.4.0
+      uint8arrays:
+        specifier: ^6.1.1
+        version: 6.1.1
       viem:
         specifier: ^2.47.1
         version: 2.47.1(typescript@5.8.3)(zod@3.24.3)
@@ -1337,9 +1349,6 @@ packages:
       zod:
         optional: true
 
-  abort-error@1.0.1:
-    resolution: {integrity: sha512-fxqCblJiIPdSXIUrxI0PL+eJG49QdP9SQ70qtB65MVAoMr2rASlOyAbJFOylfB467F/f+5BCLJJq58RYi7mGfg==}
-
   abort-error@1.0.2:
     resolution: {integrity: sha512-lVgvB2NyPLqbXXhVmXcYFTC1x5K7CiVdPgdY7LGgFQWC8506oN01sPN3i9cl9ynuwF4iJ0TS9exnR7cZ9FuX4w==}
 
@@ -2104,6 +2113,9 @@ packages:
   interface-blockstore@5.3.2:
     resolution: {integrity: sha512-oA9Pjkxun/JHAsZrYEyKX+EoPjLciTzidE7wipLc/3YoHDjzsnXRJzAzFJXNUvogtY4g7hIwxArx8+WKJs2RIg==}
 
+  interface-blockstore@7.0.1:
+    resolution: {integrity: sha512-a3NsgRXpRppVWtQnJjmZ9jxvjcttY1+WNWqHFWwgKhRcNMMGwWGtFNYpQmcZ+mEnIt5NTJVYzNwLCcALMWPNsA==}
+
   interface-datastore@7.0.4:
     resolution: {integrity: sha512-Q8LZS/jfFFHz6XyZazLTAc078SSCoa27ZPBOfobWdpDiFO7FqPA2yskitUJIhaCgxNK8C+/lMBUTBNfVIDvLiw==}
     engines: {node: '>=16.0.0', npm: '>=7.0.0'}
@@ -2117,6 +2129,9 @@ packages:
 
   interface-store@6.0.3:
     resolution: {integrity: sha512-+WvfEZnFUhRwFxgz+QCQi7UC6o9AM0EHM9bpIe2Nhqb100NHCsTvNAn4eJgvgV2/tmLo1MP9nGxQKEcZTAueLA==}
+
+  interface-store@8.0.0:
+    resolution: {integrity: sha512-e2+s3EEROzM+Wlas4hU3zveTUscvVMf1BOvdsJfpzFm19SoEXLVadpACjWOnM491HqGpvtfFnevyiaN8W+I6Eg==}
 
   ipfs-car@3.1.0:
     resolution: {integrity: sha512-0131+UNxk3+2baxK7qmlwJcl/SEI51v/Avx91LdP9WfSfh9s+/qkGS3ukwtmeG7YIyMLvTruRXPvHiYkz/ejVQ==}
@@ -3812,7 +3827,7 @@ snapshots:
       '@chainsafe/is-ip': 2.1.0
       '@chainsafe/netmask': 2.0.0
       '@multiformats/dns': 1.0.13
-      abort-error: 1.0.1
+      abort-error: 1.0.2
       multiformats: 13.4.2
       uint8-varint: 2.0.4
       uint8arrays: 5.1.0
@@ -4604,8 +4619,6 @@ snapshots:
     optionalDependencies:
       typescript: 5.8.3
       zod: 3.24.3
-
-  abort-error@1.0.1: {}
 
   abort-error@1.0.2: {}
 
@@ -5439,6 +5452,11 @@ snapshots:
       interface-store: 6.0.3
       multiformats: 13.4.2
 
+  interface-blockstore@7.0.1:
+    dependencies:
+      interface-store: 8.0.0
+      multiformats: 14.0.0
+
   interface-datastore@7.0.4:
     dependencies:
       interface-store: 3.0.4
@@ -5453,6 +5471,10 @@ snapshots:
   interface-store@3.0.4: {}
 
   interface-store@6.0.3: {}
+
+  interface-store@8.0.0:
+    dependencies:
+      abort-error: 1.0.2
 
   ipfs-car@3.1.0:
     dependencies:

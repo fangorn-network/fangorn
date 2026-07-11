@@ -6,10 +6,13 @@
 /**
  * Cleanup counterpart to setup-embeddings-testdata.ts.
  *
- * Reads the ledger written by the setup script and unpins, for every recorded
- * run, the v3 bundle manifest plus all of its node + edge chunk CIDs from
- * Pinata. Schema registrations are on-chain and cannot be removed; this only
- * reclaims the IPFS pins the test data created.
+ * Reads the ledger written by the setup script and best-effort unpins, for
+ * every recorded run, the vertex CIDs it uploaded from Pinata. On-chain state
+ * (the namespace root) is not rewound — only `fangorn.reset()` (destructive,
+ * wipes ALL namespaces for that owner) can do that; this script only reclaims
+ * the IPFS pins for the vertex payloads themselves. Intermediate Pail shard
+ * blocks created alongside them are not individually tracked and are left
+ * pinned (they're small, content-addressed, and shared across commits).
  *
  * Run it:
  *
@@ -20,33 +23,10 @@
  */
 
 import { readFileSync, existsSync, writeFileSync } from "node:fs";
-import { createWalletClient, http, type Address, type Hex } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
-import { arbitrumSepolia } from "viem/chains";
-import { TestBed } from "./testbed.js";
 import { LEDGER_FILE, type LedgerEntry } from "./setup-embeddings-testdata.js";
 
-const SK = process.env.DELEGATOR_ETH_PRIVATE_KEY as Hex;
-const RPC_URL = process.env.RPC_URL ?? process.env.CHAIN_RPC_URL ?? "https://sepolia-rollup.arbitrum.io/rpc";
-const WORKER_URL = process.env.WORKER_URL ?? "http://localhost:8787";
 // will fail if the jwt is not provided
 const PINATA_JWT = process.env.PINATA_JWT ?? "";
-
-const SETTLEMENT_REGISTRY_ADDRESS = process.env.SETTLEMENT_REGISTRY_ADDRESS as Address;
-const DATA_SOURCE_REGISTRY_ADDRESS = process.env.DATA_SOURCE_REGISTRY_ADDRESS as Address;
-const SCHEMA_REGISTRY_ADDRESS = process.env.SCHEMA_REGISTRY_ADDRESS as Address;
-const USDC_ADDRESS = (process.env.USDC_ADDRESS ?? process.env.USDC_CONTRACT_ADDRESS ?? "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d") as Address;
-const USDC_DOMAIN = "USD Coin";
-
-const CHAIN = arbitrumSepolia;
-
-function makeWallet(key: Hex) {
-    return createWalletClient({
-        account: privateKeyToAccount(key),
-        chain: CHAIN,
-        transport: http(RPC_URL),
-    });
-}
 
 async function unpinFromPinata(cid: string): Promise<boolean> {
     try {
@@ -84,40 +64,10 @@ async function main() {
         return;
     }
 
-    const testbed = TestBed.init(
-        makeWallet(SK),
-        DATA_SOURCE_REGISTRY_ADDRESS,
-        SCHEMA_REGISTRY_ADDRESS,
-        SETTLEMENT_REGISTRY_ADDRESS,
-        USDC_ADDRESS,
-        USDC_DOMAIN,
-        RPC_URL,
-        "arbitrumSepolia",
-        CHAIN.id,
-        WORKER_URL,
-    );
-    const publisher = testbed.getDelegatorFangorn().publisher;
-
     let allOk = true;
     for (const entry of entries) {
-        console.log(`\n[cleanup] ${entry.bundleName} (manifest ${entry.manifestUri})`);
-
-        // Collect the chunk CIDs from the manifest before unpinning the manifest itself.
-        const cids: string[] = [];
-        try {
-            const manifest = await publisher.getBundleManifestByCid(entry.manifestUri);
-            if (manifest) {
-                for (const c of manifest.nodeChunks) cids.push(c.dataCid);
-                for (const c of manifest.edgeChunks ?? []) if (c.dataCid) cids.push(c.dataCid);
-            } else {
-                console.warn("  (could not read manifest — unpinning manifest CID only)");
-            }
-        } catch (err) {
-            console.warn("  (failed to read manifest — unpinning manifest CID only)", err);
-        }
-        cids.push(entry.manifestUri);
-
-        for (const cid of cids) {
+        console.log(`\n[cleanup] ${entry.owner}/${entry.namespace} (commit ${entry.commitCid})`);
+        for (const cid of entry.vertexCids) {
             const ok = await unpinFromPinata(cid);
             allOk = allOk && ok;
         }

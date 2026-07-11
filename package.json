@@ -60,6 +60,7 @@
 		"@aztec/bb.js": "^4.3.0",
 		"@clack/prompts": "^1.0.1",
 		"@ipld/car": "^5.4.6",
+		"@ipld/dag-cbor": "^10.0.1",
 		"@ipld/unixfs": "^3.0.0",
 		"@noble/hashes": "^2.2.0",
 		"@noir-lang/noir_js": "1.0.0-beta.22",
@@ -72,6 +73,8 @@
 		"commander": "^14.0.3",
 		"dotenv": "^17.2.3",
 		"ethers": "^6.16.0",
+		"interface-blockstore": "^7.0.1",
+		"interface-store": "^8.0.0",
 		"ipfs-car": "^3.1.0",
 		"lmdb": "^3.5.5",
 		"multiformats": "^14.0.0",
@@ -79,6 +82,7 @@
 		"poseidon-lite": "^0.3.0",
 		"solc": "^0.8.28",
 		"stream-json": "^3.4.0",
+		"uint8arrays": "^6.1.1",
 		"viem": "^2.47.1"
 	},
 	"overrides": {

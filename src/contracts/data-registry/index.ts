@@ -15,6 +15,28 @@ export enum PublisherStatus {
     SUSPENDED = 2,
 }
 
+/**
+ * A decoded `StateCommitted(publisher, old_root, new_root)` log — the single
+ * on-chain signal that a publisher's state root advanced. `logId` uniquely
+ * identifies the emitting log (tx + index) so consumers can dedupe across the
+ * catch-up (getLogs) and live (watch) paths.
+ */
+export interface StateCommittedLog {
+    oldRoot: Hex;
+    newRoot: Hex;
+    blockNumber: bigint;
+    logId: string;
+}
+
+function decodeStateCommitted(log: any): StateCommittedLog {
+    return {
+        oldRoot: log.args.old_root as Hex,
+        newRoot: log.args.new_root as Hex,
+        blockNumber: log.blockNumber as bigint,
+        logId: `${log.transactionHash as string}:${String(log.logIndex)}`,
+    };
+}
+
 export class DataRegistryClient {
     constructor(
         private contractAddress: Address,
@@ -122,13 +144,70 @@ export class DataRegistryClient {
      * Helper boolean view returning true if a publisher can currently commit data.
      */
     async isRegistered(publisher: Address): Promise<boolean> {
-        console.log(this.contractAddress)
         return this.publicClient.readContract({
             address: this.contractAddress,
             abi: DATA_REGISTRY_ABI,
             functionName: "isRegistered",
             args: [publisher],
         }) as Promise<boolean>;
+    }
+
+    /** Current chain head block number — the default "start here" for a fresh subscription. */
+    async currentBlock(): Promise<bigint> {
+        return this.publicClient.getBlockNumber();
+    }
+
+    // ── Subscription (light-client) ────────────────────────────────────────────
+
+    /**
+     * Historical `StateCommitted` logs for one publisher, oldest → newest — the
+     * catch-up path for a subscriber resuming from a saved block cursor. Node-side
+     * filtered by the indexed `publisher` topic, so no indexer is involved.
+     */
+    async getStateCommittedLogs(
+        publisher: Address,
+        fromBlock: bigint,
+        toBlock?: bigint,
+    ): Promise<StateCommittedLog[]> {
+        const logs = await this.publicClient.getContractEvents({
+            address: this.contractAddress,
+            abi: DATA_REGISTRY_ABI,
+            eventName: "StateCommitted",
+            args: { publisher },
+            fromBlock,
+            toBlock: toBlock ?? "latest",
+        });
+        return logs
+            .map(decodeStateCommitted)
+            .sort((a, b) =>
+                a.blockNumber === b.blockNumber
+                    ? a.logId.localeCompare(b.logId)
+                    : a.blockNumber < b.blockNumber ? -1 : 1,
+            );
+    }
+
+    /**
+     * Live-watch `StateCommitted` for one publisher. Returns an unsubscribe
+     * function. Uses the client's transport (polling over HTTP, push over a
+     * WebSocket transport) — reads logs straight from the RPC node, no subgraph.
+     */
+    watchStateCommitted(
+        publisher: Address,
+        onCommit: (log: StateCommittedLog) => void,
+        onError?: (err: Error) => void,
+        pollingInterval?: number,
+    ): () => void {
+        return this.publicClient.watchContractEvent({
+            address: this.contractAddress,
+            abi: DATA_REGISTRY_ABI,
+            eventName: "StateCommitted",
+            args: { publisher },
+            pollingInterval,
+            onLogs: (logs) => {
+                for (const log of logs) onCommit(decodeStateCommitted(log));
+            },
+            onError,
+        });
     }
 
     async publisherCount(): Promise<bigint> {

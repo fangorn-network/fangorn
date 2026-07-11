@@ -1,9 +1,21 @@
 import { PinataSDK } from "pinata";
 import * as dagCbor from "@ipld/dag-cbor";
-import { MetadataStorage, StorageMeta } from "./types.js";
+import { CID } from "multiformats/cid";
+import { MetadataStorage, RawBlock, StorageMeta } from "./types.js";
 import { serialize, retrieveByCid } from "./utils.js";
 import { packCar } from "./car.js";
 import { keccak256, stringToBytes } from "viem";
+
+// Raw multicodec (0x55). A plain (non-CAR) Pinata file upload of small content
+// assigns a CIDv1 with this codec over the exact same sha256 digest as a
+// dag-cbor CID (0x71) of the identical bytes — verified empirically against
+// Pinata's public upload + gateway. CAR uploads (`.car()`) do NOT reliably
+// resolve individual/sub-root block CIDs on this account's dedicated gateway
+// (confirmed: even a single-block CAR whose root IS the block 403s as "not
+// pinned"), so blocks that need to be retrievable by their own precomputed
+// CID must go through the plain upload path and be looked up via this
+// raw-codec sibling.
+const RAW_CODE = 0x55;
 
 // Pinata's upload endpoint intermittently drops connections (HTTP 408 "client
 // disconnected") and overloads (5xx/429), especially under parallel uploads on a
@@ -95,26 +107,84 @@ export class PinataBackend implements MetadataStorage {
         return uriByName;
     }
 
+    /**
+     * Upload precomputed (cid, bytes) blocks, each as its own plain-file pin,
+     * so every block is individually addressable on the dedicated gateway
+     * (see RAW_CODE comment above for why this can't go through `.car()`).
+     * A single pail commit can touch many shard blocks at once (pail shards
+     * key-by-character over shared prefixes, so one write under a namespace
+     * that already has sibling keys can split into a whole chain of shard
+     * blocks) — upload with bounded concurrency rather than one at a time.
+     */
+    async putBlocks(blocks: RawBlock[]): Promise<void> {
+        const queue = [...blocks];
+        const worker = async () => {
+            let next: RawBlock | undefined;
+            while ((next = queue.shift())) {
+                const { cid, bytes } = next;
+                await withUploadRetry(cid.toString(), async () => {
+                    const file = new File([bytes as BlobPart], cid.toString(), { type: "application/octet-stream" });
+                    await this.pinata.upload.public.file(file);
+                });
+            }
+        };
+        await Promise.all(Array.from({ length: Math.min(8, blocks.length) }, worker));
+    }
 
     async get<T>(uri: string): Promise<T> {
+        const { bytes, isDagCborCid, contentType } = await this.fetchRaw(uri);
+
+        if (isDagCborCid || contentType === 'application/octet-stream') {
+            return dagCbor.decode(bytes) as T;
+        }
+        // Non-binary content: decode as UTF-8 text/JSON, matching the shape the
+        // Pinata SDK would have handed back directly for a text payload.
+        const text = new TextDecoder().decode(bytes);
+        try { return JSON.parse(text) as T; } catch { return text as unknown as T; }
+    }
+
+    /** Raw bytes for a block CID, with no decoding — what blockstore traversal needs. */
+    async getRawBlock(uri: string): Promise<Uint8Array> {
+        const { bytes } = await this.fetchRaw(uri);
+        return bytes;
+    }
+
+    /**
+     * Shared fetch-with-retry: resolves the raw-codec sibling CID for blocks
+     * uploaded via putBlocks(), fetches from the dedicated gateway, and returns
+     * the exact bytes (never pre-decoded) plus enough context for get<T>() to
+     * decide how to decode them.
+     */
+    private async fetchRaw(uri: string): Promise<{ bytes: Uint8Array; isDagCborCid: boolean; contentType: string | null | undefined }> {
         let attempts = 5;
         let lastError: any;
+
+        // Blocks uploaded via putBlocks() land under a raw-codec (0x55) CID
+        // sharing the dag-cbor CID's digest — translate before fetching.
+        let fetchUri = uri;
+        const isDagCborCid = uri.startsWith('bafyrei');
+        if (isDagCborCid) {
+            try {
+                fetchUri = CID.createV1(RAW_CODE, CID.parse(uri).multihash).toString();
+            } catch {
+                fetchUri = uri;
+            }
+        }
 
         while (attempts > 0) {
             try {
                 // Let the SDK perform its signed fetch
-                const { data, contentType } = await this.pinata.gateways.public.get(uri);
+                const { data, contentType } = await this.pinata.gateways.public.get(fetchUri);
 
-                // Handle binary data payloads natively
-                if (uri.startsWith('bafyrei') || contentType === 'application/octet-stream') {
-                    const buffer = data instanceof Blob
-                        ? await data.arrayBuffer()
-                        : data;
+                const bytes = data instanceof Blob
+                    ? new Uint8Array(await data.arrayBuffer())
+                    : data instanceof ArrayBuffer
+                        ? new Uint8Array(data)
+                        : data instanceof Uint8Array
+                            ? data
+                            : new TextEncoder().encode(typeof data === "string" ? data : JSON.stringify(data));
 
-                    return dagCbor.decode(new Uint8Array(buffer as ArrayBuffer)) as T;
-                }
-
-                return data as T;
+                return { bytes, isDagCborCid, contentType };
             } catch (error: any) {
                 // If it's a Pinata replication lag error (ERR_ID:00006 or 403/404), back off and retry
                 lastError = error;

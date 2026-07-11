@@ -40,10 +40,17 @@ export class TestBed {
         return fangorn;
     }
 
+    // set the state root to zero
+    async resetContractState(index: number) {
+        const fangorn = this.getFangorn(index);
+        const registry = fangorn.getDataRegistry();
+        const currentRoot = await registry.getNamespaceHead(fangorn.getAddress());
+        const ZERO_BYTES32: Hex = "0x0000000000000000000000000000000000000000000000000000000000000000";
+        await fangorn.getDataRegistry().commitStateRoot(currentRoot, ZERO_BYTES32);
+    }
+
     // register as a publisher
-    async register(
-        index: number
-    ) {
+    async register(index: number) {
         const fangorn = this.getFangorn(index)
         const accountAddress = fangorn.getAddress();
 
@@ -73,17 +80,31 @@ export class TestBed {
         // name of the payload
         name: string,
     ) {
-        throw new Error("fail")
-        // const fangorn = this.getFangorn(index);
-        // const res = await fangorn.upload(namespace, payload, name);
-        // // cid, root, txhash, newHead
-        // return res;
+        const fangorn = this.getFangorn(index);
+        const res = await fangorn.upload(namespace, payload, name);
+        // cid, root, txhash, newHead
+        return res;
+    }
+
+    async uploadBatch(
+        index: number,
+        namespace: string,
+        vertices: { id: string; tag: string; payload: any }[],
+        edges: { rel: string; from: string; to: string }[] = [],
+    ) {
+        const fangorn = this.getFangorn(index);
+        return fangorn.uploadBatch(namespace, vertices, edges);
     }
 
     async fetch(index: number, cid: string) {
         const fangorn = this.getFangorn(index);
         const retrieved = fangorn.getStorage().get<any>(cid);
         return retrieved;
+    }
+
+    async inspect(index: number, namespace: string) {
+        const fangorn = this.getFangorn(index);
+        return fangorn.inspectNamespace(namespace);
     }
 
     // // "bundle" funcs

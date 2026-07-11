@@ -3,6 +3,7 @@ import { type Hex, keccak256, stringToBytes } from "viem";
 import { Fangorn } from "./index.js"; // Path to your Fangorn entry point
 import { privateKeyToAccount } from "viem/accounts";
 import { TestBed } from "./test/testbed.js";
+import { skaleEuropa } from "viem/chains";
 
 const PRIVATE_KEY = process.env.ETH_PRIVATE_KEY as Hex;
 const PARTY_TWO_KEY = process.env.SECOND_ETH_PRIVATE_KEY as Hex;
@@ -13,52 +14,79 @@ const PINATA_GATEWAY = process.env.PINATA_GATEWAY ?? "https://gateway.pinata.clo
 // const RPC_URL = process.env.RPC_URL ?? "https://sepolia-rollup.arbitrum.io/rpc";
 // const REGISTRY_ADDRESS = process.env.DATA_SOURCE_REGISTRY_ADDRESS as Hex;
 
+export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 interface TestPayload {
     event: string;
     timestamp: number;
-    status: string;
+    status: string;		
 }
 
 describe("Fangorn True E2E: Storage + Chain Anchor", () => {
     let testbed: TestBed;
 
     beforeAll(() => {
-        testbed = TestBed.init([PRIVATE_KEY, PARTY_TWO_KEY, PARTY_THREE_KEY]);
+        testbed = TestBed.init([PRIVATE_KEY]);
     });
 
     it("single uploader mutates global state root properly", async () => {
+
+        // reset the state root to zero
+        await testbed.resetContractState(0);
+        console.log('reset the state root in the contract')
+
         // register f_list[0] onchain (of not registered)
         await testbed.register(0)
         console.log('publisher registration success')
         // initialize a new namespace/repo
-        const namespace = `test0-${Date.now()}`
+        const namespace = `test-${Date.now()}`
         await testbed.initRepo(0, namespace)
         console.log('namespace initialized')
         // input data
-        const name = 'test0'
-
+        const name = `test-data`
         const payload: TestPayload = {
             event: "E2E Test Run",
             timestamp: Date.now(),
-            status: "active",
-            // privateData: {
-            //     ciphertext_handle: ...,
-            //     gadget: Signature(0x0abc123)
-            // }
+            status: "active"
         };
 
         // f_list[0].upload(payload, name)
-        // const res = await testbed.upload(0, namespace, payload, name);
-        // expect(res.txHash).toBeTruthy();
-        // // fetch data
-        // const retrieved = await testbed.fetch(0, res.payloadCid);
-        // expect(retrieved).toBeDefined();
-        // expect(retrieved.event).toBe("E2E Test Run");
-        // expect(retrieved.status).toBe("active");
-        // expect(typeof retrieved.timestamp).toBe("number");
+        console.log('upload begin')
+        const res = await testbed.upload(0, namespace, payload, name);
+        expect(res.txHash).toBeTruthy();
 
-        console.log("E2E Success: Storage pipeline and contract state root transitions are fully synchronized.");
+        // wait for pinata 
+        sleep(5000)
+        // fetch data
+        const retrieved = await testbed.fetch(0, res.payloadCid);
+        expect(retrieved).toBeDefined();
+        expect(retrieved.payload.event).toBe("E2E Test Run");
+        expect(retrieved.payload.status).toBe("active");
+        expect(typeof retrieved.payload.timestamp).toBe("number");
+
+        // and then we can upload a second item and fetch BOTH
+        const name2 = `test-data-2`
+        const payload2: TestPayload = {
+            event: "E2E Test Run 2",
+            timestamp: Date.now(),
+            status: "active"
+        };
+        const res2 = await testbed.upload(0, namespace, payload2, name2);
+        const retrieved2 = await testbed.fetch(0, res2.payloadCid);
+        expect(retrieved2).toBeDefined();
+        expect(retrieved2.payload.event).toBe("E2E Test Run 2");
+        expect(retrieved2.payload.status).toBe("active");
+        expect(typeof retrieved2.payload.timestamp).toBe("number");
+
+        // inspecting the namespace should show both vertices we just committed
+        const contents = await testbed.inspect(0, namespace);
+        expect(contents.vertices).toHaveLength(2);
+        expect(contents.vertices.map(v => v.cid).sort()).toEqual(
+            [res.payloadCid, res2.payloadCid].sort()
+        );
+        expect(contents.vertices.map(v => v.payload.event).sort()).toEqual(
+            ["E2E Test Run", "E2E Test Run 2"].sort()
+        );
     }, 120_000);
 
     // it("multiparty uploads mutate global state root properly", async () => {
@@ -128,7 +156,7 @@ describe("Fangorn True E2E: Storage + Chain Anchor", () => {
 // import { ObjectStore, blobCids, blobRefs } from "./objects/store.js";
 // import { LocalRepo } from "./roles/repo/index.js";
 
-// const SK = process.env.DELEGATOR_ETH_PRIVATE_KEY as Hex;
+// const SK = process.env.ETH_PRIVATE_KEY as Hex;
 // const RPC_URL = process.env.RPC_URL ?? "https://sepolia-rollup.arbitrum.io/rpc";
 // const WORKER_URL = process.env.WORKER_URL ?? "http://localhost:8787";
 
