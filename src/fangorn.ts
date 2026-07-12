@@ -149,8 +149,6 @@ export class Fangorn {
         const { batch, baseCommitCid } = await this.engine.createBatch(publisher);
         await batch.put(`${repoName}/sys/init`, "initialized");
 
-        console.log(`[Fangorn] Committing repository '${repoName}'`);
-
         const { commitCid } = await this.engine.sealBatch(
             batch,
             baseCommitCid ? [baseCommitCid] : [],
@@ -184,7 +182,6 @@ export class Fangorn {
             this.metagraph.registerVertex(repoName, { id: schemaId, requiredFields: [] });
         }
 
-        console.log(`[Fangorn] Staging vertex to repository workspace...`);
         const vertexCidString = await this.engine.stageVertex(batch, repoName, schemaId, payload);
 
         const { commitCid } = await this.engine.sealBatch(

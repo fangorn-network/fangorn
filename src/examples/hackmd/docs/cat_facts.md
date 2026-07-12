@@ -1,0 +1,1 @@
+Cats have around 100 vocalizations (dogs only have about 10) and generally only meow at humans!

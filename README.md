@@ -100,6 +100,11 @@ fangorn push --force        # push even if it doesn't fast-forward the on-chain 
 
 Each commit records its parent, so history is real and walkable. Deleting a vertex is just a later commit that omits it — earlier history is retained. Blocks are content-addressed, so unchanged data is reused byte-for-byte across commits.
 
+
+### Graph Builders
+
+A graph builders are delegated to the application layer. Developers are responsible for implementing functions that take input and transform it into a set of edges and vertices. See [examples/hackmd](./examples/hackmd/) for an example.
+
 ### Inspect
 
 ```sh

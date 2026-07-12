@@ -5,6 +5,7 @@ import {
     outro,
     text,
     spinner,
+    confirm
 } from "@clack/prompts";
 import {
     type Address,
@@ -68,6 +69,18 @@ function loadConfig(): Config {
     const chainName = "arbitrumSepolia";
     const workerUrl = process.env.WORKER_URL;
 
+    if (existsSync(CONFIG_PATH)) {
+        const stored = JSON.parse(readFileSync(CONFIG_PATH, "utf-8")) as StoredConfig;
+        _config = {
+            privateKey: stored.privateKey,
+            cfg: FangornConfig,
+            pinataJwt: stored.pinataJwt,
+            pinataGateway: stored.pinataGateway,
+            workerUrl: stored.workerUrl,
+        };
+        return _config;
+    }
+
     if (privateKey || pinataJwt || pinataGateway || chainName) {
         const missing: string[] = [];
         if (!privateKey) missing.push("ETH_PRIVATE_KEY");
@@ -93,17 +106,7 @@ function loadConfig(): Config {
         return _config;
     }
 
-    if (existsSync(CONFIG_PATH)) {
-        const stored = JSON.parse(readFileSync(CONFIG_PATH, "utf-8")) as StoredConfig;
-        _config = {
-            privateKey: stored.privateKey,
-            cfg: FangornConfig,
-            pinataJwt: stored.pinataJwt,
-            pinataGateway: stored.pinataGateway,
-            workerUrl: stored.workerUrl,
-        };
-        return _config;
-    }
+
 
     throw new Error(
         "No configuration found. Run `fangorn init` or set the required env vars:\n" +
@@ -284,14 +287,7 @@ program
             process.exit(1);
         }
     });
-
-// ─── git-native repo flow ───────────────────────────────────────────────────────
-//
-// A publisher's whole on-chain state root is the "remote"; each namespace is a
-// tracked repo in the working directory. commit is local (writes a commit object,
-// advances local HEAD); push is the permissioned on-chain compare-and-swap that
-// fast-forwards the state root to that commit.
-
+    
 const repoCmd = program.command("repo").description("Repository operations");
 
 repoCmd
@@ -593,6 +589,24 @@ program
             console.error("Failed:", (err as Error).message);
             process.exit(1);
         }
+    });
+
+program
+    .command("reset")
+    .description("DANGER!: reset your on-chain head to zero (abandons all prior commits)")
+    .action(async () => {
+        const confirmFirst = await confirm({ message: "Are you sure? Your onchain head will reset to 0x0000..." });
+        handleCancel(confirmFirst);
+        if (!confirmFirst) {
+            console.log("Reset aborted.");
+            process.exit(0);
+        }
+
+        // If both prompts pass and aren't canceled:
+        await getFangorn().reset();
+
+        console.log("On-chain head reset to zero. `repo init` will now start fresh.");
+        process.exit(0);
     });
 
 program.parse();

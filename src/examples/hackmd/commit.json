@@ -1,0 +1,68 @@
+{
+  "vertices": [
+    {
+      "id": "cat_facts",
+      "tag": "doc",
+      "payload": {
+        "path": "cat_facts.md",
+        "content": "Cats have around 100 vocalizations (dogs only have about 10) and generally only meow at humans!"
+      }
+    },
+    {
+      "id": "getting-started",
+      "tag": "doc",
+      "payload": {
+        "path": "getting-started.md",
+        "content": "# Getting Started\n\nWelcome. This page links back to the [home page](index.md).\n\nHungry? Try [my favorite recipe](my_favorite_recipe.md).\n\n"
+      }
+    },
+    {
+      "id": "index",
+      "tag": "doc",
+      "payload": {
+        "path": "index.md",
+        "content": "# My Fangorn Wiki\n\nA little HackMD-style wiki, published to Fangorn as a versioned graph.\n\n## Pages\n\n- [Getting started](getting-started.md)\n- [My favorite recipe](my_favorite_recipe.md)\n- [Cat Facts](cat_facts.md)\n\nSee also [[getting-started]] for the short version.\n"
+      }
+    },
+    {
+      "id": "my_favorite_recipe",
+      "tag": "doc",
+      "payload": {
+        "path": "my_favorite_recipe.md",
+        "content": "# My Favorite Recipe\n\n1. Boil water.\n2. Add pasta.\n3. Wait.\n\nBack to [[index]].\n"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "rel": "links",
+      "from": "getting-started",
+      "to": "index"
+    },
+    {
+      "rel": "links",
+      "from": "getting-started",
+      "to": "my_favorite_recipe"
+    },
+    {
+      "rel": "links",
+      "from": "index",
+      "to": "getting-started"
+    },
+    {
+      "rel": "links",
+      "from": "index",
+      "to": "my_favorite_recipe"
+    },
+    {
+      "rel": "links",
+      "from": "index",
+      "to": "cat_facts"
+    },
+    {
+      "rel": "links",
+      "from": "my_favorite_recipe",
+      "to": "index"
+    }
+  ]
+}

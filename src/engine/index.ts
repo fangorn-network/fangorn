@@ -141,7 +141,7 @@ export class FangornEngine {
 
     private async readBlockBytes(cid: any): Promise<Uint8Array> {
         const chunks: Uint8Array[] = [];
-        for await (const chunk of this.blockstore.get(cid)) {
+        for await (const chunk of this.blockstore.get(cid) as any) {
             chunks.push(chunk);
         }
         const totalLength = chunks.reduce((acc, c) => acc + c.length, 0);
