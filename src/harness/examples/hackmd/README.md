@@ -1,12 +1,8 @@
 # Building a HackMD-style wiki on Fangorn
 
-A walkthrough for publishing a set of linked markdown documents to Fangorn as a
-versioned, content-addressed **graph** — using nothing but the CLI and the
-markdown links you'd write anyway.
+A walkthrough for publishing a set of linked markdown documents to Fangorn as a versioned, content-addressed **graph**.
 
-The trick: **your links are the graph.** Every `[text](other.md)` and
-`[[wikilink]]` in your docs is an edge. You never hand-author an edge list — a
-~20-line build step reads them out of the markdown for you.
+This example shows how you can implement a custom graph builder using the [build-asset-graph harness](../../../harness/index.ts), so you don't have to "roll your own". Here, the markdown extractor ensures that **your links are the graph.** Every `[text](other.md)` and`[[wikilink]]` in your docs is an edge.
 
 ---
 
@@ -14,10 +10,8 @@ The trick: **your links are the graph.** Every `[text](other.md)` and
 
 ```bash
 npm i -g @fangorn-network/sdk
-
 # One-time setup: stores your wallet key + storage creds in ~/.fangorn/config.json
 fangorn init
-
 # Register your wallet as a publisher on-chain (one-time)
 fangorn register
 ```
@@ -80,7 +74,37 @@ Fangorn treats a dataset like a git repo. `repo init` starts tracking a
 drops a `.fangorn/` pointer — the analogue of `.git/`.
 
 ```bash
+# create a new repository
+pnpm init
+# install the sdk
+pnpm i @fangorn-network/sdk
+# initialize a fresh Fangorn repo 
 fangorn repo init fangorn-md
+```
+
+### Implement the markdown graph builder 
+
+``` ts
+      import { buildAssetGraph, extractMarkdownLinks } from "../../index.js";
+
+      const buildMarkdownGraph = (dir: string) => {
+          return buildAssetGraph(dir, {
+              processors: {
+                  ".md": (file) => ({
+                      tag: "doc",
+                      payload: { content: file.readText() },
+                      links: extractMarkdownLinks(file.readText())
+                  })
+              }
+          });
+      }
+
+      // CLI: build-graph.mjs <dir>
+      if (import.meta.url === `file://${process.argv[1]}`) {
+          const dir = process.argv[2] ?? ".";
+          process.stdout.write(JSON.stringify(buildMarkdownGraph(dir), null, 2) + "\n");
+      }
+
 ```
 
 ## 4. Derive the graph and commit it

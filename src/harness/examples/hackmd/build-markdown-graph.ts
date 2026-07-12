@@ -1,7 +1,7 @@
-import { buildAssetGraph, extractMarkdownLinks } from "../../harness/index.js";
+import { buildAssetGraph, extractMarkdownLinks } from "../../index.js";
 
 const buildMarkdownGraph = (dir: string) => {
-    buildAssetGraph(dir, {
+    return buildAssetGraph(dir, {
         processors: {
             ".md": (file) => ({
                 tag: "doc",

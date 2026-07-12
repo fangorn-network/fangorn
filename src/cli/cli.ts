@@ -164,7 +164,7 @@ class LocalRepo {
     }
 
     /** Create (or overwrite) a repo pointer in `dir`. */
-    static init(state: RepoState, dir: string = process.cwd()): LocalRepo {
+    static init(state: RepoState, dir: string = process.cwd()):                 LocalRepo {
         const repoDir = join(dir, ".fangorn");
         if (!existsSync(repoDir)) mkdirSync(repoDir, { recursive: true });
         const repo = new LocalRepo(dir, state);
