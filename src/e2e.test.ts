@@ -89,6 +89,77 @@ describe("Fangorn True E2E: Storage + Chain Anchor", () => {
         );
     }, 120_000);
 
+    // A publisher owns exactly ONE on-chain root; namespaces are just key-prefixes
+    // inside its Pail tree. This exercises several namespaces living under the same
+    // publisher at once — proving they advance the shared root independently and
+    // that each namespace's `inspect` sees only its own vertices (no cross-talk).
+    it("supports multiple namespaces under a single publisher, isolated from each other", async () => {
+        // Register the publisher (idempotent). We deliberately do NOT reset the
+        // contract state here: multiple namespaces are meant to coexist on the same
+        // root, and each run uses fresh, uniquely-named namespaces for isolation.
+        await testbed.register(0);
+
+        const stamp = Date.now();
+        const nsA = `alpha-${stamp}`;
+        const nsB = `beta-${stamp}`;
+
+        await testbed.initRepo(0, nsA);
+        await testbed.initRepo(0, nsB);
+
+        // Interleave uploads across the two namespaces on the same publisher.
+        const a1 = await testbed.upload(0, nsA, { event: "A1", timestamp: Date.now(), status: "active" }, "a1");
+        const b1 = await testbed.upload(0, nsB, { event: "B1", timestamp: Date.now(), status: "active" }, "b1");
+        const a2 = await testbed.upload(0, nsA, { event: "A2", timestamp: Date.now(), status: "active" }, "a2");
+
+        expect(a1.txHash).toBeTruthy();
+        expect(b1.txHash).toBeTruthy();
+        expect(a2.txHash).toBeTruthy();
+
+        // Each namespace resolves from the same publisher root but must return only
+        // its own vertices — the whole point of prefix-scoped namespaces.
+        const contentsA = await testbed.inspect(0, nsA);
+        const contentsB = await testbed.inspect(0, nsB);
+
+        expect(contentsA.vertices.map(v => v.cid).sort()).toEqual([a1.payloadCid, a2.payloadCid].sort());
+        expect(contentsA.vertices.map(v => v.payload.event).sort()).toEqual(["A1", "A2"]);
+
+        expect(contentsB.vertices.map(v => v.cid).sort()).toEqual([b1.payloadCid]);
+        expect(contentsB.vertices.map(v => v.payload.event)).toEqual(["B1"]);
+
+        // No leakage in either direction.
+        const aCids = new Set(contentsA.vertices.map(v => v.cid));
+        expect(contentsB.vertices.some(v => aCids.has(v.cid))).toBe(false);
+    }, 180_000);
+
+    // Batch publishing: many vertices (and edges) committed to one namespace in a
+    // SINGLE on-chain commit, rather than one tx per vertex. This is the realistic
+    // "publish a dataset" path and the one most exposed to the pail commit
+    // overflow at scale (see src/engine/publish-overflow.test.ts) — here we keep
+    // the batch modest so it settles quickly while still exercising the path.
+    it("publishes a batch of vertices to one namespace in a single commit", async () => {
+        await testbed.register(0);
+
+        const namespace = `batch-${Date.now()}`;
+        await testbed.initRepo(0, namespace);
+
+        const COUNT = 25;
+        const vertices = Array.from({ length: COUNT }, (_, i) => ({
+            id: `v-${i}`,
+            tag: "record",
+            payload: { event: `batch-item-${i}`, timestamp: Date.now(), status: "active" },
+        }));
+
+        const res = await testbed.uploadBatch(0, namespace, vertices);
+        expect(res.txHash).toBeTruthy();
+        expect(Object.keys(res.vertexCids)).toHaveLength(COUNT);
+
+        const contents = await testbed.inspect(0, namespace);
+        expect(contents.vertices).toHaveLength(COUNT);
+        expect(contents.vertices.map(v => v.payload.event).sort()).toEqual(
+            vertices.map(v => v.payload.event).sort(),
+        );
+    }, 180_000);
+
     // it("multiparty uploads mutate global state root properly", async () => {
     //     const registry = fangorn.getDataRegistry();
     //     const storage = fangorn.getStorage();

@@ -1,16 +1,14 @@
 # Fangorn SDK
 
-commit → push → discover → fetch
-
 Intent-bound data for the agentic web.
 
 Fangorn lets you publish content-addressed graph data, organized into namespaces, so that agents can discover and verify it across any number of publishers. Content is stored in your own storage backend (IPFS via Pinata today); the on-chain **DataRegistry** holds only a single cryptographic pointer per publisher. The protocol coordinates commitment and discovery without ever touching your content directly.
 
-Each publisher owns exactly **one on-chain state root** — the root of a content-addressed Pail tree (`@web3-storage/pail`), wrapped in a commit. Everything you publish lives as key-prefixed **namespaces** inside that one tree. Advancing the root is a compare-and-swap: it *is* a git ref update.
+Each publisher owns exactly **one on-chain state root** — the digest of a commit block wrapping a native IPLD DAG. Everything you publish lives as **namespaces** inside that one root map. Advancing the root is a compare-and-swap: it _is_ a git ref update.
 
-Data is a **metagraph** — **vertices** (a JSON payload tagged by a free-form schema id) and **edges** (a labeled relation between two vertex CIDs) — committed under a namespace.
+Data is a **metagraph** — **vertices** (a JSON payload tagged by a free-form schema id) and **edges** (a labeled relation between two vertices, as native IPLD links) — committed under a namespace.
 
-Datasets are versioned like git: each update is a **commit** that points at its parent, the registry stores only the pointer to the latest commit, and full history lives in IPFS — reconstructible from the on-chain tip alone, no indexer required. `commit` builds locally (permissionless); `push` moves the on-chain pointer (the single permissioned step, fast-forward checked).
+Datasets are versioned like git, down to the storage model: each update is a **commit** that points at its parent and at a single **CAR file** (a packfile) holding only the blocks that commit introduced. The registry stores only the pointer to the latest commit; full history lives in IPFS — reconstructible from the on-chain tip alone, no indexer required. `commit` builds the graph in memory and persists it as **exactly two uploads** (one CAR + one small commit block), regardless of graph size; `push` moves the on-chain pointer (the single permissioned step, fast-forward checked). Unchanged data re-derives identical CIDs and is never re-uploaded.
 
 > **Note:** access-controlled (encrypted) fields and the purchase → claim → fetch settlement flow are being built on top of this registry and are **not available in the current release**. Registration, namespaces, and the git-native commit / push / log / clone rail are live.
 
@@ -38,6 +36,7 @@ fangorn init
 ```
 
 `fangorn init` prompts for:
+
 - Wallet private key
 - Pinata JWT + gateway URL (content + commit-object storage)
 - Fangorn access worker URL (reserved for the upcoming access-control flow)
@@ -64,7 +63,7 @@ fangorn register
 
 ### Track a namespace (git-native repo)
 
-A **namespace** is a key prefix inside your on-chain tree. `repo init` allocates it and starts tracking it in a local `.fangorn/` pointer file (just a HEAD ref — there is no local object store; commit objects live in IPFS).
+A **namespace** is an entry in your on-chain root map. `repo init` allocates it and starts tracking it in a local `.fangorn/` pointer file (just a HEAD ref — there is no local object store; commit objects and their CARs live in IPFS).
 
 ```sh
 # Allocate a namespace on-chain (no-op if it already exists) and track it here
@@ -73,7 +72,7 @@ fangorn repo init rusty-anchor
 
 ### Commit → push
 
-`commit` snapshots a namespace's vertices/edges into a new commit **locally** (pins the blocks to IPFS, advances your local HEAD) — it does **not** touch the chain. `push` fast-forwards the on-chain state root to your local tip: the single permissioned step.
+`commit` snapshots a namespace's vertices/edges into a new commit (one CAR upload to IPFS, advances your local HEAD) — it does **not** touch the chain. `push` fast-forwards the on-chain state root to your local tip: the single permissioned step.
 
 ```sh
 # Snapshot graph data into a new local commit — does NOT push
@@ -88,18 +87,19 @@ fangorn push --force        # push even if it doesn't fast-forward the on-chain 
 
 ```json
 {
-  "vertices": [
-    { "id": "t1", "tag": "track",  "payload": { "title": "Locura", "artist": "Alice" } },
-    { "id": "a1", "tag": "artist", "payload": { "name": "Alice" } }
-  ],
-  "edges": [
-    { "rel": "performed_by", "from": "t1", "to": "a1" }
-  ]
+	"vertices": [
+		{
+			"id": "t1",
+			"tag": "track",
+			"payload": { "title": "Locura", "artist": "Alice" }
+		},
+		{ "id": "a1", "tag": "artist", "payload": { "name": "Alice" } }
+	],
+	"edges": [{ "rel": "performed_by", "from": "t1", "to": "a1" }]
 }
 ```
 
-Each commit records its parent, so history is real and walkable. Deleting a vertex is just a later commit that omits it — earlier history is retained. Blocks are content-addressed, so unchanged data is reused byte-for-byte across commits.
-
+Each commit records its parent, so history is real and walkable. By default a commit is **additive** (the staged graph joins the namespace's existing contents); pass `--replace` for snapshot semantics, where the file _is_ the namespace's new state and anything omitted is removed — earlier history is retained either way. Blocks are content-addressed, so unchanged data is reused byte-for-byte across commits and never re-uploaded.
 
 ### Graph Builders
 
@@ -111,7 +111,7 @@ A graph builders are delegated to the application layer. Developers are responsi
 fangorn status              # local tip vs on-chain tip
 fangorn log                 # walk commit history from the tip (newest first)
 fangorn log -n 5            # limit
-fangorn show                # the tip commit + which keys it changed vs its parent
+fangorn show                # the tip commit + what it changed vs its parent
 fangorn show <commitCid>    # a specific commit
 
 # List every vertex and edge committed under a namespace, as JSON
@@ -133,9 +133,9 @@ fangorn clone <owner> rusty-anchor --dir ./somewhere
 Watch a namespace for on-chain updates and stream the diffs — **no subgraph, no
 indexer**. A publisher owns exactly one on-chain root, so this watches that
 publisher's `StateCommitted` event (read straight from the RPC node) and, for
-each new root, diffs the tree against the previous one restricted to your
-namespace's key prefix. Only pushes that actually changed the namespace are
-emitted. Diffs are resolved from IPFS on demand.
+each new root, diffs your namespace's link sets against the previous root.
+Only pushes that actually changed the namespace are emitted. Each push's
+blocks arrive as one CAR download, resolved from IPFS on demand.
 
 ```sh
 # Watch the current repo's namespace; each change is one JSON line on stdout.
@@ -152,14 +152,18 @@ Each emitted line is a namespace change:
 
 ```jsonc
 {
-  "namespace": "rusty-anchor",
-  "owner": "0x...",
-  "commitCid": "bafy...",      // the new on-chain tip
-  "blockNumber": "12345678",   // persist this to resume
-  "addedVertices": [{ "cid": "bafy...", "schemaId": "track", "payload": { "title": "Locura" } }],
-  "addedEdges": [{ "sourceCid": "bafy...", "relation": "by", "targetCid": "bafy..." }],
-  "removedVertexCids": ["bafy..."],
-  "removedEdges": []
+	"namespace": "rusty-anchor",
+	"owner": "0x...",
+	"commitCid": "bafy...", // the new on-chain tip
+	"blockNumber": "12345678", // persist this to resume
+	"addedVertices": [
+		{ "cid": "bafy...", "schemaId": "track", "payload": { "title": "Locura" } },
+	],
+	"addedEdges": [
+		{ "sourceCid": "bafy...", "relation": "by", "targetCid": "bafy..." },
+	],
+	"removedVertexCids": ["bafy..."],
+	"removedEdges": [],
 }
 ```
 
@@ -188,16 +192,21 @@ your initial index from `fangorn read` first, then subscribe for the deltas.
 import { Fangorn, FangornConfig } from "@fangorn-network/sdk";
 
 const fangorn = Fangorn.create({
-  privateKey: "0x...",
-  storage: { pinata: { jwt: process.env.PINATA_JWT!, gateway: process.env.PINATA_GATEWAY! } },
-  config: FangornConfig, // defaults to Arbitrum Sepolia
-  domain: "localhost",
+	privateKey: "0x...",
+	storage: {
+		pinata: {
+			jwt: process.env.PINATA_JWT!,
+			gateway: process.env.PINATA_GATEWAY!,
+		},
+	},
+	config: FangornConfig, // defaults to Arbitrum Sepolia
+	domain: "localhost",
 });
 
 // Register once before committing.
 const registry = fangorn.getDataRegistry();
 if (!(await registry.isRegistered(fangorn.getAddress()))) {
-  await registry.register();
+	await registry.register();
 }
 ```
 
@@ -213,13 +222,13 @@ await fangorn.initRepo("rusty-anchor");
 
 // First commit — no parent
 const c1 = await fangorn.commit({
-  namespace: "rusty-anchor",
-  message: "initial import",
-  vertices: [
-    { id: "t1", tag: "track",  payload: { title: "Locura", artist: "Alice" } },
-    { id: "a1", tag: "artist", payload: { name: "Alice" } },
-  ],
-  edges: [{ rel: "performed_by", from: "t1", to: "a1" }],
+	namespace: "rusty-anchor",
+	message: "initial import",
+	vertices: [
+		{ id: "t1", tag: "track", payload: { title: "Locura", artist: "Alice" } },
+		{ id: "a1", tag: "artist", payload: { name: "Alice" } },
+	],
+	edges: [{ rel: "performed_by", from: "t1", to: "a1" }],
 });
 
 // Settle it on-chain (fast-forward from "no tip yet")
@@ -227,10 +236,12 @@ await fangorn.push(c1.commitCid);
 
 // A follow-up commit builds on the previous one
 const c2 = await fangorn.commit({
-  namespace: "rusty-anchor",
-  parent: c1.commitCid,
-  message: "add another track",
-  vertices: [{ id: "t2", tag: "track", payload: { title: "Otra", artist: "Alice" } }],
+	namespace: "rusty-anchor",
+	parent: c1.commitCid,
+	message: "add another track",
+	vertices: [
+		{ id: "t2", tag: "track", payload: { title: "Otra", artist: "Alice" } },
+	],
 });
 await fangorn.push(c2.commitCid); // refuses unless it fast-forwards the on-chain tip (pass { force: true } to override)
 ```
@@ -244,10 +255,10 @@ const tip = await fangorn.onChainTip(fangorn.getAddress());
 
 // Walk commits, newest first
 for await (const c of fangorn.log(tip!)) {
-  console.log(c.cid, c.message);
+	console.log(c.cid, c.message);
 }
 
-// What a commit changed vs. its first parent (namespaced pail keys added/removed)
+// What a commit changed vs. its first parent (namespaced vertex/edge entries added/removed)
 const diff = await fangorn.show(tip!);
 
 // Every vertex and edge currently committed under a namespace
@@ -267,9 +278,11 @@ For the common "stage and settle in one shot" case, `upload` (one vertex) and `u
 await fangorn.upload("rusty-anchor", { title: "Locura" }, "track");
 
 await fangorn.uploadBatch(
-  "rusty-anchor",
-  [{ id: "t1", tag: "track", payload: { title: "Locura" } }],
-  [/* edges */],
+	"rusty-anchor",
+	[{ id: "t1", tag: "track", payload: { title: "Locura" } }],
+	[
+		/* edges */
+	],
 );
 ```
 
@@ -283,14 +296,14 @@ replays from a block cursor (`fromBlock`) and then watches live until the
 const controller = new AbortController();
 
 for await (const change of fangorn.subscribe({
-  namespace: "rusty-anchor",
-  owner: "0x...",          // defaults to your own address
-  fromBlock: savedCursor,  // omit to start live from the current tip
-  signal: controller.signal,
+	namespace: "rusty-anchor",
+	owner: "0x...", // defaults to your own address
+	fromBlock: savedCursor, // omit to start live from the current tip
+	signal: controller.signal,
 })) {
-  for (const v of change.addedVertices) index.upsert(v.cid, v.payload);
-  for (const cid of change.removedVertexCids) index.remove(cid);
-  persistCursor(change.blockNumber);
+	for (const v of change.addedVertices) index.upsert(v.cid, v.payload);
+	for (const cid of change.removedVertexCids) index.remove(cid);
+	persistCursor(change.blockNumber);
 }
 ```
 
@@ -300,9 +313,10 @@ two arbitrary roots without watching.
 
 ### Storage
 
-Fangorn operates on a 'Bring Your Own Storage' basis. Content-addressed blocks
-(vertices, edges, pail shards, commit objects) are pinned to IPFS via Pinata; the chain
-holds only the 32-byte commit pointer. Additional backends can be added behind the
+Fangorn operates on a 'Bring Your Own Storage' basis. Each commit is persisted as
+one CAR file (an opaque packfile of the commit's new blocks) plus one small commit
+block, pinned to IPFS via Pinata; the chain holds only the 32-byte commit pointer.
+The backend never needs to understand IPLD — any blob store can implement the
 `MetadataStorage` interface.
 
 ---
@@ -311,9 +325,9 @@ holds only the 32-byte commit pointer. Additional backends can be added behind t
 
 ### Arbitrum Sepolia
 
-| Contract      | Address                                      |
-| ------------- | -------------------------------------------- |
-| DataRegistry  | `0x9a3811b365a4aeea1626eaad185b273424ae5e48` |
+| Contract     | Address                                      |
+| ------------ | -------------------------------------------- |
+| DataRegistry | `0x9a3811b365a4aeea1626eaad185b273424ae5e48` |
 
 This is the address in `FangornConfig`; the SDK uses it by default.
 
@@ -338,11 +352,11 @@ pnpm test:e2e
 
 Required variables:
 
-| Variable                | Description                               |
-| ----------------------- | ----------------------------------------- |
-| `ETH_PRIVATE_KEY`       | Publisher private key (needs testnet ETH) |
-| `PINATA_JWT`            | Pinata API JWT                            |
-| `PINATA_GATEWAY`        | Pinata gateway URL                        |
+| Variable          | Description                               |
+| ----------------- | ----------------------------------------- |
+| `ETH_PRIVATE_KEY` | Publisher private key (needs testnet ETH) |
+| `PINATA_JWT`      | Pinata API JWT                            |
+| `PINATA_GATEWAY`  | Pinata gateway URL                        |
 
 The publisher must be registered (`fangorn register`, or `registry.register()`) on the target key.
 
