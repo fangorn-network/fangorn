@@ -101,8 +101,10 @@ export class Fangorn {
 	}
 
 	get metagraph(): MetagraphRegistry {
-		const _ = this.engine;
-		return this._metagraph!;
+		if (!this._metagraph) {
+			throw new Error("MetagraphRegistry has not been initialized. Ensure the client is connected.");
+		}
+		return this._metagraph;
 	}
 
 	static create(options: FangornCreateOptions): Fangorn {
@@ -137,7 +139,7 @@ export class Fangorn {
 			walletClient,
 			metadataStorage,
 			domain,
-			dataRegistry: dataRegistry as any,
+			dataRegistry: dataRegistry,
 			config: resolvedConfig,
 		});
 	}
@@ -157,7 +159,7 @@ export class Fangorn {
 	 */
 	private registerPermissiveSchemas(
 		repoName: string,
-		vertices: { id: string; tag: string; payload: any }[],
+		vertices: { id: string; tag: string; payload: unknown }[],
 		edges: { rel: string; from: string; to: string }[],
 	): void {
 		const tagOf = new Map<string, string>();
@@ -190,7 +192,7 @@ export class Fangorn {
 	private createCommit(opts: {
 		namespace: string;
 		base: CID | null;
-		vertices: { id: string; tag: string; payload: any }[];
+		vertices: { id: string; tag: string; payload: unknown }[];
 		edges: { rel: string; from: string; to: string }[];
 		message: string;
 		replace?: boolean;
@@ -255,7 +257,7 @@ export class Fangorn {
 	/**
 	 * Stage one vertex and settle it on-chain in a single shot.
 	 */
-	async upload(repoName: string, payload: any, schemaId: string) {
+	async upload(repoName: string, payload: unknown, schemaId: string) {
 		const publisher = this.getAddress();
 		const head = await this.engine.resolveHeadCommit(publisher);
 		// can't upload to a zero-state chain.
@@ -275,7 +277,7 @@ export class Fangorn {
 		const { txHash } = await this.engine.pushCommit(publisher, commitCid);
 
 		return {
-			payloadCid: vertexCids["v0"],
+			payloadCid: vertexCids.v0,
 			commitCid: commitCid.toString(),
 			txHash,
 		};
@@ -289,7 +291,7 @@ export class Fangorn {
 	 */
 	async uploadBatch(
 		repoName: string,
-		vertices: { id: string; tag: string; payload: any }[],
+		vertices: { id: string; tag: string; payload: unknown }[],
 		edges: { rel: string; from: string; to: string }[] = [],
 	) {
 		assertValidNamespace(repoName);
@@ -337,7 +339,7 @@ export class Fangorn {
 	 */
 	async commit(opts: {
 		namespace: string;
-		vertices?: { id: string; tag: string; payload: any }[];
+		vertices?: { id: string; tag: string; payload: unknown }[];
 		edges?: { rel: string; from: string; to: string }[];
 		parent?: string;
 		message: string;
@@ -456,8 +458,14 @@ export class Fangorn {
 		// during catch-up is lost.
 		const buffer: StateCommittedLog[] = [];
 		let wake: (() => void) | null = null;
-		let failure: Error | null = null;
-		let stopped = false;
+
+		// Grouping out-of-band state changes into an object so TypeScript's
+		// control flow analyzer tracks updates across asynchronous tick boundaries.
+		const subState = {
+			failure: null as Error | null,
+			stopped: false,
+		};
+
 		const signal = () => {
 			const w = wake;
 			wake = null;
@@ -471,14 +479,14 @@ export class Fangorn {
 				signal();
 			},
 			(err) => {
-				failure = err;
+				subState.failure = err;
 				signal();
 			},
 			opts.pollingInterval,
 		);
 
 		const onAbort = () => {
-			stopped = true;
+			subState.stopped = true;
 			signal();
 		};
 		opts.signal?.addEventListener("abort", onAbort);
@@ -496,15 +504,21 @@ export class Fangorn {
 				}
 			}
 
-			while (!stopped) {
-				if (failure) throw failure;
+			while (!subState.stopped) {
+				if (subState.failure) {
+					throw subState.failure;
+				}
+
 				if (buffer.length === 0) {
 					await new Promise<void>((res) => {
 						wake = res;
 					});
 					continue;
 				}
-				const log = buffer.shift()!;
+
+				const log = buffer.shift();
+				if (!log) continue; // Safe fallback guard replacing forbidden '!' assertion
+
 				if (seen.has(log.logId)) continue;
 				seen.add(log.logId);
 				const change = await this.toNamespaceChange(log, ns, owner);
@@ -550,7 +564,7 @@ export class Fangorn {
 	}
 
 	getDataRegistry(): DataRegistryClient {
-		return this.ctx.dataRegistry as any;
+		return this.ctx.dataRegistry;
 	}
 
 	getStorage(): MetadataStorage {

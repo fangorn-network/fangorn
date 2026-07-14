@@ -10,7 +10,7 @@ import {
 	writeFileSync,
 	chmodSync,
 } from "fs";
-import { join } from "path";
+import { dirname, join } from "path";
 import { homedir } from "os";
 import "dotenv/config";
 
@@ -38,7 +38,7 @@ interface Config {
 
 /** JSON commit input: a namespace's vertices and (optionally) the edges between them. */
 interface CommitFile {
-	vertices: { id: string; tag: string; payload: any }[];
+	vertices: { id: string; tag: string; payload: Record<string, unknown> }[];
 	edges?: { rel: string; from: string; to: string }[];
 }
 
@@ -57,7 +57,6 @@ function loadConfig(): Config {
 	const privateKey = process.env.ETH_PRIVATE_KEY;
 	const pinataJwt = process.env.PINATA_JWT;
 	const pinataGateway = process.env.PINATA_GATEWAY;
-	const chainName = "arbitrumSepolia";
 	const workerUrl = process.env.WORKER_URL;
 
 	if (existsSync(CONFIG_PATH)) {
@@ -74,17 +73,16 @@ function loadConfig(): Config {
 		return _config;
 	}
 
-	if (privateKey || pinataJwt || pinataGateway || chainName) {
+	if (privateKey || pinataJwt || pinataGateway) {
 		const missing: string[] = [];
 		if (!privateKey) missing.push("ETH_PRIVATE_KEY");
 		if (!pinataJwt) missing.push("PINATA_JWT");
 		if (!pinataGateway) missing.push("PINATA_GATEWAY");
-		if (!chainName) missing.push("CHAIN_NAME");
 
 		if (missing.length > 0) {
 			throw new Error(
 				`Incomplete environment configuration. Missing: ${missing.join(", ")}\n` +
-					`Set all required env vars or run \`fangorn init\` to use a config file.`,
+				`Set all required env vars or run \`fangorn init\` to use a config file.`,
 			);
 		}
 
@@ -101,7 +99,7 @@ function loadConfig(): Config {
 
 	throw new Error(
 		"No configuration found. Run `fangorn init` or set the required env vars:\n" +
-			"  ETH_PRIVATE_KEY, PINATA_JWT, PINATA_GATEWAY, CHAIN_NAME",
+		"  ETH_PRIVATE_KEY, PINATA_JWT, PINATA_GATEWAY, CHAIN_NAME",
 	);
 }
 
@@ -148,7 +146,7 @@ class LocalRepo {
 	private constructor(
 		private readonly dir: string,
 		private state: RepoState,
-	) {}
+	) { }
 
 	private static path(dir: string): string {
 		return join(dir, ".fangorn", "repo.json");
@@ -166,7 +164,9 @@ class LocalRepo {
 	/** Open the repo containing `dir` (searches upward like git). Throws if none. */
 	static open(dir: string = process.cwd()): LocalRepo {
 		let cur = dir;
-		while (true) {
+		let parent = "";
+
+		while (cur !== parent) {
 			const p = LocalRepo.path(cur);
 			if (existsSync(p)) {
 				return new LocalRepo(
@@ -174,10 +174,11 @@ class LocalRepo {
 					JSON.parse(readFileSync(p, "utf-8")) as RepoState,
 				);
 			}
-			const parent = join(cur, "..");
-			if (parent === cur) break;
-			cur = parent;
+
+			parent = cur;
+			cur = dirname(cur);
 		}
+
 		throw new Error(
 			"not a fangorn repo (no .fangorn/repo.json here or above). Run `fangorn repo init <namespace>` or `fangorn clone`.",
 		);
@@ -314,9 +315,7 @@ repoCmd
 			s.start(`Initializing namespace "${namespace}"...`);
 			const result = await fangorn.initRepo(namespace);
 			// Whether we just created it or it already existed, HEAD tracks the on-chain tip.
-			const head = result.alreadyInitialized
-				? await fangorn.onChainTip(owner)
-				: (result.commitCid ?? null);
+			const head = result.alreadyInitialized ? await fangorn.onChainTip(owner) : result.commitCid;
 			const repo = LocalRepo.init({ namespace, owner, head });
 			s.stop();
 
@@ -613,11 +612,11 @@ program
 				const readCursor = (): bigint | undefined => {
 					if (options.fromStart) return undefined;
 					if (options.fromBlock !== undefined) return options.fromBlock;
-					if (existsSync(cursorPath))
-						return (
-							BigInt(JSON.parse(readFileSync(cursorPath, "utf-8")).lastBlock) +
-							1n
-						);
+					if (existsSync(cursorPath)) {
+						const val = JSON.parse(readFileSync(cursorPath, "utf-8")) as { lastBlock?: string | number | bigint };
+						const numInput = val.lastBlock ?? 0;
+						return BigInt(numInput) + 1n;
+					}
 					return undefined;
 				};
 				const writeCursor = (block: bigint) => {
@@ -639,15 +638,15 @@ program
 				// Status/logging on stderr so stdout stays a clean JSON-lines stream for piping.
 				console.error(
 					`Subscribing to "${namespace}" @ ${owner} ` +
-						(fromBlock !== undefined
-							? `from block ${fromBlock}`
-							: "(live from current tip)") +
-						` — Ctrl-C to stop.`,
+					(fromBlock !== undefined
+						? `from block ${fromBlock.toString()}`
+						: "(live from current tip)") +
+					` — Ctrl-C to stop.`,
 				);
 
 				const controller = new AbortController();
-				process.on("SIGINT", () => controller.abort());
-				process.on("SIGTERM", () => controller.abort());
+				process.on("SIGINT", () => { controller.abort(); });
+				process.on("SIGTERM", () => { controller.abort(); });
 
 				for await (const change of fangorn.subscribe({
 					namespace,
@@ -657,7 +656,7 @@ program
 				})) {
 					process.stdout.write(
 						JSON.stringify(change, bigintReplacer, options.pretty ? 2 : 0) +
-							"\n",
+						"\n",
 					);
 					writeCursor(change.blockNumber);
 				}

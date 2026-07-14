@@ -1,4 +1,7 @@
 import {
+    ContractFunctionArgs,
+    ContractFunctionName,
+    GetContractEventsReturnType,
     type Address,
     type Hash,
     type Hex,
@@ -15,6 +18,11 @@ export enum PublisherStatus {
     SUSPENDED = 2,
 }
 
+type StateCommittedEventLog = GetContractEventsReturnType<
+    typeof DATA_REGISTRY_ABI,
+    "StateCommitted"
+>[number];
+
 /**
  * A decoded `StateCommitted(publisher, old_root, new_root)` log — the single
  * on-chain signal that a publisher's state root advanced. `logId` uniquely
@@ -28,14 +36,36 @@ export interface StateCommittedLog {
     logId: string;
 }
 
-function decodeStateCommitted(log: any): StateCommittedLog {
+function decodeStateCommitted(log: StateCommittedEventLog): StateCommittedLog {
+    if (log.args.old_root === undefined || log.args.new_root === undefined) {
+        throw new Error("Malformed log event: missing state roots");
+    }
+
     return {
-        oldRoot: log.args.old_root as Hex,
-        newRoot: log.args.new_root as Hex,
-        blockNumber: log.blockNumber as bigint,
-        logId: `${log.transactionHash as string}:${String(log.logIndex)}`,
+        oldRoot: log.args.old_root,
+        newRoot: log.args.new_root,
+        blockNumber: log.blockNumber,
+        logId: `${log.transactionHash}:${log.logIndex.toString()}`,
     };
 }
+
+// function decodeStateCommitted(log: {
+//     args: {
+//         oldRoot: string,
+//         newRoot: string,
+//     },
+//     blockNumber: bigint,
+//     logIndex: number,
+//     transactionHash: Hex,
+
+// }): StateCommittedLog {
+//     return {
+//         oldRoot: log.args.oldRoot as Hex,
+//         newRoot: log.args.newRoot as Hex,
+//         blockNumber: log.blockNumber as bigint,
+//         logId: `${log.transactionHash as string}:${String(log.logIndex)}`,
+//     };
+// }
 
 export class DataRegistryClient {
     constructor(
@@ -58,23 +88,25 @@ export class DataRegistryClient {
      * Internal helper to execute state-mutating transactions
      * matching the exact gas buffer and aggressive fee styling of the protocol.
      */
-    private async executeWrite(
-        functionName: string,
-        args: any[],
+    private async executeWrite<
+        TFunctionName extends ContractFunctionName<typeof DATA_REGISTRY_ABI, "payable" | "nonpayable">
+    >(
+        functionName: TFunctionName,
+        args: ContractFunctionArgs<typeof DATA_REGISTRY_ABI, "payable" | "nonpayable", TFunctionName>,
         value?: bigint
     ): Promise<Hash> {
         const { chain, account } = this.getWriteConfig();
 
         const fees = await this.publicClient.estimateFeesPerGas();
 
-        const gas = await this.publicClient.estimateContractGas({
+        const gas: bigint = await this.publicClient.estimateContractGas({
             address: this.contractAddress,
             abi: DATA_REGISTRY_ABI,
             functionName,
-            args,
+            args, // TypeScript now guarantees this matches the function's strict tuple definition
             account,
             value,
-        });
+        } as unknown as Parameters<typeof this.publicClient.estimateContractGas>[0]); // Safe escape hatch avoiding 'any'
 
         const hash = await this.walletClient.writeContract({
             address: this.contractAddress,
@@ -83,16 +115,15 @@ export class DataRegistryClient {
             args,
             chain,
             account,
-            gas: (gas * 130n) / 100n, // 30% gas buffer safety margin
-            maxFeePerGas: (fees.maxFeePerGas ?? 0n) * 3n,
+            gas: (gas * 130n) / 100n,
+            maxFeePerGas: fees.maxFeePerGas * 3n, // Redundant nullish coalescing removed
             maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
             value,
-        });
-
+        } as unknown as Parameters<typeof this.walletClient.writeContract>[0]);
         await this.publicClient.waitForTransactionReceipt({ hash });
-
         return hash;
     }
+
 
     // ── Writes ───────────────────────────────────────────────────────────────
 
@@ -124,7 +155,7 @@ export class DataRegistryClient {
             abi: DATA_REGISTRY_ABI,
             functionName: "getNamespaceHead",
             args: [publisher],
-        }) as Promise<Hex>;
+        });
     }
 
     /**
@@ -137,7 +168,7 @@ export class DataRegistryClient {
             functionName: "getPublisherStatus",
             args: [publisher],
         });
-        return Number(status) as PublisherStatus;
+        return status as PublisherStatus;
     }
 
     /**
@@ -149,7 +180,7 @@ export class DataRegistryClient {
             abi: DATA_REGISTRY_ABI,
             functionName: "isRegistered",
             args: [publisher],
-        }) as Promise<boolean>;
+        });
     }
 
     /** Current chain head block number — the default "start here" for a fresh subscription. */
@@ -215,7 +246,7 @@ export class DataRegistryClient {
             address: this.contractAddress,
             abi: DATA_REGISTRY_ABI,
             functionName: "publisherCount",
-        }) as Promise<bigint>;
+        });
     }
 
     async registrationFee(): Promise<bigint> {
@@ -223,7 +254,7 @@ export class DataRegistryClient {
             address: this.contractAddress,
             abi: DATA_REGISTRY_ABI,
             functionName: "registrationFee",
-        }) as Promise<bigint>;
+        });
     }
 
     async admin(): Promise<Address> {
@@ -231,7 +262,7 @@ export class DataRegistryClient {
             address: this.contractAddress,
             abi: DATA_REGISTRY_ABI,
             functionName: "admin",
-        }) as Promise<Address>;
+        });
     }
 
     // ── Admin Functions ──────────────────────────────────────────────────────

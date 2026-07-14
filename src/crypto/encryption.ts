@@ -5,7 +5,7 @@ import { bytesToHex, hexToBytes, type Hex } from "viem";
 import { aesGcmEncrypt, aesGcmDecrypt, GCM_NONCE_LENGTH } from "./aes.js";
 import { getRandomValues } from "./rand.js";
 
-/** A TEE-sealed field handle: where the ciphertext lives and how to verify/decrypt it. */
+/** A sealed field handle: where the ciphertext lives and how to verify/decrypt it. */
 export interface HandleFieldInput {
 	"@type": "handle";
 	uri: string;
@@ -145,8 +145,8 @@ export async function encryptAndUpload(
 		},
 		body: ciphertext as unknown as BodyInit,
 	});
-	if (!uploadRes.ok) throw new Error(`upload failed: ${uploadRes.status}`);
-	const { objectKey } = await uploadRes.json();
+	if (!uploadRes.ok) throw new Error(`upload failed: ${(uploadRes.status).toString()}`);
+	const { objectKey } = (await uploadRes.json()) as { objectKey: string };
 
 	return {
 		"@type": "handle",

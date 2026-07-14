@@ -26,7 +26,9 @@ const enc = new TextEncoder();
 
 /** Filenames inside the CAR's UnixFS directory; ':' is legal but we keep it tidy. */
 function sanitize(name: string): string {
-    return name.replace(/[/\x00]/g, "_");
+    // eslint-disable-next-line no-control-regex
+    const sanitizeRegex = new RegExp("[/\\x00]", "g");
+    return name.replace(sanitizeRegex, "_");
 }
 
 /**

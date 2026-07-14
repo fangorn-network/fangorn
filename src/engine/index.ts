@@ -145,7 +145,7 @@ export function assertValidNamespace(namespace: NamespaceID): void {
 	if (namespace.length > MAX_NAMESPACE_LENGTH) {
 		throw new Error(
 			`namespace exceeds the maximum length of ${MAX_NAMESPACE_LENGTH.toString()} characters ` +
-				`(got ${namespace.length.toString()}).`,
+			`(got ${namespace.length.toString()}).`,
 		);
 	}
 }
@@ -210,7 +210,7 @@ export class FangornEngine {
 		private storage: MetadataStorage,
 		private metagraph: MetagraphRegistry,
 		private registryClient: DataRegistryClient,
-	) {}
+	) { }
 
 	/**
 	 * Reconstructs the CID a commit's raw digest hex refers to. The contract only
@@ -254,7 +254,7 @@ export class FangornEngine {
 		if (decoded.pailRoot !== undefined) {
 			throw new Error(
 				`commit ${key} predates the v2 data layer (pail-era). ` +
-					"Reset the on-chain head (`fangorn reset`) and re-publish.",
+				"Reset the on-chain head (`fangorn reset`) and re-publish.",
 			);
 		}
 		return {
@@ -636,17 +636,40 @@ export class FangornEngine {
 		const afterE = new Set(after.edgeLinks.map(String));
 
 		const addedVertices: NamespaceContents["vertices"] = [];
-		for (const link of after.vertexLinks) {
-			if (!beforeV.has(link.toString()))
-				// newCommit is non-null whenever after.vertexLinks is non-empty
-				addedVertices.push(await this.decodeVertex(link, newCommit!));
-		}
 		const addedEdges: Edge[] = [];
-		for (const link of after.edgeLinks) {
-			if (!beforeE.has(link.toString()))
-				// newCommit is non-null whenever after.edgeLinks is non-empty
-				addedEdges.push(await this.decodeEdge(link, newCommit!));
+
+		// 1. Guard upfront to satisfy the compiler and ensure runtime safety
+		if (after.vertexLinks.length > 0 || after.edgeLinks.length > 0) {
+			if (!newCommit) {
+				throw new Error("Missing commit context required to decode graph changes");
+			}
+
+			// TypeScript now safely knows newCommit is non-null for the rest of this block
+			for (const link of after.vertexLinks) {
+				if (!beforeV.has(link.toString())) {
+					addedVertices.push(await this.decodeVertex(link, newCommit));
+				}
+			}
+
+			for (const link of after.edgeLinks) {
+				if (!beforeE.has(link.toString())) {
+					addedEdges.push(await this.decodeEdge(link, newCommit));
+				}
+			}
 		}
+
+		// const addedVertices: NamespaceContents["vertices"] = [];
+		// for (const link of after.vertexLinks) {
+		// 	if (!beforeV.has(link.toString()))
+		// 		// newCommit is non-null whenever after.vertexLinks is non-empty
+		// 		addedVertices.push(await this.decodeVertex(link, newCommit!));
+		// }
+		// const addedEdges: Edge[] = [];
+		// for (const link of after.edgeLinks) {
+		// 	if (!beforeE.has(link.toString()))
+		// 		// newCommit is non-null whenever after.edgeLinks is non-empty
+		// 		addedEdges.push(await this.decodeEdge(link, newCommit!));
+		// }
 		const removedVertexCids = before.vertexLinks
 			.map(String)
 			.filter((c) => !afterV.has(c));

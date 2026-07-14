@@ -23,7 +23,7 @@ export interface ProcessorResult {
     /** The entity type/tag for the graph vertex (defaults to "asset") */
     tag?: string;
     /** Custom metadata object attached to the vertex */
-    payload?: Record<string, any>;
+    payload?: Record<string, unknown>;
     /** An array of target vertex IDs that this file links to */
     links?: string[];
 }
@@ -38,7 +38,7 @@ export interface BuildAssetGraphOptions {
 export interface Vertex {
     id: string;
     tag: string;
-    payload: Record<string, any>;
+    payload: Record<string, unknown>;
 }
 
 export interface Edge {
@@ -51,6 +51,7 @@ export interface CommitFileGraph {
     vertices: Vertex[];
     edges: Edge[];
 }
+
 /**
  * Traverses a directory, parses files based on their extensions, 
  * and generates a strictly validated Fangorn-compliant commit graph.
@@ -76,8 +77,8 @@ export function buildAssetGraph(
         const ext = extname(f).toLowerCase();
         const processor = processors[ext];
 
-        // Skip files the developer hasn't defined a processor for
-        if (!processor) continue;
+        // // Skip files the developer hasn't defined a processor for
+        // if (!processor) continue;
 
         const fromId = getId(f);
         const fullPath = join(dir, f);
@@ -130,12 +131,25 @@ export function extractMarkdownLinks(content: string): string[] {
 
     for (const match of content.matchAll(LINK_REGEX)) {
         // match[1] = standard link target, match[2] = wikilink target
-        const rawTarget = match[1] ?? match[2];
-
+        const rawTarget = match[1]; 
+        // ?? match[2];
         if (rawTarget) {
             links.push(convertToId(rawTarget));
         }
     }
 
     return links;
+}
+
+export const buildMarkdownGraph = (dir: string) => {
+    return buildAssetGraph(dir, {
+        processors: {
+            ".md": (file) => ({
+                tag: "doc",
+                // TypeScript automatically infers this as Record<string, unknown>
+                payload: { content: file.readText() },
+                links: extractMarkdownLinks(file.readText())
+            })
+        }
+    });
 }

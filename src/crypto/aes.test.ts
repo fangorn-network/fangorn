@@ -1,156 +1,126 @@
-import { describe, it, expect } from "vitest";
-import { encryptData, decryptData } from "./aes.js";
-import { getSubtleCrypto } from "./rand.js";
+import { describe, it, expect } from 'vitest'; // Swap 'vitest' for '@jest/globals' if using Jest
+import {
+    AES_KEY_LENGTH,
+    GCM_NONCE_LENGTH,
+    GCM_TAG_LENGTH,
+    aesGcmEncrypt,
+    aesGcmDecrypt
+} from './aes.js';
 
-describe("encryptData / decryptData", () => {
-	it("round-trips string data", async () => {
-		const plaintext = "hello world";
-		const { encryptedData, keyMaterial } = await encryptData(plaintext);
+describe('AES-256-GCM Primitives', () => {
+    // Utility to generate random bytes for testing
+    const randomBytes = (length: number) => {
+        const arr = new Uint8Array(length);
+        for (let i = 0; i < length; i++) {
+            arr[i] = Math.floor(Math.random() * 256);
+        }
+        return arr;
+    };
 
-		const decrypted = await decryptData(encryptedData, keyMaterial);
-		const result = new TextDecoder().decode(decrypted);
+    const textEncoder = new TextEncoder();
+    const textDecoder = new TextDecoder();
 
-		expect(result).toBe(plaintext);
-	});
+    describe('Constants', () => {
+        it('should export correct cryptographic lengths', () => {
+            expect(AES_KEY_LENGTH).toBe(32);
+            expect(GCM_NONCE_LENGTH).toBe(12);
+            expect(GCM_TAG_LENGTH).toBe(16);
+        });
+    });
 
-	it("round-trips Uint8Array data", async () => {
-		const plaintext = new Uint8Array([1, 2, 3, 4, 5, 255, 0, 128]);
-		const { encryptedData, keyMaterial } = await encryptData(plaintext);
+    describe('Encryption and Decryption', () => {
+        it('should successfully round-trip encrypt and decrypt data', () => {
+            const key = randomBytes(AES_KEY_LENGTH);
+            const nonce = randomBytes(GCM_NONCE_LENGTH);
+            const plaintext = textEncoder.encode('Super secret test message');
 
-		const decrypted = await decryptData(encryptedData, keyMaterial);
+            const sealed = aesGcmEncrypt(key, plaintext, nonce);
+            const decrypted = aesGcmDecrypt(key, sealed, nonce);
 
-		expect(decrypted).toEqual(plaintext);
-	});
+            expect(textDecoder.decode(decrypted)).toBe('Super secret test message');
+        });
 
-	it("handles empty string", async () => {
-		const { encryptedData, keyMaterial } = await encryptData("");
-		const decrypted = await decryptData(encryptedData, keyMaterial);
+        it('should output ciphertext exactly GCM_TAG_LENGTH bytes longer than plaintext', () => {
+            const key = randomBytes(AES_KEY_LENGTH);
+            const nonce = randomBytes(GCM_NONCE_LENGTH);
+            const plaintext = randomBytes(50);
 
-		expect(decrypted.length).toBe(0);
-	});
+            const sealed = aesGcmEncrypt(key, plaintext, nonce);
 
-	it("handles empty Uint8Array", async () => {
-		const { encryptedData, keyMaterial } = await encryptData(new Uint8Array(0));
-		const decrypted = await decryptData(encryptedData, keyMaterial);
+            // Ciphertext length = plaintext length + 16 bytes (Auth Tag)
+            expect(sealed.length).toBe(plaintext.length + GCM_TAG_LENGTH);
+        });
 
-		expect(decrypted.length).toBe(0);
-	});
+        it('should support empty plaintext payloads', () => {
+            const key = randomBytes(AES_KEY_LENGTH);
+            const nonce = randomBytes(GCM_NONCE_LENGTH);
+            const plaintext = new Uint8Array(0);
 
-	it("handles 1MB", async () => {
-		const size = 1024 * 1024;
-		const data = new Uint8Array(size);
-		for (let i = 0; i < size; i += 65536) {
-			crypto.getRandomValues(data.subarray(i, i + Math.min(65536, size - i)));
-		}
+            const sealed = aesGcmEncrypt(key, plaintext, nonce);
+            expect(sealed.length).toBe(GCM_TAG_LENGTH); // Only the tag remains
 
-		const { encryptedData, keyMaterial } = await encryptData(data);
-		const decrypted = await decryptData(encryptedData, keyMaterial);
+            const decrypted = aesGcmDecrypt(key, sealed, nonce);
+            expect(decrypted.length).toBe(0);
+        });
+    });
 
-		expect(decrypted).toEqual(data);
-	});
+    describe('Authentication and Tampering', () => {
+        it('should throw if the ciphertext is tampered with', () => {
+            const key = randomBytes(AES_KEY_LENGTH);
+            const nonce = randomBytes(GCM_NONCE_LENGTH);
+            const plaintext = textEncoder.encode('Do not alter this message');
 
-	it("profile encryption", async () => {
-		const plaintext = new Uint8Array(1024 * 1024); // 1MB zeros
+            const sealed = aesGcmEncrypt(key, plaintext, nonce);
+            
+            // Tamper with the ciphertext (flip a bit in the first byte)
+            const tamperedSealed = new Uint8Array(sealed);
+            tamperedSealed[0] ^= 1;
 
-		const subtle = getSubtleCrypto();
+            expect(() => {
+                aesGcmDecrypt(key, tamperedSealed, nonce);
+            }).toThrow();
+        });
 
-		let start = performance.now();
-		const iv = crypto.getRandomValues(new Uint8Array(12));
-		const keyMaterial = crypto.getRandomValues(new Uint8Array(32));
-		console.log(`Random gen: ${performance.now() - start}ms`);
+        it('should throw if the authentication tag is tampered with', () => {
+            const key = randomBytes(AES_KEY_LENGTH);
+            const nonce = randomBytes(GCM_NONCE_LENGTH);
+            const plaintext = textEncoder.encode('Tag protection check');
 
-		start = performance.now();
-		const key = await subtle.importKey(
-			"raw",
-			keyMaterial,
-			{ name: "AES-GCM" },
-			false,
-			["encrypt"],
-		);
-		console.log(`Key import: ${performance.now() - start}ms`);
+            const sealed = aesGcmEncrypt(key, plaintext, nonce);
+            
+            // Tamper with the tag (last 16 bytes)
+            const tamperedSealed = new Uint8Array(sealed);
+            tamperedSealed[tamperedSealed.length - 1] ^= 1;
 
-		start = performance.now();
-		const encrypted = await subtle.encrypt(
-			{ name: "AES-GCM", iv },
-			key,
-			plaintext,
-		);
-		console.log(`Encrypt: ${performance.now() - start}ms`);
-	});
+            expect(() => {
+                aesGcmDecrypt(key, tamperedSealed, nonce);
+            }).toThrow();
+        });
 
-	it("handles 10MB", async () => {
-		const plaintext = new Uint8Array(10 * 1024 * 1024);
+        it('should throw if decrypted with the wrong key', () => {
+            const key1 = randomBytes(AES_KEY_LENGTH);
+            const key2 = randomBytes(AES_KEY_LENGTH);
+            const nonce = randomBytes(GCM_NONCE_LENGTH);
+            const plaintext = textEncoder.encode('Wrong key check');
 
-		const { encryptedData, keyMaterial } = await encryptData(plaintext);
-		const decrypted = await decryptData(encryptedData, keyMaterial);
+            const sealed = aesGcmEncrypt(key1, plaintext, nonce);
 
-		// Fast comparison instead of toEqual
-		expect(decrypted.length).toBe(plaintext.length);
-		expect(Buffer.compare(Buffer.from(decrypted), Buffer.from(plaintext))).toBe(
-			0,
-		);
-	});
+            expect(() => {
+                aesGcmDecrypt(key2, sealed, nonce);
+            }).toThrow();
+        });
 
-	it("handles unicode strings", async () => {
-		const plaintext = "こんにちは世界 🔐 émojis & spëcial çhars";
-		const { encryptedData, keyMaterial } = await encryptData(plaintext);
+        it('should throw if decrypted with the wrong nonce', () => {
+            const key = randomBytes(AES_KEY_LENGTH);
+            const nonce1 = randomBytes(GCM_NONCE_LENGTH);
+            const nonce2 = randomBytes(GCM_NONCE_LENGTH);
+            const plaintext = textEncoder.encode('Wrong nonce check');
 
-		const decrypted = await decryptData(encryptedData, keyMaterial);
-		const result = new TextDecoder().decode(decrypted);
+            const sealed = aesGcmEncrypt(key, plaintext, nonce1);
 
-		expect(result).toBe(plaintext);
-	});
-
-	it("produces different ciphertext for same plaintext (random IV)", async () => {
-		const plaintext = "test data";
-		const result1 = await encryptData(plaintext);
-		const result2 = await encryptData(plaintext);
-
-		expect(result1.encryptedData.ciphertext).not.toEqual(
-			result2.encryptedData.ciphertext,
-		);
-		expect(result1.encryptedData.iv).not.toEqual(result2.encryptedData.iv);
-	});
-
-	it("fails decryption with wrong key", async () => {
-		const { encryptedData } = await encryptData("secret");
-		const wrongKey = new Uint8Array(32);
-		crypto.getRandomValues(wrongKey);
-
-		await expect(decryptData(encryptedData, wrongKey)).rejects.toThrow();
-	});
-
-	it("fails decryption with tampered ciphertext", async () => {
-		const { encryptedData, keyMaterial } = await encryptData("secret");
-
-		// Tamper with ciphertext
-		encryptedData.ciphertext[0] ^= 0xff;
-
-		await expect(decryptData(encryptedData, keyMaterial)).rejects.toThrow();
-	});
-
-	it("fails decryption with tampered IV", async () => {
-		const { encryptedData, keyMaterial } = await encryptData("secret");
-
-		encryptedData.iv[0] ^= 0xff;
-
-		await expect(decryptData(encryptedData, keyMaterial)).rejects.toThrow();
-	});
-
-	it("handles JSON-serialized data (object format)", async () => {
-		const { encryptedData, keyMaterial } = await encryptData("test");
-
-		// Simulate JSON round-trip (Uint8Array becomes object)
-		const serialized = JSON.parse(JSON.stringify(encryptedData));
-
-		const decrypted = await decryptData(serialized, keyMaterial);
-		expect(new TextDecoder().decode(decrypted)).toBe("test");
-	});
-
-	it("generates correct key and IV sizes", async () => {
-		const { encryptedData, keyMaterial } = await encryptData("test");
-
-		expect(keyMaterial.length).toBe(32); // AES-256
-		expect(encryptedData.iv.length).toBe(12); // GCM standard
-	});
+            expect(() => {
+                aesGcmDecrypt(key, sealed, nonce2);
+            }).toThrow();
+        });
+    });
 });

@@ -169,7 +169,7 @@ export class PinataBackend implements MetadataStorage {
 		const { bytes, isDagCborCid, contentType } = await this.fetchRaw(uri);
 
 		if (isDagCborCid || contentType === "application/octet-stream") {
-			return dagCbor.decode(bytes) as T;
+			return dagCbor.decode(bytes);
 		}
 		// Non-binary content: decode as UTF-8 text/JSON, matching the shape the
 		// Pinata SDK would have handed back directly for a text payload.
@@ -201,7 +201,7 @@ export class PinataBackend implements MetadataStorage {
 		contentType: string | null | undefined;
 	}> {
 		let attempts = 5;
-		let lastError: any;
+		let lastError: unknown; // Fixed: Swapped explicit 'any' for 'unknown'
 
 		// Blocks uploaded via putBlock() land under a raw-codec (0x55) CID
 		// sharing the dag-cbor CID's digest — translate before fetching.
@@ -229,13 +229,13 @@ export class PinataBackend implements MetadataStorage {
 							: data instanceof Uint8Array
 								? data
 								: new TextEncoder().encode(
-										typeof data === "string" ? data : JSON.stringify(data),
-									);
+									typeof data === "string" ? data : JSON.stringify(data),
+								);
 
 				return { bytes, isDagCborCid, contentType };
-			} catch (error: any) {
+			} catch (error: unknown) { // Fixed: Changed catch binding from 'any' to 'unknown'
 				// If it's a Pinata replication lag error (ERR_ID:00006 or 403/404), back off and retry
-				lastError = error;
+				lastError = error; // Safe assignment because both sides are now 'unknown'
 				attempts--;
 
 				if (attempts === 0) break;
@@ -245,17 +245,18 @@ export class PinataBackend implements MetadataStorage {
 			}
 		}
 
+		// Cleanly resolve the error string using type-safe runtime checks
+		const internalMessage = lastError instanceof Error
+			? lastError.message
+			: typeof lastError === "string"
+				? lastError
+				// eslint-disable-next-line @typescript-eslint/no-base-to-string
+				: String(lastError ?? "");
+
 		throw new Error(
-			`Pinata SDK failed to retrieve block ${uri} after multiple attempts. Internal Error: ${lastError?.message || lastError}`,
+			`Pinata SDK failed to retrieve block ${uri} after multiple attempts. Internal Error: ${internalMessage}`,
 		);
 	}
-
-	// async get<T>(uri: string): Promise<T> {
-	//     // Use the dedicated Pinata gateway — freshly pinned content is served
-	//     // immediately there, whereas the public ipfs.io gateway lags propagation
-	//     // and times out on just-published CIDs.
-	//     return retrieveByCid<T>(uri, this.gateway);
-	// }
 
 	static async getStatic<T>(uri: string, gateway?: string): Promise<T> {
 		return retrieveByCid<T>(uri, gateway);
@@ -274,7 +275,7 @@ export class PinataBackend implements MetadataStorage {
 				.list()
 				.keyvalues({ stateRoot: formattedRoot });
 
-			if (response && response.files && response.files.length > 0) {
+			if (response.files.length > 0) {
 				return response.files[0].cid;
 			}
 
@@ -282,7 +283,7 @@ export class PinataBackend implements MetadataStorage {
 			if (i < retries - 1) {
 				console.warn(
 					`
-                    [Pinata] Indexing lag detected for root ${formattedRoot}. Retrying in ${delay * (i + 1)}ms...
+                    [Pinata] Indexing lag detected for root ${formattedRoot}. Retrying in ${(delay * (i + 1)).toString()}ms...
                     `,
 				);
 				await new Promise((resolve) => setTimeout(resolve, delay * (i + 1)));
@@ -290,7 +291,7 @@ export class PinataBackend implements MetadataStorage {
 		}
 
 		throw new Error(
-			`No matching IPFS CID found for state root: ${stateRoot} after ${retries} retrieval attempts.`,
+			`No matching IPFS CID found for state root: ${stateRoot} after ${retries.toString()} retrieval attempts.`,
 		);
 	}
 
