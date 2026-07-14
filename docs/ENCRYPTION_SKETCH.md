@@ -1,181 +1,230 @@
 # Encryption architecture sketch
 
-Status: **investigation, not implemented**. This is a design sketch produced after reviewing
-[storacha/specs#130](https://github.com/storacha/specs/issues/130) / draft spec
-[PR #132](https://github.com/storacha/specs/pull/132) (`w3-encrypt.md`) and the reference
-implementation [storacha/lit-storacha-demo](https://github.com/storacha/lit-storacha-demo). It
-proposes how PROTOCOL.md §8 ("FUTURE: who can read") could actually be built on top of the
-current pail-based `FangornEngine`, and what stays true to the "bring your own backend" gadget
-idea vs. what's Lit-specific for a v1.
+Status: **partially implemented** — the crypto primitives, the `/access` client half, and the
+`SettlementRegistryClient` exist and are tested; the Worker's `unseal` step and the engine wiring
+are pending. This sketch describes how PROTOCOL.md §8 ("FUTURE: who can read") is built as
+**intent-bound sealed fields** on top of the v2 CAR-based `FangornEngine`.
+
+It started life as a review of Lit Protocol + [storacha/specs#130](https://github.com/storacha/specs/issues/130)
+(`w3-encrypt.md`) and the [storacha/lit-storacha-demo](https://github.com/storacha/lit-storacha-demo).
+That prior art still informs the *shape* (double-encryption, a capability/condition language, a
+resolver the registry points at). But the v1 we're actually building **does not use Lit or a
+TEE** — it uses an R2 bucket behind a Cloudflare Worker. See §2 for why that's the right first
+step, and §7 for what stays true if we ever swap a TEE/Lit backend back in.
 
 ---
 
-## 1. What prior art gets us
+## 1. What v1 is (and deliberately isn't)
 
-PROTOCOL.md §12 already calls this: "the read gate (decrypt-iff-rule)" is a **Buy — Lit
-Protocol** decision, on the grounds that standing up our own threshold/TEE network isn't worth
-it. Two things confirm that call is sound:
+The data this gates is low-stakes, and a large ciphertext that's fetched often would burn public
+IPFS-gateway egress and ramp up cost. So v1 optimizes for **cheap and simple**, not maximal
+trust-minimization:
 
-- Storacha independently arrived at the same architecture (`w3-encrypt.md`, PR #132) and shipped
-  a working demo of it.
-- That demo's actual trust mechanism turns out to be **generic**, not Lit-specific in the way it
-  first looks. Section 2 explains why that matters for the gadget-registry idea.
+- **Sealed payloads never touch IPFS.** The opaque ciphertext lives in **R2**; only a small
+  *handle* (§3) rides inside the vertex (which is what goes to IPFS/CAR).
+- **No Lit, no TEE.** A Cloudflare Worker in front of R2 is the "somewhat trusted" party. For the
+  paid path it sees plaintext at release time — acceptable given the stakes, and swappable later.
+- **Two conditions ("gadgets"), no more.** Everything routes through exactly two sealing modes
+  (§4). More expressive composition (§8's "paid **and** subscriber") is future work.
 
-## 2. The key mechanism: Lit's ACC is a pointer, not the policy
+The single non-negotiable that survives every backend swap: **the handle shape** (§3) and the
+fact that *how a field is sealed* is decoupled from *who's allowed to open it*.
 
-The demo's `accessControlConditions` don't encode "who can decrypt." They encode one thing only:
+## 2. Why an R2 + Worker, not Lit/TEE, for v1
 
-```js
-// src/scripts/encrypt-and-upload.js
-{
-  parameters: [':currentActionIpfsId', space.did()],
-  returnValueTest: { comparator: '=', value: env.STORACHA_LIT_ACTION_CID }
-}
-```
+Lit's real mechanism (worth understanding, because it's what a future backend would re-implement):
+its `accessControlConditions` don't encode "who can decrypt" — they encode one fact, *"the caller
+is executing this exact immutable Lit Action, pinned by CID."* Lit's threshold network enforces
+only that; all real authorization is ordinary code running inside the Action, in Lit's TEE. So the
+"gadget" is really **auditable code + an enforcement primitive that pins it.**
 
-Translation: "only release the key if the caller is executing *this exact, immutable Lit Action*,
-identified by its own IPFS CID." Lit's threshold network cryptographically enforces that one
-fact and nothing else. All real authorization — delegation chains, capability derivation,
-resource matching — is ordinary application code running **inside** that Lit Action
-(`src/lit-actions/validate-decrypt-invocation.js`), executing in Lit's TEE:
+For low-stakes data that's overkill. A Cloudflare Worker gives us the same *decoupling* — an
+auditable, deployed-once gate that holds a key and only releases on a rule — without standing up
+session sigs, capacity credits, or a Lit Action deploy. The trust assumption is weaker (we trust
+the Worker operator, i.e. us), but that's a fine v1 trade for data that's "low stakes enough
+anyway." The indirection in §3/§7 is what lets a stronger backend drop in later without changing
+how vertices are staged or read.
 
-```js
-const authorization = await access(wrappedInvocation, {
-  principal: Verifier,
-  capability: Decrypt,               // a plain @ucanto capability() definition
-  authority: 'did:web:web3.storage', // hardcoded verifier identity
-  validateAuthorization: () => ok({})
-})
-// only on success:
-Lit.Actions.decryptAndCombine({ accessControlConditions, ciphertext, dataToEncryptHash, ... })
-```
+## 3. The sealed-field handle (the one thing that must stay stable)
 
-So the "gadget" is: **arbitrary, auditable code, deployed once to IPFS, pinned by CID.** Lit's
-ACC engine is repurposed purely as a trust anchor pointing at that CID — anyone can read the
-Lit Action source, confirm it does what it claims, and the security property reduces to "trust
-that this published, immutable bytecode implements the check correctly."
-
-This is a direct match for PROTOCOL.md §8's claim that read-gates and write-gates should share
-**one condition language**: the `Decrypt` capability in the demo is a plain ucanto
-`capability()` — the same primitive Fangorn's future push-auth gate (§7) would use. A
-Fangorn-specific Lit Action could run Fangorn's own write-gate capability logic verbatim for
-reads.
-
-## 3. Double encryption (why large files aren't a problem)
-
-`src/lib.js: encryptLargeFile()`:
-
-1. Generate a random AES-256-CBC key + IV **locally**.
-2. Encrypt the actual file bytes with that key, streamed (no size limit, content never touches
-   Lit).
-3. Encrypt only the 48-byte `(key, iv)` blob via Lit's `encryptString` — this is the thing
-   actually gated by the ACC / Lit Action.
-
-The result is packaged as `EncryptedMetadata` (dag-cbor, matches `w3-encrypt.md`'s schema):
+A sealed field is not stored inline as plaintext. In its place the vertex payload carries a
+`HandleFieldInput` (`src/crypto/encryption.ts`):
 
 ```ts
-type EncryptedMetadata = {
-  encryptedDataCID: Link<any>          // CID of the AES-encrypted bytes
-  identityBoundCiphertext: Uint8Array  // Lit-wrapped (key, iv)
-  plaintextKeyHash: Uint8Array
-  accessControlConditions: Record<string, any>[]
+interface HandleFieldInput {
+  "@type": "handle";
+  objectKey: string;    // R2 object key (signed over in the /access request)
+  workerUrl: string;    // the ACCESS worker (see note below)
+  encryption: {
+    gadget: "self-hkdf-v1" | "worker-usdc-v1";
+    resourceId: Hex;               // HKDF binding AND the Settlement Registry key
+    ciphertextHash: Hex;           // integrity check on fetch
+    workerPubkey?: Hex;            // present only for worker-usdc-v1
+  };
 }
 ```
 
-This resolves the open question from PROTOCOL.md §8 ("the data doesn't have to be
-re-encrypted"): changing *who can read* means re-wrapping the small key blob under a new ACC —
-not re-encrypting the payload. Cheap, and it matches "a new commit pointing at a new rule."
+**Double-encryption, R2 edition.** The bulk bytes are AES-256-GCM sealed and pushed to R2; the
+key is never stored next to them — it's either re-derivable only by the owner (self gadget) or
+held by the Worker and released only on settlement (worker gadget). Changing *who can read* means
+re-sealing under a new gadget/`resourceId` and staging a new vertex that points at new bytes — it
+never re-encrypts a payload the reader already can't open. This is PROTOCOL.md §8's "a new commit
+pointing at a new rule."
 
-## 4. Mapping onto Fangorn's current pail engine
+> **`workerUrl` is the *access* worker — not the Pinata one.** Fangorn's existing CLI config
+> `workerUrl` (`WORKER_URL`) is being repurposed to hand out presigned **Pinata upload** URLs.
+> The access worker here is a *separate* endpoint and MUST NOT reuse it. It rides inline on each
+> handle; when the CLI grows a `seal` command it should read a distinct `ACCESS_WORKER_URL`.
 
-Grounding in the actual code (`src/engine/index.ts`), not the demo's file-upload model:
+## 4. The two gadgets
+
+Both are implemented in `src/crypto/encryption.ts` and share the AES-256-GCM primitives in
+`src/crypto/aes.ts` and the `resourceId()` binding in `src/utils/manifest.ts`
+(`keccak(owner ‖ schemaId ‖ name)`).
+
+### `self-hkdf-v1` — fully private (own key)
+
+```
+key   = HKDF-SHA256(ownSecret, info = resourceId ‖ ":sealed")
+bytes = nonce(12) ‖ aes-256-gcm(plaintext)
+```
+
+Only a party holding `ownSecret` can re-derive the key. The resource is priced 0, so the Worker's
+`/access` lets any signed request through without a settlement check — the real gate is the
+**crypto**, not the Worker (which sees only sealed bytes it can't open). `decryptHandle` reads via
+`/access`, checks `ciphertextHash`, and `unsealSelf`s locally — no key ever leaves the owner.
+
+### `worker-usdc-v1` — settlement-gated
+
+```
+key   = HKDF-SHA256(ECDH(ephemeral, workerPubkey), info = resourceId ‖ ":sealed")
+bytes = ephemeralPub(32) ‖ nonce(12) ‖ aes-256-gcm(plaintext)
+```
+
+Sealed *to the Worker's* static X25519 key (`seal`), stored in R2. Reads go through the Worker's
+`POST /access` (§4a): the Worker recovers the caller's settling address from a signature, checks
+the Settlement Registry, `unseal`s with its own secret, and streams back **plaintext**. The Worker
+sees plaintext at release time — acceptable at these stakes, and exactly the future TEE's job done
+by a semi-trusted Worker for v1.
+
+### 4a. The read rail: `POST /access` + Settlement Registry
+
+Both gadgets read through one endpoint, `POST /access`, with a body the Worker verifies
+(`webworker/src/index.ts`):
+
+```
+{ nullifier, resourceId, objectKey, timestamp, signature }
+signature = personal_sign( keccak256(abi.encodePacked(
+              uint256 nullifier, bytes32 resourceId, string objectKey, uint64 timestamp)) )
+```
+
+The Worker recovers the **stealth address** from that signature, reads `getPrice(resourceId)`, and:
+- `price == 0` → free; stream the bytes (this is the **self-hkdf-v1** case — bytes come back
+  still sealed, and only the owner's `ownSecret` opens them).
+- `price > 0` → require `isSettled(stealthAddress, resourceId)`; on success `unseal` and stream
+  plaintext (the **worker-usdc-v1** case).
+
+The **settlement rail** the payer settles against is a contract with a tiny, public ABI —
+`isSettled(address, bytes32)` / `getPrice(bytes32)` — modeled SDK-side as `SettlementRegistryClient`
+(`src/contracts/settlement-registry/`). *How* the payer settles is a separate payment rail
+(x402 / ERC-3009 USDC, PROTOCOL.md §12) and is out of band; the contract just records the result.
+The client half of `/access` (`accessMessageHash`, `buildAccessRequest`, `decryptHandle`) lives in
+`src/crypto/encryption.ts` and matches the Worker's hash byte-for-byte.
+
+```mermaid
+flowchart LR
+    subgraph seal["stage / commit"]
+      P["field plaintext"] -->|self-hkdf-v1| SS["sealSelf(ownSecret)"]
+      P -->|worker-usdc-v1| SW["seal(workerPubkey)"]
+      SS --> R2[("R2 object")]
+      SW --> R2
+      R2 --> H["handle in vertex payload → IPFS/CAR"]
+    end
+    subgraph read["decryptHandle → POST /access"]
+      H --> S["sign nullifier‖resourceId‖objectKey‖timestamp"]
+      S --> G{"worker: getPrice / isSettled"}
+      G -->|free| L["stream sealed bytes → unsealSelf(ownSecret)"]
+      G -->|settled| W["worker unseals → plaintext"]
+    end
+```
+
+## 5. Mapping onto the v2 engine (the seam is smaller than expected)
+
+The v2 engine (`src/engine/index.ts`, `graph.ts`, `car.ts`) is CAR-based, not pail-based. A vertex
+is still:
 
 ```ts
-export interface Vertex {
-  schemaId: SchemaID;
-  payload: Record<string, any>;
-}
+interface Vertex { schemaId: SchemaID; payload: Record<string, unknown>; }
 ```
 
-`stageVertex()` dag-cbor encodes a `Vertex` block, puts it in the blockstore, and writes a pail
-entry at `${namespace}/v/${cid}`. `listNamespace()` walks the pail, resolves each `v/` entry's
-CID, and `dagCbor.decode`s it back into `{ cid, schemaId, payload }`.
+`createCommit` validates each vertex with `metagraph.validateVertex`, which only checks that
+`schema.requiredFields` are **present** (`field in payload`), then dag-cbor-encodes the block into
+the CAR delta. Crucially:
 
-The natural seam is **payload-level sealing**, not whole-vertex sealing — `schemaId` stays
-public (needed for `metagraph.validateVertex`), only `payload` (or specific fields within it)
-gets sealed:
+- A `HandleFieldInput` is a plain object → it dag-cbor-encodes fine, and it satisfies
+  `field in payload`. **So sealing a field needs no engine change to *store*.** The staging step
+  is: run `encryptAndUpload` for the sealed fields, drop the returned handle into
+  `payload[field]`, stage the vertex as normal.
+- Reading is symmetric and lazy: a namespace read returns the handle as-is; a caller who wants the
+  value calls `decryptHandle(handle, …)` on demand — reading a namespace never forces decrypting
+  everything in it.
+- Which fields to seal (and under which gadget) is publisher intent, expressed at stage time. A
+  natural home is a schema-level hint (e.g. `sealedFields?: { field: string; gadget: Gadget }[]`
+  on `VertexSchema`), but v1 can start with the caller passing sealed handles in directly — no
+  schema change required to prove the loop.
 
-```ts
-export interface Vertex {
-  schemaId: SchemaID;
-  payload: Record<string, any> | SealedPayload;
-}
+So the entire v1 integration is: **a stage-time helper that seals marked fields into handles, and
+a read-time `decryptHandle`.** No new tree shape, no change to commits/CARs/pushes.
 
-interface SealedPayload {
-  sealed: true;
-  encryptedDataCID: CID;           // AES-encrypted payload bytes, stored as a separate block
-  identityBoundCiphertext: Uint8Array;
-  plaintextKeyHash: Uint8Array;
-  accessControlConditions: Record<string, any>[];
-}
-```
+## 6. What's implemented vs. not
 
-- **`stageVertex`**: if a schema/field is marked sealed (schema-level flag, e.g. an extra
-  `sealedFields: string[]` on `VertexSchema`), run the double-encryption step before
-  `encodeBlock`, write the AES-ciphertext as its own block, embed the `SealedPayload` struct in
-  the `Vertex` block that goes into the pail. Everything else about staging/committing/pail
-  structure is unchanged — sealing is a payload transform, not a new tree shape.
-- **`listNamespace`**: decode as today; if `payload.sealed`, return the `SealedPayload` struct
-  as-is instead of resolved plaintext. A separate `decryptVertex(vertex, invocation)` call
-  (mirroring `download-and-decrypt.js`) does the Lit Action round trip on demand, lazily, only
-  for callers who hold a valid delegation. Reading a namespace never requires decrypting
-  everything in it up front.
-- **Rule changes without re-encryption**: re-running the encrypt step against a new ACC and
-  staging a new `Vertex` block (new CID) that points at the *same* `encryptedDataCID` is exactly
-  "a new commit pointing at a new rule" from §8 — the AES-encrypted payload block is immutable
-  and reused.
+**Implemented (`src/crypto/encryption.ts` + `src/contracts/settlement-registry/`, tested in
+`encryption.test.ts`):**
+- Both gadgets: `sealSelf`/`unsealSelf` and `seal`/`unseal`, with `resourceId` binding and
+  ciphertext-hash integrity.
+- `HandleFieldInput` shape; `encryptAndUpload` (gadget-dispatched).
+- The `/access` client half: `accessMessageHash` + `buildAccessRequest` (signature verified to
+  recover the signer's address in a parity test) and `decryptHandle`.
+- `SettlementRegistryClient` — the `isSettled`/`getPrice` rail, ABI-matched to the Worker.
 
-## 5. What a Fangorn-specific gadget needs
+**Deployed but being revised (`webworker/`):**
+- The Worker already does `/access` (recover address → `getPrice`/`isSettled` → **proxy raw R2
+  bytes**) and a Privy-gated, audio-only `/upload`. What's still needed there: the Worker holding
+  a static X25519 key and performing the `unseal` step for `worker-usdc-v1`, and a generic
+  (non-audio) upload. The Worker version is **not final** — treat these as expected changes.
 
-Reusing this pattern for real means Fangorn owns, not borrows, these pieces:
+**Not yet built:**
+- **Engine wiring**: the stage-time seal helper and the schema-level `sealedFields` hint (§5).
+- **Settlement contract**: a real (or mocked) deploy of `isSettled`/`getPrice`, plus the payer's
+  settle/pay path (x402 / ERC-3009 USDC, out of band).
 
-1. **Its own Lit Action**, deployed to IPFS, pinned by CID — analogous to
-   `validate-decrypt-invocation.js` but checking a Fangorn capability (e.g. `namespace/vertex/decrypt`)
-   instead of `space/content/decrypt`, and validating against Fangorn's own `authority` DID
-   rather than `did:web:web3.storage`.
-2. **Its own ACC convention**: `[':currentActionIpfsId', <fangorn's Lit Action CID>]` — the CID
-   becomes a protocol constant, the same way `STORACHA_LIT_ACTION_CID` is a fixed env value in
-   the demo.
-3. **A capability definition** mirroring `Decrypt` in `decrypt-capability.js` — `with` bound to
-   the publisher/namespace DID, `nb.resource` bound to the vertex CID (not a whole-file root),
-   `derives` enforcing exact match on both.
-4. **A gadget registry entry** (per PROTOCOL.md §8's "onchain gadget registry" concept) that
-   records "vertices sealed under condition X resolve via Lit Action CID Y" — this is what keeps
-   the abstraction backend-agnostic: a different registry entry could point at a different
-   backend (self-managed keys, a TEE, another MPC network) implementing the *same* capability
-   shape, without changing how vertices are staged or how `listNamespace` treats sealed payloads.
+## 7. What survives a future backend swap
 
-## 6. Where this stays a gadget vs. where it's Lit-specific for v1
+The whole point of the handle indirection is that a stronger backend (a TEE, Lit, an MPC network)
+can replace `worker-usdc-v1` **without touching how vertices are staged or read**:
 
-**Backend-agnostic (survives a future backend swap):**
-- The `Vertex.payload.sealed` shape and the double-encryption split (AES payload + wrapped key).
-- The capability/condition language (ucanto capabilities) — same one used for write-gate.
-- The registry-points-at-a-resolver indirection.
+**Backend-agnostic (stays):**
+- The `HandleFieldInput` shape and the double-encryption split (AES bytes in R2 + a key gated
+  elsewhere).
+- The `resourceId` binding and the ucanto/condition language — the same primitive the write-gate
+  (§7 of PROTOCOL) uses, so read-gate and write-gate share one condition language.
+- The gadget discriminator: a new backend is just a new `gadget` value + adapter, resolved the
+  same way. (PROTOCOL.md §8's on-chain "gadget registry" is where the `gadget → resolver` mapping
+  eventually lives; v1 hardcodes the two we ship.)
 
-**Lit-specific for v1 (would need a new gadget adapter to swap out):**
-- `accessControlConditions` format is Lit's own DSL.
-- The "ACC pins a specific IPFS CID" trick is a Lit Action mechanism specifically; a different
-  TEE backend would need an equivalent enforcement primitive, not necessarily this exact shape.
-- Session-sig / capacity-credit mechanics (`getSessionSigs`, `getCapacityCredits` in
-  `src/lib.js`) are Lit SDK plumbing with no Fangorn analogue yet.
+**v1-specific (would change on a swap):**
+- `worker-usdc-v1`'s trust model (a semi-trusted Worker holds the key) → a TEE/threshold network
+  would hold it instead, enforcing release cryptographically rather than by operator honesty.
+- `/access` streaming Worker-unsealed plaintext → a TEE backend might return re-wrapped key
+  material the caller opens, instead of trusting the Worker with plaintext.
 
-## 7. Suggested order of work (not started)
+## 8. Suggested order of work
 
-1. Fork the demo's encrypt/decrypt round trip standalone (no Fangorn integration yet) against a
-   Lit testnet, replacing its `Decrypt` capability and `authority` DID with Fangorn placeholders,
-   to confirm the mechanism works end-to-end before touching `engine/index.ts`.
-2. Define `SealedPayload` and a minimal `sealField`/`unsealField` pair as pure functions,
-   independent of storage — no pail/blockstore changes yet.
-3. Wire `stageVertex`/`listNamespace` to use them behind a schema-level opt-in flag.
-4. Only then design the on-chain gadget registry piece — it's the part with the least prior art
-   to lean on (the demo doesn't have one; it hardcodes the Lit Action CID in env vars).
+1. **Deploy the settlement contract** (mock is fine): `isSettled`/`getPrice` over `resourceId`.
+   The SDK's `SettlementRegistryClient` and the Worker's check are already ABI-matched to it.
+2. **Prove the paid loop end-to-end**: price a `resourceId` > 0, settle a stealth address, then
+   `buildAccessRequest` → `POST /access` → bytes. (Needs the Worker's `unseal` step for real
+   plaintext; until then it proxies the sealed bytes.)
+3. **Engine stage-time helper**: seal marked fields → handles → normal `createCommit`. Round-trip
+   a vertex with one `self-hkdf-v1` and one `worker-usdc-v1` field back through `decryptHandle`.
+4. **Only then** the on-chain gadget registry (§7) — least prior art; don't block v1 on it.
