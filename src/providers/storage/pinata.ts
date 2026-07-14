@@ -146,9 +146,9 @@ export class PinataBackend implements MetadataStorage {
 		// 4. Upload
 		const label = `car[${items.length.toString()}f/${(bytes.length / 1e6).toFixed(1)}MB]`;
 		await withUploadRetry(label, async () => {
-			const file = new File([bytes as any], "data.car", {
-				type: "application/vnd.ipld.car",
-			});
+			const file = new File([bytes.buffer as ArrayBuffer], "data.car", {
+                type: "application/vnd.ipld.car",
+            });
 			await this.pinata.upload.public.file(file).car();
 		});
 
