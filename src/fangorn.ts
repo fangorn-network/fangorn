@@ -201,11 +201,18 @@ export class Fangorn {
 		return this.engine.createCommit({
 			namespace: opts.namespace,
 			base: opts.base,
-			vertices: opts.vertices.map((v) => ({
-				id: v.id,
-				schemaId: v.tag,
-				payload: v.payload,
-			})),
+			vertices: opts.vertices.map((v) => {
+				// Safely ensure payload conforms to Record<string, unknown>
+				const safePayload = (v.payload && typeof v.payload === "object" && !Array.isArray(v.payload))
+					? (v.payload as Record<string, unknown>)
+					: { value: v.payload }; // fallback structure for primitives or arrays
+
+				return {
+					id: v.id,
+					schemaId: v.tag,
+					payload: safePayload,
+				};
+			}),
 			edges: opts.edges.map((e) => ({
 				relation: e.rel,
 				from: e.from,
