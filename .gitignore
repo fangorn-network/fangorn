@@ -12,3 +12,6 @@ data.json
 schema.json
 /tmp
 .claude
+.fangorn
+.npmrc
+/docs/archive/

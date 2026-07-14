@@ -1,62 +1,48 @@
 #!/usr/bin/env node
 import { Command } from "commander";
-import {
-    intro,
-    outro,
-    text,
-    confirm,
-    select,
-    note,
-    spinner,
-    log,
-} from "@clack/prompts";
-import {
-    type Hex,
-    type Address,
-} from "viem";
+import { intro, outro, text, spinner, confirm } from "@clack/prompts";
+import { type Address, type Hex } from "viem";
 import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import {
-    existsSync,
-    mkdirSync,
-    readFileSync,
-    writeFileSync,
-    chmodSync,
-    createReadStream,
-    openSync,
-    readSync,
-    closeSync,
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	writeFileSync,
+	chmodSync,
 } from "fs";
-import streamArray from "stream-json/streamers/stream-array.js";
-import { extname, join } from "path";
+import { dirname, join } from "path";
 import { homedir } from "os";
 import "dotenv/config";
 
 import { Fangorn } from "../fangorn.js";
-import { handleCancel, selectChain } from "./index.js";
-import type { SchemaDefinition } from "../roles/schema/index.js";
-import { AgentConfig } from "../types/index.js";
-import { AppConfig, FangornConfig, SupportedNetworks } from "../config.js";
-import { PublishRecord } from "../roles/publisher/types.js";
+import { handleCancel } from "./index.js";
+import { AppConfig, FangornConfig } from "../config.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface StoredConfig {
-    privateKey: Hex;
-    chainName: string;
-    pinataJwt: string;
-    pinataGateway: string;
-    workerUrl: string;
+	privateKey: Hex;
+	chainName: string;
+	pinataJwt: string;
+	pinataGateway: string;
+	workerUrl: string;
 }
 
 interface Config {
-    privateKey: Hex;
-    cfg: AppConfig;
-    pinataJwt: string;
-    pinataGateway: string;
-    workerUrl: string;
+	privateKey: Hex;
+	cfg: AppConfig;
+	pinataJwt: string;
+	pinataGateway: string;
+	workerUrl: string;
 }
 
-// ─── Config management ────────────────────────────────────────────────────────
+/** JSON commit input: a namespace's vertices and (optionally) the edges between them. */
+interface CommitFile {
+	vertices: { id: string; tag: string; payload: Record<string, unknown> }[];
+	edges?: { rel: string; from: string; to: string }[];
+}
+
+// ─── Global config (credentials) ────────────────────────────────────────────────
 
 const CONFIG_DIR = join(homedir(), ".fangorn");
 const CONFIG_PATH = join(CONFIG_DIR, "config.json");
@@ -65,652 +51,699 @@ let _config: Config | null = null;
 let _account: PrivateKeyAccount | null = null;
 let _fangorn: Fangorn | null = null;
 
-function resolveAppConfig(chainName: string): AppConfig {
-    if (chainName === SupportedNetworks.ArbitrumSepolia.name) {
-        return FangornConfig.ArbitrumSepolia;
-    }
-    return FangornConfig.BaseSepolia;
-}
-
 function loadConfig(): Config {
-    if (_config) return _config;
+	if (_config) return _config;
 
-    const privateKey = process.env.DELEGATOR_ETH_PRIVATE_KEY;
-    const pinataJwt = process.env.PINATA_JWT;
-    const pinataGateway = process.env.PINATA_GATEWAY;
-    const chainName = process.env.CHAIN_NAME;
-    const workerUrl = process.env.WORKER_URL;
+	const privateKey = process.env.ETH_PRIVATE_KEY;
+	const pinataJwt = process.env.PINATA_JWT;
+	const pinataGateway = process.env.PINATA_GATEWAY;
+	const workerUrl = process.env.WORKER_URL;
 
-    if (privateKey || pinataJwt || pinataGateway || chainName) {
-        const missing: string[] = [];
-        if (!privateKey) missing.push("DELEGATOR_ETH_PRIVATE_KEY");
-        if (!pinataJwt) missing.push("PINATA_JWT");
-        if (!pinataGateway) missing.push("PINATA_GATEWAY");
-        if (!chainName) missing.push("CHAIN_NAME");
+	if (existsSync(CONFIG_PATH)) {
+		const stored = JSON.parse(
+			readFileSync(CONFIG_PATH, "utf-8"),
+		) as StoredConfig;
+		_config = {
+			privateKey: stored.privateKey,
+			cfg: FangornConfig,
+			pinataJwt: stored.pinataJwt,
+			pinataGateway: stored.pinataGateway,
+			workerUrl: stored.workerUrl,
+		};
+		return _config;
+	}
 
-        if (missing.length > 0) {
-            throw new Error(
-                `Incomplete environment configuration. Missing: ${missing.join(", ")}\n` +
-                `Set all required env vars or run \`fangorn init\` to use a config file.`,
-            );
-        }
+	if (privateKey || pinataJwt || pinataGateway) {
+		const missing: string[] = [];
+		if (!privateKey) missing.push("ETH_PRIVATE_KEY");
+		if (!pinataJwt) missing.push("PINATA_JWT");
+		if (!pinataGateway) missing.push("PINATA_GATEWAY");
 
-        _config = {
-            privateKey: privateKey as Hex,
-            cfg: resolveAppConfig(chainName ?? ""),
-            pinataJwt: pinataJwt ?? "",
-            pinataGateway: pinataGateway ?? "",
-            workerUrl: workerUrl ?? "",
-        };
+		if (missing.length > 0) {
+			throw new Error(
+				`Incomplete environment configuration. Missing: ${missing.join(", ")}\n` +
+				`Set all required env vars or run \`fangorn init\` to use a config file.`,
+			);
+		}
 
-        return _config;
-    }
+		_config = {
+			privateKey: privateKey as Hex,
+			cfg: FangornConfig,
+			pinataJwt: pinataJwt ?? "",
+			pinataGateway: pinataGateway ?? "",
+			workerUrl: workerUrl ?? "",
+		};
 
-    if (existsSync(CONFIG_PATH)) {
-        const stored = JSON.parse(readFileSync(CONFIG_PATH, "utf-8")) as StoredConfig;
-        _config = {
-            privateKey: stored.privateKey,
-            cfg: resolveAppConfig(stored.chainName),
-            pinataJwt: stored.pinataJwt,
-            pinataGateway: stored.pinataGateway,
-            workerUrl: stored.workerUrl,
-        };
-        return _config;
-    }
+		return _config;
+	}
 
-    throw new Error(
-        "No configuration found. Run `fangorn init` or set the required env vars:\n" +
-        "  DELEGATOR_ETH_PRIVATE_KEY, PINATA_JWT, PINATA_GATEWAY, CHAIN_NAME",
-    );
+	throw new Error(
+		"No configuration found. Run `fangorn init` or set the required env vars:\n" +
+		"  ETH_PRIVATE_KEY, PINATA_JWT, PINATA_GATEWAY, CHAIN_NAME",
+	);
 }
 
 function getAccount(): PrivateKeyAccount {
-    if (_account) return _account;
-    _account = privateKeyToAccount(loadConfig().privateKey);
-    return _account;
+	if (_account) return _account;
+	_account = privateKeyToAccount(loadConfig().privateKey);
+	return _account;
 }
 
 function getFangorn(): Fangorn {
-    if (_fangorn) return _fangorn;
+	if (_fangorn) return _fangorn;
 
-    const cfg = loadConfig();
+	const cfg = loadConfig();
 
-    console.log(JSON.stringify(cfg))
-
-    const agentConfig: AgentConfig = { privateKey: cfg.privateKey, pinataJwt: cfg.pinataJwt };
-
-    _fangorn = Fangorn.create({
-        privateKey: cfg.privateKey,
-        storage: {
-            pinata: {
-                jwt: cfg.pinataJwt,
-                gateway: cfg.pinataGateway,
-            },
-        },
-        domain: "localhost",
-        config: cfg.cfg,
-        agentConfig,
-    });
-    return _fangorn;
+	_fangorn = Fangorn.create({
+		privateKey: cfg.privateKey,
+		storage: {
+			pinata: {
+				jwt: cfg.pinataJwt,
+				gateway: cfg.pinataGateway,
+			},
+		},
+		domain: "localhost",
+		config: cfg.cfg,
+	});
+	return _fangorn;
 }
 
-async function resolveSchemaId(fangorn: Fangorn, schemaNameOrId: string): Promise<Hex> {
-    try {
-        return await fangorn.getSchemaRegistry().schemaId(
-            /^0x[0-9a-fA-F]{64}$/.test(schemaNameOrId)
-                ? (schemaNameOrId as Hex)
-                : schemaNameOrId,
-        );
-    } catch {
-        throw new Error(
-            `Schema "${schemaNameOrId}" not found on-chain. Register it with \`fangorn schema register\`.`,
-        );
-    }
+// ─── Local repo (working-directory ref) ─────────────────────────────────────────
+//
+// The only local state a git-native repo needs: which namespace it tracks, whose
+// on-chain root it belongs to, and the commit CID of its local tip (HEAD). Commit
+// *objects* themselves live in content-addressed storage — there is no local
+// object store to keep in sync, so this is just a pointer file, the analogue of
+// `.git/HEAD` + a bit of config.
+
+interface RepoState {
+	namespace: string;
+	owner: Address;
+	head: string | null;
+}
+
+class LocalRepo {
+	private constructor(
+		private readonly dir: string,
+		private state: RepoState,
+	) { }
+
+	private static path(dir: string): string {
+		return join(dir, ".fangorn", "repo.json");
+	}
+
+	/** Create (or overwrite) a repo pointer in `dir`. */
+	static init(state: RepoState, dir: string = process.cwd()): LocalRepo {
+		const repoDir = join(dir, ".fangorn");
+		if (!existsSync(repoDir)) mkdirSync(repoDir, { recursive: true });
+		const repo = new LocalRepo(dir, state);
+		repo.save();
+		return repo;
+	}
+
+	/** Open the repo containing `dir` (searches upward like git). Throws if none. */
+	static open(dir: string = process.cwd()): LocalRepo {
+		let cur = dir;
+		let parent = "";
+
+		while (cur !== parent) {
+			const p = LocalRepo.path(cur);
+			if (existsSync(p)) {
+				return new LocalRepo(
+					cur,
+					JSON.parse(readFileSync(p, "utf-8")) as RepoState,
+				);
+			}
+
+			parent = cur;
+			cur = dirname(cur);
+		}
+
+		throw new Error(
+			"not a fangorn repo (no .fangorn/repo.json here or above). Run `fangorn repo init <namespace>` or `fangorn clone`.",
+		);
+	}
+
+	private save(): void {
+		writeFileSync(
+			LocalRepo.path(this.dir),
+			JSON.stringify(this.state, null, 2),
+			"utf-8",
+		);
+	}
+
+	namespace(): string {
+		return this.state.namespace;
+	}
+	owner(): Address {
+		return this.state.owner;
+	}
+	head(): string | null {
+		return this.state.head;
+	}
+
+	setHead(cid: string | null): void {
+		this.state.head = cid;
+		this.save();
+	}
 }
 
 // ─── CLI root ─────────────────────────────────────────────────────────────────
 
 const program = new Command();
-program.name("fangorn").description("Fangorn Network CLI").version("0.2.1");
+program.name("fangorn").description("Fangorn Network CLI").version("0.4.0");
 
-// ─── init ─────────────────────────────────────────────────────────────────────
+/// initialize the fangorn cli
+program
+	.command("init")
+	.description("Configure your Fangorn credentials")
+	.action(async () => {
+		intro("Fangorn Setup");
+
+		const privateKey = await text({
+			message: "Wallet private key (stored locally, never transmitted):",
+			placeholder: "0x...",
+			validate: (v) => {
+				if (!v) return "Required";
+				if (!v.startsWith("0x") || v.length !== 66)
+					return "Must be a valid 0x-prefixed 32-byte hex key";
+			},
+		});
+		handleCancel(privateKey);
+
+		const pinataJwt = await text({
+			message: "Pinata JWT:",
+			validate: (v) => {
+				if (!v) return "Required";
+			},
+		});
+		handleCancel(pinataJwt);
+
+		const pinataGateway = await text({
+			message: "Pinata Gateway URL:",
+			placeholder: "https://your-gateway.mypinata.cloud",
+			validate: (v) => {
+				if (!v) return "Required";
+			},
+		});
+		handleCancel(pinataGateway);
+
+		const workerUrl = await text({
+			message: "Fangorn access worker URL:",
+			placeholder: "https://fangorn-access-worker.your-subdomain.workers.dev",
+			validate: (v) => {
+				if (!v) return "Required";
+			},
+		});
+		handleCancel(workerUrl);
+
+		const stored: StoredConfig = {
+			privateKey: privateKey as Hex,
+			chainName: "Arbitrum Sepolia",
+			pinataJwt: pinataJwt as string,
+			pinataGateway: pinataGateway as string,
+			workerUrl: workerUrl as string,
+		};
+
+		if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true });
+		writeFileSync(CONFIG_PATH, JSON.stringify(stored, null, 2), "utf-8");
+		chmodSync(CONFIG_PATH, 0o600);
+
+		outro(`Config saved to ${CONFIG_PATH}`);
+	});
+
+// ─── register (publisher registration) ─────────────────────────────────────────
 
 program
-    .command("init")
-    .description("Configure your Fangorn credentials")
-    .action(async () => {
-        intro("Fangorn Setup");
+	.command("register")
+	.description("Register your wallet as a data publisher on-chain")
+	.action(async () => {
+		try {
+			const self = getAccount().address;
+			const registry = getFangorn().getDataRegistry();
+			const s = spinner();
 
-        const privateKey = await text({
-            message: "Wallet private key (stored locally, never transmitted):",
-            placeholder: "0x...",
-            validate: (v) => {
-                if (!v) return "Required";
-                if (!v.startsWith("0x") || v.length !== 66)
-                    return "Must be a valid 0x-prefixed 32-byte hex key";
-            },
-        });
-        handleCancel(privateKey);
+			if (await registry.isRegistered(self)) {
+				console.log(`Already registered: ${self}`);
+				process.exit(0);
+			}
 
-        const chainName = await select({
-            message: "Default chain:",
-            options: [
-                { value: SupportedNetworks.ArbitrumSepolia.name, label: "Arbitrum Sepolia" },
-                { value: SupportedNetworks.BaseSepolia.name, label: "Base Sepolia" },
-            ],
-        });
-        handleCancel(chainName);
+			s.start("Registering publisher...");
+			const txHash = await registry.register();
+			s.stop();
 
-        const pinataJwt = await text({
-            message: "Pinata JWT:",
-            validate: (v) => { if (!v) return "Required"; },
-        });
-        handleCancel(pinataJwt);
+			console.log(`Publisher: ${self}`);
+			console.log(`Tx:        ${txHash}`);
+			process.exit(0);
+		} catch (err) {
+			console.error("Failed:", (err as Error).message);
+			process.exit(1);
+		}
+	});
 
-        const pinataGateway = await text({
-            message: "Pinata Gateway URL:",
-            placeholder: "https://your-gateway.mypinata.cloud",
-            validate: (v) => { if (!v) return "Required"; },
-        });
-        handleCancel(pinataGateway);
+const repoCmd = program.command("repo").description("Repository operations");
 
-        const workerUrl = await text({
-            message: "Fangorn access worker URL:",
-            placeholder: "https://fangorn-access-worker.your-subdomain.workers.dev",
-            validate: (v) => { if (!v) return "Required"; },
-        });
-        handleCancel(workerUrl);
+repoCmd
+	.command("init")
+	.description("Start tracking a namespace here (allocates it on-chain if new)")
+	.argument("<namespace>", "Namespace name")
+	.action(async (namespace: string) => {
+		try {
+			const fangorn = getFangorn();
+			const owner = fangorn.getAddress();
+			const s = spinner();
+			s.start(`Initializing namespace "${namespace}"...`);
+			const result = await fangorn.initRepo(namespace);
+			// Whether we just created it or it already existed, HEAD tracks the on-chain tip.
+			const head = result.alreadyInitialized ? await fangorn.onChainTip(owner) : result.commitCid;
+			const repo = LocalRepo.init({ namespace, owner, head });
+			s.stop();
 
-        const stored: StoredConfig = {
-            privateKey: privateKey as Hex,
-            chainName: chainName as string,
-            pinataJwt: pinataJwt as string,
-            pinataGateway: pinataGateway as string,
-            workerUrl: workerUrl as string,
-        };
+			if (result.alreadyInitialized) {
+				console.log(
+					`Namespace "${namespace}" already exists for ${owner}. Tracking it here.`,
+				);
+			} else {
+				console.log(`Namespace: ${namespace}`);
+				console.log(`Owner:     ${owner}`);
+				console.log(`Tx:        ${result.txHash}`);
+			}
+			console.log(`HEAD:      ${repo.head() ?? "(none)"}`);
+			process.exit(0);
+		} catch (err) {
+			console.error("Failed:", (err as Error).message);
+			process.exit(1);
+		}
+	});
 
-        if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true });
-        writeFileSync(CONFIG_PATH, JSON.stringify(stored, null, 2), "utf-8");
-        chmodSync(CONFIG_PATH, 0o600);
+program
+	.command("commit")
+	.description(
+		"Snapshot a namespace's vertices/edges into a new local commit (does not push)",
+	)
+	.argument(
+		"<file>",
+		'JSON file: {"vertices":[{"id","tag","payload"}],"edges":[{"rel","from","to"}]}',
+	)
+	.requiredOption("-m, --message <msg>", "Commit message")
+	.option(
+		"--replace",
+		"Snapshot semantics: the file replaces the namespace's previous contents (omitted entries are removed)",
+	)
+	.action(
+		async (file: string, options: { message: string; replace?: boolean }) => {
+			try {
+				if (!existsSync(file)) throw new Error(`file not found: ${file}`);
+				const data = JSON.parse(readFileSync(file, "utf-8")) as CommitFile;
+				if (!Array.isArray(data.vertices) || data.vertices.length === 0) {
+					throw new Error(`${file} must contain a non-empty "vertices" array`);
+				}
 
-        outro(`Config saved to ${CONFIG_PATH}`);
-    });
+				const repo = LocalRepo.open();
+				const fangorn = getFangorn();
+				const parent = repo.head() ?? undefined;
+				const s = spinner();
+				s.start(
+					parent
+						? "Committing (building on local HEAD)..."
+						: "Committing (initial)...",
+				);
+				const result = await fangorn.commit({
+					namespace: repo.namespace(),
+					vertices: data.vertices,
+					edges: data.edges ?? [],
+					parent,
+					message: options.message,
+					replace: options.replace,
+				});
+				s.stop();
+				repo.setHead(result.commitCid);
 
-// ─── schema ───────────────────────────────────────────────────────────────────
+				console.log(`Commit:  ${result.commitCid}`);
+				console.log(`Parent:  ${result.parents[0] ?? "(root)"}`);
+				console.log(`Tree:    ${result.root}`);
+				console.log(
+					`Staged:  ${data.vertices.length.toString()} vertice(s) / ${(data.edges ?? []).length.toString()} edge(s)`,
+				);
+				console.log(`Message: ${options.message}`);
+				console.log(
+					`\nCommitted locally. Run \`fangorn push\` to settle it on-chain.`,
+				);
+				process.exit(0);
+			} catch (err) {
+				console.error("Failed:", (err as Error).message);
+				process.exit(1);
+			}
+		},
+	);
 
-const schemaCmd = program
-    .command("schema")
-    .description("Schema registry operations");
+program
+	.command("push")
+	.description(
+		"Settle the local tip commit as the on-chain state root (the permissioned step)",
+	)
+	.option("--force", "Push even if it does not fast-forward the on-chain tip")
+	.action(async (options: { force?: boolean }) => {
+		try {
+			const repo = LocalRepo.open();
+			const head = repo.head();
+			if (!head) throw new Error("nothing to push — no commits yet");
+			const fangorn = getFangorn();
+			const s = spinner();
 
-schemaCmd
-    .command("register")
-    .description("Register a schema on-chain")
-    .argument("<name>", "Schema name")
-    .action(async (name: string) => {
-        try {
-            intro("Chain selection");
-            const chain = await selectChain();
-            outro(`Selected chain: ${chain.name}`);
+			s.start("Pushing...");
+			const { txHash, onChainTip } = await fangorn.push(head, {
+				force: options.force,
+			});
+			s.stop();
 
-            const fangorn = getFangorn();
+			console.log(`Tx:  ${txHash}`);
+			console.log(`Tip: ${onChainTip}`);
+			process.exit(0);
+		} catch (err) {
+			console.error("Failed:", (err as Error).message);
+			process.exit(1);
+		}
+	});
 
-            intro("Schema Registration");
+program
+	.command("status")
+	.description("Compare the local tip with the on-chain tip")
+	.action(async () => {
+		try {
+			const repo = LocalRepo.open();
+			const fangorn = getFangorn();
+			const localHead = repo.head();
+			const onChainTip = await fangorn.onChainTip(repo.owner());
 
-            const schemaFilePath = (await text({
-                message: "Path to your JSON schema file:",
-                placeholder: "./schema.json",
-                validate: (v) => {
-                    if (!v) return "Required";
-                    if (!existsSync(v)) return `File not found: ${v}`;
-                    if (extname(v).toLowerCase() !== ".json") return "Must be a .json file";
-                },
-            })) as string;
-            handleCancel(schemaFilePath);
+			const state =
+				localHead === onChainTip
+					? "up to date"
+					: localHead && !onChainTip
+						? "local commits not yet pushed"
+						: localHead !== onChainTip
+							? "local tip differs from on-chain tip (push to fast-forward)"
+							: "no local commits";
 
-            let definition: SchemaDefinition;
-            try {
-                definition = JSON.parse(readFileSync(schemaFilePath, "utf-8")) as SchemaDefinition;
-            } catch {
-                throw new Error(`Failed to parse ${schemaFilePath} as JSON`);
-            }
+			console.log(`Namespace:    ${repo.namespace()}`);
+			console.log(`Owner:        ${repo.owner()}`);
+			console.log(`Local HEAD:   ${localHead ?? "(none)"}`);
+			console.log(`On-chain tip: ${onChainTip ?? "(none)"}`);
+			console.log(`Status:       ${state}`);
+			process.exit(0);
+		} catch (err) {
+			console.error("Failed:", (err as Error).message);
+			process.exit(1);
+		}
+	});
 
-            note(JSON.stringify(definition, null, 2), "Schema definition:");
-            const ok = (await confirm({ message: "Register this schema?" })) as boolean;
-            handleCancel(ok);
-            if (!ok) { outro("Cancelled."); process.exit(0); }
+program
+	.command("log")
+	.description("Walk commit history from the local tip")
+	.option("-n, --max <n>", "Limit number of commits", (v) => parseInt(v, 10))
+	.action(async (options: { max?: number }) => {
+		try {
+			const repo = LocalRepo.open();
+			const head = repo.head();
+			if (!head) {
+				console.log("(no commits yet)");
+				process.exit(0);
+			}
+			const fangorn = getFangorn();
 
-            const s = spinner();
-            s.start("Registering schema...");
-            const { schemaId, schemaCid } = await fangorn.schema.register({
-                name,
-                definition,
-            });
-            s.stop();
+			for await (const c of fangorn.log(head, options.max)) {
+				console.log(`commit ${c.cid}`);
+				console.log(`Date:   ${new Date(c.timestamp).toISOString()}`);
+				console.log(`Tree:   ${c.root}`);
+				console.log(`\n    ${c.message}\n`);
+			}
+			process.exit(0);
+		} catch (err) {
+			console.error("Failed:", (err as Error).message);
+			process.exit(1);
+		}
+	});
 
-            note(`Schema ID: ${schemaId}\nCID:       ${schemaCid}`, "Schema registered");
-            process.exit(0);
-        } catch (err) {
-            console.error("Failed:", (err as Error).message);
-            process.exit(1);
-        }
-    });
+program
+	.command("show")
+	.description("Show a commit and what it changed vs. its parent")
+	.argument("[commit]", "Commit CID (default: local HEAD)")
+	.action(async (commitArg: string | undefined) => {
+		try {
+			const repo = LocalRepo.open();
+			const target = commitArg ?? repo.head();
+			if (!target) throw new Error("no commit to show — no commits yet");
+			const fangorn = getFangorn();
 
-schemaCmd
-    .command("get")
-    .description("Fetch a registered schema by name")
-    .argument("<name>", "Schema name")
-    .action(async (name: string) => {
-        try {
-            const fangorn = getFangorn();
-            const s = spinner();
+			const diff = await fangorn.show(target);
+			console.log(`commit ${target}`);
+			console.log(`Date:    ${new Date(diff.timestamp).toISOString()}`);
+			console.log(
+				`Parents: ${diff.parents.length ? diff.parents.join(", ") : "(root)"}`,
+			);
+			console.log(`Tree:    ${diff.root}`);
+			console.log(`\n    ${diff.message}\n`);
+			console.log(
+				`Changes vs. parent:  +${diff.added.length.toString()} / -${diff.removed.length.toString()} key(s)`,
+			);
+			for (const k of diff.added) console.log(`  + ${k}`);
+			for (const k of diff.removed) console.log(`  - ${k}`);
+			process.exit(0);
+		} catch (err) {
+			console.error("Failed:", (err as Error).message);
+			process.exit(1);
+		}
+	});
 
-            s.start(`Fetching schema "${name}"...`);
-            const schema = await fangorn.schema.get(name);
-            s.stop();
+program
+	.command("clone")
+	.description(
+		"Track an existing on-chain namespace by reconstructing its tip locally",
+	)
+	.argument("<owner>", "Owner (publisher) address")
+	.argument("<namespace>", "Namespace name")
+	.option(
+		"--dir <path>",
+		"Directory to create the repo in (default: current dir)",
+	)
+	.action(
+		async (owner: Address, namespace: string, options: { dir?: string }) => {
+			try {
+				const fangorn = getFangorn();
+				const s = spinner();
+				s.start(`Resolving on-chain tip for ${owner}...`);
+				const tip = await fangorn.onChainTip(owner);
+				const repo = LocalRepo.init(
+					{ namespace, owner, head: tip },
+					options.dir ?? process.cwd(),
+				);
+				s.stop();
 
-            if (!schema) {
-                log.error(`Schema "${name}" not found.`);
-                process.exit(1);
-            }
+				console.log(`Namespace: ${namespace}`);
+				console.log(`Owner:     ${owner}`);
+				console.log(
+					`HEAD:      ${repo.head() ?? "(none — publisher has no commits yet)"}`,
+				);
+				process.exit(0);
+			} catch (err) {
+				console.error("Failed:", (err as Error).message);
+				process.exit(1);
+			}
+		},
+	);
 
-            note(JSON.stringify(schema, null, 2), `Schema: ${name}`);
-            process.exit(0);
-        } catch (err) {
-            console.error("Failed:", (err as Error).message);
-            process.exit(1);
-        }
-    });
+program
+	.command("subscribe")
+	.description(
+		"Watch on-chain pushes to a namespace and stream JSON diffs (light client — no indexer)",
+	)
+	.argument("[namespace]", "Namespace name (default: current repo)")
+	.option(
+		"--owner <address>",
+		"Owner (publisher) address (default: current repo owner, else self)",
+	)
+	.option(
+		"--from-block <n>",
+		"Replay from this block (overrides the saved cursor)",
+		(v) => BigInt(v),
+	)
+	.option(
+		"--from-start",
+		"Replay this namespace's full history (ignore the saved cursor)",
+	)
+	.option("--pretty", "Pretty-print each change")
+	.action(
+		async (
+			namespaceArg: string | undefined,
+			options: {
+				owner?: Address;
+				fromBlock?: bigint;
+				fromStart?: boolean;
+				pretty?: boolean;
+			},
+		) => {
+			try {
+				const fangorn = getFangorn();
 
-// ─── publish ──────────────────────────────────────────────────────────────────
+				// Namespace/owner: explicit args win, else fall back to a local repo.
+				let namespace = namespaceArg;
+				let owner = options.owner;
+				if (!namespace || !owner) {
+					try {
+						const repo = LocalRepo.open();
+						namespace = namespace ?? repo.namespace();
+						owner = owner ?? repo.owner();
+					} catch {
+						/* no repo here — require explicit --owner/namespace */
+					}
+				}
+				if (!namespace)
+					throw new Error(
+						"namespace required (pass it as an argument or run inside a repo)",
+					);
+				owner = owner ?? fangorn.getAddress();
 
-/**
- * Cheaply read the first non-whitespace byte of a file without loading it.
- * Used to decide between streaming an array ("[") and reading a single object.
- */
-function peekFirstNonWsByte(filepath: string): number | undefined {
-    const fd = openSync(filepath, "r");
-    try {
-        const buf = Buffer.alloc(64);
-        let offset = 0;
-        for (;;) {
-            const bytesRead = readSync(fd, buf, 0, buf.length, offset);
-            if (bytesRead === 0) return undefined;
-            for (let i = 0; i < bytesRead; i++) {
-                const b = buf[i];
-                // skip ASCII whitespace: space, tab, LF, CR
-                if (b !== 0x20 && b !== 0x09 && b !== 0x0a && b !== 0x0d) return b;
-            }
-            offset += bytesRead;
-        }
-    } finally {
-        closeSync(fd);
-    }
-}
+				// Resume cursor: last fully-processed block, persisted per (owner, namespace).
+				const repoDir = join(process.cwd(), ".fangorn");
+				const cursorPath = join(
+					repoDir,
+					`subscribe-${owner}-${namespace}.json`,
+				);
+				const readCursor = (): bigint | undefined => {
+					if (options.fromStart) return undefined;
+					if (options.fromBlock !== undefined) return options.fromBlock;
+					if (existsSync(cursorPath)) {
+						const val = JSON.parse(readFileSync(cursorPath, "utf-8")) as { lastBlock?: string | number | bigint };
+						const numInput = val.lastBlock ?? 0;
+						return BigInt(numInput) + 1n;
+					}
+					return undefined;
+				};
+				const writeCursor = (block: bigint) => {
+					if (!existsSync(repoDir)) mkdirSync(repoDir, { recursive: true });
+					writeFileSync(
+						cursorPath,
+						JSON.stringify(
+							{ owner, namespace, lastBlock: block.toString() },
+							null,
+							2,
+						),
+						"utf-8",
+					);
+				};
+				const bigintReplacer = (_k: string, v: unknown) =>
+					typeof v === "bigint" ? v.toString() : v;
 
-const publishCmd = program
-    .command("publish")
-    .description("Publisher operations");
+				const fromBlock = readCursor();
+				// Status/logging on stderr so stdout stays a clean JSON-lines stream for piping.
+				console.error(
+					`Subscribing to "${namespace}" @ ${owner} ` +
+					(fromBlock !== undefined
+						? `from block ${fromBlock.toString()}`
+						: "(live from current tip)") +
+					` — Ctrl-C to stop.`,
+				);
 
-publishCmd
-    .command("upload")
-    .description("Publish file handle(s) under a schema")
-    .argument("<files...>", "JSON file(s) containing PublishRecord(s)")
-    .requiredOption("-s, --schema <schemaName>", "Schema name or bytes32 ID")
-    .requiredOption("-d, --dataset <datasetName>", "Dataset name (groups entries under a manifest)")
-    .option("--chunk-size <n>", "Records per chunk (default 1000)", (v) => parseInt(v, 10))
-    .option("--concurrency <n>", "Parallel chunk uploads (default 10)", (v) => parseInt(v, 10))
-    .action(async (
-        files: string[],
-        options: { schema: string; dataset: string; chunkSize?: number; concurrency?: number },
-    ) => {
-        try {
-            const fangorn = getFangorn();
-            const s = spinner();
+				const controller = new AbortController();
+				process.on("SIGINT", () => { controller.abort(); });
+				process.on("SIGTERM", () => { controller.abort(); });
 
-            // Stream records lazily so a multi-GB array file is never fully
-            // resident in memory. publishRecords/RecordSetBuilder consume the
-            // async iterable directly, and publish() applies upload backpressure.
-            let published = 0;
-            async function* streamRecords(): AsyncIterable<PublishRecord> {
-                for (const filepath of files) {
-                    if (peekFirstNonWsByte(filepath) === 0x5b /* "[" */) {
-                        const pipeline = createReadStream(filepath).pipe(
-                            streamArray.withParserAsStream(),
-                        );
-                        for await (const { value } of pipeline as AsyncIterable<{ value: PublishRecord }>) {
-                            yield value;
-                            if (++published % 10_000 === 0) {
-                                s.message(`Publishing... ${published.toLocaleString()} records read`);
-                            }
-                        }
-                    } else {
-                        // Single top-level object (or non-array): tiny, read directly.
-                        const parsed = JSON.parse(readFileSync(filepath, "utf-8")) as PublishRecord;
-                        yield parsed;
-                        published++;
-                    }
-                }
-            }
+				for await (const change of fangorn.subscribe({
+					namespace,
+					owner,
+					fromBlock,
+					signal: controller.signal,
+				})) {
+					process.stdout.write(
+						JSON.stringify(change, bigintReplacer, options.pretty ? 2 : 0) +
+						"\n",
+					);
+					writeCursor(change.blockNumber);
+				}
+				process.exit(0);
+			} catch (err) {
+				console.error("Failed:", (err as Error).message);
+				process.exit(1);
+			}
+		},
+	);
 
-            s.start("Publishing...");
-            const result = await fangorn.publisher.publishRecords({
-                records: streamRecords(),
-                schemaName: options.schema,
-                datasetName: options.dataset,
-                chunkSize: options.chunkSize,
-                concurrency: options.concurrency,
-            });
-            s.stop();
+program
+	.command("read")
+	.description(
+		"List every vertex and edge committed under a namespace, as JSON",
+	)
+	.argument("[namespace]", "Namespace name (default: current repo)")
+	.option(
+		"--owner <address>",
+		"Owner (publisher) address (default: current repo owner)",
+	)
+	.option("--pretty", "Pretty-print the JSON output")
+	.action(
+		async (
+			namespaceArg: string | undefined,
+			options: { owner?: Address; pretty?: boolean },
+		) => {
+			try {
+				const fangorn = getFangorn();
 
-            note(
-                `Manifest URI: ${result.manifestUri}\n` +
-                `Entries:      ${result.entryCount.toString()}\n` +
-                `Schema:       ${result.schemaId}`,
-                "Upload complete",
-            );
-            process.exit(0);
-        } catch (err) {
-            console.error("Failed:", (err as Error).message);
-            process.exit(1);
-        }
-    });
+				// Fall back to the local repo when namespace/owner aren't given explicitly.
+				let namespace = namespaceArg;
+				let owner = options.owner;
+				if (!namespace || !owner) {
+					const repo = LocalRepo.open();
+					namespace = namespace ?? repo.namespace();
+					owner = owner ?? repo.owner();
+				}
 
-publishCmd
-    .command("entry")
-    .description("Show details for one of your manifest entries")
-    .argument("<tag>", "Entry tag / name")
-    .requiredOption("-s, --schema <schemaName>", "Schema name")
-    .requiredOption("-d, --dataset <datasetName>", "Dataset name")
-    .action(async (tag: string, options: { schema: string; dataset: string }) => {
-        try {
-            const fangorn = getFangorn();
-            const s = spinner();
+				const [head, contents] = await Promise.all([
+					fangorn.onChainTip(owner),
+					fangorn.engine.listNamespace(namespace, owner),
+				]);
 
-            s.start(`Fetching entry "${tag}"...`);
-            const entry = await fangorn.publisher.getEntry(options.schema, options.dataset, tag);
-            s.stop();
+				const out = {
+					owner,
+					namespace,
+					head,
+					vertices: contents.vertices,
+					edges: contents.edges,
+				};
+				// write() to a pipe is async: a payload past the OS pipe buffer (~64 KiB on
+				// Linux) drains AFTER this returns, so exiting immediately truncates the
+				// reader mid-JSON. Exit from the write callback, once the chunk has flushed.
+				process.stdout.write(
+					JSON.stringify(out, null, options.pretty ? 2 : 0) + "\n",
+					() => process.exit(0),
+				);
+			} catch (err) {
+				console.error("Failed:", (err as Error).message);
+				process.exit(1);
+			}
+		},
+	);
 
-            note(JSON.stringify(entry, null, 2), `Entry: ${tag}`);
-            process.exit(0);
-        } catch (err) {
-            console.error("Failed:", (err as Error).message);
-            process.exit(1);
-        }
-    });
+program
+	.command("reset")
+	.description(
+		"DANGER!: reset your on-chain head to zero (abandons all prior commits)",
+	)
+	.action(async () => {
+		const confirmFirst = await confirm({
+			message: "Are you sure? Your onchain head will reset to 0x0000...",
+		});
+		handleCancel(confirmFirst);
+		if (!confirmFirst) {
+			console.log("Reset aborted.");
+			process.exit(0);
+		}
 
-// ─── consume ──────────────────────────────────────────────────────────────────
+		// If both prompts pass and aren't canceled:
+		await getFangorn().reset();
 
-const consumeCmd = program
-    .command("consume")
-    .description("Consumer operations");
-
-consumeCmd
-    .command("list")
-    .description("List a publisher's manifest entries")
-    .requiredOption("-s, --schema <schemaName>", "Schema name or bytes32 ID")
-    .requiredOption("--owner <address>", "Publisher address")
-    .action(async (options: { schema: string; owner: Address }) => {
-        try {
-            const fangorn = getFangorn();
-            const schemaId = await resolveSchemaId(fangorn, options.schema);
-            const manifest = await fangorn.consumer.getEntry(options.owner, schemaId, options.schema);
-
-            if (!manifest) {
-                log.warn("No manifest found.");
-                process.exit(0);
-            }
-
-            console.log(`Owner:   ${options.owner}`);
-            console.log(`Schema:  ${options.schema}`);
-            process.exit(0);
-        } catch (err) {
-            console.error("Failed:", (err as Error).message);
-            process.exit(1);
-        }
-    });
-
-consumeCmd
-    .command("entry")
-    .description("Show a publisher's manifest entry")
-    .argument("<tag>", "Entry tag / name")
-    .requiredOption("-s, --schema <schemaName>", "Schema name or bytes32 ID")
-    .requiredOption("--owner <address>", "Publisher address")
-    .action(async (tag: string, options: { schema: string; owner: Address }) => {
-        try {
-            const fangorn = getFangorn();
-            const schemaId = await resolveSchemaId(fangorn, options.schema);
-            const entry = await fangorn.consumer.getEntry(options.owner, schemaId, tag);
-            note(JSON.stringify(entry, null, 2), `Entry: ${tag}`);
-            process.exit(0);
-        } catch (err) {
-            console.error("Failed:", (err as Error).message);
-            process.exit(1);
-        }
-    });
-
-// consumeCmd
-//     .command("purchase")
-//     .description("Phase 1: pay and join the access group")
-//     .argument("<owner>", "Publisher address")
-//     .argument("<name>", "Entry name")
-//     .requiredOption("-s, --schema <schemaName>", "Schema name or bytes32 ID")
-//     .requiredOption("--burner-key <hex>", "Burner wallet private key (pays USDC)")
-//     .requiredOption("--amount <usdc>", "USDC amount in smallest unit")
-//     .requiredOption("--usdc <address>", "USDC contract address")
-//     .action(async (
-//         owner: Address,
-//         name: string,
-//         options: { schema: string; burnerKey: Hex; amount: string; usdc: Address },
-//     ) => {
-//         try {
-//             const fangorn = getFangorn();
-//             const cfg = loadConfig();
-//             const schemaId = await resolveSchemaId(fangorn, options.schema);
-//             const relayerKey = cfg.privateKey;
-//             const s = spinner();
-
-//             const identity = new Identity();
-//             const chain = getChain(cfg.cfg.chainName);
-//             const walletClient = createWalletClient({
-//                 account: privateKeyToAccount(options.burnerKey),
-//                 chain,
-//                 transport: http(cfg.cfg.rpcUrl),
-//             });
-
-//             s.start("Preparing ERC-3009 authorization...");
-//             const preparedRegister = await fangorn.consumer.prepareRegister({
-//                 walletClient,
-//                 paymentRecipient: owner,
-//                 amount: BigInt(options.amount),
-//                 usdcAddress: options.usdc,
-//                 usdcDomainName: "USD Coin",
-//                 usdcDomainVersion: "2",
-//             });
-//             s.stop();
-
-//             s.start("Submitting registration...");
-//             const { txHash } = await fangorn.consumer.register({
-//                 owner,
-//                 schemaId,
-//                 name,
-//                 identityCommitment: identity.commitment,
-//                 relayerPrivateKey: relayerKey,
-//                 preparedRegister,
-//             });
-//             s.stop();
-
-//             const exported = identity.export();
-
-//             note(
-//                 [
-//                     `Tx: ${txHash}`,
-//                     ``,
-//                     `⚠️  Save this identity string — you will need it for \`claim\`:`,
-//                     ``,
-//                     `  ${exported}`,
-//                     ``,
-//                     `Next:`,
-//                     `  fangorn consume claim ${owner} ${name} \\`,
-//                     `    -s ${options.schema} \\`,
-//                     `    --identity '${exported}' \\`,
-//                     `    --stealth <your-stealth-address>`,
-//                 ].join("\n"),
-//                 "Purchase complete ✓",
-//             );
-//             process.exit(0);
-//         } catch (err) {
-//             console.error("Failed:", (err as Error).message);
-//             process.exit(1);
-//         }
-//     });
-
-// consumeCmd
-//     .command("claim")
-//     .description("Phase 2: prove membership and claim access")
-//     .argument("<owner>", "Publisher address")
-//     .argument("<name>", "Entry name")
-//     .requiredOption("-s, --schema <schemaName>", "Schema name or bytes32 ID")
-//     .requiredOption("--identity <string>", "Exported identity from `consume purchase`")
-//     .requiredOption("--stealth <address>", "Stealth address to receive the access token")
-//     .action(async (
-//         owner: Address,
-//         name: string,
-//         options: { schema: string; identity: string; stealth: Address },
-//     ) => {
-//         try {
-//             const fangorn = getFangorn();
-//             const schemaId = await resolveSchemaId(fangorn, options.schema);
-//             const relayerKey = loadConfig().privateKey;
-//             const identity = new Identity(options.identity);
-//             const s = spinner();
-
-//             s.start("Generating ZK proof...");
-//             const preparedSettle = await fangorn.consumer.prepareSettle({
-//                 resourceId: DataSourceRegistry.resourceIdLocal(owner, schemaId, name),
-//                 identity,
-//                 stealthAddress: options.stealth,
-//             });
-//             s.stop();
-
-//             s.start("Submitting settlement...");
-//             const { txHash, nullifier } = await fangorn.consumer.claim({
-//                 owner,
-//                 schemaId,
-//                 name,
-//                 relayerPrivateKey: relayerKey,
-//                 preparedSettle,
-//             });
-//             s.stop();
-
-//             note(
-//                 [
-//                     `Tx:        ${txHash}`,
-//                     `Nullifier: ${nullifier.toString()}`,
-//                     ``,
-//                     `Next:`,
-//                     `  fangorn consume fetch ${owner} ${name} \\`,
-//                     `    -s ${options.schema} \\`,
-//                     `    -f <field> \\`,
-//                     `    --nullifier ${nullifier.toString()} \\`,
-//                     `    --stealth-key <stealth-private-key> \\`,
-//                     `    -o out.mp3`,
-//                 ].join("\n"),
-//                 "Claim complete ✓",
-//             );
-//             process.exit(0);
-//         } catch (err) {
-//             console.error("Failed:", (err as Error).message);
-//             process.exit(1);
-//         }
-//     });
-
-// consumeCmd
-//     .command("fetch")
-//     .description("Fetch a field after purchase and claim")
-//     .argument("<owner>", "Publisher address")
-//     .argument("<name>", "Entry name")
-//     .requiredOption("-s, --schema <schemaName>", "Schema name or bytes32 ID")
-//     .requiredOption("-f, --field <field>", "Field name to fetch")
-//     .requiredOption("--nullifier <bigint>", "Nullifier from `consume claim`")
-//     .requiredOption("--stealth-key <hex>", "Private key of the stealth address")
-//     .option("-o, --output <path>", "Write output to file (default: stdout)")
-//     .action(async (
-//         owner: Address,
-//         name: string,
-//         options: {
-//             schema: string;
-//             field: string;
-//             nullifier: string;
-//             stealthKey: Hex;
-//             output?: string;
-//         },
-//     ) => {
-//         try {
-//             const cfg = loadConfig();
-//             const chain = getChain(cfg.cfg.chainName);
-//             const fangorn = getFangorn();
-//             const schemaId = await resolveSchemaId(fangorn, options.schema);
-//             const s = spinner();
-
-//             const walletClient = createWalletClient({
-//                 account: privateKeyToAccount(options.stealthKey),
-//                 chain,
-//                 transport: http(cfg.cfg.rpcUrl),
-//             });
-
-//             s.start("Fetching...");
-//             const { data } = await fangorn.consumer.fetchField(
-//                 owner,
-//                 schemaId,
-//                 name,
-//                 options.field,
-//                 options.nullifier,
-//                 walletClient,
-//             );
-//             s.stop();
-        
-//             if (options.output) {
-//                 writeFileSync(options.output, Buffer.from(data));
-//                 console.log(`Saved to: ${options.output}`);
-//             } else {
-//                 process.stdout.write(Buffer.from(data));
-//                 process.stdout.write("\n");
-//             }
-//             process.exit(0);
-//         } catch (err) {
-//             console.error("Failed:", (err as Error).message);
-//             process.exit(1);
-//         }
-//     });
-
-// ─── datasource ───────────────────────────────────────────────────────────────
-
-const datasourceCmd = program
-    .command("datasource")
-    .description("Data source registry queries");
-
-datasourceCmd
-    .command("info")
-    .description("Show on-chain manifest info for an owner + schema")
-    .requiredOption("-s, --schema <schemaName>", "Schema name or bytes32 ID")
-    .option("--owner <address>", "Owner address (defaults to your wallet)")
-    .action(async (options: { schema: string; owner?: Address }) => {
-        try {
-            const self = getAccount().address;
-            const owner = options.owner ?? self;
-            const fangorn = getFangorn();
-            const schemaId = await resolveSchemaId(fangorn, options.schema);
-            const ds = await fangorn.getDatasourceRegistry().get(owner, schemaId, options.schema);
-
-            console.log(`Owner:        ${owner}`);
-            console.log(`Schema ID:    ${schemaId}`);
-            console.log(`Version:      ${String(ds.version)}`);
-            console.log(`Manifest CID: ${ds.manifestCid || "(none yet)"}`);
-            process.exit(0);
-        } catch (err) {
-            console.error("Failed:", (err as Error).message);
-            process.exit(1);
-        }
-    });
+		console.log(
+			"On-chain head reset to zero. `repo init` will now start fresh.",
+		);
+		process.exit(0);
+	});
 
 program.parse();

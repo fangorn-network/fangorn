@@ -1,24 +1,20 @@
 # Fangorn SDK
 
-commit → index → discover → prove → settle → fetch
-
 Intent-bound data for the agentic web.
 
-Fangorn lets you publish data under programmable access conditions. Access is enforced on-chain through settlement verification, so your content is only retrievable by those who have provably paid for it. Data is organized by schemas, enabling agent-based discovery across any number of publishers.
-Content is stored in your own storage backend (Cloudflare R2, IPFS, or any compatible future backend). The Fangorn protocol coordinates access without ever touching your content directly.
+Fangorn lets you publish content-addressed graph data, organized into namespaces, so that agents can discover and verify it across any number of publishers. Content is stored in your own storage backend (IPFS via Pinata today); the on-chain **DataRegistry** holds only a single cryptographic pointer per publisher. The protocol coordinates commitment and discovery without ever touching your content directly.
+
+Each publisher owns exactly **one on-chain state root** — the digest of a commit block wrapping a native IPLD DAG. Everything you publish lives as **namespaces** inside that one root map. Advancing the root is a compare-and-swap: it _is_ a git ref update.
+
+Data is a **metagraph** — **vertices** (a JSON payload tagged by a free-form schema id) and **edges** (a labeled relation between two vertices, as native IPLD links) — committed under a namespace.
+
+Datasets are versioned like git, down to the storage model: each update is a **commit** that points at its parent and at a single **CAR file** (a packfile) holding only the blocks that commit introduced. The registry stores only the pointer to the latest commit; full history lives in IPFS — reconstructible from the on-chain tip alone, no indexer required. `commit` builds the graph in memory and persists it as **exactly two uploads** (one CAR + one small commit block), regardless of graph size; `push` moves the on-chain pointer (the single permissioned step, fast-forward checked). Unchanged data re-derives identical CIDs and is never re-uploaded.
+
+> **Note:** access-controlled (encrypted) fields and the purchase → claim → fetch settlement flow are being built on top of this registry and are **not available in the current release**. Registration, namespaces, and the git-native commit / push / log / clone rail are live.
 
 ## Supported Networks
 
-Arbitrum Sepolia (Base Sepolia in progress).
-
-
-| Feature | Agent + SQL | Fangorn Stack |
-| --- | --- | --- |
-| **Primary Use Case** | Ad-hoc internal data exploration. | Distributed, verifiable knowledge graphs. |
-| **Trust Model** | Centralized (Must trust the DB admin & the AI). | Decentralized (Trustless, cryptographically verifiable). |
-| **Read Latency** | High (Network hop + SQL execution + LLM loop). | Microseconds (Queried locally via edge snapshots). |
-| **Data Integrity** | Enforced by standard DB constraints (if configured). | Strict graph-wide schema, cardinality, & Merkle validation. |
-| **Scalability** | Vertical/Horizontal DB scaling required. | Infinite scale via Semantic CDN distribution. |
+- Arbitrum Sepolia
 
 ---
 
@@ -40,92 +36,149 @@ fangorn init
 ```
 
 `fangorn init` prompts for:
+
 - Wallet private key
-- Pinata JWT + gateway URL (for schema/manifest storage)
-- Fangorn access worker URL (for content retrieval)
-- Default chain
+- Pinata JWT + gateway URL (content + commit-object storage)
+- Fangorn access worker URL (reserved for the upcoming access-control flow)
 
 Config is written to `~/.fangorn/config.json`.
 
-You can also configure via environment variables:
+You can also configure via environment variables (these take precedence over the config file):
 
 ```sh
-DELEGATOR_ETH_PRIVATE_KEY=0x...
+ETH_PRIVATE_KEY=0x...
 PINATA_JWT=...
 PINATA_GATEWAY=https://your-gateway.mypinata.cloud
-WORKER_URL=https://your-worker.workers.dev
 CHAIN_NAME=arbitrumSepolia
+WORKER_URL=https://your-worker.workers.dev   # optional (future access control)
 ```
 
-### Register a Schema
+### Register as a publisher
+
+Register once before committing anything. This records your wallet as a data publisher in the DataRegistry (the registration fee is currently zero).
 
 ```sh
-# Register a schema on-chain
-fangorn schema register <name>
-
-# Fetch a registered schema by name
-fangorn schema get schema.name.v1
+fangorn register
 ```
 
-### Publish Data
+### Track a namespace (git-native repo)
+
+A **namespace** is an entry in your on-chain root map. `repo init` allocates it and starts tracking it in a local `.fangorn/` pointer file (just a HEAD ref — there is no local object store; commit objects and their CARs live in IPFS).
 
 ```sh
-# Publish records under a schema, priced at 1 USDC unit
-fangorn publish upload records.json -s schema.name.v1 -p 1
-
-# Inspect a specific entry
-fangorn publish entry track1 -s schema.name.v1
+# Allocate a namespace on-chain (no-op if it already exists) and track it here
+fangorn repo init rusty-anchor
 ```
 
-Records are JSON files containing `PublishRecord` objects. Handle fields point to content already uploaded to your storage backend:
+### Commit → push
+
+`commit` snapshots a namespace's vertices/edges into a new commit (one CAR upload to IPFS, advances your local HEAD) — it does **not** touch the chain. `push` fast-forwards the on-chain state root to your local tip: the single permissioned step.
+
+```sh
+# Snapshot graph data into a new local commit — does NOT push
+fangorn commit graph.json -m "initial import"
+
+# Settle the local tip on-chain (permission + fast-forward checked here)
+fangorn push
+fangorn push --force        # push even if it doesn't fast-forward the on-chain tip
+```
+
+`graph.json` is a JSON file of vertices and (optionally) the edges between them. Edges reference vertices by their local `id`:
 
 ```json
 {
-  "name": "track1",
-  "fields": {
-    "title": "Locura",
-    "artist": "Alice",
-    "audio": { "@type": "handle", "uri": "r2://my-dir/locura.mp3" }
-  }
+	"vertices": [
+		{
+			"id": "t1",
+			"tag": "track",
+			"payload": { "title": "Locura", "artist": "Alice" }
+		},
+		{ "id": "a1", "tag": "artist", "payload": { "name": "Alice" } }
+	],
+	"edges": [{ "rel": "performed_by", "from": "t1", "to": "a1" }]
 }
 ```
 
-> A price of `1` equals the smallest USDC unit (0.000001 USDC).
+Each commit records its parent, so history is real and walkable. By default a commit is **additive** (the staged graph joins the namespace's existing contents); pass `--replace` for snapshot semantics, where the file _is_ the namespace's new state and anything omitted is removed — earlier history is retained either way. Blocks are content-addressed, so unchanged data is reused byte-for-byte across commits and never re-uploaded.
 
-### Consume Data
+### Graph Builders
 
-The consumer flow is three phases: **purchase → claim → fetch**.
+A graph builders are delegated to the application layer. Developers are responsible for implementing functions that take input and transform it into a set of edges and vertices. See [examples/hackmd](./examples/hackmd/) for an example.
+
+### Inspect
 
 ```sh
-# Phase 1: pay and join the Semaphore group
-fangorn consume purchase <owner> <name> \
-  -s schema.name.v1 \
-  --burner-key 0x... \
-  --amount 1 \
-  --usdc 0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d
+fangorn status              # local tip vs on-chain tip
+fangorn log                 # walk commit history from the tip (newest first)
+fangorn log -n 5            # limit
+fangorn show                # the tip commit + what it changed vs its parent
+fangorn show <commitCid>    # a specific commit
 
-# Save the identity string printed by purchase — required for claim.
-
-# Phase 2: prove membership and claim access (generates a Groth16 ZK proof)
-fangorn consume claim <owner> <name> \
-  -s schema.name.v1 \
-  --identity '<identity-string>' \
-  --stealth <stealth-address>
-
-# Phase 3: fetch content via the access worker
-fangorn consume fetch <owner> <name> \
-  -s schema.name.v1 \
-  -f audio \
-  --nullifier <nullifier> \
-  --stealth-key 0x... \
-  -o output.mp3
-
-# List a publisher's manifest
-fangorn consume list -s schema.name.v1 --owner <address>
-
-# Inspect a publisher's entry
-fangorn consume entry track1 -s schema.name.v1 --owner <address>
+# List every vertex and edge committed under a namespace, as JSON
+fangorn read                          # defaults to the current repo's namespace + owner
+fangorn read rusty-anchor --owner 0x... --pretty
 ```
+
+### Clone
+
+Reconstruct tracking of a published namespace from its on-chain tip alone. History and contents are then fetched on demand from IPFS.
+
+```sh
+fangorn clone <owner> rusty-anchor
+fangorn clone <owner> rusty-anchor --dir ./somewhere
+```
+
+### Subscribe (light client)
+
+Watch a namespace for on-chain updates and stream the diffs — **no subgraph, no
+indexer**. A publisher owns exactly one on-chain root, so this watches that
+publisher's `StateCommitted` event (read straight from the RPC node) and, for
+each new root, diffs your namespace's link sets against the previous root.
+Only pushes that actually changed the namespace are emitted. Each push's
+blocks arrive as one CAR download, resolved from IPFS on demand.
+
+```sh
+# Watch the current repo's namespace; each change is one JSON line on stdout.
+fangorn subscribe
+
+# Watch any publisher's namespace explicitly.
+fangorn subscribe rusty-anchor --owner 0x...
+
+# Feed an embeddings/index builder directly.
+fangorn subscribe rusty-anchor --owner 0x... | my-index-builder
+```
+
+Each emitted line is a namespace change:
+
+```jsonc
+{
+	"namespace": "rusty-anchor",
+	"owner": "0x...",
+	"commitCid": "bafy...", // the new on-chain tip
+	"blockNumber": "12345678", // persist this to resume
+	"addedVertices": [
+		{ "cid": "bafy...", "schemaId": "track", "payload": { "title": "Locura" } },
+	],
+	"addedEdges": [
+		{ "sourceCid": "bafy...", "relation": "by", "targetCid": "bafy..." },
+	],
+	"removedVertexCids": ["bafy..."],
+	"removedEdges": [],
+}
+```
+
+**Resumability.** The last processed block is saved to
+`.fangorn/subscribe-<owner>-<namespace>.json` after each change, so restarting
+replays only what you missed (via `eth_getLogs`) before going live. Override or
+reset:
+
+```sh
+fangorn subscribe --from-block 12000000   # replay from a specific block
+fangorn subscribe --from-start            # replay the namespace's full history
+```
+
+Without a saved cursor, subscribe starts **live from the current tip** — seed
+your initial index from `fangorn read` first, then subscribe for the deltas.
 
 ---
 
@@ -133,235 +186,138 @@ fangorn consume entry track1 -s schema.name.v1 --owner <address>
 
 ### Initialization
 
+`Fangorn.create` is synchronous. Pass Pinata storage for any commit/read operation.
+
 ```ts
 import { Fangorn, FangornConfig } from "@fangorn-network/sdk";
 
-const fangorn = await Fangorn.create({
-  privateKey: "0x...",
-  workerUrl: "https://your-worker.workers.dev",
-  config: FangornConfig.ArbitrumSepolia,
-  domain: "localhost",
+const fangorn = Fangorn.create({
+	privateKey: "0x...",
+	storage: {
+		pinata: {
+			jwt: process.env.PINATA_JWT!,
+			gateway: process.env.PINATA_GATEWAY!,
+		},
+	},
+	config: FangornConfig, // defaults to Arbitrum Sepolia
+	domain: "localhost",
 });
+
+// Register once before committing.
+const registry = fangorn.getDataRegistry();
+if (!(await registry.isRegistered(fangorn.getAddress()))) {
+	await registry.register();
+}
 ```
 
-### Storage
+### Namespaces & the git-native flow
 
-Fangorn operates on a 'Bring Your Own Storage' basis.
-
-- Schema definitions and schema-conformant data sets live in IPFS using Pinata.
-- Storage of data that should be guarded via Fangorn can live in any database desired, be it S3 or within IPFS. At present, the implementation only supports Cloudflare R2. 
-
-Storage is used for schemas and manifests only. Content itself lives in your storage backend (R2 etc.) and is never handled by the SDK directly.
-
-### Schemas
-
-A `SchemaDefinition` is a JSON object where each field declares its type. Fields marked `@type: "handle"` point to content in an external storage backend — access is enforced by the Fangorn access worker. All other fields are stored inline in the manifest and are publicly readable.
+`initRepo` allocates a namespace on-chain (idempotent). Then split building from settling:
+`commit` writes a commit object locally (durable in IPFS, HEAD not yet on-chain), and
+`push` fast-forwards the on-chain root to it.
 
 ```ts
-const definition: SchemaDefinition = {
-  title:  { "@type": "string" },
-  artist: { "@type": "string" },
-  audio:  { "@type": "handle" },  // content lives in R2, access-controlled by worker
-};
+// Allocate the namespace (no-op if it already exists)
+await fangorn.initRepo("rusty-anchor");
 
-// Register the schema on-chain
-const { schemaId, schemaCid } = await fangorn.schema.register({
-  name: "schema.name.v1",
-  definition,
-  agentId: "",
+// First commit — no parent
+const c1 = await fangorn.commit({
+	namespace: "rusty-anchor",
+	message: "initial import",
+	vertices: [
+		{ id: "t1", tag: "track", payload: { title: "Locura", artist: "Alice" } },
+		{ id: "a1", tag: "artist", payload: { name: "Alice" } },
+	],
+	edges: [{ rel: "performed_by", from: "t1", to: "a1" }],
 });
 
-// Fetch a schema by name
-const schema = await fangorn.schema.get("schema.name.v1");
+// Settle it on-chain (fast-forward from "no tip yet")
+await fangorn.push(c1.commitCid);
+
+// A follow-up commit builds on the previous one
+const c2 = await fangorn.commit({
+	namespace: "rusty-anchor",
+	parent: c1.commitCid,
+	message: "add another track",
+	vertices: [
+		{ id: "t2", tag: "track", payload: { title: "Otra", artist: "Alice" } },
+	],
+});
+await fangorn.push(c2.commitCid); // refuses unless it fast-forwards the on-chain tip (pass { force: true } to override)
 ```
 
-### Publishing
+### History, diff & read
 
-Fangorn supports two manifest kinds, selected by which builder you pass to `publisher.publish()`.
-
-#### Record-set
-
-Upload content to your R2 bucket out-of-band, then publish a manifest pointing at it. The SDK stores the manifest on IPFS and commits the Merkle root on-chain.
+Walk history from the on-chain tip (IPFS only, no indexer), and read the current namespace contents:
 
 ```ts
-// Convenience wrapper — equivalent to publish({ builder: new RecordSetBuilder(), ... })
-await fangorn.publisher.publishRecords({
-  schemaName: "schema.name.v1",
-  records: [
-    {
-      name: "track1",
-      fields: {
-        title:  "Locura",
-        artist: "Alice",
-        audio:  { "@type": "handle", uri: "r2://my-dir/locura.mp3" },
-      },
-    },
-  ],
-});
+const tip = await fangorn.onChainTip(fangorn.getAddress());
 
-// Legacy alias still works
-await fangorn.publisher.upload({ schemaName: "schema.name.v1", records: [...] });
-```
-
-The resulting manifest has `kind: "record-set"` and `version: 2`. Plain fields (`title`, `artist`) are publicly readable from the manifest; handle fields require a valid on-chain settlement to retrieve via the access worker.
-
-#### Bundle
-
-A bundle is a small typed subgraph spanning multiple schemas. Define the shape once via a bundle schema, then publish node + edge data against it. This is the right primitive for linked data (e.g. tracks + taxonomy + edges between them).
-
-```ts
-// 1. Register node schemas (idempotent)
-await fangorn.schema.register({ name: "my.track.v1", definition: trackSchema });
-await fangorn.schema.register({ name: "my.taxonomy.v1", definition: taxonomySchema });
-
-// 2. Register the bundle shape (idempotent)
-await fangorn.schema.register({
-  kind: "bundle",
-  name: "my.bundle.v1",
-  bundle: {
-    nodes: { Track: "my.track.v1", Taxonomy: "my.taxonomy.v1" },
-    edges: [{ rel: "hasTaxonomy", from: "Track", to: "Taxonomy", min: 1, max: 1 }],
-  },
-});
-
-// 3. Publish data
-await fangorn.publisher.publishBundle({
-  bundleName: "my.bundle.v1",
-  nodes: [
-    { id: "t1", type: "Track",    fields: { trackId: "t1", title: "Locura", ... } },
-    { id: "x1", type: "Taxonomy", fields: { trackId: "t1", genres: ["electronic"] } },
-  ],
-  edges: [
-    { rel: "hasTaxonomy", from: "t1", to: "x1" },
-  ],
-  datasetName: "my-dataset-v1",
-});
-
-// Legacy alias still works
-await fangorn.publisher.uploadBundle({ bundleName: "my.bundle.v1", nodes: [...], edges: [...] });
-```
-
-The resulting manifest has `kind: "bundle"` and `version: 3`. Node chunks and the edge chunk are stored separately on IPFS and committed together under a single Merkle root.
-
-#### Custom builders
-
-Both `RecordSetBuilder` and `BundleBuilder` implement the `ManifestBuilder` interface. You can implement your own:
-
-```ts
-import {
-  ManifestBuilder, BuildContext, ChunkDraft, ChunkRef,
-  BaseManifest, ResolvedSchemaShape,
-} from "@fangorn-network/sdk";
-
-class MyBuilder implements ManifestBuilder<MyInput, MyManifest> {
-  readonly kind = "my-kind";
-  readonly version = 1;
-  validate(schema, input) { /* ... */ }
-  async *chunk(input, schema) { yield { name: "chunk:0", data: [...] }; }
-  compareChunks(a, b) { return a.cid.localeCompare(b.cid); }
-  assemble(ctx, input, schema): MyManifest { /* ... */ }
+// Walk commits, newest first
+for await (const c of fangorn.log(tip!)) {
+	console.log(c.cid, c.message);
 }
 
-await fangorn.publisher.publish({
-  schemaName: "my.schema.v1",
-  builder: new MyBuilder(),
-  input: myInput,
-  datasetName: "my-dataset",
-});
+// What a commit changed vs. its first parent (namespaced vertex/edge entries added/removed)
+const diff = await fangorn.show(tip!);
+
+// Every vertex and edge currently committed under a namespace
+const contents = await fangorn.inspectNamespace("rusty-anchor");
+// contents.vertices: { cid, schemaId, payload }[]   contents.edges: { sourceCid, relation, targetCid }[]
 ```
 
-### Consuming
+> The fast-forward check in `push` is enforced client-side against the on-chain
+> head in this release; on-chain write-authorization lands in a later slice.
 
-#### Phase 1: Purchase
+### Immediate-write helpers
 
-```ts
-import { Identity } from "@semaphore-protocol/identity";
-
-const identity = new Identity();
-
-const preparedRegister = await fangorn.consumer.prepareRegister({
-  walletClient,
-  paymentRecipient: ownerAddress,
-  amount: 1n,
-  usdcAddress: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
-  usdcDomainName: "USD Coin",
-  usdcDomainVersion: "2",
-});
-
-const { txHash } = await fangorn.consumer.register({
-  owner: ownerAddress,
-  schemaId,
-  name: "track1",
-  identityCommitment: identity.commitment,
-  relayerPrivateKey: "0x...", 
-  preparedRegister,
-});
-
-// Save identity.export() — required for Phase 2
-```
-
-#### Phase 2: Claim
+For the common "stage and settle in one shot" case, `upload` (one vertex) and `uploadBatch`
+(many vertices + edges) run the whole commit-and-push atomically:
 
 ```ts
-const preparedSettle = await fangorn.consumer.prepareSettle({
-  resourceId: DataSourceRegistry.resourceIdLocal(ownerAddress, schemaId, "track1"),
-  identity,
-  stealthAddress: "0x...",
-});
+await fangorn.upload("rusty-anchor", { title: "Locura" }, "track");
 
-const { txHash, nullifier } = await fangorn.consumer.claim({
-  owner: ownerAddress,
-  schemaId,
-  name: "track1",
-  relayerPrivateKey: "0x...",
-  preparedSettle,
-});
-
-// Save nullifier — required for Phase 3
-```
-
-#### Phase 3: Fetch
-
-```ts
-import { createWalletClient, http } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
-import { arbitrumSepolia } from "viem/chains";
-
-const stealthWalletClient = createWalletClient({
-  account: privateKeyToAccount(stealthPrivateKey),
-  chain: arbitrumSepolia,
-  transport: http(rpcUrl),
-});
-
-const { data, contentType } = await fangorn.consumer.fetchField(
-  ownerAddress,
-  schemaId,
-  "track1",
-  "audio",
-  nullifier.toString(),
-  stealthWalletClient,
+await fangorn.uploadBatch(
+	"rusty-anchor",
+	[{ id: "t1", tag: "track", payload: { title: "Locura" } }],
+	[
+		/* edges */
+	],
 );
 ```
 
-The consumer signs `{ nullifier, resourceId, objectKey, timestamp }` with their stealth key. The access worker verifies the signature, checks `is_settled()` on-chain, and proxies the content bytes directly from R2. The content URL is never exposed to the client.
+### Subscribe (light client)
 
----
+`subscribe` is an async generator over namespace-scoped changes. It optionally
+replays from a block cursor (`fromBlock`) and then watches live until the
+`AbortSignal` fires. Each change carries `blockNumber` — persist it to resume.
 
-## Access Worker
+```ts
+const controller = new AbortController();
 
-The Fangorn access worker is a Cloudflare Worker that gates R2 content behind on-chain settlement verification. Publishers deploy their own worker, with one worker per R2 bucket.
+for await (const change of fangorn.subscribe({
+	namespace: "rusty-anchor",
+	owner: "0x...", // defaults to your own address
+	fromBlock: savedCursor, // omit to start live from the current tip
+	signal: controller.signal,
+})) {
+	for (const v of change.addedVertices) index.upsert(v.cid, v.payload);
+	for (const cid of change.removedVertexCids) index.remove(cid);
+	persistCursor(change.blockNumber);
+}
+```
 
-### How it works
+The pure diff primitive is also exposed on the engine —
+`engine.namespaceDiff(oldRootHex, newRootHex, namespace)` — if you want to diff
+two arbitrary roots without watching.
 
-1. Consumer signs `{ nullifier, resourceId, objectKey, timestamp }` with their stealth address private key
-2. Worker recovers the stealth address from the signature
-3. Worker calls `is_settled(stealthAddress, resourceId)` on the Settlement Registry
-4. If settled → bytes proxied directly from R2
-5. If not → 401
+### Storage
 
-The worker is stateless, open-source, and has no logging. Its only capability is verifying settlement and proxying bytes. The content URL is never exposed to the consumer.
-
-See the [fangorn-access-worker](https://github.com/fangorn-network/webworker) repo for deployment instructions.
+Fangorn operates on a 'Bring Your Own Storage' basis. Each commit is persisted as
+one CAR file (an opaque packfile of the commit's new blocks) plus one small commit
+block, pinned to IPFS via Pinata; the chain holds only the 32-byte commit pointer.
+The backend never needs to understand IPLD — any blob store can implement the
+`MetadataStorage` interface.
 
 ---
 
@@ -369,11 +325,11 @@ See the [fangorn-access-worker](https://github.com/fangorn-network/webworker) re
 
 ### Arbitrum Sepolia
 
-| Contract            | Address                                      |
-| ------------------- | -------------------------------------------- |
-| DataSource Registry | `0xe8a5906825680a5816a7f28f2a0fa2d9ceec3755` |
-| Schema Registry     | `0x267084865813550d9d97d3842c4a2d33a872908f` |
-| Settlement Registry | `0x1d21545f536a2f026348477960ca59f9f1d7fabd` |
+| Contract     | Address                                      |
+| ------------ | -------------------------------------------- |
+| DataRegistry | `0x9a3811b365a4aeea1626eaad185b273424ae5e48` |
+
+This is the address in `FangornConfig`; the SDK uses it by default.
 
 ---
 
@@ -387,6 +343,8 @@ pnpm test
 
 ### E2E Tests
 
+Runs the storage + on-chain anchor flow against live IPFS + the deployed contract.
+
 ```sh
 cp env.example .env
 pnpm test:e2e
@@ -394,35 +352,25 @@ pnpm test:e2e
 
 Required variables:
 
-| Variable                       | Description                               |
-| ------------------------------ | ----------------------------------------- |
-| `DELEGATOR_ETH_PRIVATE_KEY`    | Publisher private key (needs testnet ETH) |
-| `DELEGATEE_ETH_PRIVATE_KEY`    | Consumer private key                      |
-| `PINATA_JWT`                   | Pinata API JWT                            |
-| `PINATA_GATEWAY`               | Pinata gateway URL                        |
-| `WORKER_URL`                   | Access worker URL (optional for Phase 3)  |
-| `CHAIN_NAME`                   | `arbitrumSepolia`                         |
-| `CAIP2`                        | `421614`                                  |
-| `RPC_URL`                      | RPC endpoint                              |
-| `USDC_ADDRESS`                 | USDC contract address                     |
-| `DATA_SOURCE_REGISTRY_ADDRESS` | DataSourceRegistry address                |
-| `SCHEMA_REGISTRY_ADDRESS`      | SchemaRegistry address                    |
-| `SETTLEMENT_REGISTRY_ADDRESS`  | SettlementRegistry address                |
+| Variable          | Description                               |
+| ----------------- | ----------------------------------------- |
+| `ETH_PRIVATE_KEY` | Publisher private key (needs testnet ETH) |
+| `PINATA_JWT`      | Pinata API JWT                            |
+| `PINATA_GATEWAY`  | Pinata gateway URL                        |
 
-Phase 3 tests are skipped unless `WORKER_URL` is set. Run the access worker locally with `wrangler dev --local` and set `WORKER_URL=http://localhost:8787` to enable them.
+The publisher must be registered (`fangorn register`, or `registry.register()`) on the target key.
 
 ---
 
 ## Limitations / Future Work
 
-- Schema validation is client-side only — no on-chain enforcement.
-- The access worker is a trusted component. Future versions will replace it with a TEE or protocol-native verification layer.
-- One worker per R2 bucket. Multi-bucket support is planned.
-- Purchase ledger is in-memory only. Persistent ledger backed by IPFS is in progress.
+- Access-controlled (encrypted) fields and the purchase → claim → fetch settlement flow are being built on this registry — not available this release.
+- Vertex/edge schema validation is client-side only — no on-chain enforcement.
+- Push authorization is client-side in this release; on-chain write policies and non-fast-forward rejection are planned.
+- Reads target one publisher's namespace at a time; cross-publisher discovery is a higher layer.
 
 ---
 
 ## License
 
 MIT
-+++

@@ -1,44 +1,66 @@
+import type { CID } from "multiformats/cid";
+
 /**
- * StorageBackend — backend-agnostic interface for storing and retrieving
- * opaque content. The URI returned by put() is the only thing callers
- * hold onto; get() knows how to resolve it.
+ * A backend-agnostic interface for storing and retrieving opaque content.
  */
 export interface StorageMeta {
-  name?: string
-  [key: string]: unknown
+	name?: string;
+	[key: string]: unknown;
+}
+
+/** A content-addressed block whose CID is already known to the caller. */
+export interface RawBlock {
+	cid: CID;
+	bytes: Uint8Array;
 }
 
 export interface MetadataStorage {
-  /**
-   * Store content and return an opaque URI.
-   * Callers never construct or parse URIs — treat them as handles.
-   */
-  put(data: unknown, meta?: StorageMeta): Promise<string>
+	/**
+	 * Store content and return an opaque URI.
+	 * Callers never construct or parse URIs, they  should be treated as handles.
+	 */
+	put(data: unknown, meta?: StorageMeta): Promise<string>;
 
-  /**
-     * Pack multiple items into a single CAR and upload as one pin.
-     * Returns a map of { name -> CID } for each item.
-     */
-  putMany(items: { data: unknown; name: string }[]): Promise<Record<string, string>>
+	/**
+	 * Pack multiple items into a single upload
+	 * Returns a map of { name -> identifier } for each item
+	 */
+	putMany(
+		items: { data: unknown; name: string }[],
+	): Promise<Record<string, string>>;
 
-  /**
-   * Retrieve content by URI previously returned from put().
-   */
-  get<T>(uri: string): Promise<T>
+	/**
+	 * Upload ONE precomputed (cid, bytes) block, preserving its exact CID so it
+	 * stays retrievable via `getRawBlock(cid.toString())`. Used only for commit
+	 * blocks — one small upload per commit; bulk data travels inside CAR files
+	 * via `putFile`.
+	 */
+	putBlock(block: RawBlock): Promise<void>;
 
-  /**
-   * Delete content by URI. Best-effort — implementations may no-op.
-   */
-  delete(uri: string): Promise<void>
-}
+	/**
+	 * Store an opaque byte payload (e.g. a CAR file) and return a URI handle.
+	 * The backend is NOT expected to understand the contents.
+	 */
+	putFile(bytes: Uint8Array, name: string): Promise<string>;
 
-/**
- * Proof required by access-controlled backends (e.g. R2 via the Fangorn worker).
- * Plain backends (e.g. IPFS) ignore this entirely.
- */
-export interface AccessProof {
-  nullifier: string
-  resourceId: string
-  timestamp: number
-  signature: `0x${string}`
+	/**
+	 * Retrieve the exact bytes previously stored with putFile().
+	 */
+	getFile(uri: string): Promise<Uint8Array>;
+
+	/**
+	 * Retrieve content by URI previously returned from put().
+	 */
+	get<T>(uri: string): Promise<T>;
+
+	/**
+	 * Retrieve the exact raw bytes for a block CID, with no decoding applied —
+	 * how commit blocks written with putBlock() are read back.
+	 */
+	getRawBlock(uri: string): Promise<Uint8Array>;
+
+	/**
+	 * Delete content by URI
+	 */
+	delete(uri: string): Promise<void>;
 }

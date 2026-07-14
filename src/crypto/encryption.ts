@@ -2,9 +2,20 @@ import { x25519 } from "@noble/curves/ed25519";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { hkdf } from "@noble/hashes/hkdf.js";
 import { bytesToHex, hexToBytes, type Hex } from "viem";
-import { HandleFieldInput } from "../roles/publisher/types";
 import { aesGcmEncrypt, aesGcmDecrypt, GCM_NONCE_LENGTH } from "./aes.js";
 import { getRandomValues } from "./rand.js";
+
+/** A sealed field handle: where the ciphertext lives and how to verify/decrypt it. */
+export interface HandleFieldInput {
+	"@type": "handle";
+	uri: string;
+	workerUrl: string;
+	encryption: {
+		gadget: string;
+		ciphertextHash: Hex;
+		teePubkey: Hex;
+	};
+}
 
 // Encrypts a payload so that only the TEE holding `teeSecret` can open it, and
 // only when bound to a specific `resourceId`.
@@ -134,8 +145,8 @@ export async function encryptAndUpload(
 		},
 		body: ciphertext as unknown as BodyInit,
 	});
-	if (!uploadRes.ok) throw new Error(`upload failed: ${uploadRes.status}`);
-	const { objectKey } = await uploadRes.json();
+	if (!uploadRes.ok) throw new Error(`upload failed: ${(uploadRes.status).toString()}`);
+	const { objectKey } = (await uploadRes.json()) as { objectKey: string };
 
 	return {
 		"@type": "handle",
