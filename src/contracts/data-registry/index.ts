@@ -49,24 +49,6 @@ function decodeStateCommitted(log: StateCommittedEventLog): StateCommittedLog {
     };
 }
 
-// function decodeStateCommitted(log: {
-//     args: {
-//         oldRoot: string,
-//         newRoot: string,
-//     },
-//     blockNumber: bigint,
-//     logIndex: number,
-//     transactionHash: Hex,
-
-// }): StateCommittedLog {
-//     return {
-//         oldRoot: log.args.oldRoot as Hex,
-//         newRoot: log.args.newRoot as Hex,
-//         blockNumber: log.blockNumber as bigint,
-//         logId: `${log.transactionHash as string}:${String(log.logIndex)}`,
-//     };
-// }
-
 export class DataRegistryClient {
     constructor(
         private contractAddress: Address,
