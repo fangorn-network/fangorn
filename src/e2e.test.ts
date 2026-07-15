@@ -1,9 +1,6 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { type Hex, keccak256, stringToBytes, hexToBytes, bytesToHex } from "viem";
-import { Fangorn } from "./index.js"; // Path to your Fangorn entry point
-import { privateKeyToAccount } from "viem/accounts";
 import { TestBed } from "./test/testbed.js";
-import { skaleEuropa } from "viem/chains";
 import { sealSelf, unsealSelf, GADGET_SELF_HKDF_V1 } from "./crypto/encryption.js";
 
 const PRIVATE_KEY = process.env.ETH_PRIVATE_KEY as Hex;
