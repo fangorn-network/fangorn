@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { type Hex, keccak256, stringToBytes } from "viem";
+import { type Hex, keccak256, stringToBytes, hexToBytes, bytesToHex } from "viem";
 import { Fangorn } from "./index.js"; // Path to your Fangorn entry point
 import { privateKeyToAccount } from "viem/accounts";
 import { TestBed } from "./test/testbed.js";
 import { skaleEuropa } from "viem/chains";
+import { sealSelf, unsealSelf, GADGET_SELF_HKDF_V1 } from "./crypto/encryption.js";
 
 const PRIVATE_KEY = process.env.ETH_PRIVATE_KEY as Hex;
 const PARTY_TWO_KEY = process.env.SECOND_ETH_PRIVATE_KEY as Hex;
@@ -159,6 +160,68 @@ describe("Fangorn True E2E: Storage + Chain Anchor", () => {
             vertices.map(v => v.payload.event).sort(),
         );
     }, 180_000);
+
+    // Purely-private (self-hkdf-v1) end-to-end. Encryption/decryption is entirely
+    // OUT OF BAND — pre/post-ingestion. Fangorn never sees plaintext or a key: it
+    // ingests opaque ciphertext bytes like any other payload (IPFS/Pinata doesn't
+    // care that the bytes are a ciphertext). No R2, no access worker, no settlement
+    // — that machinery is only for the gated worker-usdc-v1 gadget.
+    it("purely private: encrypt for self, ingest, retrieve, decrypt", async () => {
+        await testbed.register(0);
+        const namespace = `private-${Date.now()}`;
+        await testbed.initRepo(0, namespace);
+
+        // The single party's own secret == its own key. Bound to a resourceId so
+        // the same key can't cross-open a different resource.
+        const ownSecret = hexToBytes(PRIVATE_KEY);
+        const name = "secret-msg";
+        const resourceId = keccak256(stringToBytes(`${namespace}:${name}`));
+        const message = "the eagles are coming";
+
+        // --- out of band, pre-ingestion: encrypt for the single party ---
+        const ciphertext = sealSelf(
+            new TextEncoder().encode(message),
+            ownSecret,
+            resourceId,
+        );
+
+        // --- ingest opaque ciphertext to fangorn like any other payload ---
+        const res = await testbed.upload(
+            0,
+            namespace,
+            {
+                gadget: GADGET_SELF_HKDF_V1,
+                resourceId,
+                ciphertext: bytesToHex(ciphertext),
+            },
+            name,
+        );
+        expect(res.txHash).toBeTruthy();
+
+        // --- retrieve: still opaque ciphertext ---
+        const retrieved = await testbed.fetch(0, res.payloadCid);
+        const stored = retrieved.payload as {
+            gadget: string;
+            resourceId: Hex;
+            ciphertext: Hex;
+        };
+        expect(stored.gadget).toBe(GADGET_SELF_HKDF_V1);
+        expect(stored.ciphertext).toBe(bytesToHex(ciphertext));
+
+        // --- out of band, post-retrieval: decrypt with the party's own key ---
+        const plaintext = unsealSelf(
+            hexToBytes(stored.ciphertext),
+            ownSecret,
+            stored.resourceId,
+        );
+        expect(new TextDecoder().decode(plaintext)).toBe(message);
+
+        // a party without the key cannot open it
+        const wrongSecret = new Uint8Array(32).fill(0xab);
+        expect(() =>
+            unsealSelf(hexToBytes(stored.ciphertext), wrongSecret, resourceId),
+        ).toThrow();
+    }, 120_000);
 
     // it("multiparty uploads mutate global state root properly", async () => {
     //     const registry = fangorn.getDataRegistry();
