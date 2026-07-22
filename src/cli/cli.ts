@@ -107,7 +107,7 @@ function loadConfig(): Config {
 
 	throw new Error(
 		"No configuration found. Run `fangorn init` or set ETH_PRIVATE_KEY\n" +
-		"(uploads default to signed URLs; set PINATA_JWT + PINATA_GATEWAY to use your own storage).",
+		"(with no config, uploads go to Fangorn's shared Pinata account — a best-effort testnet convenience; files may be unpinned without notice. Set PINATA_JWT + PINATA_GATEWAY to use your own storage).",
 	);
 }
 
@@ -243,7 +243,7 @@ program
 		// Storage: either your own Pinata JWT + gateway, or the access worker for
 		// signed-url uploads (no JWT). Leave the JWT blank to use signed URLs.
 		const pinataJwt = await text({
-			message: "Pinata JWT (leave blank to upload via signed URLs):",
+			message: "Pinata JWT — leave blank to use Fangorn's shared Pinata account (testnet convenience; files may be unpinned without notice):",
 		});
 		handleCancel(pinataJwt);
 

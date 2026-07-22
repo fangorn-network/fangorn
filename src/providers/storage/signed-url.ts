@@ -62,23 +62,30 @@ export class SignedUrlBackend implements MetadataStorage {
 	}
 
 	/** Run the worker challenge handshake → one-time presigned upload URL + network. */
-	private async requestUploadUrl(): Promise<{ uploadUrl: string; network: string }> {
+	private async requestUploadUrl(
+		size: number,
+		uploadId: string,
+	): Promise<{ uploadUrl: string; network: string }> {
 		const address = this.signer.address;
 
-		// 1) Ask for the challenge to sign.
-		const challenge = await this.workerJson({ address });
+		// 1) Ask for the challenge to sign, declaring the upload size up front so
+		// the worker mints a presigned URL scoped to exactly this many bytes. The
+		// uploadId lets the worker charge one logical upload once across retries.
+		const challenge = await this.workerJson({ address, size, uploadId });
 		if (!challenge.challenge) {
 			throw new Error(
 				`Presigned-URL worker did not issue a challenge: ${workerError(challenge)}`,
 			);
 		}
 
-		// 2) Sign it and resend to claim the presigned URL.
+		// 2) Sign it and resend (with the size + uploadId) to claim the presigned URL.
 		const signature = await this.signer.signMessage(challenge.challenge);
 		const grant = await this.workerJson({
 			address,
 			message: challenge.challenge,
 			signature,
+			size,
+			uploadId,
 		});
 		if (!grant.ok || !grant.uploadUrl) {
 			throw new Error(
@@ -100,9 +107,14 @@ export class SignedUrlBackend implements MetadataStorage {
 
 	/** Upload bytes via a fresh one-time presigned URL; returns the pinned CID. */
 	private uploadBytes(bytes: Uint8Array, name: string, type: string): Promise<string> {
+		// One idempotency id per logical upload, shared across retries. A transient
+		// failure re-mints a fresh (single-use) URL, but the worker dedupes the
+		// storage-budget debit by this id, so the retry isn't charged again.
+		const uploadId = globalThis.crypto.randomUUID();
 		return withUploadRetry(name, async () => {
 			// A fresh URL per attempt: presigned URLs are single-use and short-lived.
-			const { uploadUrl, network } = await this.requestUploadUrl();
+			// Declare the exact byte length so the worker scopes the URL to it.
+			const { uploadUrl, network } = await this.requestUploadUrl(bytes.length, uploadId);
 			const fd = new FormData();
 			fd.append("network", network);
 			fd.append("file", new File([bytes as BlobPart], name, { type }));
