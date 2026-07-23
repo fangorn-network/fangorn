@@ -76,7 +76,7 @@ function resolveStorage(storage?: StorageConfig): MetadataStorage | undefined {
 export class Fangorn {
 	private readonly ctx: FangornContext;
 	private _engine: FangornEngine | null = null;
-	private _metagraph: MetagraphRegistry | null = null;
+	private readonly _metagraph = new MetagraphRegistry();
 
 	private constructor(ctx: FangornContext) {
 		this.ctx = ctx;
@@ -89,8 +89,6 @@ export class Fangorn {
 			);
 		}
 		if (!this._engine) {
-			this._metagraph = new MetagraphRegistry();
-
 			this._engine = new FangornEngine(
 				this.ctx.metadataStorage,
 				this._metagraph,
@@ -101,9 +99,6 @@ export class Fangorn {
 	}
 
 	get metagraph(): MetagraphRegistry {
-		if (!this._metagraph) {
-			throw new Error("MetagraphRegistry has not been initialized. Ensure the client is connected.");
-		}
 		return this._metagraph;
 	}
 
