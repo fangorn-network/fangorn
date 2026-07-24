@@ -23,7 +23,7 @@ interface TestPayload {
 describe("Fangorn True E2E: Storage + Chain Anchor", () => {
     let testbed: TestBed;
 
-    beforeAll(() => {
+    beforeAll(() =>   {
         testbed = TestBed.init([PRIVATE_KEY]);
     });
 
