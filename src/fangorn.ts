@@ -88,13 +88,12 @@ export class Fangorn {
 				"fangorn.engine requires storage configurations. Pass { pinata: { ... } } to Fangorn.create()",
 			);
 		}
-		if (!this._engine) {
-			this._engine = new FangornEngine(
-				this.ctx.metadataStorage,
-				this._metagraph,
-				this.ctx.dataRegistry,
-			);
-		}
+
+		this._engine ??= new FangornEngine(
+			this.ctx.metadataStorage,
+			this._metagraph,
+			this.ctx.dataRegistry,
+		);
 		return this._engine;
 	}
 

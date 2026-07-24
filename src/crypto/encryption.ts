@@ -229,7 +229,7 @@ export async function encryptAndUpload(
 		},
 		body: ciphertext as unknown as BodyInit,
 	});
-	if (!uploadRes.ok) throw new Error(`upload failed: ${uploadRes.status}`);
+	if (!uploadRes.ok) throw new Error(`upload failed: ${uploadRes.status.toString()}`);
 	const { objectKey } = (await uploadRes.json()) as { objectKey: string };
 
 	return {
@@ -318,7 +318,7 @@ export async function buildAccessRequest(params: {
 	};
 }
 
-export type DecryptHandleParams = {
+export interface DecryptHandleParams {
 	handle: HandleFieldInput;
 	/** Signs the /access request; its address is what the worker checks settlement for. */
 	signer: AccessSigner;
@@ -326,7 +326,7 @@ export type DecryptHandleParams = {
 	nullifier: Hex;
 	/** self-hkdf-v1 only: the same 32-byte secret used to seal. */
 	ownSecret?: Uint8Array;
-};
+}
 
 /**
  * Resolve a {@link HandleFieldInput} back to plaintext via the worker's
@@ -353,7 +353,7 @@ export async function decryptHandle(
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(access),
 	});
-	if (!res.ok) throw new Error(`access failed: ${res.status}`);
+	if (!res.ok) throw new Error(`access failed: ${res.status.toString()}`);
 	const bytes = new Uint8Array(await res.arrayBuffer());
 
 	if (gadget === GADGET_SELF_HKDF_V1) {
