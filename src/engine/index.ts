@@ -658,18 +658,6 @@ export class FangornEngine {
 			}
 		}
 
-		// const addedVertices: NamespaceContents["vertices"] = [];
-		// for (const link of after.vertexLinks) {
-		// 	if (!beforeV.has(link.toString()))
-		// 		// newCommit is non-null whenever after.vertexLinks is non-empty
-		// 		addedVertices.push(await this.decodeVertex(link, newCommit!));
-		// }
-		// const addedEdges: Edge[] = [];
-		// for (const link of after.edgeLinks) {
-		// 	if (!beforeE.has(link.toString()))
-		// 		// newCommit is non-null whenever after.edgeLinks is non-empty
-		// 		addedEdges.push(await this.decodeEdge(link, newCommit!));
-		// }
 		const removedVertexCids = before.vertexLinks
 			.map(String)
 			.filter((c) => !afterV.has(c));

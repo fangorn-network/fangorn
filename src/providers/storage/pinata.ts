@@ -1,10 +1,12 @@
+import { encode } from "multiformats/block";
 import { PinataSDK } from "pinata";
 import * as dagCbor from "@ipld/dag-cbor";
 import { CID } from "multiformats/cid";
 import { MetadataStorage, RawBlock, StorageMeta } from "./types.js";
 import { serialize, retrieveByCid } from "./utils.js";
-import { packCar } from "./car.js";
+import { packCar } from "../../engine/car.js";
 import { keccak256, stringToBytes } from "viem";
+import { sha256 } from "multiformats/hashes/sha2";
 
 // Raw multicodec (0x55). A plain (non-CAR) Pinata file upload of small content
 // assigns a CIDv1 with this codec over the exact same sha256 digest as a
@@ -114,12 +116,39 @@ export class PinataBackend implements MetadataStorage {
 	): Promise<Record<string, string>> {
 		if (items.length === 0) return {};
 
-		const { bytes, uriByName } = await packCar(items);
+		const blocks = [];
+		const uriByName: Record<string, string> = {};
+
+		// 1. Encode your raw data items into standard IPLD blocks
+		for (const item of items) {
+			const block = await encode({
+				value: item.data,
+				codec: dagCbor,
+				hasher: sha256
+			});
+
+			blocks.push(block);
+			uriByName[item.name] = `ipfs://${block.cid.toString()}`;
+		}
+
+		// 2. Create a Root Block (CAR v1 strictly requires a root CID)
+		// We can bundle the uriByName map into a root manifest block.
+		const rootBlock = await encode({
+			value: uriByName,
+			codec: dagCbor,
+			hasher: sha256
+		});
+		blocks.push(rootBlock);
+
+		// 3. Use your new packCar function
+		const bytes = await packCar(rootBlock.cid, blocks);
+
+		// 4. Upload
 		const label = `car[${items.length.toString()}f/${(bytes.length / 1e6).toFixed(1)}MB]`;
 		await withUploadRetry(label, async () => {
-			const file = new File([bytes as BlobPart], "data.car", {
-				type: "application/vnd.ipld.car",
-			});
+			const file = new File([bytes.buffer as ArrayBuffer], "data.car", {
+                type: "application/vnd.ipld.car",
+            });
 			await this.pinata.upload.public.file(file).car();
 		});
 
