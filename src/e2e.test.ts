@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from "vitest";
+    import { describe, it, expect, beforeAll } from "vitest";
 import { type Hex, keccak256, stringToBytes, hexToBytes, bytesToHex } from "viem";
 import { TestBed } from "./test/testbed.js";
 import { sealSelf, unsealSelf, GADGET_SELF_HKDF_V1 } from "./crypto/encryption.js";
