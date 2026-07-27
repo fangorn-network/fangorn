@@ -17,6 +17,7 @@ import "dotenv/config";
 import { Fangorn } from "../fangorn.js";
 import { handleCancel } from "./index.js";
 import { AppConfig, FangornConfig } from "../config.js";
+import { StorageConfig } from "../types/index.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -25,7 +26,13 @@ interface StoredConfig {
 	chainName: string;
 	pinataJwt: string;
 	pinataGateway: string;
-	workerUrl: string;
+	// Gates access to content (does this user meet the access requirements).
+	// Optional — unset means no access-gating worker is configured. Also absent
+	// from configs written before these two workers were split apart.
+	accessWorkerUrl?: string;
+	// The pinata-url-provider worker that distributes presigned upload URLs.
+	// Required only when uploading via signed URLs (no own Pinata JWT).
+	signedUrlWorkerUrl?: string;
 }
 
 interface Config {
@@ -33,7 +40,8 @@ interface Config {
 	cfg: AppConfig;
 	pinataJwt: string;
 	pinataGateway: string;
-	workerUrl: string;
+	accessWorkerUrl: string;
+	signedUrlWorkerUrl: string;
 }
 
 /** JSON commit input: a namespace's vertices and (optionally) the edges between them. */
@@ -57,7 +65,8 @@ function loadConfig(): Config {
 	const privateKey = process.env.ETH_PRIVATE_KEY;
 	const pinataJwt = process.env.PINATA_JWT;
 	const pinataGateway = process.env.PINATA_GATEWAY;
-	const workerUrl = process.env.WORKER_URL;
+	const accessWorkerUrl = process.env.ACCESS_WORKER_URL;
+	const signedUrlWorkerUrl = process.env.SIGNED_URL_WORKER_URL;
 
 	if (existsSync(CONFIG_PATH)) {
 		const stored = JSON.parse(
@@ -68,21 +77,19 @@ function loadConfig(): Config {
 			cfg: FangornConfig,
 			pinataJwt: stored.pinataJwt,
 			pinataGateway: stored.pinataGateway,
-			workerUrl: stored.workerUrl,
+			accessWorkerUrl: stored.accessWorkerUrl ?? "",
+			signedUrlWorkerUrl: stored.signedUrlWorkerUrl ?? "",
 		};
 		return _config;
 	}
 
-	if (privateKey || pinataJwt || pinataGateway) {
-		const missing: string[] = [];
-		if (!privateKey) missing.push("ETH_PRIVATE_KEY");
-		if (!pinataJwt) missing.push("PINATA_JWT");
-		if (!pinataGateway) missing.push("PINATA_GATEWAY");
-
-		if (missing.length > 0) {
+	if (privateKey || pinataJwt || pinataGateway || signedUrlWorkerUrl) {
+		// Only the wallet is required: with no Pinata JWT, uploads fall back to
+		// signed URLs from the hosted presigned-URL worker.
+		if (!privateKey) {
 			throw new Error(
-				`Incomplete environment configuration. Missing: ${missing.join(", ")}\n` +
-				`Set all required env vars or run \`fangorn init\` to use a config file.`,
+				"Incomplete environment configuration. Missing: ETH_PRIVATE_KEY\n" +
+				"Set it or run `fangorn init` to use a config file.",
 			);
 		}
 
@@ -91,15 +98,16 @@ function loadConfig(): Config {
 			cfg: FangornConfig,
 			pinataJwt: pinataJwt ?? "",
 			pinataGateway: pinataGateway ?? "",
-			workerUrl: workerUrl ?? "",
+			accessWorkerUrl: accessWorkerUrl ?? "",
+			signedUrlWorkerUrl: signedUrlWorkerUrl ?? "",
 		};
 
 		return _config;
 	}
 
 	throw new Error(
-		"No configuration found. Run `fangorn init` or set the required env vars:\n" +
-		"  ETH_PRIVATE_KEY, PINATA_JWT, PINATA_GATEWAY, CHAIN_NAME",
+		"No configuration found. Run `fangorn init` or set ETH_PRIVATE_KEY\n" +
+		"(with no config, uploads go to Fangorn's shared Pinata account — a best-effort testnet convenience; files may be unpinned without notice. Set PINATA_JWT + PINATA_GATEWAY to use your own storage).",
 	);
 }
 
@@ -114,14 +122,15 @@ function getFangorn(): Fangorn {
 
 	const cfg = loadConfig();
 
+	// Prefer the user's own JWT when present; otherwise upload via signed URLs
+	// from the presigned-URL worker (no JWT needed).
+	const storage: StorageConfig = cfg.pinataJwt
+		? { pinata: { jwt: cfg.pinataJwt, gateway: cfg.pinataGateway } }
+		: { signedUrl: { workerUrl: cfg.signedUrlWorkerUrl } };
+
 	_fangorn = Fangorn.create({
 		privateKey: cfg.privateKey,
-		storage: {
-			pinata: {
-				jwt: cfg.pinataJwt,
-				gateway: cfg.pinataGateway,
-			},
-		},
+		storage,
 		domain: "localhost",
 		config: cfg.cfg,
 	});
@@ -231,38 +240,43 @@ program
 		});
 		handleCancel(privateKey);
 
+		// Storage: either your own Pinata JWT + gateway, or the access worker for
+		// signed-url uploads (no JWT). Leave the JWT blank to use signed URLs.
 		const pinataJwt = await text({
-			message: "Pinata JWT:",
-			validate: (v) => {
-				if (!v) return "Required";
-			},
+			message: "Pinata JWT — leave blank to use Fangorn's shared Pinata account (testnet convenience; files may be unpinned without notice):",
 		});
 		handleCancel(pinataJwt);
 
 		const pinataGateway = await text({
-			message: "Pinata Gateway URL:",
+			message: "Pinata Gateway URL (optional; blank uses a public IPFS gateway):",
 			placeholder: "https://your-gateway.mypinata.cloud",
-			validate: (v) => {
-				if (!v) return "Required";
-			},
 		});
 		handleCancel(pinataGateway);
 
-		const workerUrl = await text({
-			message: "Fangorn access worker URL:",
-			placeholder: "https://fangorn-access-worker.your-subdomain.workers.dev",
-			validate: (v) => {
-				if (!v) return "Required";
-			},
+		// Access-gating worker: checks whether this user meets the requirements to
+		// access content. Optional — leave blank if you don't gate access.
+		const accessWorkerUrl = await text({
+			message: "Access-gating worker URL (optional):",
+			placeholder: "https://access-worker.your-subdomain.workers.dev",
 		});
-		handleCancel(workerUrl);
+		handleCancel(accessWorkerUrl);
+
+		// Presigned-URL worker (pinata-url-provider): issues short-lived Pinata
+		// upload URLs. Optional — blank uses the hosted default, so no JWT is
+		// needed to upload via signed URLs.
+		const signedUrlWorkerUrl = await text({
+			message: "Presigned-URL worker URL (optional; blank uses the hosted default):",
+			placeholder: "https://pinata-url-provider.your-subdomain.workers.dev",
+		});
+		handleCancel(signedUrlWorkerUrl);
 
 		const stored: StoredConfig = {
 			privateKey: privateKey as Hex,
 			chainName: "Arbitrum Sepolia",
 			pinataJwt: pinataJwt as string,
 			pinataGateway: pinataGateway as string,
-			workerUrl: workerUrl as string,
+			accessWorkerUrl: accessWorkerUrl as string,
+			signedUrlWorkerUrl: signedUrlWorkerUrl as string,
 		};
 
 		if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true });

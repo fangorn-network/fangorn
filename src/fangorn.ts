@@ -18,6 +18,10 @@ import {
 import { MetadataStorage } from "./providers/storage/types.js";
 import { PinataBackend } from "./providers/storage/pinata.js";
 import {
+	SignedUrlBackend,
+	SignedUrlSigner,
+} from "./providers/storage/signed-url.js";
+import {
 	assertValidNamespace,
 	FangornEngine,
 	MetagraphRegistry,
@@ -58,18 +62,36 @@ export interface SubscribeOptions {
 	signal?: AbortSignal;
 }
 
-function isPinataConfig(
-	s: StorageConfig,
-): s is { pinata: { jwt: string; gateway: string } } {
-	return "pinata" in (s as object);
+/** Build a signer for the access worker's ownership handshake from a wallet. */
+function walletSigner(walletClient: WalletClient): SignedUrlSigner {
+	const account = walletClient.account;
+	if (!account) {
+		throw new Error(
+			"Signed-url storage requires a wallet account to sign the access worker's challenge.",
+		);
+	}
+	return {
+		address: account.address,
+		signMessage: (message) => walletClient.signMessage({ account, message }),
+	};
 }
 
-function resolveStorage(storage?: StorageConfig): MetadataStorage | undefined {
+function resolveStorage(
+	storage: StorageConfig | undefined,
+	walletClient: WalletClient,
+	config: AppConfig,
+): MetadataStorage | undefined {
 	if (!storage) return undefined;
-	if (isPinataConfig(storage))
+	if ("pinata" in storage)
 		return new PinataBackend(storage.pinata.jwt, storage.pinata.gateway);
+	if ("signedUrl" in storage)
+		return new SignedUrlBackend(
+			storage.signedUrl.workerUrl,
+			walletSigner(walletClient),
+			storage.signedUrl.gateway ?? config.ipfsGateway,
+		);
 	throw new Error(
-		`Invalid storage config: must be { pinata: { jwt, gateway } }, got ${JSON.stringify(storage)}`,
+		`Invalid storage config: must be { pinata: … } or { signedUrl: … }, got ${JSON.stringify(storage)}`,
 	);
 }
 
@@ -116,7 +138,11 @@ export class Fangorn {
 				transport: http(resolvedConfig.rpcUrl),
 			});
 
-		const metadataStorage = resolveStorage(options.storage);
+		const metadataStorage = resolveStorage(
+			options.storage,
+			walletClient,
+			resolvedConfig,
+		);
 		const domain = options.domain ?? new URL(resolvedConfig.rpcUrl).hostname;
 
 		const publicClient = createPublicClient({
@@ -571,10 +597,24 @@ export class Fangorn {
 	getStorage(): MetadataStorage {
 		if (!this.ctx.metadataStorage) {
 			throw new Error(
-				"storage is not configured. Pass { pinata: { ... } } to Fangorn.create()",
+				"storage is not configured. Pass { pinata: { ... } } or { signedUrl: { ... } } to Fangorn.create()",
 			);
 		}
 		return this.ctx.metadataStorage;
+	}
+
+	/**
+	 * Swap the storage backend at runtime — e.g. move from access-worker signed
+	 * URLs to your own Pinata JWT (or back). Rebuilds the engine on next use so it
+	 * picks up the new backend.
+	 */
+	setStorage(storage: StorageConfig): void {
+		this.ctx.metadataStorage = resolveStorage(
+			storage,
+			this.ctx.walletClient,
+			this.ctx.config,
+		);
+		this._engine = null;
 	}
 
 	getWalletClient(): WalletClient {
