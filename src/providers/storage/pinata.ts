@@ -1,12 +1,12 @@
 import { encode } from "multiformats/block";
 import { PinataSDK } from "pinata";
-import { sha256 } from "multiformats/hashes/sha2";
 import * as dagCbor from "@ipld/dag-cbor";
 import { CID } from "multiformats/cid";
 import { MetadataStorage, RawBlock, StorageMeta } from "./types.js";
 import { serialize, retrieveByCid, withUploadRetry } from "./utils.js";
 import { packCar } from "../../engine/car.js";
 import { keccak256, stringToBytes } from "viem";
+import { sha256 } from "multiformats/hashes/sha2";
 
 // Raw multicodec (0x55). A plain (non-CAR) Pinata file upload of small content
 // assigns a CIDv1 with this codec over the exact same sha256 digest as a
