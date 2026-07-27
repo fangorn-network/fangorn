@@ -1,32 +1,76 @@
 import { x25519 } from "@noble/curves/ed25519";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { hkdf } from "@noble/hashes/hkdf.js";
-import { bytesToHex, hexToBytes, type Hex } from "viem";
+import {
+	bytesToHex,
+	encodePacked,
+	hexToBytes,
+	keccak256,
+	type Hex,
+} from "viem";
 import { aesGcmEncrypt, aesGcmDecrypt, GCM_NONCE_LENGTH } from "./aes.js";
 import { getRandomValues } from "./rand.js";
 
-/** A sealed field handle: where the ciphertext lives and how to verify/decrypt it. */
+// ─── Gadgets ──────────────────────────────────────────────────────────────
+//
+// A "gadget" names the sealing + access condition a field is locked under. v1
+// ships exactly two, both backed by opaque bytes in R2 (never IPFS) so a large,
+// frequently-fetched ciphertext doesn't burn public gateway egress:
+//
+//   self-hkdf-v1   fully private. The key is HKDF'd from the owner's own secret,
+//                  bound to the resourceId. Nobody else can re-derive it; the
+//                  access worker does NO gating on reads — it's dumb storage.
+//
+//   worker-usdc-v1 settlement-gated. The ciphertext is sealed *to the access
+//                  worker's* static X25519 key. On read, the worker checks the
+//                  Settlement Registry (isSettled/getPrice) for the resourceId,
+//                  unseals with its own key, and streams back plaintext. The
+//                  worker is the "somewhat trusted" party — it sees plaintext at
+//                  release time anyway — no TEE / Lit for v1. Swapping in a TEE
+//                  later is a new gadget behind this same handle shape.
+
+export const GADGET_SELF_HKDF_V1 = "self-hkdf-v1";
+export const GADGET_WORKER_USDC_V1 = "worker-usdc-v1";
+
+export type Gadget =
+	| typeof GADGET_SELF_HKDF_V1
+	| typeof GADGET_WORKER_USDC_V1;
+
+/**
+ * A sealed-field handle: where the ciphertext lives and how to verify/open it.
+ * This is what gets embedded in a vertex `payload[field]` in place of the
+ * plaintext value — the engine treats it as an opaque object.
+ */
 export interface HandleFieldInput {
 	"@type": "handle";
-	uri: string;
+	/** R2 object key. Signed over in the /access request; resolve via {@link decryptHandle}. */
+	objectKey: string;
+	/**
+	 * Access-worker endpoint. NOTE: this is the *access* worker, distinct from
+	 * the Pinata-presign upload worker in the CLI config — do not conflate them.
+	 */
 	workerUrl: string;
 	encryption: {
-		gadget: string;
+		gadget: Gadget;
+		/**
+		 * 32-byte resource id the ciphertext is bound to. Doubles as the HKDF
+		 * binding and the Settlement Registry key (`isSettled`/`getPrice`).
+		 */
+		resourceId: Hex;
 		ciphertextHash: Hex;
-		teePubkey: Hex;
+		/** Present only for worker-usdc-v1: the worker's static X25519 pubkey. */
+		workerPubkey?: Hex;
 	};
 }
 
-// Encrypts a payload so that only the TEE holding `teeSecret` can open it, and
-// only when bound to a specific `resourceId`.
+// ─── Key exchange / resource binding ────────────────────────────────────────
 //
-// Encryption requires a key exchange (with the TEE pubkey) first.
+// The AES-GCM primitives live in ./aes.ts. This file only does key derivation
+// (X25519 ECDH for the worker gadget, HKDF-from-own-secret for the self gadget)
+// and resource binding.
 //
-//   ephemeral-static X25519 ECDH => HKDF-SHA256 => AES-256-GCM
-//   ciphertext layout: ephemeralPub(32) || nonce(12) || aes-256-gcm(ct || tag)
-//
-// The AES-GCM primitives live in ./aes.ts
-// This contains only key exchange and resource binding.
+//   worker-usdc-v1 layout: ephemeralPub(32) || nonce(12) || aes-256-gcm(ct||tag)
+//   self-hkdf-v1   layout:                     nonce(12) || aes-256-gcm(ct||tag)
 
 /** Length of an X25519 public key, in bytes. */
 export const X25519_PUBKEY_LENGTH = 32;
@@ -59,21 +103,22 @@ const sealInfo = (resourceId: Hex): Uint8Array =>
 	concat(hexToBytes(resourceId), utf8(":sealed"));
 
 /**
- * Ephemeral-static ECDH to the TEE's static key, keyed to the resourceId.
+ * worker-usdc-v1 seal: ephemeral-static ECDH to the worker's static key, keyed
+ * to the resourceId.
  *
  *   ciphertext = ephemeralPub(32) || nonce(12) || aes-256-gcm-ct
  *
- * Only the holder of the secret matching `teePubkey` can derive the same AES
+ * Only the holder of the secret matching `workerPubkey` can derive the same AES
  * key, and only with the matching `resourceId`.
  */
 export function seal(
 	plaintext: Uint8Array,
-	teePubkey: Uint8Array,
+	workerPubkey: Uint8Array,
 	resourceId: Hex,
 ): Uint8Array {
 	const ephSec = x25519.utils.randomSecretKey();
 	const ephPub = x25519.getPublicKey(ephSec);
-	const shared = x25519.getSharedSecret(ephSec, teePubkey);
+	const shared = x25519.getSharedSecret(ephSec, workerPubkey);
 	const aesKey = hkdfSha256(shared, undefined, sealInfo(resourceId), 32);
 	const nonce = getRandomValues(new Uint8Array(GCM_NONCE_LENGTH));
 	const aesCt = aesGcmEncrypt(aesKey, plaintext, nonce);
@@ -81,13 +126,14 @@ export function seal(
 }
 
 /**
- * Inverse of {@link seal}. Recovers the plaintext given the TEE's static secret
- * and the same resourceId. This is the operation the real TEE performs after the
- * settlement gate passes; exposed here for parity testing and local tooling.
+ * Inverse of {@link seal}. Recovers the plaintext given the worker's static
+ * secret and the same resourceId. This is the operation the access worker
+ * performs after the settlement gate passes; exposed here for parity testing
+ * and local tooling.
  */
 export function unseal(
 	ciphertext: Uint8Array,
-	teeSecret: Uint8Array,
+	workerSecret: Uint8Array,
 	resourceId: Hex,
 ): Uint8Array {
 	const ephPub = ciphertext.slice(0, X25519_PUBKEY_LENGTH);
@@ -96,47 +142,85 @@ export function unseal(
 		X25519_PUBKEY_LENGTH + GCM_NONCE_LENGTH,
 	);
 	const aesCt = ciphertext.slice(X25519_PUBKEY_LENGTH + GCM_NONCE_LENGTH);
-	const shared = x25519.getSharedSecret(teeSecret, ephPub);
+	const shared = x25519.getSharedSecret(workerSecret, ephPub);
 	const aesKey = hkdfSha256(shared, undefined, sealInfo(resourceId), 32);
 	return aesGcmDecrypt(aesKey, aesCt, nonce);
 }
 
-export interface EncryptAndUploadParams {
-	plaintext: Uint8Array;
-	/** 32-byte resource identifier the ciphertext is bound to (HKDF info + settlement key). */
-	resourceId: Hex;
-	storage: {
-		// R2 worker upload endpoint
-		workerUrl: string;
-		// JWT for the worker
-		authToken: string;
-		contentType: string;
-	};
-	/** TEE's static X25519 public key (32 bytes). */
-	teePubkey: Uint8Array;
-	// defaults to "tee-aes-v1"
-	gadget?: string;
+/**
+ * self-hkdf-v1 seal: derive the AES key straight from the owner's own 32-byte
+ * secret, bound to the resourceId. No ECDH, no recipient — only a party holding
+ * `ownSecret` can re-derive the key.
+ *
+ *   ciphertext = nonce(12) || aes-256-gcm-ct
+ */
+export function sealSelf(
+	plaintext: Uint8Array,
+	ownSecret: Uint8Array,
+	resourceId: Hex,
+): Uint8Array {
+	const aesKey = hkdfSha256(ownSecret, undefined, sealInfo(resourceId), 32);
+	const nonce = getRandomValues(new Uint8Array(GCM_NONCE_LENGTH));
+	const aesCt = aesGcmEncrypt(aesKey, plaintext, nonce);
+	return concat(nonce, aesCt);
 }
 
+/** Inverse of {@link sealSelf}. */
+export function unsealSelf(
+	ciphertext: Uint8Array,
+	ownSecret: Uint8Array,
+	resourceId: Hex,
+): Uint8Array {
+	const nonce = ciphertext.slice(0, GCM_NONCE_LENGTH);
+	const aesCt = ciphertext.slice(GCM_NONCE_LENGTH);
+	const aesKey = hkdfSha256(ownSecret, undefined, sealInfo(resourceId), 32);
+	return aesGcmDecrypt(aesKey, aesCt, nonce);
+}
+
+// ─── Upload / download glue ─────────────────────────────────────────────────
+
+interface StorageTarget {
+	/** Access-worker upload endpoint (NOT the Pinata-presign worker). */
+	workerUrl: string;
+	/** Bearer token the worker requires for uploads. */
+	authToken: string;
+	contentType: string;
+}
+
+export type EncryptAndUploadParams =
+	| {
+			gadget: typeof GADGET_SELF_HKDF_V1;
+			plaintext: Uint8Array;
+			resourceId: Hex;
+			storage: StorageTarget;
+			/** The owner's own 32-byte secret. */
+			ownSecret: Uint8Array;
+	  }
+	| {
+			gadget: typeof GADGET_WORKER_USDC_V1;
+			plaintext: Uint8Array;
+			resourceId: Hex;
+			storage: StorageTarget;
+			/** The access worker's static X25519 public key (32 bytes). */
+			workerPubkey: Uint8Array;
+	  };
+
 /**
- * Seal `plaintext` to the TEE, upload the opaque ciphertext to the storage
- * worker, and return the manifest handle describing where to fetch it and how
- * to verify/decrypt it.
+ * Seal `plaintext` under the chosen gadget, upload the opaque ciphertext to the
+ * access worker (which writes it to R2), and return the handle describing where
+ * to fetch it and how to open it.
  */
 export async function encryptAndUpload(
 	params: EncryptAndUploadParams,
 ): Promise<HandleFieldInput> {
-	const {
-		plaintext,
-		resourceId,
-		storage,
-		teePubkey,
-		gadget = "tee-aes-v1",
-	} = params;
+	const { plaintext, resourceId, storage } = params;
 
-	const ciphertext = seal(plaintext, teePubkey, resourceId);
+	const ciphertext =
+		params.gadget === GADGET_SELF_HKDF_V1
+			? sealSelf(plaintext, params.ownSecret, resourceId)
+			: seal(plaintext, params.workerPubkey, resourceId);
 
-	// upload ciphertext to worker (which writes opaque bytes to R2)
+	// upload ciphertext to the access worker (which writes opaque bytes to R2)
 	const uploadRes = await fetch(`${storage.workerUrl}/upload`, {
 		method: "POST",
 		headers: {
@@ -145,17 +229,143 @@ export async function encryptAndUpload(
 		},
 		body: ciphertext as unknown as BodyInit,
 	});
-	if (!uploadRes.ok) throw new Error(`upload failed: ${(uploadRes.status).toString()}`);
+	if (!uploadRes.ok) throw new Error(`upload failed: ${uploadRes.status.toString()}`);
 	const { objectKey } = (await uploadRes.json()) as { objectKey: string };
 
 	return {
 		"@type": "handle",
-		uri: objectKey,
+		objectKey,
 		workerUrl: storage.workerUrl,
 		encryption: {
-			gadget,
+			gadget: params.gadget,
+			resourceId,
 			ciphertextHash: sha256Hex(ciphertext),
-			teePubkey: bytesToHex(teePubkey),
+			...(params.gadget === GADGET_WORKER_USDC_V1
+				? { workerPubkey: bytesToHex(params.workerPubkey) }
+				: {}),
 		},
 	};
+}
+
+// ─── The /access read path ──────────────────────────────────────────────────
+//
+// Both gadgets read through the worker's `POST /access`. The worker recovers the
+// signer's (stealth) address from a personal_sign over the packed message,
+// checks the Settlement Registry, and streams R2 bytes back:
+//
+//   self-hkdf-v1   the resource is priced 0 (free), so any signed request
+//                  passes; the bytes come back still HKDF-sealed and the caller
+//                  unseals them locally with `ownSecret`.
+//   worker-usdc-v1 the resource is priced > 0; the worker only streams once the
+//                  signer has settled, having unsealed with its own key — the
+//                  bytes come back as plaintext.
+
+/** Anything that can personal_sign a raw 32-byte hash (viem LocalAccount / WalletClient). */
+export interface AccessSigner {
+	signMessage(args: { message: { raw: Hex } }): Promise<Hex>;
+}
+
+export interface AccessRequest {
+	nullifier: Hex;
+	resourceId: Hex;
+	objectKey: string;
+	timestamp: number;
+	signature: Hex;
+}
+
+/**
+ * The message the worker recovers the stealth address from — must match
+ * `buildMessageHash` in the worker byte-for-byte:
+ *   keccak256(abi.encodePacked(uint256 nullifier, bytes32 resourceId, string objectKey, uint64 timestamp))
+ */
+export function accessMessageHash(
+	nullifier: Hex,
+	resourceId: Hex,
+	objectKey: string,
+	timestamp: number,
+): Hex {
+	return keccak256(
+		encodePacked(
+			["uint256", "bytes32", "string", "uint64"],
+			[BigInt(nullifier), resourceId, objectKey, BigInt(timestamp)],
+		),
+	);
+}
+
+/** Sign the packed message so the worker can recover the settling stealth address. */
+export async function buildAccessRequest(params: {
+	signer: AccessSigner;
+	nullifier: Hex;
+	resourceId: Hex;
+	objectKey: string;
+	/** Unix seconds; defaults to now. Must be inside the worker's TIMESTAMP_WINDOW. */
+	timestamp?: number;
+}): Promise<AccessRequest> {
+	const timestamp = params.timestamp ?? Math.floor(Date.now() / 1000);
+	const hash = accessMessageHash(
+		params.nullifier,
+		params.resourceId,
+		params.objectKey,
+		timestamp,
+	);
+	const signature = await params.signer.signMessage({ message: { raw: hash } });
+	return {
+		nullifier: params.nullifier,
+		resourceId: params.resourceId,
+		objectKey: params.objectKey,
+		timestamp,
+		signature,
+	};
+}
+
+export interface DecryptHandleParams {
+	handle: HandleFieldInput;
+	/** Signs the /access request; its address is what the worker checks settlement for. */
+	signer: AccessSigner;
+	/** Per-read nullifier (replay/anonymity); passed through to the worker. */
+	nullifier: Hex;
+	/** self-hkdf-v1 only: the same 32-byte secret used to seal. */
+	ownSecret?: Uint8Array;
+}
+
+/**
+ * Resolve a {@link HandleFieldInput} back to plaintext via the worker's
+ * settlement-gated `POST /access`.
+ *
+ *   self-hkdf-v1   bytes come back sealed → verify hash → unseal with ownSecret.
+ *   worker-usdc-v1 the worker already unsealed → bytes are plaintext.
+ */
+export async function decryptHandle(
+	params: DecryptHandleParams,
+): Promise<Uint8Array> {
+	const { handle, signer, nullifier } = params;
+	const { gadget, resourceId, ciphertextHash } = handle.encryption;
+
+	const access = await buildAccessRequest({
+		signer,
+		nullifier,
+		resourceId,
+		objectKey: handle.objectKey,
+	});
+
+	const res = await fetch(`${handle.workerUrl}/access`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(access),
+	});
+	if (!res.ok) throw new Error(`access failed: ${res.status.toString()}`);
+	const bytes = new Uint8Array(await res.arrayBuffer());
+
+	if (gadget === GADGET_SELF_HKDF_V1) {
+		if (!params.ownSecret) {
+			throw new Error(`${gadget} requires ownSecret to decrypt`);
+		}
+		if (sha256Hex(bytes) !== ciphertextHash) {
+			throw new Error("ciphertext hash mismatch");
+		}
+		return unsealSelf(bytes, params.ownSecret, resourceId);
+	}
+
+	// worker-usdc-v1: the worker unsealed after settlement; bytes are plaintext.
+	return bytes;
 }

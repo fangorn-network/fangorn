@@ -103,7 +103,28 @@ Each commit records its parent, so history is real and walkable. By default a co
 
 ### Graph Builders
 
-A graph builders are delegated to the application layer. Developers are responsible for implementing functions that take input and transform it into a set of edges and vertices. See [examples/hackmd](./examples/hackmd/) for an example.
+Turning your source data into vertices and edges is application logic, but the SDK ships a small **harness** for the common "a directory of files → a graph" case, exported from the package root:
+
+```ts
+import { buildAssetGraph, extractMarkdownLinks } from "@fangorn-network/sdk";
+
+// One processor per file extension. Return the vertex tag/payload and the
+// ids this file links to; buildAssetGraph wires the edges (rel: "links"),
+// dropping self-links and links to files that don't exist.
+const { vertices, edges } = buildAssetGraph("./docs", {
+    processors: {
+        ".md": (file) => ({
+            tag: "note",
+            payload: { title: file.nameNoExt, body: file.readText() },
+            links: extractMarkdownLinks(file.readText()), // markdown links + [[wikilinks]]
+        }),
+    },
+});
+
+await fangorn.commit({ namespace: "rusty-anchor", message: "import docs", vertices, edges });
+```
+
+Each vertex `id` is the filename without extension. For anything that isn't "files in a folder," build the `{ vertices, edges }` arrays yourself and pass them straight to `commit` / `uploadBatch` — the harness is a convenience, not a requirement.
 
 ### Inspect
 
@@ -186,7 +207,7 @@ your initial index from `fangorn read` first, then subscribe for the deltas.
 
 ### Initialization
 
-`Fangorn.create` is synchronous. Pass Pinata storage for any commit/read operation.
+`Fangorn.create` is synchronous. Pass Pinata storage for any commit/read operation. Supply either a `privateKey` (the SDK builds the wallet client for you) or your own viem `walletClient`.
 
 ```ts
 import { Fangorn, FangornConfig } from "@fangorn-network/sdk";
