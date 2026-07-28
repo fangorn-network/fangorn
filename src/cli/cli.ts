@@ -123,10 +123,18 @@ function getFangorn(): Fangorn {
 	const cfg = loadConfig();
 
 	// Prefer the user's own JWT when present; otherwise upload via signed URLs
-	// from the presigned-URL worker (no JWT needed).
+	// from the presigned-URL worker (no JWT needed). Either way the configured
+	// gateway applies: uploads go wherever the backend sends them, but reads always
+	// resolve by CID through a gateway, and the default (ipfs.io) is unreachable on
+	// networks whose DNS filters public IPFS gateways. Blank stays on the default.
 	const storage: StorageConfig = cfg.pinataJwt
 		? { pinata: { jwt: cfg.pinataJwt, gateway: cfg.pinataGateway } }
-		: { signedUrl: { workerUrl: cfg.signedUrlWorkerUrl } };
+		: {
+			signedUrl: {
+				workerUrl: cfg.signedUrlWorkerUrl,
+				gateway: cfg.pinataGateway,
+			},
+		};
 
 	_fangorn = Fangorn.create({
 		privateKey: cfg.privateKey,
