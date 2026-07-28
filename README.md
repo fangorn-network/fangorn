@@ -10,7 +10,7 @@ Data is a **metagraph** — **vertices** (a JSON payload tagged by a free-form s
 
 Datasets are versioned like git, down to the storage model: each update is a **commit** that points at its parent and at a single **CAR file** (a packfile) holding only the blocks that commit introduced. The registry stores only the pointer to the latest commit; full history lives in IPFS — reconstructible from the on-chain tip alone, no indexer required. `commit` builds the graph in memory and persists it as **exactly two uploads** (one CAR + one small commit block), regardless of graph size; `push` moves the on-chain pointer (the single permissioned step, fast-forward checked). Unchanged data re-derives identical CIDs and is never re-uploaded.
 
-> **Note:** access-controlled (encrypted) fields and the purchase → claim → fetch settlement flow are being built on top of this registry and are **not available in the current release**. Registration, namespaces, and the git-native commit / push / log / clone rail are live.
+Fields that shouldn't be public are **sealed** under a **gadget** — a named pairing of a sealing scheme and the condition under which it opens. Two ship today: `self-hkdf-v1` (fully private, only you can re-derive the key) and `worker-usdc-v1` (settlement-gated, released by the access worker once the reader has paid). See [Encryption & gadgets](#encryption--gadgets).
 
 ## Supported Networks
 
@@ -38,8 +38,9 @@ fangorn init
 `fangorn init` prompts for:
 
 - Wallet private key
-- Pinata JWT + gateway URL (content + commit-object storage)
-- Fangorn access worker URL (reserved for the upcoming access-control flow)
+- Pinata JWT + gateway URL (content + commit-object storage; both optional)
+- Access-gating worker URL (optional — stores sealed ciphertext and enforces the read gate)
+- Presigned-URL worker URL (optional — issues short-lived Pinata upload URLs so no JWT is needed)
 
 Config is written to `~/.fangorn/config.json`.
 
@@ -50,8 +51,11 @@ ETH_PRIVATE_KEY=0x...
 PINATA_JWT=...
 PINATA_GATEWAY=https://your-gateway.mypinata.cloud
 CHAIN_NAME=arbitrumSepolia
-WORKER_URL=https://your-worker.workers.dev   # optional (future access control)
+ACCESS_WORKER_URL=https://access-worker.your-subdomain.workers.dev   # optional (sealed fields)
+SIGNED_URL_WORKER_URL=https://pinata-url-provider.your-subdomain.workers.dev   # optional
 ```
+
+> The **access worker** and the **presigned-URL worker** are two different services: the first gates reads of sealed fields, the second hands out Pinata upload URLs. Don't conflate them.
 
 ### Register as a publisher
 
@@ -253,7 +257,7 @@ const c1 = await fangorn.commit({
 });
 
 // Settle it on-chain (fast-forward from "no tip yet")
-await fangorn.push(c1.commitCid);
+await fangorn.push("rusty-anchor", c1.commitCid);
 
 // A follow-up commit builds on the previous one
 const c2 = await fangorn.commit({
@@ -264,7 +268,7 @@ const c2 = await fangorn.commit({
 		{ id: "t2", tag: "track", payload: { title: "Otra", artist: "Alice" } },
 	],
 });
-await fangorn.push(c2.commitCid); // refuses unless it fast-forwards the on-chain tip (pass { force: true } to override)
+await fangorn.push("rusty-anchor", c2.commitCid); // refuses unless it fast-forwards the on-chain tip (pass { force: true } to override)
 ```
 
 ### History, diff & read
@@ -272,7 +276,7 @@ await fangorn.push(c2.commitCid); // refuses unless it fast-forwards the on-chai
 Walk history from the on-chain tip (IPFS only, no indexer), and read the current namespace contents:
 
 ```ts
-const tip = await fangorn.onChainTip(fangorn.getAddress());
+const tip = await fangorn.onChainTip(fangorn.getAddress(), "rusty-anchor");
 
 // Walk commits, newest first
 for await (const c of fangorn.log(tip!)) {
@@ -332,6 +336,31 @@ The pure diff primitive is also exposed on the engine —
 `engine.namespaceDiff(oldRootHex, newRootHex, namespace)` — if you want to diff
 two arbitrary roots without watching.
 
+### Subscribe to a whole app
+
+Namespaces are hierarchical: every commit lands under `app:publisher:namespace`,
+and each triple is its own on-chain timeline. Two publishers — or one publisher's
+two namespaces — never contend for the same compare-and-swap.
+
+The registry indexes all three parts, so an app-wide feed is one topic filter
+rather than a per-publisher fan-out. `subscribeApp` yields the same
+`NamespaceChange` values as `subscribe`, from every publisher in the app:
+
+```ts
+// Everything published under this app, by anyone
+for await (const change of fangorn.subscribeApp({ signal: controller.signal })) {
+	console.log(change.owner, change.namespace, change.addedVertices.length);
+}
+
+// Narrow it: every publisher's "reviews" namespace, or one publisher's whole app footprint
+fangorn.subscribeApp({ namespace: "reviews" });
+fangorn.subscribeApp({ owner: "0x..." });
+```
+
+The app id comes from config (`appId("my-app")`), and must be claimed once
+on-chain with `fangorn.getDataRegistry().registerApp()` before any publisher can
+commit under it.
+
 ### Storage
 
 Fangorn operates on a 'Bring Your Own Storage' basis. Each commit is persisted as
@@ -339,6 +368,130 @@ one CAR file (an opaque packfile of the commit's new blocks) plus one small comm
 block, pinned to IPFS via Pinata; the chain holds only the 32-byte commit pointer.
 The backend never needs to understand IPLD — any blob store can implement the
 `MetadataStorage` interface.
+
+---
+
+## Encryption & gadgets
+
+Not every field belongs in public IPFS. Fangorn lets you **seal** a value and commit
+only an opaque reference to it, keeping the graph — its shape, its edges, its
+addressability — fully public while the payload stays closed.
+
+A **gadget** names *how* a value is sealed and *under what condition* it opens. Two
+ship today, both exported from the package root (`@fangorn-network/sdk`):
+
+| Gadget           | Key derivation                              | Who can open it                                                                     |
+| ---------------- | ------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `self-hkdf-v1`   | HKDF from your own 32-byte secret           | Only you. No ECDH, no recipient, no gate — nobody else can re-derive the key.          |
+| `worker-usdc-v1` | X25519 ECDH to the access worker's static key | Anyone who has settled for the resource; the worker checks the Settlement Registry.  |
+
+Every key is bound to a 32-byte **`resourceId`**, which doubles as the Settlement
+Registry key. The same secret cannot cross-open a different resource, and changing
+*who can read* means re-sealing under a new gadget/`resourceId` and committing a
+vertex that points at the new bytes.
+
+### `self-hkdf-v1` — fully private
+
+The simplest path is entirely out of band: seal before ingestion, unseal after
+retrieval. Fangorn never sees plaintext or a key — it commits the ciphertext like any
+other payload. No worker, no settlement, no R2 involved.
+
+```ts
+import { sealSelf, unsealSelf, GADGET_SELF_HKDF_V1 } from "@fangorn-network/sdk";
+import { keccak256, stringToBytes, hexToBytes, bytesToHex } from "viem";
+
+const ownSecret = hexToBytes(privateKey);            // your own 32 bytes
+const resourceId = keccak256(stringToBytes("rusty-anchor:secret-msg"));
+
+const ciphertext = sealSelf(
+	new TextEncoder().encode("the eagles are coming"),
+	ownSecret,
+	resourceId,
+);
+
+// commit the opaque bytes like anything else
+await fangorn.upload("rusty-anchor", {
+	gadget: GADGET_SELF_HKDF_V1,
+	resourceId,
+	ciphertext: bytesToHex(ciphertext),
+}, "secret-msg");
+
+// later, after `read` / `inspectNamespace` hands the payload back:
+const plaintext = unsealSelf(hexToBytes(stored.ciphertext), ownSecret, stored.resourceId);
+```
+
+### `worker-usdc-v1` — settlement-gated
+
+For paid or conditionally-readable data, seal to the **access worker's** static X25519
+public key and hand the ciphertext to the worker, which stores the opaque bytes in R2
+(never IPFS — a large, frequently-fetched ciphertext shouldn't burn public gateway
+egress). `encryptAndUpload` does both and returns a **handle**:
+
+```ts
+import { encryptAndUpload, GADGET_WORKER_USDC_V1 } from "@fangorn-network/sdk";
+
+const handle = await encryptAndUpload({
+	gadget: GADGET_WORKER_USDC_V1,
+	plaintext: new TextEncoder().encode("the full dataset"),
+	resourceId,
+	workerPubkey,                       // the access worker's static X25519 key (32 bytes)
+	storage: {
+		workerUrl: process.env.ACCESS_WORKER_URL!,
+		authToken: process.env.ACCESS_WORKER_TOKEN!,
+		contentType: "application/octet-stream",
+	},
+});
+```
+
+The handle is what you commit in place of the plaintext value — the engine treats it
+as an ordinary opaque object in the vertex payload:
+
+```jsonc
+{
+	"@type": "handle",
+	"objectKey": "…",                 // R2 object key
+	"workerUrl": "https://access-worker.example.workers.dev",
+	"encryption": {
+		"gadget": "worker-usdc-v1",
+		"resourceId": "0x…",           // Settlement Registry key + HKDF binding
+		"ciphertextHash": "0x…",       // sha256 of the sealed bytes
+		"workerPubkey": "0x…",         // worker-usdc-v1 only
+	},
+}
+```
+
+### Reading a handle
+
+Both gadgets resolve through the worker's `POST /access`. `decryptHandle` signs the
+request (the worker recovers the signer's address and checks the Settlement Registry
+for `resourceId`), fetches the bytes, and returns plaintext:
+
+```ts
+import { decryptHandle } from "@fangorn-network/sdk";
+
+const plaintext = await decryptHandle({
+	handle,
+	signer,                 // any viem LocalAccount / WalletClient — the address settlement is checked for
+	nullifier,              // per-read nullifier (replay / anonymity)
+	// ownSecret,           // self-hkdf-v1 only
+});
+```
+
+- **`self-hkdf-v1`** — the resource is priced 0, so any signed request passes; the bytes
+  come back *still sealed*, are checked against `ciphertextHash`, and are unsealed
+  locally with `ownSecret`.
+- **`worker-usdc-v1`** — the worker streams bytes only once the signer has settled,
+  having unsealed with its own key; the bytes arrive as plaintext.
+
+`buildAccessRequest` / `accessMessageHash` are exported if you want to drive the
+`/access` endpoint yourself, and `SettlementRegistryClient` (`isSettled`, `getPrice`)
+reads the settlement rail directly.
+
+**Trust model.** For `worker-usdc-v1` the access worker is the "somewhat trusted" party:
+it holds the unsealing key and sees plaintext at release time. That is deliberate for
+v1 — no TEE, no threshold network. Swapping in a stronger backend later is a *new
+gadget* behind the same handle shape, so committed data doesn't change form.
+`self-hkdf-v1` trusts nobody: the worker is dumb storage and never holds a key.
 
 ---
 
@@ -385,7 +538,9 @@ The publisher must be registered (`fangorn register`, or `registry.register()`) 
 
 ## Limitations / Future Work
 
-- Access-controlled (encrypted) fields and the purchase → claim → fetch settlement flow are being built on this registry — not available this release.
+- Sealed fields are live (`self-hkdf-v1`, `worker-usdc-v1`), but which fields to seal is expressed per-call at stage time — there is no schema-level `sealedFields` hint yet, and no CLI command for sealing.
+- The SDK reads the settlement rail (`isSettled` / `getPrice`); the pay/settle **write** path is a separate payment rail and is not modeled here.
+- `worker-usdc-v1` trusts the access worker with the unsealing key. A TEE- or threshold-backed replacement would ship as a new gadget, and the on-chain gadget registry (`gadget → resolver`) is still future work.
 - Vertex/edge schema validation is client-side only — no on-chain enforcement.
 - Push authorization is client-side in this release; on-chain write policies and non-fast-forward rejection are planned.
 - Reads target one publisher's namespace at a time; cross-publisher discovery is a higher layer.

@@ -1,7 +1,19 @@
+// Functions mirror `cargo stylus export-abi` for contracts/data_registry.
+// Events are hand-maintained: export-abi does not emit `sol!` event declarations.
 export const DATA_REGISTRY_ABI = [
     {
         "inputs": [],
         "name": "AlreadyRegistered",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "AppAlreadyRegistered",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "AppNotFound",
         "type": "error"
     },
     {
@@ -28,6 +40,25 @@ export const DATA_REGISTRY_ABI = [
         "inputs": [],
         "name": "Unauthorized",
         "type": "error"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "bytes32",
+                "name": "app_id",
+                "type": "bytes32"
+            },
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "owner",
+                "type": "address"
+            }
+        ],
+        "name": "AppRegistered",
+        "type": "event"
     },
     {
         "anonymous": false,
@@ -94,8 +125,24 @@ export const DATA_REGISTRY_ABI = [
         "type": "event"
     },
     {
+        // Three indexed topics (the max) chosen so every subscription shape the
+        // SDK needs is one node-side filter: `namespace_key` = one subspace,
+        // `app_id` = a whole app across publishers, `app_id` + `publisher` = one
+        // publisher within an app.
         "anonymous": false,
         "inputs": [
+            {
+                "indexed": true,
+                "internalType": "bytes32",
+                "name": "namespace_key",
+                "type": "bytes32"
+            },
+            {
+                "indexed": true,
+                "internalType": "bytes32",
+                "name": "app_id",
+                "type": "bytes32"
+            },
             {
                 "indexed": true,
                 "internalType": "address",
@@ -103,13 +150,19 @@ export const DATA_REGISTRY_ABI = [
                 "type": "address"
             },
             {
-                "indexed": true,
+                "indexed": false,
+                "internalType": "bytes32",
+                "name": "subspace_id",
+                "type": "bytes32"
+            },
+            {
+                "indexed": false,
                 "internalType": "bytes32",
                 "name": "old_root",
                 "type": "bytes32"
             },
             {
-                "indexed": true,
+                "indexed": false,
                 "internalType": "bytes32",
                 "name": "new_root",
                 "type": "bytes32"
@@ -135,6 +188,16 @@ export const DATA_REGISTRY_ABI = [
         "inputs": [
             {
                 "internalType": "bytes32",
+                "name": "app_id",
+                "type": "bytes32"
+            },
+            {
+                "internalType": "bytes32",
+                "name": "subspace_id",
+                "type": "bytes32"
+            },
+            {
+                "internalType": "bytes32",
                 "name": "old_root",
                 "type": "bytes32"
             },
@@ -152,9 +215,38 @@ export const DATA_REGISTRY_ABI = [
     {
         "inputs": [
             {
+                "internalType": "bytes32",
+                "name": "app_id",
+                "type": "bytes32"
+            }
+        ],
+        "name": "getAppOwner",
+        "outputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "app_id",
+                "type": "bytes32"
+            },
+            {
                 "internalType": "address",
                 "name": "publisher",
                 "type": "address"
+            },
+            {
+                "internalType": "bytes32",
+                "name": "subspace_id",
+                "type": "bytes32"
             }
         ],
         "name": "getNamespaceHead",
@@ -224,6 +316,19 @@ export const DATA_REGISTRY_ABI = [
         "name": "register",
         "outputs": [],
         "stateMutability": "payable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "app_id",
+                "type": "bytes32"
+            }
+        ],
+        "name": "registerApp",
+        "outputs": [],
+        "stateMutability": "nonpayable",
         "type": "function"
     },
     {

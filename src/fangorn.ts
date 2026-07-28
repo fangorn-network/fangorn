@@ -27,8 +27,15 @@ import {
 	MetagraphRegistry,
 	NamespaceContents,
 	NamespaceDiff,
+	rootHexFromCid,
 } from "./engine/index.js";
-import { DataRegistryClient, StateCommittedLog } from "./contracts/index.js";
+import {
+	CommitFilter,
+	DataRegistryClient,
+	PreparedTx,
+	StateCommittedLog,
+	subspaceId,
+} from "./contracts/index.js";
 
 const ZERO_BYTES32: Hex =
 	"0x0000000000000000000000000000000000000000000000000000000000000000";
@@ -48,7 +55,7 @@ export interface NamespaceChange extends NamespaceDiff {
 
 export interface SubscribeOptions {
 	namespace: string;
-	/** Publisher whose root to watch (defaults to this wallet's address). */
+	/** Publisher whose namespace to watch (defaults to this wallet's address). */
 	owner?: Hex;
 	/**
 	 * Replay `StateCommitted` events from this block before going live (the resume
@@ -151,6 +158,7 @@ export class Fangorn {
 
 		const dataRegistry = new DataRegistryClient(
 			resolvedConfig.dataRegistryContractAddress,
+			resolvedConfig.appId,
 			publicClient,
 			walletClient,
 		);
@@ -164,12 +172,15 @@ export class Fangorn {
 		});
 	}
 
-	// resets the onchain state root to zero
+	// resets a namespace's onchain state root to zero
 	// use at your own risk
-	async reset() {
+	async reset(namespace: string) {
 		const registry = this.getDataRegistry();
-		const currentRoot = await registry.getNamespaceHead(this.getAddress());
-		await registry.commitStateRoot(currentRoot, ZERO_BYTES32);
+		const currentRoot = await registry.getNamespaceHead(
+			this.getAddress(),
+			namespace,
+		);
+		await registry.commitStateRoot(namespace, currentRoot, ZERO_BYTES32);
 	}
 
 	/**
@@ -263,7 +274,7 @@ export class Fangorn {
 
 		// Continue the publisher's on-chain history with a commit that adds the
 		// namespace (as an empty tree) to the root map.
-		const head = await this.engine.resolveHeadCommit(publisher);
+		const head = await this.engine.resolveHeadCommit(publisher, repoName);
 		const { commitCid } = await this.createCommit({
 			namespace: repoName,
 			base: head,
@@ -271,7 +282,11 @@ export class Fangorn {
 			edges: [],
 			message: `Initialize repository workspace: ${repoName}`,
 		});
-		const { txHash } = await this.engine.pushCommit(publisher, commitCid);
+		const { txHash } = await this.engine.pushCommit(
+			publisher,
+			repoName,
+			commitCid,
+		);
 
 		return {
 			cid: commitCid.toString(),
@@ -286,7 +301,7 @@ export class Fangorn {
 	 */
 	async upload(repoName: string, payload: unknown, schemaId: string) {
 		const publisher = this.getAddress();
-		const head = await this.engine.resolveHeadCommit(publisher);
+		const head = await this.engine.resolveHeadCommit(publisher, repoName);
 		// can't upload to a zero-state chain.
 		if (!head) {
 			throw new Error(
@@ -301,7 +316,11 @@ export class Fangorn {
 			edges: [],
 			message: `Upload to namespace ${repoName} under schema ${schemaId}`,
 		});
-		const { txHash } = await this.engine.pushCommit(publisher, commitCid);
+		const { txHash } = await this.engine.pushCommit(
+			publisher,
+			repoName,
+			commitCid,
+		);
 
 		return {
 			payloadCid: vertexCids.v0,
@@ -327,7 +346,7 @@ export class Fangorn {
 		}
 
 		const publisher = this.getAddress();
-		const head = await this.engine.resolveHeadCommit(publisher);
+		const head = await this.engine.resolveHeadCommit(publisher, repoName);
 		if (!head) {
 			throw new Error(
 				`Repository '${repoName}' does not exist. Call initRepo() prior to uploading.`,
@@ -342,7 +361,11 @@ export class Fangorn {
 			message: `Batch upload to namespace ${repoName}`,
 		});
 
-		const { txHash } = await this.engine.pushCommit(publisher, commitCid);
+		const { txHash } = await this.engine.pushCommit(
+			publisher,
+			repoName,
+			commitCid,
+		);
 
 		return {
 			commitCid: commitCid.toString(),
@@ -398,22 +421,93 @@ export class Fangorn {
 		};
 	}
 
-	/** Settle a local commit as the on-chain head (fast-forward unless `force`). */
+	/**
+	 * Build a commit on top of `owner`'s current on-chain head and return it
+	 * together with the UNSIGNED settlement tx — the self-custodial publish path.
+	 *
+	 * `commit` + `push` assume the caller holds the publishing key. A relay server
+	 * doesn't: it builds and pins the commit with a keyless service wallet, then
+	 * hands the tx to the user's browser wallet to sign. The head only moves when
+	 * the publisher themselves signs, so the server is never a trusted party.
+	 *
+	 * Nothing is on-chain when this returns. The commit and its CAR are durable in
+	 * storage, so if the user never signs, the result is an orphaned commit — junk
+	 * in IPFS, not a corrupted timeline.
+	 */
+	async prepareCommit(opts: {
+		/** The publisher whose head advances — NOT this client's service wallet. */
+		owner: Hex;
+		namespace: string;
+		vertices?: { id: string; tag: string; payload: unknown }[];
+		edges?: { rel: string; from: string; to: string }[];
+		message: string;
+		/** Snapshot semantics: the staged graph replaces the namespace's contents. */
+		replace?: boolean;
+	}): Promise<{
+		commitCid: string;
+		oldRoot: Hex;
+		newRoot: Hex;
+		staged: { vertices: number; edges: number };
+		tx: PreparedTx;
+		vertexCids: Record<string, string>;
+	}> {
+		assertValidNamespace(opts.namespace);
+		const registry = this.getDataRegistry();
+
+		const oldRoot = await registry.getNamespaceHead(opts.owner, opts.namespace);
+		const { commitCid, vertexCids } = await this.createCommit({
+			namespace: opts.namespace,
+			base:
+				oldRoot === ZERO_BYTES32
+					? null
+					: CID.parse(this.engine.commitCidFromRootHex(oldRoot)),
+			vertices: opts.vertices ?? [],
+			edges: opts.edges ?? [],
+			message: opts.message,
+			replace: opts.replace,
+		});
+
+		const newRoot = rootHexFromCid(commitCid);
+		return {
+			commitCid: commitCid.toString(),
+			oldRoot,
+			newRoot,
+			staged: {
+				vertices: opts.vertices?.length ?? 0,
+				edges: opts.edges?.length ?? 0,
+			},
+			tx: await registry.prepareCommitStateRoot(
+				opts.owner,
+				opts.namespace,
+				oldRoot,
+				newRoot,
+			),
+			vertexCids,
+		};
+	}
+
+	/**
+	 * Settle a local commit as the on-chain head of `namespace` (fast-forward
+	 * unless `force`). Each namespace has its own timeline, so pushes to
+	 * different namespaces never contend for the same compare-and-swap.
+	 */
 	async push(
+		namespace: string,
 		commitCid: string,
 		opts?: { force?: boolean },
 	): Promise<{ txHash: string; onChainTip: string }> {
 		const { txHash, onChainTip } = await this.engine.pushCommit(
 			this.getAddress(),
+			namespace,
 			CID.parse(commitCid),
 			opts,
 		);
 		return { txHash, onChainTip: onChainTip.toString() };
 	}
 
-	/** The owner's current on-chain tip commit CID, or null if they have no commits. */
-	async onChainTip(owner: Hex): Promise<string | null> {
-		const cid = await this.engine.resolveHeadCommit(owner);
+	/** The owner's current on-chain tip for a namespace, or null if they have none. */
+	async onChainTip(owner: Hex, namespace: string): Promise<string | null> {
+		const cid = await this.engine.resolveHeadCommit(owner, namespace);
 		return cid ? cid.toString() : null;
 	}
 
@@ -456,25 +550,50 @@ export class Fangorn {
 		return this.engine.listNamespace(repoName, this.getAddress());
 	}
 
-	// ── Subscription: a light client for an owned namespace ────────────────────
+	// ── Subscription: a light client over the app's commit stream ──────────────
 	//
-	// A publisher owns exactly one on-chain root; namespaces are entries in its
-	// root map, so the registry's `StateCommitted(publisher, old, new)` event is
-	// per-publisher, not per-namespace. Subscribing therefore means: watch that
-	// owner's event, and for each new root diff the namespace's link sets against
-	// the previous root — emitting only when that slice actually changed. Reads
-	// logs straight from the RPC node and resolves diffs from content-addressed
-	// storage (one CAR download per push): no subgraph, no indexer.
+	// Each `app:publisher:namespace` triple is its own on-chain timeline, and the
+	// registry indexes all three parts of it, so a subscription is just a topic
+	// filter: one namespace (`{ owner, namespace }`), one publisher across the
+	// app (`{ owner }`), or the whole app (`{}` — see `subscribeApp`). For each
+	// commit we diff the namespace's link sets against the previous root and emit
+	// only when that slice actually changed. Reads logs straight from the RPC node
+	// and resolves diffs from content-addressed storage (one CAR download per
+	// push): no subgraph, no indexer.
 
 	/**
-	 * Stream namespace-scoped changes as the on-chain root advances. Optionally
-	 * replays from `fromBlock` first (resume cursor), then watches live until the
-	 * `signal` aborts. Each yielded change carries `blockNumber` — persist it to
-	 * resume exactly where you left off.
+	 * Stream changes to one publisher's namespace. Optionally replays from
+	 * `fromBlock` first (resume cursor), then watches live until the `signal`
+	 * aborts. Each yielded change carries `blockNumber` — persist it to resume
+	 * exactly where you left off.
 	 */
-	async *subscribe(opts: SubscribeOptions): AsyncGenerator<NamespaceChange> {
-		const owner = opts.owner ?? this.getAddress();
-		const ns = opts.namespace;
+	subscribe(opts: SubscribeOptions): AsyncGenerator<NamespaceChange> {
+		return this.streamCommits(
+			{ publisher: opts.owner ?? this.getAddress(), namespace: opts.namespace },
+			opts,
+		);
+	}
+
+	/**
+	 * Stream changes across the *whole app* — every publisher, every namespace.
+	 * The app-level feed: one topic filter on `app_id`, no per-publisher fan-out
+	 * and no global root to keep in sync. Narrow it with `namespace` (every
+	 * publisher's `docs`) or `owner` (one publisher's whole app footprint).
+	 */
+	subscribeApp(
+		opts: Omit<SubscribeOptions, "namespace"> & { namespace?: string } = {},
+	): AsyncGenerator<NamespaceChange> {
+		return this.streamCommits(
+			{ publisher: opts.owner, namespace: opts.namespace },
+			opts,
+		);
+	}
+
+	/** Shared catch-up-then-live loop behind `subscribe` and `subscribeApp`. */
+	private async *streamCommits(
+		filter: CommitFilter,
+		opts: Omit<SubscribeOptions, "namespace" | "owner">,
+	): AsyncGenerator<NamespaceChange> {
 		const registry = this.getDataRegistry();
 
 		// Dedupe across the catch-up (getLogs) and live (watch) paths, which can
@@ -500,7 +619,7 @@ export class Fangorn {
 		};
 
 		const unwatch = registry.watchStateCommitted(
-			owner,
+			filter,
 			(log) => {
 				buffer.push(log);
 				signal();
@@ -521,12 +640,12 @@ export class Fangorn {
 		try {
 			if (opts.fromBlock !== undefined) {
 				for (const log of await registry.getStateCommittedLogs(
-					owner,
+					filter,
 					opts.fromBlock,
 				)) {
 					if (seen.has(log.logId)) continue;
 					seen.add(log.logId);
-					const change = await this.toNamespaceChange(log, ns, owner);
+					const change = await this.toNamespaceChange(log);
 					if (change) yield change;
 				}
 			}
@@ -548,7 +667,7 @@ export class Fangorn {
 
 				if (seen.has(log.logId)) continue;
 				seen.add(log.logId);
-				const change = await this.toNamespaceChange(log, ns, owner);
+				const change = await this.toNamespaceChange(log);
 				if (change) yield change;
 			}
 		} finally {
@@ -557,12 +676,25 @@ export class Fangorn {
 		}
 	}
 
-	/** Resolve a raw `StateCommitted` log into a namespace change, or null if the namespace slice was untouched. */
+	/**
+	 * Resolve a raw `StateCommitted` log into a namespace change, or null if the
+	 * namespace slice was untouched.
+	 *
+	 * The event carries `keccak256(namespace)`, never the name, so the name comes
+	 * from the commit's own root map — and must hash back to the subspace the
+	 * commit was published into, or the publisher settled a commit for one
+	 * namespace against another's timeline.
+	 */
 	private async toNamespaceChange(
 		log: StateCommittedLog,
-		namespace: string,
-		owner: Hex,
 	): Promise<NamespaceChange | null> {
+		const namespace = await this.engine.namespaceOf(log.newRoot);
+		if (subspaceId(namespace) !== log.subspaceId) {
+			throw new Error(
+				`commit ${log.newRoot} declares namespace "${namespace}", which does not match the subspace it was committed to (${log.subspaceId})`,
+			);
+		}
+
 		const diff = await this.engine.namespaceDiff(
 			log.oldRoot === ZERO_BYTES32 ? null : log.oldRoot,
 			log.newRoot,
@@ -577,7 +709,7 @@ export class Fangorn {
 
 		return {
 			namespace,
-			owner,
+			owner: log.publisher,
 			commitCid: this.engine.commitCidFromRootHex(log.newRoot),
 			oldRoot: log.oldRoot,
 			newRoot: log.newRoot,

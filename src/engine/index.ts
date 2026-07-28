@@ -135,6 +135,17 @@ const ZERO_BYTES32 =
  * map block, so this is just a sanity bound keeping that block small and
  * rejecting garbage input early.
  */
+/**
+ * The 32-byte root a commit settles to on-chain.
+ *
+ * The contract stores the commit CID's bare multihash digest — NOT a hash of the
+ * CID. Re-hashing here would produce a root that resolves to nothing, so this is
+ * the one encoding every caller must share rather than re-derive.
+ */
+export function rootHexFromCid(commitCid: CID): Hex {
+	return `0x${Buffer.from(commitCid.multihash.digest).toString("hex")}`;
+}
+
 export const MAX_NAMESPACE_LENGTH = 256;
 
 /** Reject invalid namespace names up front with a clear error. */
@@ -307,9 +318,19 @@ export class FangornEngine {
 	// plus its parents and message, so the whole history is walkable from that
 	// single trusted pointer.
 
-	/** Reconstruct the publisher's current on-chain head as a commit CID, or null if none. */
-	async resolveHeadCommit(publisher: Address): Promise<CID | null> {
-		const currentHead = await this.registryClient.getNamespaceHead(publisher);
+	/**
+	 * Reconstruct the current on-chain head of one publisher's namespace as a
+	 * commit CID, or null if none. Each namespace is its own on-chain timeline,
+	 * so this is per-(publisher, namespace) rather than per-publisher.
+	 */
+	async resolveHeadCommit(
+		publisher: Address,
+		namespace: NamespaceID,
+	): Promise<CID | null> {
+		const currentHead = await this.registryClient.getNamespaceHead(
+			publisher,
+			namespace,
+		);
 		if (currentHead === ZERO_BYTES32) return null;
 		return this.hexToRootCid(currentHead);
 	}
@@ -324,6 +345,25 @@ export class FangornEngine {
 		for (const [ns, link] of Object.entries(raw))
 			rootMap[ns] = CID.parse(String(link));
 		return rootMap;
+	}
+
+	/**
+	 * Which namespace a commit belongs to, read from its root map.
+	 *
+	 * Each namespace is its own on-chain timeline, so a commit's root map carries
+	 * exactly one entry — which is how an app-wide subscriber recovers the
+	 * namespace *name* from a stream that only carries `keccak256(name)`. A commit
+	 * with several entries predates per-namespace timelines and can't be
+	 * attributed to one.
+	 */
+	async namespaceOf(rootHex: Hex): Promise<NamespaceID> {
+		const names = Object.keys(await this.rootMapAt(this.hexToRootCid(rootHex)));
+		if (names.length !== 1) {
+			throw new Error(
+				`commit ${rootHex} spans ${names.length.toString()} namespaces; expected exactly one`,
+			);
+		}
+		return names[0];
 	}
 
 	/** The full vertex/edge link sets one commit records for `namespace`. */
@@ -512,18 +552,22 @@ export class FangornEngine {
 	}
 
 	/**
-	 * Settle a local commit as the publisher's on-chain head — the permissioned,
-	 * git `push` step. The commit and its CAR are already durable in storage
-	 * (createCommit uploads them), so this is just the compare-and-swap against
-	 * the current head. Unless `force`, the on-chain head must be an ancestor of
-	 * `commitCid` (fast-forward only).
+	 * Settle a local commit as the on-chain head of one namespace — the
+	 * permissioned, git `push` step. The commit and its CAR are already durable
+	 * in storage (createCommit uploads them), so this is just the compare-and-swap
+	 * against the current head. Unless `force`, the on-chain head must be an
+	 * ancestor of `commitCid` (fast-forward only).
 	 */
 	async pushCommit(
 		publisher: Address,
+		namespace: NamespaceID,
 		commitCid: CID,
 		opts?: { force?: boolean },
 	): Promise<{ txHash: Hash; onChainTip: CID }> {
-		const onChainHex = await this.registryClient.getNamespaceHead(publisher);
+		const onChainHex = await this.registryClient.getNamespaceHead(
+			publisher,
+			namespace,
+		);
 		const onChainCommit =
 			onChainHex === ZERO_BYTES32 ? null : this.hexToRootCid(onChainHex);
 
@@ -539,8 +583,9 @@ export class FangornEngine {
 			}
 		}
 
-		const newRootHex: Hex = `0x${Buffer.from(commitCid.multihash.digest).toString("hex")}`;
+		const newRootHex = rootHexFromCid(commitCid);
 		const txHash = await this.registryClient.commitStateRoot(
+			namespace,
 			onChainHex,
 			newRootHex,
 		);
@@ -572,6 +617,11 @@ export class FangornEngine {
 	/** The commit CID string a raw on-chain root hex points at. */
 	commitCidFromRootHex(hex: string): string {
 		return this.hexToRootCid(hex).toString();
+	}
+
+	/** Inverse of `commitCidFromRootHex`: the on-chain root hex for a commit CID. */
+	rootHexFromCommitCid(commitCid: string): Hex {
+		return rootHexFromCid(CID.parse(commitCid));
 	}
 
 	/** Decode a vertex block into the public read shape. */
@@ -727,12 +777,12 @@ export class FangornEngine {
 		};
 	}
 
-	/** Does this namespace exist under the publisher's on-chain root yet? */
+	/** Has this publisher committed to this namespace on-chain yet? */
 	async namespaceExists(
 		namespace: NamespaceID,
 		publisher: Address,
 	): Promise<boolean> {
-		const head = await this.resolveHeadCommit(publisher);
+		const head = await this.resolveHeadCommit(publisher, namespace);
 		if (!head) return false;
 		const rootMap = await this.rootMapAt(head);
 		return namespace in rootMap;
@@ -743,7 +793,7 @@ export class FangornEngine {
 		namespace: NamespaceID,
 		publisher: Address,
 	): Promise<NamespaceContents> {
-		const head = await this.resolveHeadCommit(publisher);
+		const head = await this.resolveHeadCommit(publisher, namespace);
 		if (!head) return { vertices: [], edges: [] };
 
 		const { vertexLinks, edgeLinks } = await this.treeLinksAt(head, namespace);
@@ -763,10 +813,13 @@ export class FangornEngine {
 	async readVertex(
 		cid: string,
 		publisher: Address,
+		namespace: NamespaceID,
 	): Promise<NamespaceContents["vertices"][number]> {
-		const head = await this.resolveHeadCommit(publisher);
+		const head = await this.resolveHeadCommit(publisher, namespace);
 		if (!head)
-			throw new Error(`publisher ${publisher} has no on-chain commits`);
+			throw new Error(
+				`publisher ${publisher} has no on-chain commits in namespace ${namespace}`,
+			);
 		return this.decodeVertex(CID.parse(cid), head);
 	}
 }

@@ -329,7 +329,7 @@ repoCmd
 			s.start(`Initializing namespace "${namespace}"...`);
 			const result = await fangorn.initRepo(namespace);
 			// Whether we just created it or it already existed, HEAD tracks the on-chain tip.
-			const head = result.alreadyInitialized ? await fangorn.onChainTip(owner) : result.commitCid;
+			const head = result.alreadyInitialized ? await fangorn.onChainTip(owner, namespace) : result.commitCid;
 			const repo = LocalRepo.init({ namespace, owner, head });
 			s.stop();
 
@@ -426,9 +426,11 @@ program
 			const s = spinner();
 
 			s.start("Pushing...");
-			const { txHash, onChainTip } = await fangorn.push(head, {
-				force: options.force,
-			});
+			const { txHash, onChainTip } = await fangorn.push(
+				repo.namespace(),
+				head,
+				{ force: options.force },
+			);
 			s.stop();
 
 			console.log(`Tx:  ${txHash}`);
@@ -448,7 +450,10 @@ program
 			const repo = LocalRepo.open();
 			const fangorn = getFangorn();
 			const localHead = repo.head();
-			const onChainTip = await fangorn.onChainTip(repo.owner());
+			const onChainTip = await fangorn.onChainTip(
+				repo.owner(),
+				repo.namespace(),
+			);
 
 			const state =
 				localHead === onChainTip
@@ -546,7 +551,7 @@ program
 				const fangorn = getFangorn();
 				const s = spinner();
 				s.start(`Resolving on-chain tip for ${owner}...`);
-				const tip = await fangorn.onChainTip(owner);
+				const tip = await fangorn.onChainTip(owner, namespace);
 				const repo = LocalRepo.init(
 					{ namespace, owner, head: tip },
 					options.dir ?? process.cwd(),
@@ -711,7 +716,7 @@ program
 				}
 
 				const [head, contents] = await Promise.all([
-					fangorn.onChainTip(owner),
+					fangorn.onChainTip(owner, namespace),
 					fangorn.engine.listNamespace(namespace, owner),
 				]);
 
@@ -739,11 +744,12 @@ program
 program
 	.command("reset")
 	.description(
-		"DANGER!: reset your on-chain head to zero (abandons all prior commits)",
+		"DANGER!: reset this namespace's on-chain head to zero (abandons all prior commits)",
 	)
 	.action(async () => {
+		const namespace = LocalRepo.open().namespace();
 		const confirmFirst = await confirm({
-			message: "Are you sure? Your onchain head will reset to 0x0000...",
+			message: `Are you sure? The on-chain head for "${namespace}" will reset to 0x0000...`,
 		});
 		handleCancel(confirmFirst);
 		if (!confirmFirst) {
@@ -752,10 +758,10 @@ program
 		}
 
 		// If both prompts pass and aren't canceled:
-		await getFangorn().reset();
+		await getFangorn().reset(namespace);
 
 		console.log(
-			"On-chain head reset to zero. `repo init` will now start fresh.",
+			`On-chain head for "${namespace}" reset to zero. \`repo init\` will now start fresh.`,
 		);
 		process.exit(0);
 	});

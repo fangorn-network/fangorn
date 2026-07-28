@@ -14,6 +14,10 @@ const PINATA_GATEWAY = process.env.PINATA_GATEWAY ?? "https://gateway.pinata.clo
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+const ZERO_BYTES32 =
+    "0x0000000000000000000000000000000000000000000000000000000000000000";
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+
 interface TestPayload {
     event: string;
     timestamp: number;
@@ -27,13 +31,14 @@ describe("Fangorn True E2E: Storage + Chain Anchor", () => {
         testbed = TestBed.init([PRIVATE_KEY]);
     });
 
-    it("single uploader mutates global state root properly", async () => {
+    it("single uploader mutates its namespace state root properly", async () => {
 
-        // reset the state root to zero
-        await testbed.resetContractState(0);
-        console.log('reset the state root in the contract')
+        // No reset needed: each test uses a fresh namespace, and every namespace
+        // starts from its own zero head rather than sharing the publisher's.
 
-        // register f_list[0] onchain (of not registered)
+        // Two independent registrations: the app claims its namespace prefix,
+        // the publisher earns the right to write. Both idempotent.
+        await testbed.registerApp(0)
         await testbed.register(0)
         console.log('publisher registration success')
         // initialize a new namespace/repo
@@ -53,10 +58,10 @@ describe("Fangorn True E2E: Storage + Chain Anchor", () => {
         const res = await testbed.upload(0, namespace, payload, name);
         expect(res.txHash).toBeTruthy();
 
-        // wait for pinata 
-        sleep(5000)
+        // wait for pinata
+        await sleep(5000)
         // fetch data
-        const retrieved = await testbed.fetch(0, res.payloadCid);
+        const retrieved = await testbed.fetch(0, res.payloadCid, namespace);
         expect(retrieved).toBeDefined();
         expect(retrieved.payload.event).toBe("E2E Test Run");
         expect(retrieved.payload.status).toBe("active");
@@ -70,7 +75,7 @@ describe("Fangorn True E2E: Storage + Chain Anchor", () => {
             status: "active"
         };
         const res2 = await testbed.upload(0, namespace, payload2, name2);
-        const retrieved2 = await testbed.fetch(0, res2.payloadCid);
+        const retrieved2 = await testbed.fetch(0, res2.payloadCid, namespace);
         expect(retrieved2).toBeDefined();
         expect(retrieved2.payload.event).toBe("E2E Test Run 2");
         expect(retrieved2.payload.status).toBe("active");
@@ -87,14 +92,28 @@ describe("Fangorn True E2E: Storage + Chain Anchor", () => {
         );
     }, 120_000);
 
-    // A publisher owns exactly ONE on-chain root; namespaces are just key-prefixes
-    // inside its Pail tree. This exercises several namespaces living under the same
-    // publisher at once — proving they advance the shared root independently and
-    // that each namespace's `inspect` sees only its own vertices (no cross-talk).
+    // The two registrations are genuinely independent, and an app is not
+    // optional: a fully-registered publisher still cannot write under an app id
+    // nobody has claimed. This is what makes an app's namespace prefix its own —
+    // publishing into it requires that someone registered it first.
+    it("rejects a registered publisher writing to an unregistered app", async () => {
+        await testbed.register(0); // publisher rights, no app claimed
+
+        const orphan = TestBed.init([PRIVATE_KEY], `unclaimed-${Date.now()}`);
+        expect(await orphan.appOwner(0)).toBe(ZERO_ADDRESS);
+
+        await expect(
+            orphan.initRepo(0, `ns-${Date.now()}`),
+        ).rejects.toThrow(/AppNotFound|revert/i);
+    }, 120_000);
+
+    // Each `app:publisher:namespace` triple is its own on-chain timeline, so one
+    // publisher's namespaces advance independently and each namespace's `inspect`
+    // sees only its own vertices (no cross-talk).
     it("supports multiple namespaces under a single publisher, isolated from each other", async () => {
-        // Register the publisher (idempotent). We deliberately do NOT reset the
-        // contract state here: multiple namespaces are meant to coexist on the same
-        // root, and each run uses fresh, uniquely-named namespaces for isolation.
+        // Register the app and the publisher (both idempotent). Each run uses
+        // fresh, uniquely-named namespaces, each starting from its own zero head.
+        await testbed.registerApp(0);
         await testbed.register(0);
 
         const stamp = Date.now();
@@ -113,8 +132,8 @@ describe("Fangorn True E2E: Storage + Chain Anchor", () => {
         expect(b1.txHash).toBeTruthy();
         expect(a2.txHash).toBeTruthy();
 
-        // Each namespace resolves from the same publisher root but must return only
-        // its own vertices — the whole point of prefix-scoped namespaces.
+        // Each namespace resolves from its own on-chain head and must return only
+        // its own vertices — the whole point of per-namespace timelines.
         const contentsA = await testbed.inspect(0, nsA);
         const contentsB = await testbed.inspect(0, nsB);
 
@@ -129,12 +148,55 @@ describe("Fangorn True E2E: Storage + Chain Anchor", () => {
         expect(contentsB.vertices.some(v => aCids.has(v.cid))).toBe(false);
     }, 180_000);
 
+    // The on-chain shape of per-namespace timelines, asserted against the heads
+    // themselves rather than inferred from the contents.
+    //
+    // Under the old flat model both namespaces compare-and-swapped ONE root per
+    // publisher: pushing to B moved the same slot A had just moved, so A's head
+    // could not survive B's push and B's CAS had to build on A's root. Here each
+    // head advances alone and an untouched namespace stays at zero.
+    //
+    // Deliberately sequential: both pushes come from one wallet, so issuing them
+    // concurrently contends on the account nonce, not on the contract's CAS —
+    // that would test viem's nonce handling, not this change. The contract-level
+    // concurrency guarantee is covered by `test_subspaces_have_isolated_timelines`.
+    it("advances each namespace's on-chain head independently", async () => {
+        await testbed.registerApp(0);
+        await testbed.register(0);
+
+        const stamp = Date.now();
+        const nsA = `head-a-${stamp}`;
+        const nsB = `head-b-${stamp}`;
+        const untouched = `head-none-${stamp}`;
+
+        await testbed.initRepo(0, nsA);
+        const headA = await testbed.head(0, nsA);
+        expect(headA).not.toBe(ZERO_BYTES32);
+
+        // Pushing B must not disturb A — the old model could not do this.
+        await testbed.initRepo(0, nsB);
+        const headB = await testbed.head(0, nsB);
+        expect(headB).not.toBe(ZERO_BYTES32);
+        expect(headB).not.toBe(headA);
+        expect(await testbed.head(0, nsA)).toBe(headA);
+
+        // A namespace nobody has written to has its own zero head, rather than
+        // inheriting whatever the publisher last committed anywhere.
+        expect(await testbed.head(0, untouched)).toBe(ZERO_BYTES32);
+
+        // And a second push to A advances only A.
+        await testbed.upload(0, nsA, { event: "A2", timestamp: Date.now(), status: "active" }, "a2");
+        expect(await testbed.head(0, nsA)).not.toBe(headA);
+        expect(await testbed.head(0, nsB)).toBe(headB);
+    }, 180_000);
+
     // Batch publishing: many vertices (and edges) committed to one namespace in a
     // SINGLE on-chain commit, rather than one tx per vertex. This is the realistic
     // "publish a dataset" path and the one most exposed to the pail commit
     // overflow at scale (see src/engine/publish-overflow.test.ts) — here we keep
     // the batch modest so it settles quickly while still exercising the path.
     it("publishes a batch of vertices to one namespace in a single commit", async () => {
+        await testbed.registerApp(0);
         await testbed.register(0);
 
         const namespace = `batch-${Date.now()}`;
@@ -164,6 +226,7 @@ describe("Fangorn True E2E: Storage + Chain Anchor", () => {
     // care that the bytes are a ciphertext). No R2, no access worker, no settlement
     // — that machinery is only for the gated worker-usdc-v1 gadget.
     it("purely private: encrypt for self, ingest, retrieve, decrypt", async () => {
+        await testbed.registerApp(0);
         await testbed.register(0);
         const namespace = `private-${Date.now()}`;
         await testbed.initRepo(0, namespace);
@@ -196,7 +259,7 @@ describe("Fangorn True E2E: Storage + Chain Anchor", () => {
         expect(res.txHash).toBeTruthy();
 
         // --- retrieve: still opaque ciphertext ---
-        const retrieved = await testbed.fetch(0, res.payloadCid);
+        const retrieved = await testbed.fetch(0, res.payloadCid, namespace);
         const stored = retrieved.payload as {
             gadget: string;
             resourceId: Hex;
