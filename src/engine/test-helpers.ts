@@ -73,16 +73,23 @@ export class MemStorage implements MetadataStorage {
 	}
 }
 
-/** Registry stub holding one publisher head in memory (enough for the engine). */
+/**
+ * Registry stub holding one head per namespace in memory (enough for the
+ * engine) — mirroring the contract, where each namespace is its own timeline.
+ */
 export class StubRegistry {
-	head: string = ZERO_BYTES32;
+	heads = new Map<string, Hex>();
 
-	getNamespaceHead(_publisher: string): Promise<string> {
-		return Promise.resolve(this.head);
+	getNamespaceHead(_publisher: string, namespace: string): Promise<Hex> {
+		return Promise.resolve(this.heads.get(namespace) ?? (ZERO_BYTES32 as Hex));
 	}
 
-	commitStateRoot(_oldRoot: Hex, newRoot: Hex): Promise<Hex> {
-		this.head = newRoot;
+	commitStateRoot(
+		namespace: string,
+		_oldRoot: Hex,
+		newRoot: Hex,
+	): Promise<Hex> {
+		this.heads.set(namespace, newRoot);
 		return Promise.resolve("0xdeadbeef" as Hex);
 	}
 

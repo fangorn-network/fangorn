@@ -84,9 +84,11 @@ function robinhoodGraph(T: number): { vertices: V[]; edges: E[] } {
 
 function newEngine(storage = new MemStorage(), registry = new StubRegistry()) {
 	const mg = new MetagraphRegistry();
-	// Permissive schemas for everything the synthetic graph uses.
-	for (const tag of ["Asset", "Wallet", "Transfer", "rec"])
-		mg.registerVertex(NS, { id: tag, requiredFields: [] });
+	// Permissive schemas for everything the synthetic graph uses. Registered for
+	// the second namespace too, so timeline-isolation tests can publish there.
+	for (const ns of [NS, "other"])
+		for (const tag of ["Asset", "Wallet", "Transfer", "rec"])
+			mg.registerVertex(ns, { id: tag, requiredFields: [] });
 	for (const [s, rel, t] of [
 		["Asset", "hasTransfer", "Transfer"],
 		["Transfer", "sentBy", "Wallet"],
@@ -192,7 +194,7 @@ describe("publish scalability & cost", () => {
 			edges: g.edges,
 			message: "publish",
 		});
-		await engine.pushCommit(PUBLISHER, c1);
+		await engine.pushCommit(PUBLISHER, NS, c1);
 
 		// second commit on top, so the read spans a CAR chain
 		const g2 = robinhoodGraph(120);
@@ -203,7 +205,7 @@ describe("publish scalability & cost", () => {
 			edges: g2.edges,
 			message: "delta",
 		});
-		await engine.pushCommit(PUBLISHER, c2);
+		await engine.pushCommit(PUBLISHER, NS, c2);
 
 		const { engine: coldEngine } = newEngine(storage, registry);
 		const contents = await coldEngine.listNamespace(NS, PUBLISHER);
@@ -254,6 +256,39 @@ describe("publish scalability & cost", () => {
 					e.relation === "receivedBy",
 			),
 		).toBe(true);
+	});
+
+	// Each namespace is its own on-chain timeline, which is the whole point of the
+	// hierarchical registry: two namespaces advance independently, and pushing one
+	// never invalidates the other's compare-and-swap. Under the old flat model
+	// both shared a single publisher head, so the second push here would have had
+	// to build on the first.
+	it("keeps each namespace's on-chain timeline independent", async () => {
+		const { engine, registry } = newEngine();
+		const mkCommit = (namespace: string, base: null, i: number) =>
+			engine.createCommit({
+				namespace,
+				base,
+				vertices: [{ id: "0", schemaId: "rec", payload: { i } }],
+				edges: [],
+				message: `commit ${i.toString()}`,
+			});
+
+		// Both are root commits (base: null) — neither knows about the other.
+		const { commitCid: a } = await mkCommit(NS, null, 1);
+		const { commitCid: b } = await mkCommit("other", null, 2);
+
+		await engine.pushCommit(PUBLISHER, NS, a);
+		await engine.pushCommit(PUBLISHER, "other", b);
+
+		expect(await registry.getNamespaceHead(PUBLISHER, NS)).toBe(rootHex(a));
+		expect(await registry.getNamespaceHead(PUBLISHER, "other")).toBe(
+			rootHex(b),
+		);
+		// An untouched namespace stays at zero rather than inheriting a head.
+		expect(await registry.getNamespaceHead(PUBLISHER, "unused")).toBe(
+			`0x${"0".repeat(64)}`,
+		);
 	});
 
 	// Namespace name bounds: garbage input is rejected up front with a clear error.

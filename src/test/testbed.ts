@@ -1,16 +1,24 @@
 import { type Hex } from "viem";
 import { Fangorn } from "../fangorn.js";
+import { FangornConfig } from "../config.js";
 
 export class TestBed {
     private constructor(private readonly f_list: Fangorn[]) {}
 
-    static init(sks: Hex[]): TestBed {
+    /**
+     * @param sks     one wallet per publisher in the forest
+     * @param appName the app namespace to publish under; defaults to the SDK's
+     *                own. Pass an unclaimed name to exercise the AppNotFound path.
+     */
+    static init(sks: Hex[], appName?: string): TestBed {
         // populate fangorn forest
         const f_list: Fangorn[] = [];
         sks.forEach((sk) => {
             f_list.push(
                 Fangorn.create({
                     privateKey: sk,
+                    config: FangornConfig,
+                    appId: appName,
                     storage: {
                         pinata: {
                             jwt: process.env.PINATA_JWT ?? "",
@@ -30,14 +38,22 @@ export class TestBed {
         return fangorn;
     }
 
-    // set the state root to zero
-    async resetContractState(index: number) {
-        const fangorn = this.getFangorn(index);
-        const registry = fangorn.getDataRegistry();
-        const currentRoot = await registry.getNamespaceHead(fangorn.getAddress());
-        const ZERO_BYTES32: Hex =
-            "0x0000000000000000000000000000000000000000000000000000000000000000";
-        await fangorn.getDataRegistry().commitStateRoot(currentRoot, ZERO_BYTES32);
+    /**
+     * Claim the configured app namespace, if nobody has yet.
+     *
+     * Orthogonal to `register`: an app claims a unique namespace prefix that
+     * publishers may write under, while a publisher registers for the right to
+     * write at all. Neither implies the other — one app hosts many publishers,
+     * and one publisher writes into many apps. Idempotent, and safe when someone
+     * else already owns it: apps are shared, not per-test.
+     */
+    async registerApp(index: number) {
+        const registry = this.getFangorn(index).getDataRegistry();
+        const owner = await registry.getAppOwner();
+        if (owner === "0x0000000000000000000000000000000000000000") {
+            console.log(`Registering app ${registry.getAppId()} on-chain...`);
+            await registry.registerApp();
+        }
     }
 
     // register as a publisher
@@ -87,11 +103,24 @@ export class TestBed {
         return fangorn.uploadBatch(namespace, vertices, edges);
     }
 
-    async fetch(index: number, cid: string) {
+    async fetch(index: number, cid: string, namespace: string) {
         // Vertex blocks live inside commit CAR files (not individual pins), so
         // resolve through the publisher's commit chain rather than the gateway.
         const fangorn = this.getFangorn(index);
-        return fangorn.engine.readVertex(cid, fangorn.getAddress());
+        return fangorn.engine.readVertex(cid, fangorn.getAddress(), namespace);
+    }
+
+    /** Owner of the configured app namespace, or the zero address if unclaimed. */
+    async appOwner(index: number) {
+        return this.getFangorn(index).getDataRegistry().getAppOwner();
+    }
+
+    /** The raw on-chain head of one namespace — the slot the CAS actually guards. */
+    async head(index: number, namespace: string) {
+        const fangorn = this.getFangorn(index);
+        return fangorn
+            .getDataRegistry()
+            .getNamespaceHead(fangorn.getAddress(), namespace);
     }
 
     async inspect(index: number, namespace: string) {

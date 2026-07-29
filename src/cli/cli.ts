@@ -16,7 +16,7 @@ import "dotenv/config";
 
 import { Fangorn } from "../fangorn.js";
 import { handleCancel } from "./index.js";
-import { AppConfig, FangornConfig } from "../config.js";
+import { AppConfig, DEFAULT_APP, FangornConfig, toAppId } from "../config.js";
 import { StorageConfig } from "../types/index.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -33,11 +33,15 @@ interface StoredConfig {
 	// The pinata-url-provider worker that distributes presigned upload URLs.
 	// Required only when uploading via signed URLs (no own Pinata JWT).
 	signedUrlWorkerUrl?: string;
+	// The app (global namespace) commands run under — a name or a 32-byte app id.
+	// Set with `fangorn set-app`; unset means the SDK default.
+	appId?: string;
 }
 
 interface Config {
 	privateKey: Hex;
 	cfg: AppConfig;
+	appId: string;
 	pinataJwt: string;
 	pinataGateway: string;
 	accessWorkerUrl: string;
@@ -59,6 +63,16 @@ let _config: Config | null = null;
 let _account: PrivateKeyAccount | null = null;
 let _fangorn: Fangorn | null = null;
 
+function readStoredConfig(): StoredConfig {
+	return JSON.parse(readFileSync(CONFIG_PATH, "utf-8")) as StoredConfig;
+}
+
+function writeStoredConfig(stored: StoredConfig): void {
+	if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true });
+	writeFileSync(CONFIG_PATH, JSON.stringify(stored, null, 2), "utf-8");
+	chmodSync(CONFIG_PATH, 0o600);
+}
+
 function loadConfig(): Config {
 	if (_config) return _config;
 
@@ -67,14 +81,15 @@ function loadConfig(): Config {
 	const pinataGateway = process.env.PINATA_GATEWAY;
 	const accessWorkerUrl = process.env.ACCESS_WORKER_URL;
 	const signedUrlWorkerUrl = process.env.SIGNED_URL_WORKER_URL;
+	const envAppId = process.env.FANGORN_APP_ID;
 
 	if (existsSync(CONFIG_PATH)) {
-		const stored = JSON.parse(
-			readFileSync(CONFIG_PATH, "utf-8"),
-		) as StoredConfig;
+		const stored = readStoredConfig();
 		_config = {
 			privateKey: stored.privateKey,
 			cfg: FangornConfig,
+			// env wins over the saved app, so a one-off run can target another app.
+			appId: envAppId ?? stored.appId ?? DEFAULT_APP,
 			pinataJwt: stored.pinataJwt,
 			pinataGateway: stored.pinataGateway,
 			accessWorkerUrl: stored.accessWorkerUrl ?? "",
@@ -96,6 +111,7 @@ function loadConfig(): Config {
 		_config = {
 			privateKey: privateKey as Hex,
 			cfg: FangornConfig,
+			appId: envAppId ?? DEFAULT_APP,
 			pinataJwt: pinataJwt ?? "",
 			pinataGateway: pinataGateway ?? "",
 			accessWorkerUrl: accessWorkerUrl ?? "",
@@ -141,6 +157,7 @@ function getFangorn(): Fangorn {
 		storage,
 		domain: "localhost",
 		config: cfg.cfg,
+		appId: cfg.appId,
 	});
 	return _fangorn;
 }
@@ -278,20 +295,103 @@ program
 		});
 		handleCancel(signedUrlWorkerUrl);
 
-		const stored: StoredConfig = {
+		writeStoredConfig({
 			privateKey: privateKey as Hex,
 			chainName: "Arbitrum Sepolia",
 			pinataJwt: pinataJwt as string,
 			pinataGateway: pinataGateway as string,
 			accessWorkerUrl: accessWorkerUrl as string,
 			signedUrlWorkerUrl: signedUrlWorkerUrl as string,
-		};
-
-		if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true });
-		writeFileSync(CONFIG_PATH, JSON.stringify(stored, null, 2), "utf-8");
-		chmodSync(CONFIG_PATH, 0o600);
+			// Keep whatever `set-app` chose; re-running init shouldn't silently
+			// move the user back to the default app.
+			appId: existsSync(CONFIG_PATH) ? readStoredConfig().appId : undefined,
+		});
 
 		outro(`Config saved to ${CONFIG_PATH}`);
+	});
+
+// ─── app (global namespace) ───────────────────────────────────────────────────
+//
+// The app id prefixes every namespace key, so it decides which global namespace
+// commands read from and publish into. It is per-client state, not part of the
+// SDK's network config: the CLI persists a choice here, the SDK takes it via
+// `Fangorn.create({ appId })` / `fangorn.setAppId()`.
+
+program
+	.command("set-app")
+	.description(
+		"Set the app (global namespace) this CLI publishes and reads under",
+	)
+	.argument("[app]", "App name or 32-byte app id (omit to show the current one)")
+	.action((app: string | undefined) => {
+		try {
+			if (!app) {
+				const current = loadConfig().appId;
+				console.log(`App:    ${current}`);
+				console.log(`App id: ${toAppId(current)}`);
+				process.exit(0);
+			}
+
+			if (!existsSync(CONFIG_PATH)) {
+				throw new Error(
+					`no config file at ${CONFIG_PATH} — run \`fangorn init\` first, or set FANGORN_APP_ID in the environment.`,
+				);
+			}
+			writeStoredConfig({ ...readStoredConfig(), appId: app });
+
+			console.log(`App:    ${app}`);
+			console.log(`App id: ${toAppId(app)}`);
+			if (process.env.FANGORN_APP_ID) {
+				console.log(
+					`\nNote: FANGORN_APP_ID=${process.env.FANGORN_APP_ID} is set and overrides this.`,
+				);
+			}
+			console.log(
+				`\nSaved to ${CONFIG_PATH}. Run \`fangorn register-app\` if nobody has claimed it yet.`,
+			);
+			process.exit(0);
+		} catch (err) {
+			console.error("Failed:", (err as Error).message);
+			process.exit(1);
+		}
+	});
+
+program
+	.command("register-app")
+	.description("Claim the configured app (global namespace) on-chain")
+	.action(async () => {
+		try {
+			const self = getAccount().address;
+			const registry = getFangorn().getDataRegistry();
+			const s = spinner();
+
+			s.start("Checking app ownership...");
+			const owner = await registry.getAppOwner();
+			s.stop();
+
+			// Apps are first come, first served — claiming a taken one reverts.
+			if (owner !== "0x0000000000000000000000000000000000000000") {
+				console.log(
+					owner.toLowerCase() === self.toLowerCase()
+						? `Already registered to you: ${registry.getAppId()}`
+						: `App ${registry.getAppId()} is already owned by ${owner}. Pick another name with \`fangorn set-app\`.`,
+				);
+				process.exit(owner.toLowerCase() === self.toLowerCase() ? 0 : 1);
+			}
+
+			s.start("Registering app...");
+			const txHash = await registry.registerApp();
+			s.stop();
+
+			console.log(`App:    ${loadConfig().appId}`);
+			console.log(`App id: ${registry.getAppId()}`);
+			console.log(`Owner:  ${self}`);
+			console.log(`Tx:     ${txHash}`);
+			process.exit(0);
+		} catch (err) {
+			console.error("Failed:", (err as Error).message);
+			process.exit(1);
+		}
 	});
 
 // ─── register (publisher registration) ─────────────────────────────────────────
@@ -325,6 +425,7 @@ program
 
 const repoCmd = program.command("repo").description("Repository operations");
 
+// track an app instead of namespace?
 repoCmd
 	.command("init")
 	.description("Start tracking a namespace here (allocates it on-chain if new)")
@@ -337,7 +438,7 @@ repoCmd
 			s.start(`Initializing namespace "${namespace}"...`);
 			const result = await fangorn.initRepo(namespace);
 			// Whether we just created it or it already existed, HEAD tracks the on-chain tip.
-			const head = result.alreadyInitialized ? await fangorn.onChainTip(owner) : result.commitCid;
+			const head = result.alreadyInitialized ? await fangorn.onChainTip(owner, namespace) : result.commitCid;
 			const repo = LocalRepo.init({ namespace, owner, head });
 			s.stop();
 
@@ -434,9 +535,11 @@ program
 			const s = spinner();
 
 			s.start("Pushing...");
-			const { txHash, onChainTip } = await fangorn.push(head, {
-				force: options.force,
-			});
+			const { txHash, onChainTip } = await fangorn.push(
+				repo.namespace(),
+				head,
+				{ force: options.force },
+			);
 			s.stop();
 
 			console.log(`Tx:  ${txHash}`);
@@ -456,7 +559,10 @@ program
 			const repo = LocalRepo.open();
 			const fangorn = getFangorn();
 			const localHead = repo.head();
-			const onChainTip = await fangorn.onChainTip(repo.owner());
+			const onChainTip = await fangorn.onChainTip(
+				repo.owner(),
+				repo.namespace(),
+			);
 
 			const state =
 				localHead === onChainTip
@@ -554,7 +660,7 @@ program
 				const fangorn = getFangorn();
 				const s = spinner();
 				s.start(`Resolving on-chain tip for ${owner}...`);
-				const tip = await fangorn.onChainTip(owner);
+				const tip = await fangorn.onChainTip(owner, namespace);
 				const repo = LocalRepo.init(
 					{ namespace, owner, head: tip },
 					options.dir ?? process.cwd(),
@@ -719,7 +825,7 @@ program
 				}
 
 				const [head, contents] = await Promise.all([
-					fangorn.onChainTip(owner),
+					fangorn.onChainTip(owner, namespace),
 					fangorn.engine.listNamespace(namespace, owner),
 				]);
 
@@ -747,11 +853,12 @@ program
 program
 	.command("reset")
 	.description(
-		"DANGER!: reset your on-chain head to zero (abandons all prior commits)",
+		"DANGER!: reset this namespace's on-chain head to zero (abandons all prior commits)",
 	)
 	.action(async () => {
+		const namespace = LocalRepo.open().namespace();
 		const confirmFirst = await confirm({
-			message: "Are you sure? Your onchain head will reset to 0x0000...",
+			message: `Are you sure? The on-chain head for "${namespace}" will reset to 0x0000...`,
 		});
 		handleCancel(confirmFirst);
 		if (!confirmFirst) {
@@ -760,10 +867,10 @@ program
 		}
 
 		// If both prompts pass and aren't canceled:
-		await getFangorn().reset();
+		await getFangorn().reset(namespace);
 
 		console.log(
-			"On-chain head reset to zero. `repo init` will now start fresh.",
+			`On-chain head for "${namespace}" reset to zero. \`repo init\` will now start fresh.`,
 		);
 		process.exit(0);
 	});
