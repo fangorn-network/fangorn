@@ -9,7 +9,7 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import { CID } from "multiformats/cid";
 
-import { AppConfig, FangornConfig } from "./config.js";
+import { AppConfig, DEFAULT_APP, FangornConfig, toAppId } from "./config.js";
 import {
 	FangornContext,
 	FangornCreateOptions,
@@ -107,9 +107,13 @@ function resolveStorage(
 }
 
 export class Fangorn {
+	
 	private readonly ctx: FangornContext;
+
 	private _engine: FangornEngine | null = null;
+
 	private readonly _metagraph = new MetagraphRegistry();
+
 	private _feed: AppFeed | null = null;
 	/** Insertion order = LRU order; see `readNamespace`. */
 	private readonly nsCache = new Map<
@@ -168,7 +172,7 @@ export class Fangorn {
 
 		const dataRegistry = new DataRegistryClient(
 			resolvedConfig.dataRegistryContractAddress,
-			resolvedConfig.appId,
+			toAppId(options.appId ?? DEFAULT_APP),
 			publicClient,
 			walletClient,
 		);
@@ -826,6 +830,27 @@ export class Fangorn {
 
 	getDataRegistry(): DataRegistryClient {
 		return this.ctx.dataRegistry;
+	}
+
+	/** The app (global namespace) this client publishes and reads under. */
+	getAppId(): Hex {
+		return this.ctx.dataRegistry.getAppId();
+	}
+
+	/**
+	 * Point this client at a different app — by name (`"my-app"`) or by app id —
+	 * without rebuilding it. The app id prefixes every namespace key, so every
+	 * read, publish and subscription after this call lands in the new app.
+	 *
+	 * Namespace reads are dropped from the cache (its keys are app-agnostic) and
+	 * the shared `appFeed` is released: a feed watches one app's commit stream, so
+	 * the next `appFeed()` opens a fresh subscription. Generators already running
+	 * from `subscribe`/`subscribeApp` keep their original filter until aborted.
+	 */
+	setAppId(nameOrId: string): void {
+		this.ctx.dataRegistry.setAppId(toAppId(nameOrId));
+		this.nsCache.clear();
+		this._feed = null;
 	}
 
 	getStorage(): MetadataStorage {

@@ -357,9 +357,19 @@ fangorn.subscribeApp({ namespace: "reviews" });
 fangorn.subscribeApp({ owner: "0x..." });
 ```
 
-The app id comes from config (`appId("my-app")`), and must be claimed once
-on-chain with `fangorn.getDataRegistry().registerApp()` before any publisher can
-commit under it.
+The app is per-client state, not part of the network config — set it when you
+create the client, or switch at runtime:
+
+```ts
+const fangorn = Fangorn.create({ privateKey, storage, appId: "my-app" });
+fangorn.setAppId("my-other-app"); // by name, or by 32-byte app id
+fangorn.getAppId(); // 0x… — what the registry keys on
+```
+
+It must be claimed once on-chain with
+`fangorn.getDataRegistry().registerApp()` before any publisher can commit under
+it. From the CLI: `fangorn set-app my-app` (persists it) then `fangorn
+register-app`.
 
 ### Storage
 

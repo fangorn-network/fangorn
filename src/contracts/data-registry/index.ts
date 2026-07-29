@@ -134,6 +134,11 @@ export class DataRegistryClient {
         return this.appId;
     }
 
+    /** Re-scope every subsequent call to a different app. See `Fangorn.setAppId`. */
+    setAppId(appId: Hex): void {
+        this.appId = appId;
+    }
+
     private getWriteConfig() {
         if (!this.walletClient.chain) throw new Error("Chain required");
         if (!this.walletClient.account) throw new Error("Account required");

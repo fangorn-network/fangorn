@@ -9,6 +9,19 @@ export function appId(name: string): Hex {
 	return keccak256(toHex(name));
 }
 
+/** The app every client publishes under until told otherwise. */
+export const DEFAULT_APP = "fangorn";
+
+/**
+ * Accept either form callers have on hand: a human-readable app name, or an
+ * already-derived app id (32-byte hex), which is what an app owner sees on-chain.
+ */
+export function toAppId(nameOrId: string): Hex {
+	return /^0x[0-9a-fA-F]{64}$/.test(nameOrId)
+		? (nameOrId as Hex)
+		: appId(nameOrId);
+}
+
 /**
  * The networks supproted by Fangorn currently
  */
@@ -36,10 +49,6 @@ export default function getNetwork(name: string) {
 export interface AppConfig {
 	// The deployed publisher_registry contract address
 	dataRegistryContractAddress: Hex;
-	// The app's root namespace id — every commit this SDK instance makes or
-	// watches is scoped under it. Register it once via `registerApp`; derive it
-	// from a human-readable name with `appId("my-app")`.
-	appId: Hex;
 	// The viem chain
 	chain: Chain;
 	// The public rpc address of the chain we are connecting to
@@ -50,11 +59,12 @@ export interface AppConfig {
 	ipfsGateway: string;
 }
 
-// the default app id from the CLI = "fangorn"
+// Network/deployment settings only. The app id is deliberately NOT here: it is
+// per-client state, set with `Fangorn.create({ appId })` and switchable at
+// runtime via `fangorn.setAppId(...)` (defaults to `DEFAULT_APP`).
 export const FangornConfig = {
 	dataRegistryContractAddress:
 		"0xdec430f03cdc022ab2338490e9b30ef5c63f7340",
-	appId: appId("fangorn"),
 	chain: arbitrumSepolia,
 	rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
 	caip2: 421614,

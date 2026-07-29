@@ -25,6 +25,10 @@ export interface FangornCreateOptions {
     storage?: StorageConfig;
     // workerUrl?: string;
     config?: AppConfig;
+    // The app (global namespace) every commit this client makes or watches is
+    // scoped under: a human-readable name or a 32-byte app id. Defaults to
+    // `DEFAULT_APP`; switch it later with `fangorn.setAppId()`.
+    appId?: string;
     domain?: string;
     privateKey?: Hex;
     walletClient?: WalletClient;

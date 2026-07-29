@@ -1,6 +1,6 @@
 import { type Hex } from "viem";
 import { Fangorn } from "../fangorn.js";
-import { appId, FangornConfig } from "../config.js";
+import { FangornConfig } from "../config.js";
 
 export class TestBed {
     private constructor(private readonly f_list: Fangorn[]) {}
@@ -11,17 +11,14 @@ export class TestBed {
      *                own. Pass an unclaimed name to exercise the AppNotFound path.
      */
     static init(sks: Hex[], appName?: string): TestBed {
-        const config = appName
-            ? { ...FangornConfig, appId: appId(appName) }
-            : FangornConfig;
-
         // populate fangorn forest
         const f_list: Fangorn[] = [];
         sks.forEach((sk) => {
             f_list.push(
                 Fangorn.create({
                     privateKey: sk,
-                    config,
+                    config: FangornConfig,
+                    appId: appName,
                     storage: {
                         pinata: {
                             jwt: process.env.PINATA_JWT ?? "",
