@@ -36,9 +36,13 @@ import {
 	StateCommittedLog,
 	subspaceId,
 } from "./contracts/index.js";
+import { AppFeed } from "./feed.js";
 
 const ZERO_BYTES32: Hex =
 	"0x0000000000000000000000000000000000000000000000000000000000000000";
+
+/** Max namespaces held in `readNamespace`'s tip-keyed cache. */
+const NS_CACHE_MAX = 256;
 
 /** One namespace-scoped update surfaced by `subscribe`. */
 export interface NamespaceChange extends NamespaceDiff {
@@ -106,6 +110,12 @@ export class Fangorn {
 	private readonly ctx: FangornContext;
 	private _engine: FangornEngine | null = null;
 	private readonly _metagraph = new MetagraphRegistry();
+	private _feed: AppFeed | null = null;
+	/** Insertion order = LRU order; see `readNamespace`. */
+	private readonly nsCache = new Map<
+		string,
+		{ tip: string | null; contents: NamespaceContents }
+	>();
 
 	private constructor(ctx: FangornContext) {
 		this.ctx = ctx;
@@ -509,6 +519,98 @@ export class Fangorn {
 	async onChainTip(owner: Hex, namespace: string): Promise<string | null> {
 		const cid = await this.engine.resolveHeadCommit(owner, namespace);
 		return cid ? cid.toString() : null;
+	}
+
+	/**
+	 * A publisher's namespace contents, cached against its on-chain tip.
+	 *
+	 * Reading a namespace walks the pail tree from the root — many sequential
+	 * gateway fetches. The tip is one cheap contract read and only moves on
+	 * publish, so it doubles as the cache key: no TTL to tune, no invalidation
+	 * to remember after a settle, and never stale.
+	 *
+	 * LRU-bounded so an always-on process can't accumulate every namespace it
+	 * ever touched. The durable copy is on-chain — an evicted entry re-walks.
+	 * ponytail: fixed entry count, not byte-aware; switch to a size budget if a
+	 * few huge namespaces blow memory before the count cap bites.
+	 */
+	async readNamespace(
+		owner: Hex,
+		namespace: string,
+	): Promise<{ tip: string | null; contents: NamespaceContents }> {
+		const key = `${owner.toLowerCase()}/${namespace}`;
+		const tip = await this.onChainTip(owner, namespace);
+
+		const hit = this.nsCache.get(key);
+		if (hit?.tip === tip) {
+			this.nsCache.delete(key); // promote to MRU
+			this.nsCache.set(key, hit);
+			return hit;
+		}
+
+		const entry = {
+			tip,
+			contents: await this.engine.listNamespace(namespace, owner),
+		};
+		this.nsCache.delete(key);
+		this.nsCache.set(key, entry);
+		if (this.nsCache.size > NS_CACHE_MAX) {
+			const oldest = this.nsCache.keys().next().value;
+			if (oldest !== undefined) this.nsCache.delete(oldest);
+		}
+		return entry;
+	}
+
+	/**
+	 * Every (publisher, namespace) pair that has ever committed under this app,
+	 * at its latest root — the app's directory, from ONE `getLogs`.
+	 *
+	 * This is what cross-publisher discovery looks like now: the registry already
+	 * indexes `app_id`, so the commit log IS the index. No per-publisher fan-out,
+	 * no separate registration sweep, no central list — and unlike a publisher
+	 * roster it only surfaces publishers with actual content.
+	 *
+	 * Namespaces come back as `subspaceId` (the hash), not the name, because the
+	 * event never carries the name — recovering it costs one content fetch per
+	 * entry. Pass `namespace` when you know the name you're after (the usual
+	 * case: an app with one well-known namespace) and the filter is applied
+	 * on-chain instead.
+	 */
+	async appNamespaces(
+		opts: { namespace?: string; owner?: Hex; fromBlock?: bigint } = {},
+	): Promise<
+		{ owner: Hex; subspaceId: Hex; root: Hex; blockNumber: bigint }[]
+	> {
+		const logs = await this.getDataRegistry().getStateCommittedLogs(
+			{ publisher: opts.owner, namespace: opts.namespace },
+			opts.fromBlock ?? 0n,
+		);
+		// Logs arrive oldest-first, so last write per timeline wins.
+		const latest = new Map<
+			Hex,
+			{ owner: Hex; subspaceId: Hex; root: Hex; blockNumber: bigint }
+		>();
+		for (const log of logs) {
+			latest.set(log.namespaceKey, {
+				owner: log.publisher,
+				subspaceId: log.subspaceId,
+				root: log.newRoot,
+				blockNumber: log.blockNumber,
+			});
+		}
+		return [...latest.values()];
+	}
+
+	/**
+	 * The app's commit stream as ONE shared, ref-counted subscription (see
+	 * `AppFeed`). Prefer this over `subscribeApp` anywhere more than one consumer
+	 * wants the same feed — a server fanning out to connections, say.
+	 */
+	appFeed(opts: { pollingInterval?: number } = {}): AppFeed {
+		this._feed ??= new AppFeed((signal) =>
+			this.subscribeApp({ ...opts, signal }),
+		);
+		return this._feed;
 	}
 
 	/** Walk commit history from `head` (newest first). */
