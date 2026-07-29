@@ -1,6 +1,6 @@
 {
 	"name": "@fangorn-network/sdk",
-	"version": "2026.07.29-dev",
+	"version": "2026.07.29",
 	"description": "Git for knowledge graphs",
 	"repository": {
 		"type": "git",
