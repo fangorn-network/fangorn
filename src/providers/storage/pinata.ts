@@ -1,23 +1,28 @@
 import { encode } from "multiformats/block";
 import { PinataSDK } from "pinata";
 import * as dagCbor from "@ipld/dag-cbor";
-import { CID } from "multiformats/cid";
 import { MetadataStorage, RawBlock, StorageMeta } from "./types.js";
-import { serialize, retrieveByCid, withUploadRetry } from "./utils.js";
+import {
+	decodeJsonOrText,
+	rawBlockRef,
+	retrieveByCid,
+	serialize,
+	withUploadRetry,
+} from "./utils.js";
 import { packCar } from "../../engine/car.js";
+import { errorMessage, sleep } from "../../utils/index.js";
 import { keccak256, stringToBytes } from "viem";
 import { sha256 } from "multiformats/hashes/sha2";
 
-// Raw multicodec (0x55). A plain (non-CAR) Pinata file upload of small content
-// assigns a CIDv1 with this codec over the exact same sha256 digest as a
-// dag-cbor CID (0x71) of the identical bytes — verified empirically against
+// A plain (non-CAR) Pinata file upload of small content assigns a CIDv1 with the
+// raw codec (0x55, see RAW_CODE in ./utils.ts) over the exact same sha256 digest
+// as a dag-cbor CID (0x71) of the identical bytes — verified empirically against
 // Pinata's public upload + gateway. CAR uploads (`.car()`) do NOT reliably
 // resolve individual/sub-root block CIDs on this account's dedicated gateway
 // (confirmed: even a single-block CAR whose root IS the block 403s as "not
 // pinned"), so blocks that need to be retrievable by their own precomputed
 // CID must go through the plain upload path and be looked up via this
 // raw-codec sibling.
-const RAW_CODE = 0x55;
 
 export class PinataBackend implements MetadataStorage {
 	private pinata: PinataSDK;
@@ -163,12 +168,7 @@ export class PinataBackend implements MetadataStorage {
 		}
 		// Non-binary content: decode as UTF-8 text/JSON, matching the shape the
 		// Pinata SDK would have handed back directly for a text payload.
-		const text = new TextDecoder().decode(bytes);
-		try {
-			return JSON.parse(text) as T;
-		} catch {
-			return text as unknown as T;
-		}
+		return decodeJsonOrText(bytes) as T;
 	}
 
 	/** Raw bytes for a block CID, with no decoding — what blockstore traversal needs. */
@@ -195,15 +195,7 @@ export class PinataBackend implements MetadataStorage {
 
 		// Blocks uploaded via putBlock() land under a raw-codec (0x55) CID
 		// sharing the dag-cbor CID's digest — translate before fetching.
-		let fetchUri = uri;
-		const isDagCborCid = uri.startsWith("bafyrei");
-		if (isDagCborCid) {
-			try {
-				fetchUri = CID.createV1(RAW_CODE, CID.parse(uri).multihash).toString();
-			} catch {
-				fetchUri = uri;
-			}
-		}
+		const { fetchCid: fetchUri, isDagCborCid } = rawBlockRef(uri);
 
 		while (attempts > 0) {
 			try {
@@ -231,20 +223,12 @@ export class PinataBackend implements MetadataStorage {
 				if (attempts === 0) break;
 
 				// Wait 1 second before trying again to allow the gateway ledger to sync
-				await new Promise((resolve) => setTimeout(resolve, 1000));
+				await sleep(1000);
 			}
 		}
 
-		// Cleanly resolve the error string using type-safe runtime checks
-		const internalMessage = lastError instanceof Error
-			? lastError.message
-			: typeof lastError === "string"
-				? lastError
-				// eslint-disable-next-line @typescript-eslint/no-base-to-string
-				: String(lastError ?? "");
-
 		throw new Error(
-			`Pinata SDK failed to retrieve block ${uri} after multiple attempts. Internal Error: ${internalMessage}`,
+			`Pinata SDK failed to retrieve block ${uri} after multiple attempts. Internal Error: ${errorMessage(lastError)}`,
 		);
 	}
 
@@ -276,7 +260,7 @@ export class PinataBackend implements MetadataStorage {
                     [Pinata] Indexing lag detected for root ${formattedRoot}. Retrying in ${(delay * (i + 1)).toString()}ms...
                     `,
 				);
-				await new Promise((resolve) => setTimeout(resolve, delay * (i + 1)));
+				await sleep(delay * (i + 1));
 			}
 		}
 

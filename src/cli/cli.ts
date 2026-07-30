@@ -15,7 +15,7 @@ import { homedir } from "os";
 import "dotenv/config";
 
 import { Fangorn } from "../fangorn.js";
-import { handleCancel } from "./index.js";
+import { fail, handleCancel } from "./index.js";
 import { AppConfig, DEFAULT_APP, FangornConfig, toAppId } from "../config.js";
 import { StorageConfig } from "../types/index.js";
 
@@ -242,6 +242,36 @@ class LocalRepo {
 	}
 }
 
+/**
+ * The (owner, namespace) a command targets: explicit args win, else the repo in
+ * the working directory. With `requireRepo: false` a missing repo is tolerated
+ * and the owner falls back to this wallet's address.
+ */
+function resolveTarget(
+	namespaceArg: string | undefined,
+	ownerArg: Address | undefined,
+	{ requireRepo = true }: { requireRepo?: boolean } = {},
+): { namespace: string; owner: Address } {
+	let namespace = namespaceArg;
+	let owner = ownerArg;
+	if (!namespace || !owner) {
+		try {
+			const repo = LocalRepo.open();
+			namespace = namespace ?? repo.namespace();
+			owner = owner ?? repo.owner();
+		} catch (err) {
+			if (requireRepo) throw err;
+			/* no repo here — fall back to explicit args + self */
+		}
+	}
+	if (!namespace) {
+		throw new Error(
+			"namespace required (pass it as an argument or run inside a repo)",
+		);
+	}
+	return { namespace, owner: owner ?? getFangorn().getAddress() };
+}
+
 // ─── CLI root ─────────────────────────────────────────────────────────────────
 
 const program = new Command();
@@ -351,8 +381,7 @@ program
 			);
 			process.exit(0);
 		} catch (err) {
-			console.error("Failed:", (err as Error).message);
-			process.exit(1);
+			fail(err);
 		}
 	});
 
@@ -389,8 +418,7 @@ program
 			console.log(`Tx:     ${txHash}`);
 			process.exit(0);
 		} catch (err) {
-			console.error("Failed:", (err as Error).message);
-			process.exit(1);
+			fail(err);
 		}
 	});
 
@@ -418,8 +446,7 @@ program
 			console.log(`Tx:        ${txHash}`);
 			process.exit(0);
 		} catch (err) {
-			console.error("Failed:", (err as Error).message);
-			process.exit(1);
+			fail(err);
 		}
 	});
 
@@ -454,8 +481,7 @@ repoCmd
 			console.log(`HEAD:      ${repo.head() ?? "(none)"}`);
 			process.exit(0);
 		} catch (err) {
-			console.error("Failed:", (err as Error).message);
-			process.exit(1);
+			fail(err);
 		}
 	});
 
@@ -514,8 +540,7 @@ program
 				);
 				process.exit(0);
 			} catch (err) {
-				console.error("Failed:", (err as Error).message);
-				process.exit(1);
+				fail(err);
 			}
 		},
 	);
@@ -546,8 +571,7 @@ program
 			console.log(`Tip: ${onChainTip}`);
 			process.exit(0);
 		} catch (err) {
-			console.error("Failed:", (err as Error).message);
-			process.exit(1);
+			fail(err);
 		}
 	});
 
@@ -580,8 +604,7 @@ program
 			console.log(`Status:       ${state}`);
 			process.exit(0);
 		} catch (err) {
-			console.error("Failed:", (err as Error).message);
-			process.exit(1);
+			fail(err);
 		}
 	});
 
@@ -607,8 +630,7 @@ program
 			}
 			process.exit(0);
 		} catch (err) {
-			console.error("Failed:", (err as Error).message);
-			process.exit(1);
+			fail(err);
 		}
 	});
 
@@ -638,8 +660,7 @@ program
 			for (const k of diff.removed) console.log(`  - ${k}`);
 			process.exit(0);
 		} catch (err) {
-			console.error("Failed:", (err as Error).message);
-			process.exit(1);
+			fail(err);
 		}
 	});
 
@@ -674,8 +695,7 @@ program
 				);
 				process.exit(0);
 			} catch (err) {
-				console.error("Failed:", (err as Error).message);
-				process.exit(1);
+				fail(err);
 			}
 		},
 	);
@@ -712,24 +732,11 @@ program
 		) => {
 			try {
 				const fangorn = getFangorn();
-
-				// Namespace/owner: explicit args win, else fall back to a local repo.
-				let namespace = namespaceArg;
-				let owner = options.owner;
-				if (!namespace || !owner) {
-					try {
-						const repo = LocalRepo.open();
-						namespace = namespace ?? repo.namespace();
-						owner = owner ?? repo.owner();
-					} catch {
-						/* no repo here — require explicit --owner/namespace */
-					}
-				}
-				if (!namespace)
-					throw new Error(
-						"namespace required (pass it as an argument or run inside a repo)",
-					);
-				owner = owner ?? fangorn.getAddress();
+				const { namespace, owner } = resolveTarget(
+					namespaceArg,
+					options.owner,
+					{ requireRepo: false },
+				);
 
 				// Resume cursor: last fully-processed block, persisted per (owner, namespace).
 				const repoDir = join(process.cwd(), ".fangorn");
@@ -790,8 +797,7 @@ program
 				}
 				process.exit(0);
 			} catch (err) {
-				console.error("Failed:", (err as Error).message);
-				process.exit(1);
+				fail(err);
 			}
 		},
 	);
@@ -814,15 +820,7 @@ program
 		) => {
 			try {
 				const fangorn = getFangorn();
-
-				// Fall back to the local repo when namespace/owner aren't given explicitly.
-				let namespace = namespaceArg;
-				let owner = options.owner;
-				if (!namespace || !owner) {
-					const repo = LocalRepo.open();
-					namespace = namespace ?? repo.namespace();
-					owner = owner ?? repo.owner();
-				}
+				const { namespace, owner } = resolveTarget(namespaceArg, options.owner);
 
 				const [head, contents] = await Promise.all([
 					fangorn.onChainTip(owner, namespace),
@@ -844,8 +842,7 @@ program
 					() => process.exit(0),
 				);
 			} catch (err) {
-				console.error("Failed:", (err as Error).message);
-				process.exit(1);
+				fail(err);
 			}
 		},
 	);

@@ -1,4 +1,5 @@
 import type { NamespaceChange } from "./fangorn.js";
+import { sleep, toError } from "./utils/index.js";
 
 /**
  * One shared app-wide commit stream, fanned out to many consumers.
@@ -63,23 +64,19 @@ export class AppFeed {
 							try {
 								l.onChange(change);
 							} catch (err) {
-								l.onError?.(asError(err));
+								l.onError?.(toError(err));
 							}
 						}
 					}
 				} catch (err) {
 						if (stopped()) return;
-					for (const l of [...this.listeners]) l.onError?.(asError(err));
+					for (const l of [...this.listeners]) l.onError?.(toError(err));
 				}
 				// The watch ending is not terminal — an RPC hiccup shouldn't leave a
 				// long-lived server permanently deaf. ponytail: fixed delay, no
 				// backoff; add one if a sustained outage makes this a hot loop.
-				if (!stopped())
-					await new Promise((r) => setTimeout(r, this.restartDelayMs));
+				if (!stopped()) await sleep(this.restartDelayMs);
 			}
 		})();
 	}
 }
-
-const asError = (err: unknown): Error =>
-	err instanceof Error ? err : new Error(String(err));
