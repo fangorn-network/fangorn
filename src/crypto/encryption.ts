@@ -318,6 +318,31 @@ export async function buildAccessRequest(params: {
 	};
 }
 
+/**
+ * A handle carries the worker URL the reader is told to POST its *signed*
+ * access request to, and handles arrive inside published (i.e. third-party)
+ * content. Require TLS, and let callers pin the origins they trust so a hostile
+ * publisher can't point a reader's signature at a server of their choosing.
+ */
+function assertTrustedWorkerUrl(
+	workerUrl: string,
+	allowedOrigins?: string[],
+): void {
+	let url: URL;
+	try {
+		url = new URL(workerUrl);
+	} catch {
+		throw new Error(`handle has a malformed workerUrl: ${workerUrl}`);
+	}
+	const isLocal = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+	if (url.protocol !== "https:" && !isLocal) {
+		throw new Error(`handle workerUrl must use https: ${workerUrl}`);
+	}
+	if (allowedOrigins && !allowedOrigins.some((o) => new URL(o).origin === url.origin)) {
+		throw new Error(`handle workerUrl ${url.origin} is not an allowed access worker`);
+	}
+}
+
 export interface DecryptHandleParams {
 	handle: HandleFieldInput;
 	/** Signs the /access request; its address is what the worker checks settlement for. */
@@ -326,6 +351,8 @@ export interface DecryptHandleParams {
 	nullifier: Hex;
 	/** self-hkdf-v1 only: the same 32-byte secret used to seal. */
 	ownSecret?: Uint8Array;
+	/** Access-worker origins to trust; omit to accept any https worker. */
+	allowedWorkerOrigins?: string[];
 }
 
 /**
@@ -340,6 +367,7 @@ export async function decryptHandle(
 ): Promise<Uint8Array> {
 	const { handle, signer, nullifier } = params;
 	const { gadget, resourceId, ciphertextHash } = handle.encryption;
+	assertTrustedWorkerUrl(handle.workerUrl, params.allowedWorkerOrigins);
 
 	const access = await buildAccessRequest({
 		signer,

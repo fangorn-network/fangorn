@@ -37,6 +37,38 @@ export function decodeBlock<T>(bytes: Uint8Array): T {
 	return dagCbor.decode(bytes);
 }
 
+/**
+ * Check that `bytes` really are the block `cid` names. Every read comes from an
+ * untrusted source (a public gateway, a pinning service, whoever hosts the CAR),
+ * while the only trusted input is the on-chain digest — so bytes are worth
+ * exactly as much as their hash.
+ */
+export async function blockMatchesCid(
+	cid: CID,
+	bytes: Uint8Array,
+): Promise<boolean> {
+	if (cid.multihash.code !== sha256.code) return false;
+	const digest = (await sha256.digest(bytes)).digest;
+	const expected = cid.multihash.digest;
+	if (digest.length !== expected.length) return false;
+	let diff = 0;
+	for (let i = 0; i < digest.length; i++) diff |= digest[i] ^ expected[i];
+	return diff === 0;
+}
+
+/** {@link blockMatchesCid}, throwing instead of returning false. */
+export async function assertBlockMatchesCid(
+	cid: CID,
+	bytes: Uint8Array,
+): Promise<void> {
+	if (!(await blockMatchesCid(cid, bytes))) {
+		throw new Error(
+			`Block ${cid.toString()} failed content-address verification: ` +
+			"the storage backend returned bytes that do not hash to the requested CID.",
+		);
+	}
+}
+
 /** Vertex block: a JSON payload tagged by a free-form schema id. */
 export interface VertexBlock {
 	schemaId: string;
