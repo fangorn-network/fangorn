@@ -11,6 +11,8 @@ import {
 	NamespaceTree,
 	RootMap,
 	VertexBlock,
+	assertBlockMatchesCid,
+	blockMatchesCid,
 	buildPages,
 	decodeBlock,
 	encodeBlock,
@@ -159,6 +161,16 @@ export function assertValidNamespace(namespace: NamespaceID): void {
 			`(got ${namespace.length.toString()}).`,
 		);
 	}
+	// Namespaces reach filesystem paths (repo state, subscribe cursors) and log
+	// output, so keep them to printable characters and reject relative-path
+	// segments. Hierarchical names still separate levels with "/".
+	// eslint-disable-next-line no-control-regex
+	if (/[\u0000-\u001f\u007f\\]/.test(namespace)) {
+		throw new Error("namespace must not contain control characters or backslashes");
+	}
+	if (namespace.split("/").some((segment) => segment === "." || segment === "..")) {
+		throw new Error('namespace must not contain "." or ".." path segments');
+	}
 }
 
 /** One line of a commit's diff against its first parent. */
@@ -252,6 +264,10 @@ export class FangornEngine {
 		let bytes = this.cache.get(key);
 		if (!bytes) {
 			bytes = await this.storage.getRawBlock(key);
+			// The on-chain digest is the only trusted input; whoever served these
+			// bytes is not. Verify before decoding so a hostile gateway cannot
+			// substitute a different history.
+			await assertBlockMatchesCid(commitCid, bytes);
 			this.cache.set(key, bytes);
 		}
 		const decoded = decodeBlock<{
@@ -281,6 +297,11 @@ export class FangornEngine {
 	private async loadCar(commitCid: CID, commit: CommitObject): Promise<void> {
 		const bytes = await this.storage.getFile(commit.car);
 		for (const block of await readCar(bytes)) {
+			// A CAR is an opaque file, so its contents are unauthenticated until each
+			// block is checked against the CID it claims. Drop mismatches rather than
+			// caching them: the walk then fails as "block missing" instead of
+			// resolving forged content.
+			if (!(await blockMatchesCid(block.cid, block.bytes))) continue;
 			this.cache.set(block.cid.toString(), block.bytes);
 		}
 		this.loadedCars.add(commitCid.toString());

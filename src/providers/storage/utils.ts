@@ -93,6 +93,36 @@ export async function withUploadRetry<T>(
 }
 
 /**
+ * Build the gateway URL for a CID (optionally path-style, `ipfs://cid/name`).
+ *
+ * The CID reaches us from remote data — a commit block, a namespace payload —
+ * so it is untrusted input pasted into a URL: reject relative segments and any
+ * scheme-bearing value that would redirect the fetch off the gateway, then
+ * percent-encode what remains.
+ */
+export function gatewayUrl(gateway: string | undefined, cid: string): string {
+	// Gateways may be passed as a bare host (e.g. "foo.mypinata.cloud") — give
+	// them a scheme so `fetch` gets an absolute URL. An empty gateway falls
+	// back to the public one.
+	const base = (gateway?.trim() ? gateway : "https://ipfs.io").replace(/\/$/, "");
+	const origin = /^https?:\/\//.test(base) ? base : `https://${base}`;
+
+	// CIDs may arrive as raw ("bafy…") or path-style ("ipfs://cid/path").
+	const path = cid.replace(/^ipfs:\/\//, "");
+	const segments = path.split("/").filter((s) => s.length > 0);
+	if (
+		segments.length === 0 ||
+		segments.some((s) => s === "." || s === "..") ||
+		/^[a-z][a-z0-9+.-]*:/i.test(path) ||
+		path.startsWith("//")
+	) {
+		throw new Error(`Refusing to fetch malformed content path: ${cid}`);
+	}
+
+	return `${origin}/ipfs/${segments.map(encodeURIComponent).join("/")}`;
+}
+
+/**
  * Fetch the exact raw bytes for a CID from a public IPFS gateway (no decoding),
  * retrying to ride out gateway replication lag right after an upload. Blocks
  * written via putBlock() are addressed by their raw-codec (0x55) sibling, so a
@@ -113,9 +143,7 @@ export async function fetchRawByCid(
 		}
 	}
 
-	const base = (gateway || "https://ipfs.io").replace(/\/$/, "");
-	const origin = /^https?:\/\//.test(base) ? base : `https://${base}`;
-	const url = `${origin}/ipfs/${fetchCid}`;
+	const url = gatewayUrl(gateway, fetchCid);
 
 	let lastError: unknown;
 	for (let attempt = 0; attempt < retries; attempt++) {
@@ -147,14 +175,7 @@ export async function retrieveByCid<T>(
 	gateway = "https://ipfs.io",
 	timeoutSecond = 16_000,
 ): Promise<T> {
-	// Gateways may be passed as a bare host (e.g. "foo.mypinata.cloud") — give
-	// them a scheme so `fetch` gets an absolute URL. An empty gateway falls
-	// back to the public one.
-	const base = (gateway || "https://ipfs.io").replace(/\/$/, "");
-	const origin = /^https?:\/\//.test(base) ? base : `https://${base}`;
-	// CIDs may arrive as raw ("bafy…") or path-style ("ipfs://cid/path").
-	const path = cid.replace(/^ipfs:\/\//, "");
-	const url = `${origin}/ipfs/${path}`;
+	const url = gatewayUrl(gateway, cid);
 	const controller = new AbortController();
 	const timeout = setTimeout(() => { controller.abort(); }, timeoutSecond);
 	try {

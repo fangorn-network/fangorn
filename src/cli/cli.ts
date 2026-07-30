@@ -10,6 +10,7 @@ import {
 	writeFileSync,
 	chmodSync,
 } from "fs";
+import { createHash } from "crypto";
 import { dirname, join } from "path";
 import { homedir } from "os";
 import "dotenv/config";
@@ -68,8 +69,17 @@ function readStoredConfig(): StoredConfig {
 }
 
 function writeStoredConfig(stored: StoredConfig): void {
-	if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true });
-	writeFileSync(CONFIG_PATH, JSON.stringify(stored, null, 2), "utf-8");
+	// The config holds a raw private key and a Pinata JWT: the directory is as
+	// sensitive as the file, so create it owner-only and re-assert the mode on an
+	// existing (possibly world-readable) one.
+	if (!existsSync(CONFIG_DIR)) {
+		mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
+	}
+	chmodSync(CONFIG_DIR, 0o700);
+	writeFileSync(CONFIG_PATH, JSON.stringify(stored, null, 2), {
+		encoding: "utf-8",
+		mode: 0o600,
+	});
 	chmodSync(CONFIG_PATH, 0o600);
 }
 
@@ -240,6 +250,16 @@ class LocalRepo {
 		this.state.head = cid;
 		this.save();
 	}
+}
+
+/**
+ * Filename-safe form of an untrusted identifier: everything outside
+ * `[A-Za-z0-9._-]` becomes `_`, and a short hash keeps distinct inputs apart.
+ */
+function cursorSlug(value: string): string {
+	const safe = value.replace(/[^A-Za-z0-9._-]/g, "_").slice(0, 64);
+	const digest = createHash("sha256").update(value).digest("hex").slice(0, 8);
+	return `${safe}.${digest}`;
 }
 
 // ─── CLI root ─────────────────────────────────────────────────────────────────
@@ -733,9 +753,11 @@ program
 
 				// Resume cursor: last fully-processed block, persisted per (owner, namespace).
 				const repoDir = join(process.cwd(), ".fangorn");
+				// The namespace is caller-supplied and may be hierarchical ("a/b"), so
+				// it can't go into a filename verbatim — that would escape .fangorn/.
 				const cursorPath = join(
 					repoDir,
-					`subscribe-${owner}-${namespace}.json`,
+					`subscribe-${cursorSlug(owner)}-${cursorSlug(namespace)}.json`,
 				);
 				const readCursor = (): bigint | undefined => {
 					if (options.fromStart) return undefined;
