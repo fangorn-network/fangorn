@@ -185,7 +185,14 @@ export class DataRegistryClient {
             maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
             value,
         } as unknown as Parameters<typeof this.walletClient.writeContract>[0]);
-        await this.publicClient.waitForTransactionReceipt({ hash });
+        const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
+        // A mined-but-reverted tx resolves normally — without this the caller gets a
+        // tx hash back and treats a failed write as a successful one.
+        if (receipt.status !== "success") {
+            throw new Error(
+                `${functionName} reverted on-chain (tx ${hash}, block ${receipt.blockNumber.toString()})`,
+            );
+        }
         return hash;
     }
 
@@ -276,9 +283,15 @@ export class DataRegistryClient {
             if (/revert/i.test(message)) {
                 throw new Error(
                     `settlement would revert — the head may have moved on-chain, or the app is unregistered: ${message}`,
+                    { cause: err },
                 );
             }
-            gas = 5_000_000n; // RPC hiccup, not a revert — proceed with a safe ceiling
+            // RPC hiccup, not a revert — proceed with a safe ceiling, but say so:
+            // an unpriced tx is a degraded result, not a clean one.
+            console.warn(
+                `  [registry] gas estimation failed (${message}); falling back to a 5,000,000 gas ceiling`,
+            );
+            gas = 5_000_000n;
         }
 
         return {
@@ -407,9 +420,17 @@ export class DataRegistryClient {
             args: this.topicsFor(filter),
             pollingInterval,
             onLogs: (logs) => {
-                for (const raw of logs) {
-                    const log = decodeStateCommitted(raw);
-                    if (matchesFilter(log, filter)) onCommit(log);
+                // Decoding a malformed log throws inside viem's callback, where nothing
+                // observes it — route it to the subscriber's error handler instead.
+                try {
+                    for (const raw of logs) {
+                        const log = decodeStateCommitted(raw);
+                        if (matchesFilter(log, filter)) onCommit(log);
+                    }
+                } catch (err) {
+                    const error = err instanceof Error ? err : new Error(String(err));
+                    if (!onError) throw error;
+                    onError(error);
                 }
             },
             onError,

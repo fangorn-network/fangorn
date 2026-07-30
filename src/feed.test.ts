@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { AppFeed } from "./feed.js";
 import type { NamespaceChange } from "./fangorn.js";
 
@@ -102,6 +102,48 @@ describe("AppFeed", () => {
 
 		expect(errors).toEqual(["bad consumer", "bad consumer"]);
 		expect(survivor).toEqual(["docs", "notes"]);
+	});
+
+	it("logs a watch failure no listener observes, rather than dropping it", async () => {
+		const { feed, fail, opened } = manualFeed();
+		const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+		feed.on(() => undefined); // no onError
+
+		fail(new Error("rpc down"));
+		await tick();
+		await tick();
+
+		expect(logged).toHaveBeenCalledWith(
+			"[fangorn] unobserved AppFeed error:",
+			expect.objectContaining({ message: "rpc down" }),
+		);
+		// The feed still recovers — an unobserved error must not stop it.
+		expect(opened()).toBe(2);
+		logged.mockRestore();
+	});
+
+	it("keeps the feed alive when a listener's onError itself throws", async () => {
+		const { feed, push, fail, opened } = manualFeed();
+		const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+		const seen: string[] = [];
+		feed.on(
+			(c) => seen.push(c.namespace),
+			() => {
+				throw new Error("broken handler");
+			},
+		);
+
+		fail(new Error("rpc down"));
+		await tick();
+		await tick();
+
+		expect(opened()).toBe(2);
+		expect(logged).toHaveBeenCalled();
+
+		push("docs");
+		await tick();
+		expect(seen).toEqual(["docs"]);
+		logged.mockRestore();
 	});
 
 	it("reopens the watch after it fails, without dropping listeners", async () => {

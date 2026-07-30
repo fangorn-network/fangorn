@@ -179,6 +179,15 @@ export function unsealSelf(
 
 // ─── Upload / download glue ─────────────────────────────────────────────────
 
+/**
+ * The worker's error body as a message suffix (` — …`), or null when there is
+ * none. A bare status code says nothing about *why* the worker refused.
+ */
+async function responseText(res: Response): Promise<string | null> {
+	const text = await res.text().catch(() => "");
+	return text ? ` — ${text.slice(0, 500)}` : null;
+}
+
 interface StorageTarget {
 	/** Access-worker upload endpoint (NOT the Pinata-presign worker). */
 	workerUrl: string;
@@ -229,8 +238,22 @@ export async function encryptAndUpload(
 		},
 		body: ciphertext as unknown as BodyInit,
 	});
-	if (!uploadRes.ok) throw new Error(`upload failed: ${uploadRes.status.toString()}`);
-	const { objectKey } = (await uploadRes.json()) as { objectKey: string };
+	if (!uploadRes.ok) {
+		throw new Error(
+			`upload failed: HTTP ${uploadRes.status.toString()}${(await responseText(uploadRes)) ?? ""}`,
+		);
+	}
+	const body = (await uploadRes.json().catch(() => null)) as {
+		objectKey?: string;
+	} | null;
+	const objectKey = body?.objectKey;
+	// Without this the handle carries `objectKey: undefined` and only fails much
+	// later, on a read that can never resolve.
+	if (!objectKey) {
+		throw new Error(
+			`upload succeeded but the access worker returned no objectKey: ${JSON.stringify(body)}`,
+		);
+	}
 
 	return {
 		"@type": "handle",
@@ -353,7 +376,11 @@ export async function decryptHandle(
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(access),
 	});
-	if (!res.ok) throw new Error(`access failed: ${res.status.toString()}`);
+	if (!res.ok) {
+		throw new Error(
+			`access failed: HTTP ${res.status.toString()}${(await responseText(res)) ?? ""}`,
+		);
+	}
 	const bytes = new Uint8Array(await res.arrayBuffer());
 
 	if (gadget === GADGET_SELF_HKDF_V1) {
