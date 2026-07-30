@@ -2,6 +2,7 @@ import {
 	createPublicClient,
 	createWalletClient,
 	http,
+	type Hash,
 	type Hex,
 	type PublicClient,
 	type WalletClient,
@@ -35,11 +36,9 @@ import {
 	PreparedTx,
 	StateCommittedLog,
 	subspaceId,
+	ZERO_BYTES32,
 } from "./contracts/index.js";
 import { AppFeed } from "./feed.js";
-
-const ZERO_BYTES32: Hex =
-	"0x0000000000000000000000000000000000000000000000000000000000000000";
 
 /** Max namespaces held in `readNamespace`'s tip-keyed cache. */
 const NS_CACHE_MAX = 256;
@@ -269,6 +268,47 @@ export class Fangorn {
 	}
 
 	/**
+	 * Stage a graph on top of this wallet's current head for `namespace` and
+	 * settle it in one fast-forward tx — the one-shot publish path behind
+	 * `initRepo`, `upload` and `uploadBatch`.
+	 */
+	private async commitAndPush(opts: {
+		namespace: string;
+		vertices: { id: string; tag: string; payload: unknown }[];
+		edges: { rel: string; from: string; to: string }[];
+		message: string;
+		/** Uploads can't create a namespace, so they require an existing head. */
+		requireHead?: boolean;
+	}): Promise<{
+		commitCid: CID;
+		vertexCids: Record<string, string>;
+		txHash: Hash;
+	}> {
+		const publisher = this.getAddress();
+		const head = await this.engine.resolveHeadCommit(publisher, opts.namespace);
+		if (!head && opts.requireHead) {
+			throw new Error(
+				`Repository '${opts.namespace}' does not exist. Call initRepo() prior to uploading.`,
+			);
+		}
+
+		const { commitCid, vertexCids } = await this.createCommit({
+			namespace: opts.namespace,
+			base: head,
+			vertices: opts.vertices,
+			edges: opts.edges,
+			message: opts.message,
+		});
+		const { txHash } = await this.engine.pushCommit(
+			publisher,
+			opts.namespace,
+			commitCid,
+		);
+
+		return { commitCid, vertexCids, txHash };
+	}
+
+	/**
 	 * Allocates a namespace in the publisher's root map. A no-op (no on-chain tx)
 	 * if the namespace is already initialized, so callers can call this
 	 * unconditionally before every publish.
@@ -288,19 +328,12 @@ export class Fangorn {
 
 		// Continue the publisher's on-chain history with a commit that adds the
 		// namespace (as an empty tree) to the root map.
-		const head = await this.engine.resolveHeadCommit(publisher, repoName);
-		const { commitCid } = await this.createCommit({
+		const { commitCid, txHash } = await this.commitAndPush({
 			namespace: repoName,
-			base: head,
 			vertices: [],
 			edges: [],
 			message: `Initialize repository workspace: ${repoName}`,
 		});
-		const { txHash } = await this.engine.pushCommit(
-			publisher,
-			repoName,
-			commitCid,
-		);
 
 		return {
 			cid: commitCid.toString(),
@@ -314,27 +347,13 @@ export class Fangorn {
 	 * Stage one vertex and settle it on-chain in a single shot.
 	 */
 	async upload(repoName: string, payload: unknown, schemaId: string) {
-		const publisher = this.getAddress();
-		const head = await this.engine.resolveHeadCommit(publisher, repoName);
-		// can't upload to a zero-state chain.
-		if (!head) {
-			throw new Error(
-				`Repository '${repoName}' does not exist. Call initRepo() prior to uploading.`,
-			);
-		}
-
-		const { commitCid, vertexCids } = await this.createCommit({
+		const { commitCid, vertexCids, txHash } = await this.commitAndPush({
 			namespace: repoName,
-			base: head,
 			vertices: [{ id: "v0", tag: schemaId, payload }],
 			edges: [],
 			message: `Upload to namespace ${repoName} under schema ${schemaId}`,
+			requireHead: true,
 		});
-		const { txHash } = await this.engine.pushCommit(
-			publisher,
-			repoName,
-			commitCid,
-		);
 
 		return {
 			payloadCid: vertexCids.v0,
@@ -359,27 +378,13 @@ export class Fangorn {
 			throw new Error("uploadBatch requires at least one vertex or edge");
 		}
 
-		const publisher = this.getAddress();
-		const head = await this.engine.resolveHeadCommit(publisher, repoName);
-		if (!head) {
-			throw new Error(
-				`Repository '${repoName}' does not exist. Call initRepo() prior to uploading.`,
-			);
-		}
-
-		const { commitCid, vertexCids } = await this.createCommit({
+		const { commitCid, vertexCids, txHash } = await this.commitAndPush({
 			namespace: repoName,
-			base: head,
 			vertices,
 			edges,
 			message: `Batch upload to namespace ${repoName}`,
+			requireHead: true,
 		});
-
-		const { txHash } = await this.engine.pushCommit(
-			publisher,
-			repoName,
-			commitCid,
-		);
 
 		return {
 			commitCid: commitCid.toString(),

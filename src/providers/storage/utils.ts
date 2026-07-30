@@ -1,4 +1,5 @@
 import { CID } from "multiformats/cid";
+import { errorMessage, sleep } from "../../utils/index.js";
 
 export * from "./pinata.js";
 export * from "./signed-url.js";
@@ -7,7 +8,54 @@ export * from "./signed-url.js";
 // CID that shares the dag-cbor (0x71, "bafyrei…") CID's sha256 digest, so a
 // dag-cbor CID must be translated to its raw sibling before a gateway fetch.
 // See the RAW_CODE note in pinata.ts.
-const RAW_CODE = 0x55;
+export const RAW_CODE = 0x55;
+
+/**
+ * Translate a block reference into the CID a gateway actually serves it under:
+ * blocks written via putBlock() are addressed by their raw-codec (0x55) sibling,
+ * which shares the dag-cbor ("bafyrei…") CID's digest. Unparseable or non-
+ * dag-cbor references pass through verbatim.
+ */
+export function rawBlockRef(ref: string): {
+	fetchCid: string;
+	isDagCborCid: boolean;
+} {
+	const isDagCborCid = ref.startsWith("bafyrei");
+	if (!isDagCborCid) return { fetchCid: ref, isDagCborCid };
+	try {
+		return {
+			fetchCid: CID.createV1(RAW_CODE, CID.parse(ref).multihash).toString(),
+			isDagCborCid,
+		};
+	} catch {
+		/* not a parseable CID — fetch it verbatim */
+		return { fetchCid: ref, isDagCborCid };
+	}
+}
+
+/**
+ * The gateway URL for a CID or `ipfs://` path. Gateways may arrive as a bare
+ * host (e.g. "foo.mypinata.cloud"), so give them a scheme — `fetch` needs an
+ * absolute URL — and fall back to the public gateway when blank.
+ */
+export function gatewayUrl(cid: string, gateway: string): string {
+	const base = (gateway || "https://ipfs.io").replace(/\/$/, "");
+	const origin = /^https?:\/\//.test(base) ? base : `https://${base}`;
+	return `${origin}/ipfs/${cid.replace(/^ipfs:\/\//, "")}`;
+}
+
+/**
+ * Decode a text payload the way the Pinata SDK would have handed it back: JSON
+ * when it parses, otherwise the raw string.
+ */
+export function decodeJsonOrText(bytes: Uint8Array): unknown {
+	const text = new TextDecoder().decode(bytes);
+	try {
+		return JSON.parse(text);
+	} catch {
+		return text;
+	}
+}
 
 // /**
 //  * A pinning service that stores content on IPFS and returns a CID.
@@ -85,9 +133,9 @@ export async function withUploadRetry<T>(
 				Math.min(30_000, 500 * 2 ** (attempt - 1)) +
 				Math.floor(Math.random() * 500);
 			console.warn(
-				`  [upload] "${label}" failed (attempt ${attempt.toString()}/${MAX_UPLOAD_ATTEMPTS.toString()}), retrying in ${(delay / 1000).toFixed(1)}s: ${(err as Error).message}`,
+				`  [upload] "${label}" failed (attempt ${attempt.toString()}/${MAX_UPLOAD_ATTEMPTS.toString()}), retrying in ${(delay / 1000).toFixed(1)}s: ${errorMessage(err)}`,
 			);
-			await new Promise((r) => setTimeout(r, delay));
+			await sleep(delay);
 		}
 	}
 }
@@ -104,18 +152,8 @@ export async function fetchRawByCid(
 	gateway = "https://ipfs.io",
 	{ retries = 5, timeoutMs = 16_000 } = {},
 ): Promise<Uint8Array> {
-	let fetchCid = cid.replace(/^ipfs:\/\//, "");
-	if (fetchCid.startsWith("bafyrei")) {
-		try {
-			fetchCid = CID.createV1(RAW_CODE, CID.parse(fetchCid).multihash).toString();
-		} catch {
-			/* not a parseable CID — fetch it verbatim */
-		}
-	}
-
-	const base = (gateway || "https://ipfs.io").replace(/\/$/, "");
-	const origin = /^https?:\/\//.test(base) ? base : `https://${base}`;
-	const url = `${origin}/ipfs/${fetchCid}`;
+	const { fetchCid } = rawBlockRef(cid.replace(/^ipfs:\/\//, ""));
+	const url = gatewayUrl(fetchCid, gateway);
 
 	let lastError: unknown;
 	for (let attempt = 0; attempt < retries; attempt++) {
@@ -128,13 +166,13 @@ export async function fetchRawByCid(
 		} catch (err) {
 			lastError = err;
 			// Let the gateway ledger sync before retrying (replication lag / 4xx).
-			if (attempt < retries - 1) await new Promise((r) => setTimeout(r, 1000));
+			if (attempt < retries - 1) await sleep(1000);
 		} finally {
 			clearTimeout(timeout);
 		}
 	}
 	throw new Error(
-		`Failed to retrieve ${cid} from ${url} after ${retries.toString()} attempts: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
+		`Failed to retrieve ${cid} from ${url} after ${retries.toString()} attempts: ${errorMessage(lastError)}`,
 	);
 }
 
@@ -147,14 +185,8 @@ export async function retrieveByCid<T>(
 	gateway = "https://ipfs.io",
 	timeoutSecond = 16_000,
 ): Promise<T> {
-	// Gateways may be passed as a bare host (e.g. "foo.mypinata.cloud") — give
-	// them a scheme so `fetch` gets an absolute URL. An empty gateway falls
-	// back to the public one.
-	const base = (gateway || "https://ipfs.io").replace(/\/$/, "");
-	const origin = /^https?:\/\//.test(base) ? base : `https://${base}`;
 	// CIDs may arrive as raw ("bafy…") or path-style ("ipfs://cid/path").
-	const path = cid.replace(/^ipfs:\/\//, "");
-	const url = `${origin}/ipfs/${path}`;
+	const url = gatewayUrl(cid, gateway);
 	const controller = new AbortController();
 	const timeout = setTimeout(() => { controller.abort(); }, timeoutSecond);
 	try {

@@ -14,6 +14,11 @@ import {
 } from "viem";
 
 import { DATA_REGISTRY_ABI } from "./abi.js";
+import { errorMessage } from "../../utils/index.js";
+
+/** The empty 32-byte state root: what a namespace's head reads as before its first commit. */
+export const ZERO_BYTES32: Hex =
+    "0x0000000000000000000000000000000000000000000000000000000000000000";
 
 // Mirroring the contract's explicit lifecycle status codes
 export enum PublisherStatus {
@@ -272,7 +277,7 @@ export class DataRegistryClient {
             });
             gas = (estimate * 3n) / 2n;
         } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
+            const message = errorMessage(err);
             if (/revert/i.test(message)) {
                 throw new Error(
                     `settlement would revert — the head may have moved on-chain, or the app is unregistered: ${message}`,

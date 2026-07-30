@@ -10,6 +10,7 @@ import {
 } from "viem";
 import { aesGcmEncrypt, aesGcmDecrypt, GCM_NONCE_LENGTH } from "./aes.js";
 import { getRandomValues } from "./rand.js";
+import { concatBytes } from "../utils/index.js";
 
 // ─── Gadgets ──────────────────────────────────────────────────────────────
 //
@@ -77,17 +78,6 @@ export const X25519_PUBKEY_LENGTH = 32;
 
 const utf8 = (s: string): Uint8Array => new TextEncoder().encode(s);
 
-function concat(...parts: Uint8Array[]): Uint8Array {
-	const total = parts.reduce((n, p) => n + p.length, 0);
-	const out = new Uint8Array(total);
-	let off = 0;
-	for (const p of parts) {
-		out.set(p, off);
-		off += p.length;
-	}
-	return out;
-}
-
 const hkdfSha256 = (
 	ikm: Uint8Array,
 	salt: Uint8Array | undefined,
@@ -100,7 +90,7 @@ export const sha256Hex = (bytes: Uint8Array): Hex => bytesToHex(sha256(bytes));
 
 // HKDF `info` that binds a key to a specific resource: resourceId(32) || ":sealed"
 const sealInfo = (resourceId: Hex): Uint8Array =>
-	concat(hexToBytes(resourceId), utf8(":sealed"));
+	concatBytes([hexToBytes(resourceId), utf8(":sealed")]);
 
 /**
  * worker-usdc-v1 seal: ephemeral-static ECDH to the worker's static key, keyed
@@ -122,7 +112,7 @@ export function seal(
 	const aesKey = hkdfSha256(shared, undefined, sealInfo(resourceId), 32);
 	const nonce = getRandomValues(new Uint8Array(GCM_NONCE_LENGTH));
 	const aesCt = aesGcmEncrypt(aesKey, plaintext, nonce);
-	return concat(ephPub, nonce, aesCt);
+	return concatBytes([ephPub, nonce, aesCt]);
 }
 
 /**
@@ -162,7 +152,7 @@ export function sealSelf(
 	const aesKey = hkdfSha256(ownSecret, undefined, sealInfo(resourceId), 32);
 	const nonce = getRandomValues(new Uint8Array(GCM_NONCE_LENGTH));
 	const aesCt = aesGcmEncrypt(aesKey, plaintext, nonce);
-	return concat(nonce, aesCt);
+	return concatBytes([nonce, aesCt]);
 }
 
 /** Inverse of {@link sealSelf}. */

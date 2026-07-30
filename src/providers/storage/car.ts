@@ -1,10 +1,8 @@
 import * as UnixFS from "@ipld/unixfs";
-import { CarWriter } from "@ipld/car";
 import type { CID } from "multiformats/cid";
 import { serialize } from "./utils.js";
-
-/** A content-addressed IPLD block. */
-interface Block { cid: CID; bytes: Uint8Array }
+import { packCar as writeCarBytes } from "../../engine/car.js";
+import type { Block } from "../../engine/graph.js";
 
 /** Result of packing items into a single CAR. */
 export interface PackedCar {
@@ -67,30 +65,10 @@ export async function packCar(items: { data: unknown; name: string }[]): Promise
     await writer.close();
 
     const root = dirLink.cid as unknown as CID;
-    const bytes = await writeCarBytes(root, blocks);
+    // The blocks array is ours alone, so let the writer release each block as it
+    // serializes it — peak memory stays ~2× the group, not 3×.
+    const bytes = await writeCarBytes(root, blocks, { release: true });
     const uriByName: Record<string, string> = {};
     for (const { name, entry } of dirNames) uriByName[name] = `ipfs://${root.toString()}/${entry}`;
     return { bytes, root, uriByName };
-}
-
-/** Serialize blocks into CAR v1 bytes under a single known root. */
-async function writeCarBytes(root: CID, blocks: Block[]): Promise<Uint8Array> {
-    const { writer, out } = CarWriter.create([root]);
-    const collected: Uint8Array[] = [];
-    const sink = (async () => { for await (const part of out) collected.push(part); })();
-    // Release each block as soon as the writer has serialized it so GC can reclaim
-    // the encoded blocks while we accumulate CAR output — peak ~2× group, not 3×.
-    for (let i = 0; i < blocks.length; i++) {
-        await writer.put(blocks[i]);
-        blocks[i] = undefined as unknown as Block;
-    }
-    await writer.close();
-    await sink;
-
-    let total = 0;
-    for (const p of collected) total += p.length;
-    const buf = new Uint8Array(total);
-    let off = 0;
-    for (const p of collected) { buf.set(p, off); off += p.length; }
-    return buf;
 }

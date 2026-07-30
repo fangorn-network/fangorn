@@ -1,6 +1,11 @@
 import { Hex } from "viem";
 import { MetadataStorage, RawBlock, StorageMeta } from "./types.js";
-import { serialize, fetchRawByCid, withUploadRetry } from "./utils.js";
+import {
+	decodeJsonOrText,
+	fetchRawByCid,
+	serialize,
+	withUploadRetry,
+} from "./utils.js";
 
 /**
  * The hosted pinata-url-provider worker. Used when no worker URL is supplied, so
@@ -164,13 +169,7 @@ export class SignedUrlBackend implements MetadataStorage {
 	}
 
 	async get<T>(uri: string): Promise<T> {
-		const bytes = await fetchRawByCid(uri, this.gateway);
-		const text = new TextDecoder().decode(bytes);
-		try {
-			return JSON.parse(text) as T;
-		} catch {
-			return text as unknown as T;
-		}
+		return decodeJsonOrText(await fetchRawByCid(uri, this.gateway)) as T;
 	}
 
 	// CAR (`.car()`) uploads and account-scoped metadata/deletes need the Pinata

@@ -1,6 +1,7 @@
 import { CarWriter, CarReader } from "@ipld/car";
 import { CID } from "multiformats/cid";
 import type { Block } from "./graph.js";
+import { concatBytes } from "../utils/index.js";
 
 // CAR (de)serialization for commit deltas. A commit's CAR is treated as an
 // OPAQUE FILE by the storage backend — we never rely on the backend indexing
@@ -8,31 +9,31 @@ import type { Block } from "./graph.js";
 // providers/storage/pinata.ts). Readers download the whole CAR and load its
 // blocks into a local cache, git-packfile style.
 
-/** Serialize blocks into CAR v1 bytes under a single root. */
+/**
+ * Serialize blocks into CAR v1 bytes under a single root.
+ *
+ * `release` hands each block back to the GC as soon as the writer has
+ * serialized it, keeping peak memory at ~2× the packed size rather than 3× —
+ * only safe when the caller owns the (mutable) array it passed in.
+ */
 export async function packCar(
 	root: CID,
-	blocks: Iterable<Block>,
+	blocks: Block[],
+	{ release = false }: { release?: boolean } = {},
 ): Promise<Uint8Array> {
 	const { writer, out } = CarWriter.create([root]);
 	const collected: Uint8Array[] = [];
 	const sink = (async () => {
 		for await (const part of out) collected.push(part);
 	})();
-	for (const block of blocks) {
-		await writer.put(block);
+	for (let i = 0; i < blocks.length; i++) {
+		await writer.put(blocks[i]);
+		if (release) blocks[i] = undefined as unknown as Block;
 	}
 	await writer.close();
 	await sink;
 
-	let total = 0;
-	for (const p of collected) total += p.length;
-	const buf = new Uint8Array(total);
-	let off = 0;
-	for (const p of collected) {
-		buf.set(p, off);
-		off += p.length;
-	}
-	return buf;
+	return concatBytes(collected);
 }
 
 /** Decode CAR bytes back into blocks. */

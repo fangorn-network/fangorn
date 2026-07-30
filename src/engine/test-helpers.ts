@@ -4,15 +4,14 @@ import type {
 	RawBlock,
 	StorageMeta,
 } from "../providers/storage/types.js";
-import type { DataRegistryClient } from "../contracts/index.js";
+import { ZERO_BYTES32, type DataRegistryClient } from "../contracts/index.js";
 import { CID } from "multiformats/cid";
+import { rootHexFromCid } from "./index.js";
 
-export const ZERO_BYTES32 =
-	"0x0000000000000000000000000000000000000000000000000000000000000000";
+export { ZERO_BYTES32 };
 
 /** The raw 32-byte root hex a commit CID settles to on-chain (bare sha256 digest). */
-export const rootHex = (commitCid: CID) =>
-	`0x${Buffer.from(commitCid.multihash.digest).toString("hex")}`;
+export const rootHex = (commitCid: CID) => rootHexFromCid(commitCid);
 
 /**
  * In-memory MetadataStorage: individually-pinned blocks + opaque files, with
@@ -81,7 +80,7 @@ export class StubRegistry {
 	heads = new Map<string, Hex>();
 
 	getNamespaceHead(_publisher: string, namespace: string): Promise<Hex> {
-		return Promise.resolve(this.heads.get(namespace) ?? (ZERO_BYTES32 as Hex));
+		return Promise.resolve(this.heads.get(namespace) ?? ZERO_BYTES32);
 	}
 
 	commitStateRoot(

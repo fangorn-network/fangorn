@@ -1,5 +1,6 @@
 import { isCancel, select } from "@clack/prompts";
 import getNetwork from "../config";
+import { errorMessage } from "../utils/index.js";
 
 export * from "./cli.js";
 
@@ -12,6 +13,12 @@ export const handleCancel = (value: unknown) => {
 		process.exit(0);
 	}
 };
+
+/** Every command's failure path: report the reason on stderr and exit 1. */
+export function fail(err: unknown): never {
+	console.error("Failed:", errorMessage(err));
+	process.exit(1);
+}
 
 export const selectChain = async () => {
 	const chainChoice = await select({

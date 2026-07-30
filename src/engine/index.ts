@@ -2,7 +2,7 @@ import { CID } from "multiformats/cid";
 import { sha256 } from "multiformats/hashes/sha2";
 import * as Digest from "multiformats/hashes/digest";
 import { type Address, type Hash, type Hex } from "viem";
-import { DataRegistryClient } from "../contracts";
+import { DataRegistryClient, ZERO_BYTES32 } from "../contracts";
 import { MetadataStorage } from "../providers/storage/types.js";
 import {
 	Block,
@@ -127,9 +127,6 @@ export class MetagraphRegistry {
 	}
 }
 
-const ZERO_BYTES32 =
-	"0x0000000000000000000000000000000000000000000000000000000000000000";
-
 /**
  * Upper bound on a namespace name's length. Namespaces are keys of the root
  * map block, so this is just a sanity bound keeping that block small and
@@ -205,6 +202,19 @@ interface TreeLinks {
 	edgeLinks: CID[];
 	/** Page + tree block CIDs, for delta computation. */
 	structureCids: Set<string>;
+}
+
+/** A namespace a commit doesn't carry: no links, nothing to share structurally. */
+function emptyTreeLinks(): TreeLinks {
+	return { vertexLinks: [], edgeLinks: [], structureCids: new Set() };
+}
+
+/** The link set of one side of a diff, as CID strings. */
+function linkStrings(links: TreeLinks): { vertices: Set<string>; edges: Set<string> } {
+	return {
+		vertices: new Set(links.vertexLinks.map(String)),
+		edges: new Set(links.edgeLinks.map(String)),
+	};
 }
 
 export class FangornEngine {
@@ -372,8 +382,7 @@ export class FangornEngine {
 		namespace: NamespaceID,
 	): Promise<TreeLinks> {
 		const rootMap = await this.rootMapAt(commitCid);
-		if (!(namespace in rootMap))
-			return { vertexLinks: [], edgeLinks: [], structureCids: new Set() };
+		if (!(namespace in rootMap)) return emptyTreeLinks();
 		const treeLink = rootMap[namespace];
 
 		const tree = decodeBlock<NamespaceTree>(
@@ -422,7 +431,7 @@ export class FangornEngine {
 		const rootMap: RootMap = base ? await this.rootMapAt(base) : {};
 		const old: TreeLinks = base
 			? await this.treeLinksAt(base, namespace)
-			: { vertexLinks: [], edgeLinks: [], structureCids: new Set() };
+			: emptyTreeLinks();
 		const oldVertexSet = new Set(old.vertexLinks.map(String));
 		const oldEdgeSet = new Set(old.edgeLinks.map(String));
 
@@ -675,15 +684,13 @@ export class FangornEngine {
 
 		const after = newCommit
 			? await this.treeLinksAt(newCommit, namespace)
-			: { vertexLinks: [] as CID[], edgeLinks: [] as CID[] };
+			: emptyTreeLinks();
 		const before = oldCommit
 			? await this.treeLinksAt(oldCommit, namespace)
-			: { vertexLinks: [] as CID[], edgeLinks: [] as CID[] };
+			: emptyTreeLinks();
 
-		const beforeV = new Set(before.vertexLinks.map(String));
-		const beforeE = new Set(before.edgeLinks.map(String));
-		const afterV = new Set(after.vertexLinks.map(String));
-		const afterE = new Set(after.edgeLinks.map(String));
+		const { vertices: beforeV, edges: beforeE } = linkStrings(before);
+		const { vertices: afterV, edges: afterE } = linkStrings(after);
 
 		const addedVertices: NamespaceContents["vertices"] = [];
 		const addedEdges: Edge[] = [];
@@ -750,16 +757,12 @@ export class FangornEngine {
 
 			const child = inChild
 				? await this.treeLinksAt(commitCid, ns)
-				: { vertexLinks: [] as CID[], edgeLinks: [] as CID[] };
+				: emptyTreeLinks();
 			const par =
-				parent && inParent
-					? await this.treeLinksAt(parent, ns)
-					: { vertexLinks: [] as CID[], edgeLinks: [] as CID[] };
+				parent && inParent ? await this.treeLinksAt(parent, ns) : emptyTreeLinks();
 
-			const parV = new Set(par.vertexLinks.map(String));
-			const parE = new Set(par.edgeLinks.map(String));
-			const childV = new Set(child.vertexLinks.map(String));
-			const childE = new Set(child.edgeLinks.map(String));
+			const { vertices: parV, edges: parE } = linkStrings(par);
+			const { vertices: childV, edges: childE } = linkStrings(child);
 
 			for (const c of childV) if (!parV.has(c)) added.push(`${ns}/v/${c}`);
 			for (const c of childE) if (!parE.has(c)) added.push(`${ns}/e/${c}`);
