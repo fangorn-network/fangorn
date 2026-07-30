@@ -102,7 +102,16 @@ export class SignedUrlBackend implements MetadataStorage {
 			body: JSON.stringify(body),
 		});
 		const json = (await res.json().catch(() => null)) as WorkerResponse | null;
-		return json ?? { error: `HTTP ${res.status.toString()}` };
+		if (!json) return { error: `HTTP ${res.status.toString()}` };
+		// A non-2xx body is never a grant, even when it happens to carry
+		// success-shaped fields — keep only the failure reason.
+		if (!res.ok) {
+			return {
+				error: json.error ?? `HTTP ${res.status.toString()}`,
+				detail: json.detail,
+			};
+		}
+		return json;
 	}
 
 	/** Upload bytes via a fresh one-time presigned URL; returns the pinned CID. */

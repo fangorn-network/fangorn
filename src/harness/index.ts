@@ -33,6 +33,12 @@ export type AssetProcessor = (file: FileFacade) => ProcessorResult;
 export interface BuildAssetGraphOptions {
     /** A dictionary mapping lowercase file extensions (e.g., ".md") to processor functions */
     processors?: Record<string, AssetProcessor>;
+    /**
+     * Called for every file whose processor threw, instead of failing the whole
+     * build. Omit it and the first failure propagates — a half-built graph would
+     * otherwise commit as if it were complete.
+     */
+    onError?: (err: Error, file: FileFacade) => void;
 }
 
 export interface Vertex {
@@ -60,7 +66,7 @@ export function buildAssetGraph(
     dir: string,
     options: BuildAssetGraphOptions = {}
 ): CommitFileGraph {
-    const { processors = {} } = options;
+    const { processors = {}, onError } = options;
 
     // 1. Read the directory and discover all potential files
     const rawFiles: string[] = readdirSync(dir);
@@ -75,10 +81,11 @@ export function buildAssetGraph(
     // 2. Process every file based on its extension
     for (const f of rawFiles) {
         const ext = extname(f).toLowerCase();
+        // Skip files the developer hasn't defined a processor for. Calling an
+        // undefined processor throws a TypeError indistinguishable from a
+        // genuine processing failure.
+        if (!Object.hasOwn(processors, ext)) continue;
         const processor = processors[ext];
-
-        // // Skip files the developer hasn't defined a processor for
-        // if (!processor) continue;
 
         const fromId = getId(f);
         const fullPath = join(dir, f);
@@ -109,7 +116,13 @@ export function buildAssetGraph(
                 }
             }
         } catch (err) {
-            console.error(`Fangorn Error processing file ${f}:`, err);
+            const error = err instanceof Error ? err : new Error(String(err));
+            if (!onError) {
+                throw new Error(`failed to process ${fullPath}: ${error.message}`, {
+                    cause: error,
+                });
+            }
+            onError(error, fileFacade);
         }
     }
 

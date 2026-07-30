@@ -19,6 +19,14 @@ import { sha256 } from "multiformats/hashes/sha2";
 // raw-codec sibling.
 const RAW_CODE = 0x55;
 
+// A per-file delete outcome is the HTTP `statusText` on success (empty over
+// HTTP/2) and a prose error message otherwise — see `delete()`.
+const DELETE_SUCCESS = new Set(["", "ok", "no content", "accepted", "created"]);
+
+export function isDeleteSuccess(status: string): boolean {
+	return DELETE_SUCCESS.has(status.trim().toLowerCase());
+}
+
 export class PinataBackend implements MetadataStorage {
 	private pinata: PinataSDK;
 	private gateway: string;
@@ -245,6 +253,7 @@ export class PinataBackend implements MetadataStorage {
 
 		throw new Error(
 			`Pinata SDK failed to retrieve block ${uri} after multiple attempts. Internal Error: ${internalMessage}`,
+			{ cause: lastError },
 		);
 	}
 
@@ -286,6 +295,15 @@ export class PinataBackend implements MetadataStorage {
 	}
 
 	async delete(uri: string): Promise<void> {
-		await this.pinata.files.public.delete([uri]);
+		// The SDK never rejects: it reports per-file outcomes in `status`, folding
+		// HTTP and auth failures into that string. Unchecked, a failed delete is
+		// indistinguishable from a successful one.
+		const results = await this.pinata.files.public.delete([uri]);
+		const failed = results.filter((r) => !isDeleteSuccess(r.status));
+		if (failed.length > 0) {
+			throw new Error(
+				`Pinata delete failed: ${failed.map((r) => `${r.id}: ${r.status}`).join("; ")}`,
+			);
+		}
 	}
 }

@@ -54,6 +54,35 @@ interface CommitFile {
 	edges?: { rel: string; from: string; to: string }[];
 }
 
+// ─── Failure reporting ────────────────────────────────────────────────────────
+
+/**
+ * Report a command failure and exit non-zero. Prints the whole `cause` chain —
+ * the actionable half of an SDK error is usually the wrapped one (a gateway
+ * status, an RPC revert reason) — plus the stack under FANGORN_DEBUG. A thrown
+ * non-Error still gets described rather than printed as `undefined`.
+ */
+function fail(err: unknown): never {
+	const describe = (value: unknown): string => {
+		if (value instanceof Error) return value.message;
+		if (typeof value === "string") return value;
+		return JSON.stringify(value);
+	};
+
+	const chain: string[] = [];
+	let current: unknown = err;
+	while (current !== undefined && current !== null && chain.length < 5) {
+		chain.push(describe(current));
+		current = current instanceof Error ? current.cause : undefined;
+	}
+	if (chain.length === 0) chain.push("unknown error");
+	console.error("Failed:", chain.join("\n  caused by: "));
+	if (process.env.FANGORN_DEBUG && err instanceof Error && err.stack) {
+		console.error(err.stack);
+	}
+	process.exit(1);
+}
+
 // ─── Global config (credentials) ────────────────────────────────────────────────
 
 const CONFIG_DIR = join(homedir(), ".fangorn");
@@ -351,8 +380,7 @@ program
 			);
 			process.exit(0);
 		} catch (err) {
-			console.error("Failed:", (err as Error).message);
-			process.exit(1);
+			fail(err);
 		}
 	});
 
@@ -389,8 +417,7 @@ program
 			console.log(`Tx:     ${txHash}`);
 			process.exit(0);
 		} catch (err) {
-			console.error("Failed:", (err as Error).message);
-			process.exit(1);
+			fail(err);
 		}
 	});
 
@@ -418,8 +445,7 @@ program
 			console.log(`Tx:        ${txHash}`);
 			process.exit(0);
 		} catch (err) {
-			console.error("Failed:", (err as Error).message);
-			process.exit(1);
+			fail(err);
 		}
 	});
 
@@ -454,8 +480,7 @@ repoCmd
 			console.log(`HEAD:      ${repo.head() ?? "(none)"}`);
 			process.exit(0);
 		} catch (err) {
-			console.error("Failed:", (err as Error).message);
-			process.exit(1);
+			fail(err);
 		}
 	});
 
@@ -514,8 +539,7 @@ program
 				);
 				process.exit(0);
 			} catch (err) {
-				console.error("Failed:", (err as Error).message);
-				process.exit(1);
+				fail(err);
 			}
 		},
 	);
@@ -546,8 +570,7 @@ program
 			console.log(`Tip: ${onChainTip}`);
 			process.exit(0);
 		} catch (err) {
-			console.error("Failed:", (err as Error).message);
-			process.exit(1);
+			fail(err);
 		}
 	});
 
@@ -580,8 +603,7 @@ program
 			console.log(`Status:       ${state}`);
 			process.exit(0);
 		} catch (err) {
-			console.error("Failed:", (err as Error).message);
-			process.exit(1);
+			fail(err);
 		}
 	});
 
@@ -607,8 +629,7 @@ program
 			}
 			process.exit(0);
 		} catch (err) {
-			console.error("Failed:", (err as Error).message);
-			process.exit(1);
+			fail(err);
 		}
 	});
 
@@ -638,8 +659,7 @@ program
 			for (const k of diff.removed) console.log(`  - ${k}`);
 			process.exit(0);
 		} catch (err) {
-			console.error("Failed:", (err as Error).message);
-			process.exit(1);
+			fail(err);
 		}
 	});
 
@@ -674,8 +694,7 @@ program
 				);
 				process.exit(0);
 			} catch (err) {
-				console.error("Failed:", (err as Error).message);
-				process.exit(1);
+				fail(err);
 			}
 		},
 	);
@@ -790,8 +809,7 @@ program
 				}
 				process.exit(0);
 			} catch (err) {
-				console.error("Failed:", (err as Error).message);
-				process.exit(1);
+				fail(err);
 			}
 		},
 	);
@@ -844,8 +862,7 @@ program
 					() => process.exit(0),
 				);
 			} catch (err) {
-				console.error("Failed:", (err as Error).message);
-				process.exit(1);
+				fail(err);
 			}
 		},
 	);
@@ -856,23 +873,33 @@ program
 		"DANGER!: reset this namespace's on-chain head to zero (abandons all prior commits)",
 	)
 	.action(async () => {
-		const namespace = LocalRepo.open().namespace();
-		const confirmFirst = await confirm({
-			message: `Are you sure? The on-chain head for "${namespace}" will reset to 0x0000...`,
-		});
-		handleCancel(confirmFirst);
-		if (!confirmFirst) {
-			console.log("Reset aborted.");
+		try {
+			const namespace = LocalRepo.open().namespace();
+			const confirmFirst = await confirm({
+				message: `Are you sure? The on-chain head for "${namespace}" will reset to 0x0000...`,
+			});
+			handleCancel(confirmFirst);
+			if (!confirmFirst) {
+				console.log("Reset aborted.");
+				process.exit(0);
+			}
+
+			// If both prompts pass and aren't canceled:
+			await getFangorn().reset(namespace);
+
+			console.log(
+				`On-chain head for "${namespace}" reset to zero. \`repo init\` will now start fresh.`,
+			);
 			process.exit(0);
+		} catch (err) {
+			fail(err);
 		}
-
-		// If both prompts pass and aren't canceled:
-		await getFangorn().reset(namespace);
-
-		console.log(
-			`On-chain head for "${namespace}" reset to zero. \`repo init\` will now start fresh.`,
-		);
-		process.exit(0);
 	});
+
+// Commander invokes async actions without awaiting them, so anything thrown
+// outside a command's own try/catch surfaces as an unhandled rejection with no
+// exit code of its own. Report it the same way and exit non-zero.
+process.on("unhandledRejection", fail);
+process.on("uncaughtException", fail);
 
 program.parse();

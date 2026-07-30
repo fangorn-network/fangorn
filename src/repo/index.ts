@@ -79,7 +79,16 @@ export class LocalRepo {
     }
 
     config(): RepoConfig {
-        return JSON.parse(readFileSync(this.configPath, "utf-8")) as RepoConfig;
+        const raw = readFileSync(this.configPath, "utf-8");
+        try {
+            return JSON.parse(raw) as RepoConfig;
+        } catch (err) {
+            // A bare "Unexpected token" says nothing about which file is corrupt.
+            throw new Error(
+                `${this.configPath} is not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+                { cause: err },
+            );
+        }
     }
 
     /** Local tip commit CID, or undefined before the first commit. */

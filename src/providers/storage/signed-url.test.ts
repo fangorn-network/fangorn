@@ -118,6 +118,24 @@ describe("SignedUrlBackend", () => {
 		);
 	});
 
+	it("rejects a non-2xx grant even when its body looks like a success", async () => {
+		const signer = makeSigner();
+		vi.stubGlobal(
+			"fetch",
+			vi.fn((_url: string | URL, init?: RequestInit) => {
+				const body = JSON.parse(init?.body as string) as { signature?: string };
+				if (!body.signature) return jsonRes({ challenge: "SIGN ME" });
+				// A gateway/worker fault that still echoes ok+uploadUrl must not be
+				// mistaken for a grant, or we POST the file into the void.
+				return jsonRes({ ok: true, uploadUrl: "https://upload.example/put" }, 403);
+			}),
+		);
+		const backend = new SignedUrlBackend(WORKER, signer, GATEWAY);
+		await expect(backend.putFile(new Uint8Array([1]), "x")).rejects.toThrow(
+			/HTTP 403/,
+		);
+	});
+
 	it("translates a dag-cbor commit CID to its raw sibling for gateway reads", async () => {
 		const signer = makeSigner();
 		const bytes = new Uint8Array([9, 8, 7]);

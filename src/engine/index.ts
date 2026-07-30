@@ -268,8 +268,19 @@ export class FangornEngine {
 				"Reset the on-chain head (`fangorn reset`) and re-publish.",
 			);
 		}
+		const rawRoot: unknown = decoded.root;
+		const root =
+			CID.asCID(rawRoot) ??
+			(typeof rawRoot === "string" ? CID.parse(rawRoot) : null);
+		if (!root) {
+			// Otherwise this fails as CID.parse("undefined") — a parser complaint
+			// that never names the block it came from.
+			throw new Error(
+				`commit ${key} has no usable root link (not a commit block?)`,
+			);
+		}
 		return {
-			root: CID.parse(String(decoded.root)),
+			root,
 			parents: (decoded.parents ?? []).map((p) => CID.parse(String(p))),
 			timestamp: decoded.timestamp ?? 0,
 			message: decoded.message ?? "",

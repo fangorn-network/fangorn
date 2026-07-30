@@ -731,7 +731,9 @@ export class Fangorn {
 				signal();
 			},
 			(err) => {
-				subState.failure = err;
+				// Keep the FIRST failure: it's the one that explains the break, and a
+				// later generic "watch closed" would otherwise overwrite it.
+				subState.failure ??= err;
 				signal();
 			},
 			opts.pollingInterval,

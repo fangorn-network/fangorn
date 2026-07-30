@@ -63,13 +63,13 @@ export class AppFeed {
 							try {
 								l.onChange(change);
 							} catch (err) {
-								l.onError?.(asError(err));
+								report(l, asError(err));
 							}
 						}
 					}
 				} catch (err) {
-						if (stopped()) return;
-					for (const l of [...this.listeners]) l.onError?.(asError(err));
+					if (stopped()) return;
+					for (const l of [...this.listeners]) report(l, asError(err));
 				}
 				// The watch ending is not terminal — an RPC hiccup shouldn't leave a
 				// long-lived server permanently deaf. ponytail: fixed delay, no
@@ -83,3 +83,29 @@ export class AppFeed {
 
 const asError = (err: unknown): Error =>
 	err instanceof Error ? err : new Error(String(err));
+
+/**
+ * Hand an error to one listener without letting the report itself break the
+ * fanout. A listener with no `onError` would otherwise drop the error entirely,
+ * and an `onError` that throws would escape the run loop as an unhandled
+ * rejection — leaving the feed permanently stopped.
+ */
+function report(
+	listener: { onError?: (err: Error) => void },
+	err: Error,
+): void {
+	if (!listener.onError) {
+		console.error("[fangorn] unobserved AppFeed error:", err);
+		return;
+	}
+	try {
+		listener.onError(err);
+	} catch (reportErr) {
+		console.error(
+			"[fangorn] AppFeed listener onError threw:",
+			asError(reportErr),
+			"while reporting:",
+			err,
+		);
+	}
+}

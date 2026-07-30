@@ -135,6 +135,7 @@ export async function fetchRawByCid(
 	}
 	throw new Error(
 		`Failed to retrieve ${cid} from ${url} after ${retries.toString()} attempts: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
+		{ cause: lastError },
 	);
 }
 
@@ -159,11 +160,16 @@ export async function retrieveByCid<T>(
 	const timeout = setTimeout(() => { controller.abort(); }, timeoutSecond);
 	try {
 		const res = await fetch(url, { signal: controller.signal });
-		if (!res.ok) throw new Error(`Failed to retrieve ${cid}: ${res.statusText}`);
+		if (!res.ok)
+			throw new Error(
+				`Failed to retrieve ${cid}: HTTP ${res.status.toString()} ${res.statusText}`,
+			);
 		return deserialize(await res.text()) as T;
 	} catch (err) {
 		if ((err as Error).name === "AbortError") {
-			throw new Error(`Timed out retrieving ${cid} from ${url}`);
+			throw new Error(`Timed out retrieving ${cid} from ${url}`, {
+				cause: err,
+			});
 		}
 		throw err;
 	} finally {
