@@ -41,10 +41,12 @@ import { AppFeed } from "./feed.js";
 const ZERO_BYTES32: Hex =
 	"0x0000000000000000000000000000000000000000000000000000000000000000";
 
-/** Max namespaces held in `readNamespace`'s tip-keyed cache. */
+/** Max namespaces held in TODO
+ *  `readNamespace`'s tip-keyed cache. */
 const NS_CACHE_MAX = 256;
 
 /** One namespace-scoped update surfaced by `subscribe`. */
+// TODO
 export interface NamespaceChange extends NamespaceDiff {
 	namespace: string;
 	owner: Hex;
@@ -107,7 +109,7 @@ function resolveStorage(
 }
 
 export class Fangorn {
-	
+
 	private readonly ctx: FangornContext;
 
 	private _engine: FangornEngine | null = null;
@@ -115,7 +117,11 @@ export class Fangorn {
 	private readonly _metagraph = new MetagraphRegistry();
 
 	private _feed: AppFeed | null = null;
-	/** Insertion order = LRU order; see `readNamespace`. */
+
+	/** 
+	 * The namespace cache
+	 * Insertion order = LRU order; see `readNamespace`. 
+	 */
 	private readonly nsCache = new Map<
 		string,
 		{ tip: string | null; contents: NamespaceContents }
@@ -186,8 +192,11 @@ export class Fangorn {
 		});
 	}
 
-	// resets a namespace's onchain state root to zero
-	// use at your own risk
+	/**
+	 * Resets a namespace's onchain state root to zero.
+	 * TODO: also unpin all data
+	 * Use at your own risk.
+	*/ 
 	async reset(namespace: string) {
 		const registry = this.getDataRegistry();
 		const currentRoot = await registry.getNamespaceHead(
@@ -220,7 +229,8 @@ export class Fangorn {
 		for (const e of edges) {
 			const sourceTag = tagOf.get(e.from);
 			const targetTag = tagOf.get(e.to);
-			if (!sourceTag || !targetTag) continue; // createCommit reports the missing id
+			// createCommit reports the missing id
+			if (!sourceTag || !targetTag) continue;
 			if (
 				!this.metagraph.hasEdgeSchema(repoName, sourceTag, e.rel, targetTag)
 			) {
@@ -269,9 +279,8 @@ export class Fangorn {
 	}
 
 	/**
-	 * Allocates a namespace in the publisher's root map. A no-op (no on-chain tx)
-	 * if the namespace is already initialized, so callers can call this
-	 * unconditionally before every publish.
+	 * Allocates a namespace in the publisher's root map. 
+	 * A no-op (no on-chain tx) if the namespace is already initialized.
 	 */
 	async initRepo(repoName: string) {
 		assertValidNamespace(repoName);

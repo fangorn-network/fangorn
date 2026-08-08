@@ -13,5 +13,8 @@ schema.json
 /tmp
 .claude
 .fangorn
+.fangorn-**
+.hindsight
+CLAUDE.md
 .npmrc
 /docs/archive/

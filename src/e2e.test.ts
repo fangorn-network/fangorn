@@ -1,14 +1,9 @@
-    import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { type Hex, keccak256, stringToBytes, hexToBytes, bytesToHex } from "viem";
 import { TestBed } from "./test/testbed.js";
 import { sealSelf, unsealSelf, GADGET_SELF_HKDF_V1 } from "./crypto/encryption.js";
 
 const PRIVATE_KEY = process.env.ETH_PRIVATE_KEY as Hex;
-const PARTY_TWO_KEY = process.env.SECOND_ETH_PRIVATE_KEY as Hex;
-const PARTY_THREE_KEY = process.env.THIRD_ETH_PRIVATE_KEY as Hex;
-
-const PINATA_JWT = process.env.PINATA_JWT ?? "";
-const PINATA_GATEWAY = process.env.PINATA_GATEWAY ?? "https://gateway.pinata.cloud";
 // const RPC_URL = process.env.RPC_URL ?? "https://sepolia-rollup.arbitrum.io/rpc";
 // const REGISTRY_ADDRESS = process.env.DATA_SOURCE_REGISTRY_ADDRESS as Hex;
 
@@ -21,30 +16,28 @@ const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 interface TestPayload {
     event: string;
     timestamp: number;
-    status: string;		
+    status: string;
 }
 
-describe("Fangorn True E2E: Storage + Chain Anchor", () => {
+describe("Fangorn E2E", () => {
     let testbed: TestBed;
 
-    beforeAll(() =>   {
+    beforeAll(() => {
         testbed = TestBed.init([PRIVATE_KEY]);
     });
 
     it("single uploader mutates its namespace state root properly", async () => {
-
-        // No reset needed: each test uses a fresh namespace, and every namespace
-        // starts from its own zero head rather than sharing the publisher's.
-
-        // Two independent registrations: the app claims its namespace prefix,
-        // the publisher earns the right to write. Both idempotent.
+        // register a fresh app
         await testbed.registerApp(0)
+
+        // register a publisher (TODO: should we register per-app? Do we need a publisher permissions map or something?)
         await testbed.register(0)
         console.log('publisher registration success')
-        // initialize a new namespace/repo
+        // initialize a new namespace
         const namespace = `test-${Date.now()}`
         await testbed.initRepo(0, namespace)
         console.log('namespace initialized')
+
         // input data
         const name = `test-data`
         const payload: TestPayload = {
@@ -92,10 +85,8 @@ describe("Fangorn True E2E: Storage + Chain Anchor", () => {
         );
     }, 120_000);
 
-    // The two registrations are genuinely independent, and an app is not
-    // optional: a fully-registered publisher still cannot write under an app id
-    // nobody has claimed. This is what makes an app's namespace prefix its own —
-    // publishing into it requires that someone registered it first.
+    // publishers must be registered onchain as publishers in order to write to an app
+    // QQ: What if we used UCAN here?
     it("rejects a registered publisher writing to an unregistered app", async () => {
         await testbed.register(0); // publisher rights, no app claimed
 
@@ -107,12 +98,9 @@ describe("Fangorn True E2E: Storage + Chain Anchor", () => {
         ).rejects.toThrow(/AppNotFound|revert/i);
     }, 120_000);
 
-    // Each `app:publisher:namespace` triple is its own on-chain timeline, so one
-    // publisher's namespaces advance independently and each namespace's `inspect`
-    // sees only its own vertices (no cross-talk).
-    it("supports multiple namespaces under a single publisher, isolated from each other", async () => {
-        // Register the app and the publisher (both idempotent). Each run uses
-        // fresh, uniquely-named namespaces, each starting from its own zero head.
+    // publishers can independently write to multiple different namespaces in isolation
+    it("supports multiple namespaces under a single publisher", async () => {
+        // registration
         await testbed.registerApp(0);
         await testbed.register(0);
 
@@ -123,7 +111,8 @@ describe("Fangorn True E2E: Storage + Chain Anchor", () => {
         await testbed.initRepo(0, nsA);
         await testbed.initRepo(0, nsB);
 
-        // Interleave uploads across the two namespaces on the same publisher.
+        // uploads: a1, a2 => ns A
+        //          b1     => ns B
         const a1 = await testbed.upload(0, nsA, { event: "A1", timestamp: Date.now(), status: "active" }, "a1");
         const b1 = await testbed.upload(0, nsB, { event: "B1", timestamp: Date.now(), status: "active" }, "b1");
         const a2 = await testbed.upload(0, nsA, { event: "A2", timestamp: Date.now(), status: "active" }, "a2");
@@ -132,8 +121,7 @@ describe("Fangorn True E2E: Storage + Chain Anchor", () => {
         expect(b1.txHash).toBeTruthy();
         expect(a2.txHash).toBeTruthy();
 
-        // Each namespace resolves from its own on-chain head and must return only
-        // its own vertices — the whole point of per-namespace timelines.
+        // Each namespace resolves from its own on-chain head and must return only its own vertices
         const contentsA = await testbed.inspect(0, nsA);
         const contentsB = await testbed.inspect(0, nsB);
 
