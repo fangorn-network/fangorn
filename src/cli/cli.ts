@@ -700,6 +700,10 @@ program
 		"Replay this namespace's full history (ignore the saved cursor)",
 	)
 	.option("--pretty", "Pretty-print each change")
+	.option(
+		"--app",
+		"Watch the whole app (every publisher, every namespace); --owner/namespace narrow it",
+	)
 	.action(
 		async (
 			namespaceArg: string | undefined,
@@ -708,34 +712,39 @@ program
 				fromBlock?: bigint;
 				fromStart?: boolean;
 				pretty?: boolean;
+				app?: boolean;
 			},
 		) => {
 			try {
 				const fangorn = getFangorn();
 
 				// Namespace/owner: explicit args win, else fall back to a local repo.
+				// In --app mode both are optional filters, so no repo fallback and no
+				// self-owner default — an omitted one means "every one of them".
 				let namespace = namespaceArg;
 				let owner = options.owner;
-				if (!namespace || !owner) {
-					try {
-						const repo = LocalRepo.open();
-						namespace = namespace ?? repo.namespace();
-						owner = owner ?? repo.owner();
-					} catch {
-						/* no repo here — require explicit --owner/namespace */
+				if (!options.app) {
+					if (!namespace || !owner) {
+						try {
+							const repo = LocalRepo.open();
+							namespace = namespace ?? repo.namespace();
+							owner = owner ?? repo.owner();
+						} catch {
+							/* no repo here — require explicit --owner/namespace */
+						}
 					}
+					if (!namespace)
+						throw new Error(
+							"namespace required (pass it as an argument, run inside a repo, or use --app)",
+						);
+					owner = owner ?? fangorn.getAddress();
 				}
-				if (!namespace)
-					throw new Error(
-						"namespace required (pass it as an argument or run inside a repo)",
-					);
-				owner = owner ?? fangorn.getAddress();
 
-				// Resume cursor: last fully-processed block, persisted per (owner, namespace).
+				// Resume cursor: last fully-processed block, persisted per filter.
 				const repoDir = join(process.cwd(), ".fangorn");
 				const cursorPath = join(
 					repoDir,
-					`subscribe-${owner}-${namespace}.json`,
+					`subscribe-${owner ?? "app"}-${namespace ?? "all"}.json`,
 				);
 				const readCursor = (): bigint | undefined => {
 					if (options.fromStart) return undefined;
@@ -765,7 +774,7 @@ program
 				const fromBlock = readCursor();
 				// Status/logging on stderr so stdout stays a clean JSON-lines stream for piping.
 				console.error(
-					`Subscribing to "${namespace}" @ ${owner} ` +
+					`Subscribing to "${namespace ?? "*"}" @ ${owner ?? "* (whole app)"} ` +
 					(fromBlock !== undefined
 						? `from block ${fromBlock.toString()}`
 						: "(live from current tip)") +
@@ -776,12 +785,23 @@ program
 				process.on("SIGINT", () => { controller.abort(); });
 				process.on("SIGTERM", () => { controller.abort(); });
 
-				for await (const change of fangorn.subscribe({
-					namespace,
-					owner,
-					fromBlock,
-					signal: controller.signal,
-				})) {
+				// --app widens the topic filter to the app id; namespace/owner, when given,
+				// narrow it back down. Without it the filter is one exact publisher+subspace.
+				const stream = options.app
+					? fangorn.subscribeApp({
+						namespace,
+						owner,
+						fromBlock,
+						signal: controller.signal,
+					})
+					: fangorn.subscribe({
+						namespace: namespace as string,
+						owner,
+						fromBlock,
+						signal: controller.signal,
+					});
+
+				for await (const change of stream) {
 					process.stdout.write(
 						JSON.stringify(change, bigintReplacer, options.pretty ? 2 : 0) +
 						"\n",

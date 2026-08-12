@@ -1,6 +1,6 @@
 {
 	"name": "@fangorn-network/sdk",
-	"version": "2026.07.29",
+	"version": "2026.08.12-dev",
 	"description": "Git for knowledge graphs",
 	"repository": {
 		"type": "git",
@@ -20,7 +20,7 @@
 		"format": "prettier . --write",
 		"lint": "eslint . --max-warnings 0",
 		"prepare": "husky",
-		"test": "dotenvx run -f .env -- vitest run",
+		"test": "dotenvx run -f .env -- vitest runa",
 		"test:e2e": "dotenvx run -f .env -- vitest run --config vitest.e2e.config.ts",
 		"tsc": "tsc",
 		"deploy": "dotenvx run -f .env -- tsx deploy.ts",
