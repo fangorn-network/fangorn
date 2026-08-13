@@ -6,6 +6,7 @@ export default defineConfig({
 		coverage: {
 			include: ["src"],
 			reporter: ["html", "lcov"],
+			provider: 'v8',
 		},
 		exclude: ["lib", "**/e2e.test.ts", "node_modules"],
 		environment: "node",

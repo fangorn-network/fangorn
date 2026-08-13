@@ -148,7 +148,7 @@ export function rootHexFromCid(commitCid: CID): Hex {
 
 export const MAX_NAMESPACE_LENGTH = 256;
 
-/** Reject invalid namespace names up front with a clear error. */
+/** Namespaces must be non-empty strings whose length does not exceed MAX_NAMESPACE_LENGTH */
 export function assertValidNamespace(namespace: NamespaceID): void {
 	if (typeof namespace !== "string" || namespace.length === 0) {
 		throw new Error("namespace must be a non-empty string");

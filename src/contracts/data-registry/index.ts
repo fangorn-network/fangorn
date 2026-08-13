@@ -364,20 +364,34 @@ export class DataRegistryClient {
      * Historical `StateCommitted` logs for one slice of this app, oldest →
      * newest — the catch-up path for a subscriber resuming from a saved block
      * cursor. Node-side filtered by indexed topics, so no indexer is involved.
+     *
+     * Fetched in windows: RPC providers cap the block span of a single
+     * `eth_getLogs` (the public Arbitrum Sepolia endpoint rejects anything past a
+     * couple of thousand blocks with a bare "internal server errror"), so one
+     * wide-range call fails outright and takes the whole catch-up with it. Tune
+     * the window with `FANGORN_LOG_WINDOW` — a private RPC will take far more.
      */
     async getStateCommittedLogs(
         filter: CommitFilter,
         fromBlock: bigint,
         toBlock?: bigint,
     ): Promise<StateCommittedLog[]> {
-        const logs = await this.publicClient.getContractEvents({
-            address: this.contractAddress,
-            abi: DATA_REGISTRY_ABI,
-            eventName: "StateCommitted",
-            args: this.topicsFor(filter),
-            fromBlock,
-            toBlock: toBlock ?? "latest",
-        });
+        const window = BigInt(process.env.FANGORN_LOG_WINDOW ?? 1000);
+        const end = toBlock ?? (await this.publicClient.getBlockNumber());
+        const logs = [];
+        for (let start = fromBlock; start <= end; start += window) {
+            const stop = start + window - 1n < end ? start + window - 1n : end;
+            logs.push(
+                ...(await this.publicClient.getContractEvents({
+                    address: this.contractAddress,
+                    abi: DATA_REGISTRY_ABI,
+                    eventName: "StateCommitted",
+                    args: this.topicsFor(filter),
+                    fromBlock: start,
+                    toBlock: stop,
+                })),
+            );
+        }
         return logs
             .map(decodeStateCommitted)
             .filter((log) => matchesFilter(log, filter))
