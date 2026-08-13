@@ -157,7 +157,8 @@ function getFangorn(): Fangorn {
 		storage,
 		domain: "localhost",
 		config: cfg.cfg,
-		appId: cfg.appId,
+		// `--app` (global option) wins over the stored app for this invocation.
+		appId: (program.opts().app as string | undefined) ?? cfg.appId,
 	});
 	return _fangorn;
 }
@@ -246,6 +247,13 @@ class LocalRepo {
 
 const program = new Command();
 program.name("fangorn").description("Fangorn Network CLI").version("0.4.0");
+// The app id prefixes every namespace key, so it decides which global namespace a
+// command reads from and publishes into. `set-app` persists a choice; this overrides
+// it for one invocation, which is what lets a daemon watch an app it isn't "in".
+program.option(
+	"--app <name-or-id>",
+	"App (global namespace) for this command — overrides the stored app (see `set-app`)",
+);
 
 /// initialize the fangorn cli
 program
@@ -701,7 +709,7 @@ program
 	)
 	.option("--pretty", "Pretty-print each change")
 	.option(
-		"--app",
+		"--all",
 		"Watch the whole app (every publisher, every namespace); --owner/namespace narrow it",
 	)
 	.action(
@@ -712,7 +720,7 @@ program
 				fromBlock?: bigint;
 				fromStart?: boolean;
 				pretty?: boolean;
-				app?: boolean;
+				all?: boolean;
 			},
 		) => {
 			try {
@@ -723,7 +731,7 @@ program
 				// self-owner default — an omitted one means "every one of them".
 				let namespace = namespaceArg;
 				let owner = options.owner;
-				if (!options.app) {
+				if (!options.all) {
 					if (!namespace || !owner) {
 						try {
 							const repo = LocalRepo.open();
@@ -735,7 +743,7 @@ program
 					}
 					if (!namespace)
 						throw new Error(
-							"namespace required (pass it as an argument, run inside a repo, or use --app)",
+							"namespace required (pass it as an argument, run inside a repo, or use --all)",
 						);
 					owner = owner ?? fangorn.getAddress();
 				}
@@ -747,7 +755,9 @@ program
 					`subscribe-${owner ?? "app"}-${namespace ?? "all"}.json`,
 				);
 				const readCursor = (): bigint | undefined => {
-					if (options.fromStart) return undefined;
+					// Genesis, not `undefined` — an undefined fromBlock means "live from the
+					// current tip", which is the opposite of replaying full history.
+					if (options.fromStart) return 0n;
 					if (options.fromBlock !== undefined) return options.fromBlock;
 					if (existsSync(cursorPath)) {
 						const val = JSON.parse(readFileSync(cursorPath, "utf-8")) as { lastBlock?: string | number | bigint };
@@ -785,9 +795,9 @@ program
 				process.on("SIGINT", () => { controller.abort(); });
 				process.on("SIGTERM", () => { controller.abort(); });
 
-				// --app widens the topic filter to the app id; namespace/owner, when given,
+				// --all widens the topic filter to the app id; namespace/owner, when given,
 				// narrow it back down. Without it the filter is one exact publisher+subspace.
-				const stream = options.app
+				const stream = options.all
 					? fangorn.subscribeApp({
 						namespace,
 						owner,
