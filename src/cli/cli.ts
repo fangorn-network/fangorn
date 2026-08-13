@@ -805,7 +805,7 @@ program
 						signal: controller.signal,
 					})
 					: fangorn.subscribe({
-						namespace: namespace as string,
+						namespace: namespace ?? "",
 						owner,
 						fromBlock,
 						signal: controller.signal,
