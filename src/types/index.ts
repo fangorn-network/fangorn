@@ -1,6 +1,9 @@
 import { Hex, WalletClient } from "viem";
 import { AppConfig } from "../config.js";
+import { AppRegistryClient } from "../contracts/app-registry/index.js";
 import { DataRegistryClient } from "../contracts/data-registry/index.js";
+import { SettlementRegistryClient } from "../contracts/settlement-registry/index.js";
+import { SubscriptionRegistryClient } from "../contracts/subscription-registry/index.js";
 import { MetadataStorage } from "../providers/storage/types.js";
 
 export interface FangornContext {
@@ -10,6 +13,9 @@ export interface FangornContext {
     // workerUrl: string | undefined;
     domain: string;
     dataRegistry: DataRegistryClient;
+    appRegistry: AppRegistryClient;
+    subscriptionRegistry: SubscriptionRegistryClient;
+    settlementRegistry: SettlementRegistryClient;
 }
 
 export type StorageConfig =

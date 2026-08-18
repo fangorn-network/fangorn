@@ -246,6 +246,15 @@ class LocalRepo {
 // ─── CLI root ─────────────────────────────────────────────────────────────────
 
 const program = new Command();
+// Placeholder terms for `fangorn register-app`, which has no document to hash.
+// Deliberately NOT the zero hash: zero means "this app has published no terms" and
+// makes the app unjoinable. This is a recognisable stand-in the owner is expected to
+// replace with `setAppTerms(sha256(terms), uri)` before inviting publishers — and
+// because joining pins the exact hash accepted, anyone who joined against the
+// placeholder must re-accept once the real terms land.
+const APP_TERMS_PLACEHOLDER =
+	"0x0000000000000000000000000000000000000000000000000000000000000001" as const;
+
 program.name("fangorn").description("Fangorn Network CLI").version("0.4.0");
 // The app id prefixes every namespace key, so it decides which global namespace a
 // command reads from and publishes into. `set-app` persists a choice; this overrides
@@ -370,7 +379,9 @@ program
 	.action(async () => {
 		try {
 			const self = getAccount().address;
-			const registry = getFangorn().getDataRegistry();
+			// Apps live in the AppRegistry now, with the terms and membership they
+			// govern. The DataRegistry only asks it whether a publisher joined.
+			const registry = getFangorn().getAppRegistry();
 			const s = spinner();
 
 			s.start("Checking app ownership...");
@@ -388,7 +399,15 @@ program
 			}
 
 			s.start("Registering app...");
-			const txHash = await registry.registerApp();
+			// An app with no terms cannot be joined by anyone, so claiming an id
+			// without them creates a market nobody can enter. `fangorn register-app`
+			// has no terms to offer, so it claims with a placeholder the owner is
+			// expected to replace via `setAppTerms` before inviting publishers.
+			const txHash = await registry.registerApp(
+				APP_TERMS_PLACEHOLDER,
+				"",
+				0n,
+			);
 			s.stop();
 
 			console.log(`App:    ${loadConfig().appId}`);

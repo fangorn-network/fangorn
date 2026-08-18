@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { type Hex, keccak256, stringToBytes, hexToBytes, bytesToHex } from "viem";
 import { TestBed } from "./test/testbed.js";
+import { needsReacceptance, packResourceUri, resourceIdOf } from "./contracts/index.js";
 import { sealSelf, unsealSelf, GADGET_SELF_HKDF_V1 } from "./crypto/encryption.js";
 
 const PRIVATE_KEY = process.env.ETH_PRIVATE_KEY as Hex;
@@ -323,4 +324,165 @@ describe("Fangorn E2E", () => {
     // }, 120_000);
 
 
+});
+
+describe("Fangorn registries E2E", () => {
+    let testbed: TestBed;
+
+    beforeAll(() => {
+        testbed = TestBed.init([PRIVATE_KEY]);
+    });
+
+    // The four contracts are deployed independently and point at each other by
+    // address. A redeploy that updates one address and not the others is silent
+    // until a commit reverts NotRegisteredForApp, or a subscription reports a
+    // publisher unregistered who plainly is. Asserting the pointers here is the
+    // cheapest place to catch a half-finished deploy.
+    it("the four registries point at each other", async () => {
+        const f = testbed.getFangorn(0);
+        const data = f.getDataRegistry();
+        const apps = f.getAppRegistry();
+        const subs = f.getSubscriptionRegistry();
+        const settlement = f.getSettlementRegistry();
+
+        expect((await data.appRegistry()).toLowerCase()).toBe(
+            apps.getAddress().toLowerCase(),
+        );
+        expect((await subs.dataRegistry()).toLowerCase()).toBe(
+            data.getAddress().toLowerCase(),
+        );
+        // Both paywalls settle in the same token, or a price quoted by one means
+        // nothing to the other.
+        expect((await subs.usdc()).toLowerCase()).toBe(
+            (await settlement.getUsdc()).toLowerCase(),
+        );
+
+        // setAppId moves the app-scoped clients together and leaves the two
+        // per-wallet ones alone (CO-1).
+        const before = f.getAppId();
+        f.setAppId("some-other-app");
+        expect(apps.getAppId()).toBe(f.getAppId());
+        expect(data.getAppId()).toBe(f.getAppId());
+        f.setAppId(before);
+    }, 60_000);
+
+    // Publishing under an app is gated on membership of that app: the
+    // DataRegistry cross-calls isRegisteredForApp inside commitStateRoot.
+    it("app membership is what lets a publisher commit", async () => {
+        await testbed.registerApp(0);
+        await testbed.register(0);
+
+        const f = testbed.getFangorn(0);
+        const apps = f.getAppRegistry();
+        const self = f.getAddress();
+
+        const info = await apps.joinInfo(self);
+        expect(info.termsHash).not.toBe(ZERO_BYTES32);
+        expect(info.registered).toBe(true);
+        expect(info.acceptedTerms).toBe(info.termsHash);
+        expect(needsReacceptance(info)).toBe(false);
+        expect(await apps.isRegisteredForApp(self)).toBe(true);
+
+        // And a commit under the app now lands, which is the only proof that the
+        // membership the AppRegistry reports is the one the DataRegistry reads.
+        const namespace = `member-${Date.now()}`;
+        await testbed.initRepo(0, namespace);
+        const res = await testbed.upload(0, namespace, { ok: true }, "gated");
+        expect(res.txHash).toBeTruthy();
+    }, 180_000);
+
+    // A wallet that never joined the app is not a member, and the app it did not
+    // join reports so without throwing — an unclaimed app id is a legitimate read.
+    it("a stranger is not a member, and an unclaimed app has no owner", async () => {
+        const f = testbed.getFangorn(0);
+        const apps = f.getAppRegistry();
+
+        const stranger = "0x000000000000000000000000000000000000dEaD" as const;
+        expect(await apps.isRegisteredForApp(stranger)).toBe(false);
+
+        const before = f.getAppId();
+        f.setAppId(`unclaimed-${Date.now()}`);
+        expect(await apps.getAppOwner()).toBe(ZERO_ADDRESS);
+        // No terms means no join is possible, and the client says so before
+        // spending gas on a TermsNotSet revert (PUB-4).
+        await expect(apps.registerForApp()).rejects.toThrow(/no terms/i);
+        f.setAppId(before);
+    }, 60_000);
+
+    // The publisher-side storage paywall. The fee is pulled in USDC, so a
+    // non-zero fee needs an ERC-20 approve first; at fee 0 this is a plain write.
+    it("subscribing stamps the publisher's paid-at", async () => {
+        await testbed.register(0);
+
+        const f = testbed.getFangorn(0);
+        const subs = f.getSubscriptionRegistry();
+        const self = f.getAddress();
+
+        const fee = await subs.subscriptionFee();
+        if (fee > 0n) {
+            console.log(`subscription fee is ${fee}; skipping (needs a USDC approve)`);
+            return;
+        }
+
+        await subs.subscribe();
+
+        const access = await subs.access(self);
+        expect(access.registered).toBe(true);
+        expect(access.paidAt).toBeGreaterThan(0n);
+        expect(await subs.subscribedAt(self)).toBe(access.paidAt);
+
+        // The active window is the gate's policy, not chain state: the same
+        // paidAt is active under a wide window and expired under a zero one.
+        expect(await subs.isActiveAt(self, 30n * 24n * 3600n)).toBe(true);
+        expect(await subs.isActiveAt(self, 0n)).toBe(false);
+    }, 180_000);
+
+    // The consumer rail, publisher half. register/settle need an EIP-3009
+    // authorization and a Semaphore proof and are not exercised here; listing,
+    // pricing and delisting are, because those are what a publisher does.
+    it("listing a resource makes it readable and delistable", async () => {
+        const f = testbed.getFangorn(0);
+        const settlement = f.getSettlementRegistry();
+        const self = f.getAddress();
+
+        const uid = keccak256(stringToBytes(`e2e-resource-${Date.now()}`));
+        const price = 1_000n; // 0.001 USDC — 6 decimals, not wei
+        // The uri is not free-form: `@fangorn-network/fetch` splits it on "#" and
+        // verifies the bytes it decrypts against the hash half.
+        const plaintextHash = keccak256(stringToBytes("pretend-plaintext"));
+        const uri = packResourceUri("https://worker.example", plaintextHash);
+
+        // The id is derivable before the transaction lands, and the local
+        // derivation must equal the contract's — this is the one constant the
+        // publisher (this SDK) and the buyer (@fangorn-network/fetch, which
+        // derives it offline and never asks the chain) have to agree on. A
+        // mismatch means buyers pay for an id no publisher ever listed.
+        const resourceId = await settlement.resourceIdFor(self, uid);
+        expect(resourceId).not.toBe(ZERO_BYTES32);
+        expect(resourceIdOf(self, uid)).toBe(resourceId);
+
+        await settlement.createResource(uid, price, uri);
+
+        const resource = await settlement.getResource(resourceId);
+        expect(resource.owner.toLowerCase()).toBe(self.toLowerCase());
+        expect(resource.price).toBe(price);
+        expect(resource.uri).toBe(uri);
+        // Round-trips through the buyer's unpackUri: `${workerUrl}#${hash}`.
+        expect(resource.uri.split("#")).toEqual(["https://worker.example", plaintextHash]);
+        expect(resource.disabled).toBe(false);
+        expect(resource.groupId).toBeGreaterThan(0n);
+
+        // Access is checked against the reader's stealth address, and nobody has
+        // settled for this one.
+        expect(await settlement.isSettled(self, resourceId)).toBe(false);
+
+        // Delisting blocks new registrations; it does not revoke what was paid for.
+        await settlement.setDisabled(resourceId, true);
+        expect(await settlement.isDisabled(resourceId)).toBe(true);
+
+        // An unlisted resource reads as a zero owner rather than throwing —
+        // getPrice alone cannot tell "free" from "does not exist".
+        const missing = await settlement.getResource(keccak256(stringToBytes("nope")));
+        expect(missing.owner).toBe(ZERO_ADDRESS);
+    }, 240_000);
 });

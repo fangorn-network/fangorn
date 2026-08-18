@@ -2,6 +2,11 @@ import { type Hex } from "viem";
 import { Fangorn } from "../fangorn.js";
 import { FangornConfig } from "../config.js";
 
+// The testbed's app terms. Any non-zero value works — zero would leave the app
+// unjoinable and every commit in the suite would revert NotRegisteredForApp.
+const TESTBED_APP_TERMS =
+    "0x0000000000000000000000000000000000000000000000000000000000000002" as const;
+
 export class TestBed {
     private constructor(private readonly f_list: Fangorn[]) {}
 
@@ -48,11 +53,19 @@ export class TestBed {
      * else already owns it: apps are shared, not per-test.
      */
     async registerApp(index: number) {
-        const registry = this.getFangorn(index).getDataRegistry();
+        const registry = this.getFangorn(index).getAppRegistry();
         const owner = await registry.getAppOwner();
         if (owner === "0x0000000000000000000000000000000000000000") {
             console.log(`Registering app ${registry.getAppId()} on-chain...`);
-            await registry.registerApp();
+            // Real terms, because an app with a zero hash cannot be joined and
+            // every commit in the suite would then revert NotRegisteredForApp.
+            await registry.registerApp(TESTBED_APP_TERMS, "https://example.test/terms", 0n);
+        }
+        // Joining is now a precondition for committing under the app.
+        const self = this.getFangorn(index).getAddress();
+        if (!(await registry.isRegisteredForApp(self))) {
+            console.log(`Joining app ${registry.getAppId()} as ${self}...`);
+            await registry.registerForApp();
         }
     }
 
@@ -112,7 +125,7 @@ export class TestBed {
 
     /** Owner of the configured app namespace, or the zero address if unclaimed. */
     async appOwner(index: number) {
-        return this.getFangorn(index).getDataRegistry().getAppOwner();
+        return this.getFangorn(index).getAppRegistry().getAppOwner();
     }
 
     /** The raw on-chain head of one namespace — the slot the CAS actually guards. */

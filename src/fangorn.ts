@@ -30,9 +30,12 @@ import {
 	rootHexFromCid,
 } from "./engine/index.js";
 import {
+	AppRegistryClient,
 	CommitFilter,
 	DataRegistryClient,
 	PreparedTx,
+	SettlementRegistryClient,
+	SubscriptionRegistryClient,
 	StateCommittedLog,
 	subspaceId,
 } from "./contracts/index.js";
@@ -176,9 +179,31 @@ export class Fangorn {
 			transport: http(resolvedConfig.rpcUrl),
 		}) as PublicClient;
 
+		const appId = toAppId(options.appId ?? DEFAULT_APP);
 		const dataRegistry = new DataRegistryClient(
 			resolvedConfig.dataRegistryContractAddress,
-			toAppId(options.appId ?? DEFAULT_APP),
+			appId,
+			publicClient,
+			walletClient,
+		);
+		
+		const appRegistry = new AppRegistryClient(
+			resolvedConfig.appRegistryContractAddress,
+			appId,
+			publicClient,
+			walletClient,
+		);
+
+		// Neither of these is app-scoped: a subscription is per-publisher and a
+		// resource is per-owner, so `setAppId` leaves both alone.
+		const subscriptionRegistry = new SubscriptionRegistryClient(
+			resolvedConfig.subscriptionRegistryContractAddress,
+			publicClient,
+			walletClient,
+		);
+
+		const settlementRegistry = new SettlementRegistryClient(
+			resolvedConfig.settlementRegistryContractAddress,
 			publicClient,
 			walletClient,
 		);
@@ -188,6 +213,9 @@ export class Fangorn {
 			metadataStorage,
 			domain,
 			dataRegistry: dataRegistry,
+			appRegistry,
+			subscriptionRegistry,
+			settlementRegistry,
 			config: resolvedConfig,
 		});
 	}
@@ -841,6 +869,33 @@ export class Fangorn {
 		return this.ctx.dataRegistry;
 	}
 
+	/**
+	 * Apps, their publisher terms, and per-app membership.
+	 *
+	 * `commitStateRoot` cross-calls this contract, so joining the app here is a
+	 * precondition for publishing under it — `registerForApp()` before
+	 * `commit()`, or the commit reverts `NotRegisteredForApp`.
+	 */
+	getAppRegistry(): AppRegistryClient {
+		return this.ctx.appRegistry;
+	}
+
+	/**
+	 * The publisher-side storage paywall. Per-wallet, not per-app: one
+	 * subscription covers everything this publisher writes, under every app.
+	 */
+	getSubscriptionRegistry(): SubscriptionRegistryClient {
+		return this.ctx.subscriptionRegistry;
+	}
+
+	/**
+	 * The consumer-side pay-then-read rail. Resources are keyed by owner+uid, so
+	 * this client is app-agnostic too.
+	 */
+	getSettlementRegistry(): SettlementRegistryClient {
+		return this.ctx.settlementRegistry;
+	}
+
 	/** The app (global namespace) this client publishes and reads under. */
 	getAppId(): Hex {
 		return this.ctx.dataRegistry.getAppId();
@@ -857,7 +912,13 @@ export class Fangorn {
 	 * from `subscribe`/`subscribeApp` keep their original filter until aborted.
 	 */
 	setAppId(nameOrId: string): void {
-		this.ctx.dataRegistry.setAppId(toAppId(nameOrId));
+		// BOTH clients, always. A DataRegistry pointed at one app while the
+		// AppRegistry answers for another means membership is checked against the
+		// wrong market — and the failure is a revert at commit time, long after
+		// the mismatch was introduced.
+		const appId = toAppId(nameOrId);
+		this.ctx.dataRegistry.setAppId(appId);
+		this.ctx.appRegistry.setAppId(appId);
 		this.nsCache.clear();
 		this._feed = null;
 	}
