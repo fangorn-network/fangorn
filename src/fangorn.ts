@@ -44,21 +44,20 @@ import { AppFeed } from "./feed.js";
 const ZERO_BYTES32: Hex =
 	"0x0000000000000000000000000000000000000000000000000000000000000000";
 
-/** Max namespaces held in TODO
- *  `readNamespace`'s tip-keyed cache. */
+// max number namespaces held in the cache at once
 const NS_CACHE_MAX = 256;
 
-/** One namespace-scoped update surfaced by `subscribe`. */
-// TODO
+// represents a namespace diff (i.e. what changed between two commits)
 export interface NamespaceChange extends NamespaceDiff {
 	namespace: string;
 	owner: Hex;
-	/** The commit CID (string) this update settled to — the new on-chain tip. */
+	// The commit CID (NEW on-chain tip)
 	commitCid: string;
-	/** Raw on-chain roots this delta spans (`oldRoot` → `newRoot`). */
+	// the root of the old state of the namespace
 	oldRoot: Hex;
+	// the root of the new (updated) state of the namespace
 	newRoot: Hex;
-	/** Block the `StateCommitted` event landed in — persist as the resume cursor. */
+	// when the new root was minted onchain
 	blockNumber: bigint;
 }
 
@@ -78,7 +77,6 @@ export interface SubscribeOptions {
 	signal?: AbortSignal;
 }
 
-/** Build a signer for the access worker's ownership handshake from a wallet. */
 function walletSigner(walletClient: WalletClient): SignedUrlSigner {
 	const account = walletClient.account;
 	if (!account) {
@@ -123,7 +121,7 @@ export class Fangorn {
 
 	/** 
 	 * The namespace cache
-	 * Insertion order = LRU order; see `readNamespace`. 
+	 * Insertion order = LRU order
 	 */
 	private readonly nsCache = new Map<
 		string,
@@ -153,6 +151,12 @@ export class Fangorn {
 		return this._metagraph;
 	}
 
+	/**
+	 * Static creation of a new Fangorn client
+	 * 
+	 * @param options 
+	 * @returns the client
+	 */
 	static create(options: FangornCreateOptions): Fangorn {
 		if (!options.privateKey && !options.walletClient) {
 			throw new Error("Either privateKey or walletClient must be provided");
@@ -194,8 +198,6 @@ export class Fangorn {
 			walletClient,
 		);
 
-		// Neither of these is app-scoped: a subscription is per-publisher and a
-		// resource is per-owner, so `setAppId` leaves both alone.
 		const subscriptionRegistry = new SubscriptionRegistryClient(
 			resolvedConfig.subscriptionRegistryContractAddress,
 			publicClient,
@@ -235,6 +237,13 @@ export class Fangorn {
 	}
 
 	/**
+	 * TODO: this isn't really needed here, it's cosmetic
+	 * instead, what if we moved this to a new paradigm where...
+	 * 
+	 * each app registers as an ERC-8004 agent with  the validation registry
+	 * pointing to these rules essentially?
+	 * 
+	 * 
 	 * Register permissive (no required fields) schemas for every tag/relation a
 	 * staged graph uses, unless the caller has already registered stricter rules
 	 * via `this.metagraph` directly — schema ids are free-form tags by default.
