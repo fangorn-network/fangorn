@@ -44,10 +44,19 @@ import { AppFeed } from "./feed.js";
 const ZERO_BYTES32: Hex =
 	"0x0000000000000000000000000000000000000000000000000000000000000000";
 
+<<<<<<< HEAD
 // max number namespaces held in the cache at once
 const NS_CACHE_MAX = 256;
 
 // represents a namespace diff (i.e. what changed between two commits)
+=======
+/** Max namespaces held in TODO
+ *  `readNamespace`'s tip-keyed cache. */
+const NS_CACHE_MAX = 256;
+
+/** One namespace-scoped update surfaced by `subscribe`. */
+// TODO
+>>>>>>> main
 export interface NamespaceChange extends NamespaceDiff {
 	namespace: string;
 	owner: Hex;
@@ -121,7 +130,11 @@ export class Fangorn {
 
 	/** 
 	 * The namespace cache
+<<<<<<< HEAD
 	 * Insertion order = LRU order
+=======
+	 * Insertion order = LRU order; see `readNamespace`. 
+>>>>>>> main
 	 */
 	private readonly nsCache = new Map<
 		string,
