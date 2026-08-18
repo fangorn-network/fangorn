@@ -99,7 +99,6 @@ function loadConfig(): Config {
 		_config = {
 			privateKey: stored.privateKey,
 			cfg: FangornConfig,
-			// env wins over the saved app, so a one-off run can target another app.
 			appId: envAppId ?? stored.appId ?? DEFAULT_APP,
 			pinataJwt: stored.pinataJwt,
 			pinataGateway: stored.pinataGateway,
@@ -134,7 +133,7 @@ function loadConfig(): Config {
 
 	throw new Error(
 		"No configuration found. Run `fangorn init` or set ETH_PRIVATE_KEY\n" +
-		"(with no config, uploads go to Fangorn's shared Pinata account — a best-effort testnet convenience; files may be unpinned without notice. Set PINATA_JWT + PINATA_GATEWAY to use your own storage).",
+		"(with no config, uploads go to Fangorn's shared Pinata account; files may be unpinned without notice. Set PINATA_JWT + PINATA_GATEWAY to use your own storage).",
 	);
 }
 
@@ -175,9 +174,7 @@ function getFangorn(): Fangorn {
 }
 
 /**
- * The app name this invocation runs under. `--app` wins over the stored one, the
- * same way `getFangorn` resolves it — otherwise the printed name and the printed
- * app id come from different places and disagree under `--app`.
+ * The currently configured app name
  */
 function currentAppName(): string {
 	return (program.opts().app as string | undefined) ?? loadConfig().appId;
@@ -185,12 +182,7 @@ function currentAppName(): string {
 
 // ─── Local repo (working-directory ref) ─────────────────────────────────────────
 //
-// The only local state a git-native repo needs: which namespace it tracks, whose
-// on-chain root it belongs to, and the commit CID of its local tip (HEAD). Commit
-// *objects* themselves live in content-addressed storage — there is no local
-// object store to keep in sync, so this is just a pointer file, the analogue of
-// `.git/HEAD` + a bit of config.
-
+// local state of a fangorn 'repo' (a git-native style repo)
 interface RepoState {
 	namespace: string;
 	owner: Address;
@@ -280,9 +272,7 @@ const APP_TERMS_PLACEHOLDER =
 	"0x0000000000000000000000000000000000000000000000000000000000000001" as const;
 
 program.name("fangorn").description("Fangorn Network CLI").version("0.4.0");
-// The app id prefixes every namespace key, so it decides which global namespace a
-// command reads from and publishes into. `set-app` persists a choice; this overrides
-// it for one invocation, which is what lets a daemon watch an app it isn't "in".
+// The app id decides which global namespace a command reads from and publishes into, overrides set-app
 program.option(
 	"--app <name-or-id>",
 	"App (global namespace) for this command — overrides the stored app (see `set-app`)",
@@ -413,6 +403,10 @@ program
 
 /** The status word for a publisher in one app, and whether they can publish. */
 function membershipLine(info: AppJoinInfo): string {
+	// An admin takedown outranks everything below: it makes `registered` false for
+	// the app's own owner, and telling them to join would be a lie.
+	if (info.appSuspended)
+		return "the whole app is suspended by the protocol admin — nobody can publish under it";
 	if (info.registered) return "joined";
 	if (needsReacceptance(info))
 		return "terms changed since you joined — run `fangorn app join` to re-accept (free)";
@@ -457,6 +451,9 @@ appCmd
 				if (info.termsUri) console.log(`Terms uri:  ${info.termsUri}`);
 				console.log(`Join fee:   ${info.fee.toString()} wei`);
 			}
+
+			if (info.appSuspended)
+				console.log(`Status:     SUSPENDED by the protocol admin`);
 
 			console.log(`\nWallet:     ${self}`);
 			console.log(
@@ -558,6 +555,12 @@ appCmd
 			if (info.status === PublisherStatus.SUSPENDED) {
 				console.error(
 					`Suspended from this app by its owner — joining again will revert. Ask them to reinstate you.`,
+				);
+				process.exit(1);
+			}
+			if (info.appSuspended) {
+				console.error(
+					`App ${registry.getAppId()} has been suspended by the protocol admin — joining will revert.`,
 				);
 				process.exit(1);
 			}
@@ -673,6 +676,105 @@ appCmd
 			s.stop();
 			console.log(`Reinstated: ${publisher}`);
 			console.log(`Tx:         ${txHash}`);
+			process.exit(0);
+		} catch (err) {
+			console.error("Failed:", (err as Error).message);
+			process.exit(1);
+		}
+	});
+
+// ─── app admin (protocol admin) ────────────────────────────────────────────────
+//
+// A level above the app owner: `app suspend` ejects one publisher from one app,
+// `app admin suspend` takes the whole app down, its owner included. The
+// memberships underneath survive, so a reinstatement restores the app exactly as
+// it was rather than making everyone pay to join again.
+
+const appAdminCmd = appCmd
+	.command("admin")
+	.description("Protocol-admin takedowns for the whole app (admin only)");
+
+/** The AppRegistry client, refusing early if this wallet is not the protocol admin. */
+async function requireAdmin() {
+	const registry = getFangorn().getAppRegistry();
+	const self = getAccount().address;
+	const admin = await registry.admin();
+	if (admin.toLowerCase() !== self.toLowerCase()) {
+		// Otherwise the only feedback is an `Unauthorized` revert after gas.
+		throw new Error(
+			`Not the protocol admin: this registry's admin is ${admin}, you are ${self}.`,
+		);
+	}
+	return registry;
+}
+
+appAdminCmd
+	.command("suspend")
+	.description("Suspend this entire app — nobody can publish under it (admin only)")
+	.action(async () => {
+		try {
+			const registry = await requireAdmin();
+
+			const ok = await confirm({
+				message: `Suspend the whole app ${registry.getAppId()}? Every publisher, including its owner, stops being registered.`,
+			});
+			handleCancel(ok);
+			if (!ok) process.exit(0);
+
+			const s = spinner();
+			s.start("Suspending app...");
+			const txHash = await registry.suspendApp();
+			s.stop();
+			console.log(`Suspended: ${registry.getAppId()}`);
+			console.log(`Tx:        ${txHash}`);
+			console.log(
+				`\nMemberships are kept — \`fangorn app admin reinstate\` restores them as they were.`,
+			);
+			process.exit(0);
+		} catch (err) {
+			console.error("Failed:", (err as Error).message);
+			process.exit(1);
+		}
+	});
+
+appAdminCmd
+	.command("reinstate")
+	.description("Lift the suspension on this entire app (admin only)")
+	.action(async () => {
+		try {
+			const registry = await requireAdmin();
+			const s = spinner();
+			s.start("Reinstating app...");
+			const txHash = await registry.reinstateApp();
+			s.stop();
+			console.log(`Reinstated: ${registry.getAppId()}`);
+			console.log(`Tx:         ${txHash}`);
+			process.exit(0);
+		} catch (err) {
+			console.error("Failed:", (err as Error).message);
+			process.exit(1);
+		}
+	});
+
+appAdminCmd
+	.command("status")
+	.description("Who the protocol admin is, and whether this app is suspended")
+	.action(async () => {
+		try {
+			const registry = getFangorn().getAppRegistry();
+			const self = getAccount().address;
+			const s = spinner();
+			s.start("Reading registry...");
+			const [admin, suspended] = await Promise.all([
+				registry.admin(),
+				registry.isAppSuspended(),
+			]);
+			s.stop();
+			console.log(`App id:    ${registry.getAppId()}`);
+			console.log(
+				`Admin:     ${admin}${admin.toLowerCase() === self.toLowerCase() ? "  (you)" : ""}`,
+			);
+			console.log(`Suspended: ${suspended ? "yes — nobody can publish under this app" : "no"}`);
 			process.exit(0);
 		} catch (err) {
 			console.error("Failed:", (err as Error).message);

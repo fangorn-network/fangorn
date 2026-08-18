@@ -16,6 +16,11 @@ export const APP_REGISTRY_ABI = [
     },
     {
         "inputs": [],
+        "name": "AppSuspendedErr",
+        "type": "error"
+    },
+    {
+        "inputs": [],
         "name": "JoinFeeRequired",
         "type": "error"
     },
@@ -168,6 +173,25 @@ export const APP_REGISTRY_ABI = [
                 "internalType": "bytes32",
                 "name": "app_id",
                 "type": "bytes32"
+            }
+        ],
+        "name": "isAppSuspended",
+        "outputs": [
+            {
+                "internalType": "bool",
+                "name": "",
+                "type": "bool"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "app_id",
+                "type": "bytes32"
             },
             {
                 "internalType": "address",
@@ -290,6 +314,32 @@ export const APP_REGISTRY_ABI = [
             }
         ],
         "name": "reinstateForApp",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "app_id",
+                "type": "bytes32"
+            }
+        ],
+        "name": "reinstateApp",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "app_id",
+                "type": "bytes32"
+            }
+        ],
+        "name": "suspendApp",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"
@@ -525,6 +575,25 @@ export const APP_REGISTRY_ABI = [
             }
         ],
         "name": "PublisherReinstatedForApp",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "bytes32",
+                "name": "app_id",
+                "type": "bytes32"
+            },
+            {
+                "indexed": false,
+                "internalType": "bool",
+                "name": "suspended",
+                "type": "bool"
+            }
+        ],
+        "name": "AppSuspensionChanged",
         "type": "event"
     }
 ] as const;

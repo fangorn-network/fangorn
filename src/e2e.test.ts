@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { type Hex, keccak256, stringToBytes, hexToBytes, bytesToHex } from "viem";
 import { TestBed } from "./test/testbed.js";
-import { needsReacceptance, packResourceUri, resourceIdOf } from "./contracts/index.js";
+import { needsReacceptance, packResourceUri, PublisherStatus, resourceIdOf } from "./contracts/index.js";
 import { sealSelf, unsealSelf, GADGET_SELF_HKDF_V1 } from "./crypto/encryption.js";
 
 const PRIVATE_KEY = process.env.ETH_PRIVATE_KEY as Hex;
@@ -408,6 +408,51 @@ describe("Fangorn registries E2E", () => {
         await expect(apps.registerForApp()).rejects.toThrow(/no terms/i);
         f.setAppId(before);
     }, 60_000);
+
+    // The admin takedown, one level above an app owner ejecting a publisher:
+    // suspending the app unregisters everyone under it, its owner included.
+    it("the protocol admin can take a whole app down", async () => {
+        await testbed.registerApp(0);
+        await testbed.register(0);
+
+        const f = testbed.getFangorn(0);
+        const apps = f.getAppRegistry();
+        const self = f.getAddress();
+
+        const admin = await apps.admin();
+        if (admin.toLowerCase() !== self.toLowerCase()) {
+            console.log(`test wallet is not the AppRegistry admin (${admin}); skipping`);
+            return;
+        }
+
+        expect(await apps.isAppSuspended()).toBe(false);
+        expect(await apps.isRegisteredForApp(self)).toBe(true);
+
+        // Always lift it: the app is shared by every test in this file, so a
+        // failure that left it suspended would take the rest of the suite with it.
+        try {
+            await apps.suspendApp();
+            expect(await apps.isAppSuspended()).toBe(true);
+            expect(await apps.isRegisteredForApp(self)).toBe(false);
+
+            // The membership underneath is untouched — this is a takedown, not an
+            // eviction, which is what makes reinstating free for the publishers.
+            const info = await apps.joinInfo(self);
+            expect(info.appSuspended).toBe(true);
+            expect(info.registered).toBe(false);
+            expect(info.status).toBe(PublisherStatus.ACTIVE);
+            expect(info.acceptedTerms).toBe(info.termsHash);
+
+            // And the DataRegistry reads the same answer: nothing commits.
+            const namespace = `taken-down-${Date.now()}`;
+            await expect(testbed.initRepo(0, namespace)).rejects.toThrow();
+        } finally {
+            await apps.reinstateApp();
+        }
+
+        expect(await apps.isAppSuspended()).toBe(false);
+        expect(await apps.isRegisteredForApp(self)).toBe(true);
+    }, 180_000);
 
     // The publisher-side storage paywall. The fee is pulled in USDC, so a
     // non-zero fee needs an ERC-20 approve first; at fee 0 this is a plain write.

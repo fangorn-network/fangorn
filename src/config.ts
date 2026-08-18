@@ -65,21 +65,24 @@ export interface AppConfig {
 // runtime via `fangorn.setAppId(...)` (defaults to `DEFAULT_APP`).
 export const FangornConfig = {
 	dataRegistryContractAddress:
-		"0x3b0cf19bef492500401e4d74e6fa29a56d0cc67b",
+		"0x97d63259bd91e386322c12fa7e923e5e1c0ddf91",
 	appRegistryContractAddress:
-		"0xcc92f3d827df33be7323eef28e67a509034f5a59",
+		"0xeb1309d4607ffbe2051d296de72d3ca4d2795731",
 	subscriptionRegistryContractAddress:
-		"0xe82192be4c20d3dc93fbc63e3ecd7e13c3889726",
+		"0x81681e4f89a24cb46112480f63404fdc35ee4cec",
 	settlementRegistryContractAddress:
-		"0x47a2a0d7e7fc8a044f6d6f1d878c4178952ea779",
+		"0x480d54411d77820701fd80f42b81fb6e20176d12",
 	chain: arbitrumSepolia,
 	rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
 	caip2: 421614,
 	ipfsGateway: 'https://ipfs.io'
 } satisfies AppConfig
 
-// DataRegistry:            0x3b0cf19bef492500401e4d74e6fa29a56d0cc67b
-// AppRegistry:          0xcc92f3d827df33be7323eef28e67a509034f5a59
+// =========================================
+//  🎉 Deployment complete
+// =========================================
+// DataRegistry:            0x97d63259bd91e386322c12fa7e923e5e1c0ddf91
+// AppRegistry:          0xeb1309d4607ffbe2051d296de72d3ca4d2795731
 // Default app "fangorn": 0xe9cb5c7e3e8fb962393e314a9387731152c9b2e3cfb1fcbfe79c0c3038b2ed37
-// SubscriptionRegistry:    0xe82192be4c20d3dc93fbc63e3ecd7e13c3889726
-// SettlementRegistry:      0x47a2a0d7e7fc8a044f6d6f1d878c4178952ea779
+// SubscriptionRegistry:    0x81681e4f89a24cb46112480f63404fdc35ee4cec
+// SettlementRegistry:      0x480d54411d77820701fd80f42b81fb6e20176d12

@@ -1,16 +1,28 @@
 # Fangorn SDK
 
-Intent-bound data for the agentic web.
+The Fangorn SDK is git for graphs, enabling version control and distribution of *metagraphs* organized into applications and namespaces. 
 
-Fangorn lets you publish content-addressed graph data, organized into namespaces, so that agents can discover and verify it across any number of publishers. Content is stored in your own storage backend (IPFS via Pinata today); the on-chain **DataRegistry** holds only a single cryptographic pointer per publisher. The protocol coordinates commitment and discovery without ever touching your content directly.
+It lets you treat IPFS as a hierarchical data store for your app-level storage with enforced terms, conditions, and validation logic for publishers.  Data is published under a *namespace* in a *registered application*, **`app : publisher : namespace`**. Each namespace has its own on-chain state root (the digest of a commit block wrapping a native IPLD DAG) owned by the *publisher* who passed the app's validation logic. Updating a namespace root is a compare-and-swap operation (i.e. a git ref update).
 
-Each publisher owns exactly **one on-chain state root** — the digest of a commit block wrapping a native IPLD DAG. Everything you publish lives as **namespaces** inside that one root map. Advancing the root is a compare-and-swap: it _is_ a git ref update.
+Each namespace's state is represented by a **metagraph**, $G = (V, E, L)$ where $V$=**vertices** (a JSON payload tagged by a free-form schema id) and $E$=**edges** (a labeled relation between two vertices, as native IPLD links), $L$=**labels** (the allowed labels in any edge).
 
-Data is a **metagraph** — **vertices** (a JSON payload tagged by a free-form schema id) and **edges** (a labeled relation between two vertices, as native IPLD links) — committed under a namespace.
+**Version Control**
 
-Datasets are versioned like git, down to the storage model: each update is a **commit** that points at its parent and at a single **CAR file** (a packfile) holding only the blocks that commit introduced. The registry stores only the pointer to the latest commit; full history lives in IPFS — reconstructible from the on-chain tip alone, no indexer required. `commit` builds the graph in memory and persists it as **exactly two uploads** (one CAR + one small commit block), regardless of graph size; `push` moves the on-chain pointer (the single permissioned step, fast-forward checked). Unchanged data re-derives identical CIDs and is never re-uploaded.
+Datasets are versioned like git. Each update is a **commit** that points at its parent (previous graph state) and at a single **CAR file** (a packfile) holding only the blocks that were introduced in the commit. The onchain data registry stores the root of the latest commit, with full history living in IPFS. Full history is reconstructible from the onchain root (head) of a namespace without an indexer required. 
 
-Fields that shouldn't be public are **sealed** under a **gadget** — a named pairing of a sealing scheme and the condition under which it opens. Two ship today: `self-hkdf-v1` (fully private, only you can re-derive the key) and `worker-usdc-v1` (settlement-gated, released by the access worker once the reader has paid). See [Encryption & gadgets](#encryption--gadgets).
+- `commit` (local) builds the graph in memory and persists it in two uploads, one CAR (the graph data) + one small commit block.
+- `push` (remote) updates the onchain root to the latest staged commit
+
+> Since the metagraph edges are native IPLD links, the DAG (directed acyclic graph) is easily 'diffable' and verifiable from the root stored onchain, though it is not easily queryable (see: [quickbeam](https://github.com/fangorn-network/quickbeam))
+
+**Storage**
+
+Metagraphs are stored in IPFS. The SDK currently expects Pinata to be used to ensure data availability, which will be relaxed in the future.
+
+#### What it is not
+
+This is not a graph database, there is no query langauge here, and there is no native indexer.
+
 
 ## Supported Networks
 
@@ -27,8 +39,6 @@ npm i @fangorn-network/sdk
 ---
 
 ## CLI Quickstart
-
-Install globally and initialize:
 
 ```sh
 npm i -g @fangorn-network/sdk
@@ -57,12 +67,42 @@ SIGNED_URL_WORKER_URL=https://pinata-url-provider.your-subdomain.workers.dev   #
 
 > The **access worker** and the **presigned-URL worker** are two different services: the first gates reads of sealed fields, the second hands out Pinata upload URLs. Don't conflate them.
 
-### Register as a publisher
-
-Register once before committing anything. This records your wallet as a data publisher in the DataRegistry (the registration fee is currently zero).
+### Check your wallet
 
 ```sh
-fangorn register
+fangorn wallet show            # address, public key, balance, network, current app
+fangorn wallet show --reveal   # also prints the PRIVATE key — it grants full control
+```
+
+The private key is never printed without `--reveal`: terminal scrollback, shell
+logs and screen shares all outlive the command.
+
+### Pick an app, then register
+
+Publishing takes standing in **two** registries, and skipping the second is the
+usual first failure: `commitStateRoot` cross-calls `isRegisteredForApp`, so a
+wallet registered globally but not joined to the app gets `NotRegisteredForApp`
+at push time — far from the cause.
+
+```sh
+fangorn set-app my-app     # persists the app; --app <name-or-id> overrides per command
+fangorn app info           # owner, terms, join fee, and where you stand in both registries
+fangorn app claim          # claim it, if nobody owns it yet (irreversible)
+fangorn register           # global standing in the DataRegistry, then join the app
+```
+
+`fangorn register` is idempotent and does both halves, reporting each. It is the
+only registration command you normally need; `fangorn app join` exists for
+joining an app you don't own, and for re-accepting terms after the owner moves
+them (free).
+
+Owning an app comes with its own commands:
+
+```sh
+fangorn app terms <hash> [uri]   # publish new terms — everyone must re-accept
+fangorn app fee <wei>            # what joining costs
+fangorn app suspend <address>    # eject a publisher from THIS app only
+fangorn app reinstate <address>
 ```
 
 ### Track a namespace (git-native repo)
@@ -116,16 +156,21 @@ import { buildAssetGraph, extractMarkdownLinks } from "@fangorn-network/sdk";
 // ids this file links to; buildAssetGraph wires the edges (rel: "links"),
 // dropping self-links and links to files that don't exist.
 const { vertices, edges } = buildAssetGraph("./docs", {
-    processors: {
-        ".md": (file) => ({
-            tag: "note",
-            payload: { title: file.nameNoExt, body: file.readText() },
-            links: extractMarkdownLinks(file.readText()), // markdown links + [[wikilinks]]
-        }),
-    },
+	processors: {
+		".md": (file) => ({
+			tag: "note",
+			payload: { title: file.nameNoExt, body: file.readText() },
+			links: extractMarkdownLinks(file.readText()), // markdown links + [[wikilinks]]
+		}),
+	},
 });
 
-await fangorn.commit({ namespace: "rusty-anchor", message: "import docs", vertices, edges });
+await fangorn.commit({
+	namespace: "rusty-anchor",
+	message: "import docs",
+	vertices,
+	edges,
+});
 ```
 
 Each vertex `id` is the filename without extension. For anything that isn't "files in a folder," build the `{ vertices, edges }` arrays yourself and pass them straight to `commit` / `uploadBatch` — the harness is a convenience, not a requirement.
@@ -156,9 +201,10 @@ fangorn clone <owner> rusty-anchor --dir ./somewhere
 ### Subscribe (light client)
 
 Watch a namespace for on-chain updates and stream the diffs — **no subgraph, no
-indexer**. A publisher owns exactly one on-chain root, so this watches that
-publisher's `StateCommitted` event (read straight from the RPC node) and, for
-each new root, diffs your namespace's link sets against the previous root.
+indexer**. Each `app:publisher:namespace` triple is its own timeline, and the
+registry indexes all three parts, so this watches exactly that timeline's
+`StateCommitted` event (read straight from the RPC node) and, for each new root,
+diffs the namespace's link sets against the previous root.
 Only pushes that actually changed the namespace are emitted. Each push's
 blocks arrive as one CAR download, resolved from IPFS on demand.
 
@@ -225,15 +271,36 @@ const fangorn = Fangorn.create({
 		},
 	},
 	config: FangornConfig, // defaults to Arbitrum Sepolia
+	appId: "my-app", // defaults to "fangorn"
 	domain: "localhost",
 });
 
-// Register once before committing.
-const registry = fangorn.getDataRegistry();
-if (!(await registry.isRegistered(fangorn.getAddress()))) {
-	await registry.register();
-}
+// Register once before committing — BOTH registries. The second is the one
+// `commitStateRoot` cross-calls, so skipping it surfaces as a revert at push
+// time rather than here.
+const self = fangorn.getAddress();
+const data = fangorn.getDataRegistry();
+const apps = fangorn.getAppRegistry();
+
+if (!(await data.isRegistered(self))) await data.register();
+if (!(await apps.isRegisteredForApp(self))) await apps.registerForApp();
 ```
+
+`joinInfo` is what a join screen needs, and it separates two failures a bare
+"not registered" conflates — never joined, versus joined before the owner moved
+the terms:
+
+```ts
+import { needsReacceptance } from "@fangorn-network/sdk";
+
+const info = await apps.joinInfo(self);
+if (needsReacceptance(info)) await apps.registerForApp(); // free re-accept
+```
+
+The other two clients hang off the same object: `fangorn.getSubscriptionRegistry()`
+(publisher storage paywall) and `fangorn.getSettlementRegistry()` (consumer
+pay-then-read). Neither is app-scoped — a subscription is per wallet and a
+resource is per owner — so `setAppId` deliberately leaves both alone.
 
 ### Namespaces & the git-native flow
 
@@ -348,7 +415,9 @@ rather than a per-publisher fan-out. `subscribeApp` yields the same
 
 ```ts
 // Everything published under this app, by anyone
-for await (const change of fangorn.subscribeApp({ signal: controller.signal })) {
+for await (const change of fangorn.subscribeApp({
+	signal: controller.signal,
+})) {
 	console.log(change.owner, change.namespace, change.addedVertices.length);
 }
 
@@ -366,19 +435,29 @@ fangorn.setAppId("my-other-app"); // by name, or by 32-byte app id
 fangorn.getAppId(); // 0x… — what the registry keys on
 ```
 
+`setAppId` re-scopes the DataRegistry and AppRegistry clients **together**. They
+must never disagree: a DataRegistry pointed at one app while the AppRegistry
+answers for another checks membership against the wrong market, and it surfaces
+as a revert at commit time, far from the mistake.
+
 Apps live in the AppRegistry, and membership of one is a precondition for
-publishing under it: `DataRegistry.commitStateRoot` cross-calls
-`isRegisteredForApp`, so a publisher who skipped the join gets
-`NotRegisteredForApp` at push time.
+publishing under it:
 
 ```ts
-await fangorn.getAppRegistry().registerApp(termsHash, termsUri, joinFee); // claim it
-await fangorn.getAppRegistry().registerForApp();                          // join it
+const apps = fangorn.getAppRegistry();
+
+await apps.registerApp(termsHash, termsUri, joinFee); // claim it (first come, first served)
+await apps.registerForApp(); // join it, accepting the current terms
 ```
 
-From the CLI: `fangorn set-app my-app` (persists it), then `fangorn app claim`
-if nobody owns it yet, and `fangorn register` — which takes global standing in
-the DataRegistry *and* joins the app. `fangorn app info` shows where you stand.
+Joining reads the terms hash immediately before sending and passes it as an
+argument, so the contract reverts `TermsMismatch` if the owner moved the terms
+in between. A race is a revert, never silent agreement to a document the
+publisher never saw. The join fee is read from the chain for the same reason a
+caller never supplies it: a caller can supply the wrong one.
+
+See the [CLI quickstart](#pick-an-app-then-register) for the same flow from the
+command line.
 
 ### Storage
 
@@ -396,17 +475,17 @@ Not every field belongs in public IPFS. Fangorn lets you **seal** a value and co
 only an opaque reference to it, keeping the graph — its shape, its edges, its
 addressability — fully public while the payload stays closed.
 
-A **gadget** names *how* a value is sealed and *under what condition* it opens. Two
+A **gadget** names _how_ a value is sealed and _under what condition_ it opens. Two
 ship today, both exported from the package root (`@fangorn-network/sdk`):
 
-| Gadget           | Key derivation                              | Who can open it                                                                     |
-| ---------------- | ------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `self-hkdf-v1`   | HKDF from your own 32-byte secret           | Only you. No ECDH, no recipient, no gate — nobody else can re-derive the key.          |
-| `worker-usdc-v1` | X25519 ECDH to the access worker's static key | Anyone who has settled for the resource; the worker checks the Settlement Registry.  |
+| Gadget           | Key derivation                                | Who can open it                                                                     |
+| ---------------- | --------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `self-hkdf-v1`   | HKDF from your own 32-byte secret             | Only you. No ECDH, no recipient, no gate — nobody else can re-derive the key.       |
+| `worker-usdc-v1` | X25519 ECDH to the access worker's static key | Anyone who has settled for the resource; the worker checks the Settlement Registry. |
 
 Every key is bound to a 32-byte **`resourceId`**, which doubles as the Settlement
 Registry key. The same secret cannot cross-open a different resource, and changing
-*who can read* means re-sealing under a new gadget/`resourceId` and committing a
+_who can read_ means re-sealing under a new gadget/`resourceId` and committing a
 vertex that points at the new bytes.
 
 ### `self-hkdf-v1` — fully private
@@ -416,10 +495,14 @@ retrieval. Fangorn never sees plaintext or a key — it commits the ciphertext l
 other payload. No worker, no settlement, no R2 involved.
 
 ```ts
-import { sealSelf, unsealSelf, GADGET_SELF_HKDF_V1 } from "@fangorn-network/sdk";
+import {
+	sealSelf,
+	unsealSelf,
+	GADGET_SELF_HKDF_V1,
+} from "@fangorn-network/sdk";
 import { keccak256, stringToBytes, hexToBytes, bytesToHex } from "viem";
 
-const ownSecret = hexToBytes(privateKey);            // your own 32 bytes
+const ownSecret = hexToBytes(privateKey); // your own 32 bytes
 const resourceId = keccak256(stringToBytes("rusty-anchor:secret-msg"));
 
 const ciphertext = sealSelf(
@@ -429,14 +512,22 @@ const ciphertext = sealSelf(
 );
 
 // commit the opaque bytes like anything else
-await fangorn.upload("rusty-anchor", {
-	gadget: GADGET_SELF_HKDF_V1,
-	resourceId,
-	ciphertext: bytesToHex(ciphertext),
-}, "secret-msg");
+await fangorn.upload(
+	"rusty-anchor",
+	{
+		gadget: GADGET_SELF_HKDF_V1,
+		resourceId,
+		ciphertext: bytesToHex(ciphertext),
+	},
+	"secret-msg",
+);
 
 // later, after `read` / `inspectNamespace` hands the payload back:
-const plaintext = unsealSelf(hexToBytes(stored.ciphertext), ownSecret, stored.resourceId);
+const plaintext = unsealSelf(
+	hexToBytes(stored.ciphertext),
+	ownSecret,
+	stored.resourceId,
+);
 ```
 
 ### `worker-usdc-v1` — settlement-gated
@@ -453,7 +544,7 @@ const handle = await encryptAndUpload({
 	gadget: GADGET_WORKER_USDC_V1,
 	plaintext: new TextEncoder().encode("the full dataset"),
 	resourceId,
-	workerPubkey,                       // the access worker's static X25519 key (32 bytes)
+	workerPubkey, // the access worker's static X25519 key (32 bytes)
 	storage: {
 		workerUrl: process.env.ACCESS_WORKER_URL!,
 		authToken: process.env.ACCESS_WORKER_TOKEN!,
@@ -468,13 +559,13 @@ as an ordinary opaque object in the vertex payload:
 ```jsonc
 {
 	"@type": "handle",
-	"objectKey": "…",                 // R2 object key
+	"objectKey": "…", // R2 object key
 	"workerUrl": "https://access-worker.example.workers.dev",
 	"encryption": {
 		"gadget": "worker-usdc-v1",
-		"resourceId": "0x…",           // Settlement Registry key + HKDF binding
-		"ciphertextHash": "0x…",       // sha256 of the sealed bytes
-		"workerPubkey": "0x…",         // worker-usdc-v1 only
+		"resourceId": "0x…", // Settlement Registry key + HKDF binding
+		"ciphertextHash": "0x…", // sha256 of the sealed bytes
+		"workerPubkey": "0x…", // worker-usdc-v1 only
 	},
 }
 ```
@@ -490,14 +581,14 @@ import { decryptHandle } from "@fangorn-network/sdk";
 
 const plaintext = await decryptHandle({
 	handle,
-	signer,                 // any viem LocalAccount / WalletClient — the address settlement is checked for
-	nullifier,              // per-read nullifier (replay / anonymity)
+	signer, // any viem LocalAccount / WalletClient — the address settlement is checked for
+	nullifier, // per-read nullifier (replay / anonymity)
 	// ownSecret,           // self-hkdf-v1 only
 });
 ```
 
 - **`self-hkdf-v1`** — the resource is priced 0, so any signed request passes; the bytes
-  come back *still sealed*, are checked against `ciphertextHash`, and are unsealed
+  come back _still sealed_, are checked against `ciphertextHash`, and are unsealed
   locally with `ownSecret`.
 - **`worker-usdc-v1`** — the worker streams bytes only once the signer has settled,
   having unsealed with its own key; the bytes arrive as plaintext.
@@ -508,8 +599,8 @@ reads the settlement rail directly.
 
 **Trust model.** For `worker-usdc-v1` the access worker is the "somewhat trusted" party:
 it holds the unsealing key and sees plaintext at release time. That is deliberate for
-v1 — no TEE, no threshold network. Swapping in a stronger backend later is a *new
-gadget* behind the same handle shape, so committed data doesn't change form.
+v1 — no TEE, no threshold network. Swapping in a stronger backend later is a _new
+gadget_ behind the same handle shape, so committed data doesn't change form.
 `self-hkdf-v1` trusts nobody: the worker is dumb storage and never holds a key.
 
 ---
@@ -518,11 +609,20 @@ gadget* behind the same handle shape, so committed data doesn't change form.
 
 ### Arbitrum Sepolia
 
-| Contract     | Address                                      |
-| ------------ | -------------------------------------------- |
-| DataRegistry | `0x9a3811b365a4aeea1626eaad185b273424ae5e48` |
+| Contract             | Address                                      | What it owns                                        |
+| -------------------- | -------------------------------------------- | --------------------------------------------------- |
+| DataRegistry         | `0x3b0cf19bef492500401e4d74e6fa29a56d0cc67b` | Namespace state roots; global publisher standing    |
+| AppRegistry          | `0xcc92f3d827df33be7323eef28e67a509034f5a59` | Apps: owner, terms, join fee, per-app membership    |
+| SubscriptionRegistry | `0xe82192be4c20d3dc93fbc63e3ecd7e13c3889726` | Publisher-side storage paywall (USDC)               |
+| SettlementRegistry   | `0x47a2a0d7e7fc8a044f6d6f1d878c4178952ea779` | Consumer-side pay-then-read rail (USDC + Semaphore) |
 
-This is the address in `FangornConfig`; the SDK uses it by default.
+`FangornConfig` in `src/config.ts` is the authoritative list and what the SDK
+uses by default — these contracts have been redeployed more than once, so prefer
+the config over any address copied out of a document, including this table.
+
+The dependency runs one way: `DataRegistry.commitStateRoot` cross-calls
+`AppRegistry.isRegisteredForApp`, and `SubscriptionRegistry` cross-calls
+`DataRegistry.isRegistered`. Nothing calls back the other way.
 
 ---
 
@@ -551,14 +651,18 @@ Required variables:
 | `PINATA_JWT`      | Pinata API JWT                            |
 | `PINATA_GATEWAY`  | Pinata gateway URL                        |
 
-The publisher must be registered (`fangorn register`, or `registry.register()`) on the target key.
+The publisher must be registered on the target key — `fangorn register` does
+both halves (DataRegistry standing, then joining the app). The suite's own
+`TestBed.registerApp` / `TestBed.register` do the same thing programmatically,
+claiming the app first if nobody owns it.
 
 ---
 
 ## Limitations / Future Work
 
 - Sealed fields are live (`self-hkdf-v1`, `worker-usdc-v1`), but which fields to seal is expressed per-call at stage time — there is no schema-level `sealedFields` hint yet, and no CLI command for sealing.
-- The SDK reads the settlement rail (`isSettled` / `getPrice`); the pay/settle **write** path is a separate payment rail and is not modeled here.
+- The SDK covers the **publisher** half of the settlement rail (`createResource`, `updatePrice`, `setDisabled`, plus the reads). The **buyer** half — Semaphore identity, the EIP-3009 authorization, membership proofs — lives in [`@fangorn-network/fetch`](https://github.com/fangorn-network/x402f), which relays both writes through a facilitator so the buyer needs no gas. This package deliberately carries no proving dependency.
+- The SubscriptionRegistry (publisher storage paywall) has a client but no CLI command yet; `fangorn subscribe` is the event stream, not the paywall.
 - `worker-usdc-v1` trusts the access worker with the unsealing key. A TEE- or threshold-backed replacement would ship as a new gadget, and the on-chain gadget registry (`gadget → resolver`) is still future work.
 - Vertex/edge schema validation is client-side only — no on-chain enforcement.
 - Push authorization is client-side in this release; on-chain write policies and non-fast-forward rejection are planned.

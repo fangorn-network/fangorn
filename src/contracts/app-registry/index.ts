@@ -33,6 +33,8 @@ export interface AppJoinInfo {
     // what is this? is it needed? I don't like it
     /** The terms hash this publisher actually accepted, or zero. */
     acceptedTerms: Hex;
+    /** The protocol admin has taken the whole app down — nobody is registered. */
+    appSuspended: boolean;
 }
 
 /** True when the publisher joined but the app's terms have since changed. */
@@ -142,6 +144,32 @@ export class AppRegistryClient {
         return this.executeWrite("reinstateForApp", [this.appId, publisher]);
     }
 
+    // ── Protocol admin ───────────────────────────────────────────────────────
+
+    /**
+     * Take this whole app down. Protocol-admin only, and a level above
+     * `suspendForApp`: every publisher of the app — its owner included — reads as
+     * unregistered, so nothing commits under it until it is reinstated. The
+     * memberships underneath are left intact, so reinstating restores them exactly.
+     */
+    async suspendApp(): Promise<Hash> {
+        return this.executeWrite("suspendApp", [this.appId]);
+    }
+
+    /** Lift an admin takedown, restoring every membership as it was. */
+    async reinstateApp(): Promise<Hash> {
+        return this.executeWrite("reinstateApp", [this.appId]);
+    }
+
+    /** The protocol admin of this AppRegistry — the only caller `suspendApp` accepts. */
+    async admin(): Promise<Address> {
+        return this.publicClient.readContract({
+            address: this.contractAddress,
+            abi: APP_REGISTRY_ABI,
+            functionName: "admin",
+        });
+    }
+
     // ── Publishers ───────────────────────────────────────────────────────────
 
     /**
@@ -249,6 +277,16 @@ export class AppRegistryClient {
         });
     }
 
+    /** Has the protocol admin taken this app down? */
+    async isAppSuspended(): Promise<boolean> {
+        return this.publicClient.readContract({
+            address: this.contractAddress,
+            abi: APP_REGISTRY_ABI,
+            functionName: "isAppSuspended",
+            args: [this.appId],
+        });
+    }
+
     /** This app's current terms hash, or the zero hash if it has published none. */
     async appTerms(): Promise<Hex> {
         return this.publicClient.readContract({
@@ -293,9 +331,12 @@ export class AppRegistryClient {
      * terms changed since you joined".
      */
     async joinInfo(publisher: Address): Promise<AppJoinInfo> {
-        const [tuple, acceptedTerms] = await Promise.all([
+        const [tuple, acceptedTerms, appSuspended] = await Promise.all([
             this.readJoinInfoTuple(publisher),
             this.acceptedTerms(publisher),
+            // Otherwise an admin takedown is indistinguishable from "you never
+            // joined", and the caller is told to join an app that cannot be joined.
+            this.isAppSuspended(),
         ]);
         const [termsHash, termsUri, fee, status, registered] = tuple;
         return {
@@ -305,6 +346,7 @@ export class AppRegistryClient {
             status: status as PublisherStatus,
             registered,
             acceptedTerms,
+            appSuspended,
         };
     }
 
