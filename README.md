@@ -366,10 +366,19 @@ fangorn.setAppId("my-other-app"); // by name, or by 32-byte app id
 fangorn.getAppId(); // 0x… — what the registry keys on
 ```
 
-It must be claimed once on-chain with
-`fangorn.getDataRegistry().registerApp()` before any publisher can commit under
-it. From the CLI: `fangorn set-app my-app` (persists it) then `fangorn
-register-app`.
+Apps live in the AppRegistry, and membership of one is a precondition for
+publishing under it: `DataRegistry.commitStateRoot` cross-calls
+`isRegisteredForApp`, so a publisher who skipped the join gets
+`NotRegisteredForApp` at push time.
+
+```ts
+await fangorn.getAppRegistry().registerApp(termsHash, termsUri, joinFee); // claim it
+await fangorn.getAppRegistry().registerForApp();                          // join it
+```
+
+From the CLI: `fangorn set-app my-app` (persists it), then `fangorn app claim`
+if nobody owns it yet, and `fangorn register` — which takes global standing in
+the DataRegistry *and* joins the app. `fangorn app info` shows where you stand.
 
 ### Storage
 

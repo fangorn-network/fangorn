@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import { intro, outro, text, spinner, confirm } from "@clack/prompts";
-import { type Address, type Hex } from "viem";
+import {
+	createPublicClient,
+	formatEther,
+	http,
+	type Address,
+	type Hex,
+} from "viem";
 import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import {
 	existsSync,
@@ -18,6 +24,11 @@ import { Fangorn } from "../fangorn.js";
 import { handleCancel } from "./index.js";
 import { AppConfig, DEFAULT_APP, FangornConfig, toAppId } from "../config.js";
 import { StorageConfig } from "../types/index.js";
+import {
+	needsReacceptance,
+	PublisherStatus,
+	type AppJoinInfo,
+} from "../contracts/index.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -163,6 +174,15 @@ function getFangorn(): Fangorn {
 	return _fangorn;
 }
 
+/**
+ * The app name this invocation runs under. `--app` wins over the stored one, the
+ * same way `getFangorn` resolves it — otherwise the printed name and the printed
+ * app id come from different places and disagree under `--app`.
+ */
+function currentAppName(): string {
+	return (program.opts().app as string | undefined) ?? loadConfig().appId;
+}
+
 // ─── Local repo (working-directory ref) ─────────────────────────────────────────
 //
 // The only local state a git-native repo needs: which namespace it tracks, whose
@@ -246,12 +266,16 @@ class LocalRepo {
 // ─── CLI root ─────────────────────────────────────────────────────────────────
 
 const program = new Command();
-// Placeholder terms for `fangorn register-app`, which has no document to hash.
+const ZERO_HASH = `0x${"0".repeat(64)}` as const;
+
+// Placeholder terms for `fangorn app claim`, which has no document to hash.
 // Deliberately NOT the zero hash: zero means "this app has published no terms" and
 // makes the app unjoinable. This is a recognisable stand-in the owner is expected to
 // replace with `setAppTerms(sha256(terms), uri)` before inviting publishers — and
 // because joining pins the exact hash accepted, anyone who joined against the
 // placeholder must re-accept once the real terms land.
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
+
 const APP_TERMS_PLACEHOLDER =
 	"0x0000000000000000000000000000000000000000000000000000000000000001" as const;
 
@@ -363,8 +387,11 @@ program
 					`\nNote: FANGORN_APP_ID=${process.env.FANGORN_APP_ID} is set and overrides this.`,
 				);
 			}
+			// Switching apps changes nothing on-chain: the new app may be
+			// unclaimed, or claimed by someone else and not yet joined. Both
+			// surface as a revert at push time, so point at `app info` now.
 			console.log(
-				`\nSaved to ${CONFIG_PATH}. Run \`fangorn register-app\` if nobody has claimed it yet.`,
+				`\nSaved to ${CONFIG_PATH}. Run \`fangorn app info\` to see whether it is claimed and whether you have joined it.`,
 			);
 			process.exit(0);
 		} catch (err) {
@@ -373,14 +400,88 @@ program
 		}
 	});
 
-program
-	.command("register-app")
-	.description("Claim the configured app (global namespace) on-chain")
+// ─── app membership ───────────────────────────────────────────────────────────
+//
+// Two registries, in this order:
+//
+//   DataRegistry.register()      global standing — "this wallet may publish at all"
+//   AppRegistry.registerForApp() per-app membership — "…and under THIS app"
+//
+// `commitStateRoot` cross-calls the second, so a wallet registered globally but
+// not joined to the app gets `NotRegisteredForApp` at push time — far from the
+// cause. `fangorn register` does both; `fangorn app info` shows where you stand.
+
+/** The status word for a publisher in one app, and whether they can publish. */
+function membershipLine(info: AppJoinInfo): string {
+	if (info.registered) return "joined";
+	if (needsReacceptance(info))
+		return "terms changed since you joined — run `fangorn app join` to re-accept (free)";
+	if (info.status === PublisherStatus.SUSPENDED)
+		return "suspended from this app by its owner";
+	return "not joined — run `fangorn app join`";
+}
+
+const appCmd = program
+	.command("app")
+	.description("Claim, join and manage apps (global namespaces)");
+
+appCmd
+	.command("info")
+	.description("Show this app's terms, fee, owner, and where you stand in it")
 	.action(async () => {
 		try {
 			const self = getAccount().address;
-			// Apps live in the AppRegistry now, with the terms and membership they
-			// govern. The DataRegistry only asks it whether a publisher joined.
+			const fangorn = getFangorn();
+			const apps = fangorn.getAppRegistry();
+			const data = fangorn.getDataRegistry();
+			const s = spinner();
+
+			s.start("Reading registries...");
+			const [owner, info, registeredGlobally] = await Promise.all([
+				apps.getAppOwner(),
+				apps.joinInfo(self),
+				data.isRegistered(self),
+			]);
+			s.stop();
+
+			console.log(`App:        ${currentAppName()}`);
+			console.log(`App id:     ${apps.getAppId()}`);
+
+			if (owner === ZERO_ADDRESS) {
+				console.log(`Owner:      (unclaimed — \`fangorn app claim\` takes it)`);
+			} else {
+				console.log(
+					`Owner:      ${owner}${owner.toLowerCase() === self.toLowerCase() ? "  (you)" : ""}`,
+				);
+				console.log(`Terms:      ${info.termsHash}`);
+				if (info.termsUri) console.log(`Terms uri:  ${info.termsUri}`);
+				console.log(`Join fee:   ${info.fee.toString()} wei`);
+			}
+
+			console.log(`\nWallet:     ${self}`);
+			console.log(
+				`DataRegistry: ${registeredGlobally ? "registered" : "not registered — run `fangorn register`"}`,
+			);
+			console.log(`This app:     ${owner === ZERO_ADDRESS ? "n/a (unclaimed)" : membershipLine(info)}`);
+			process.exit(0);
+		} catch (err) {
+			console.error("Failed:", (err as Error).message);
+			process.exit(1);
+		}
+	});
+
+appCmd
+	.command("claim")
+	.description("Claim the configured app on-chain (first come, first served)")
+	.option(
+		"--terms-hash <hash>",
+		"32-byte hash of your terms document (default: a placeholder you should replace)",
+	)
+	.option("--terms-uri <uri>", "Where the terms document lives", "")
+	.option("--fee <wei>", "What joining this app costs, in wei", "0")
+	.action(async (opts: { termsHash?: string; termsUri: string; fee: string }) => {
+		try {
+			const self = getAccount().address;
 			const registry = getFangorn().getAppRegistry();
 			const s = spinner();
 
@@ -389,30 +490,97 @@ program
 			s.stop();
 
 			// Apps are first come, first served — claiming a taken one reverts.
-			if (owner !== "0x0000000000000000000000000000000000000000") {
+			if (owner !== ZERO_ADDRESS) {
+				const mine = owner.toLowerCase() === self.toLowerCase();
 				console.log(
-					owner.toLowerCase() === self.toLowerCase()
-						? `Already registered to you: ${registry.getAppId()}`
-						: `App ${registry.getAppId()} is already owned by ${owner}. Pick another name with \`fangorn set-app\`.`,
+					mine
+						? `Already claimed by you: ${registry.getAppId()}`
+						: `App ${registry.getAppId()} is already owned by ${owner}. Pick another name with \`fangorn set-app\`, or join this one with \`fangorn app join\`.`,
 				);
-				process.exit(owner.toLowerCase() === self.toLowerCase() ? 0 : 1);
+				process.exit(mine ? 0 : 1);
 			}
 
-			s.start("Registering app...");
-			// An app with no terms cannot be joined by anyone, so claiming an id
-			// without them creates a market nobody can enter. `fangorn register-app`
-			// has no terms to offer, so it claims with a placeholder the owner is
-			// expected to replace via `setAppTerms` before inviting publishers.
+			const termsHash = (opts.termsHash ?? APP_TERMS_PLACEHOLDER) as Hex;
+			s.start("Claiming app...");
 			const txHash = await registry.registerApp(
-				APP_TERMS_PLACEHOLDER,
-				"",
-				0n,
+				termsHash,
+				opts.termsUri,
+				BigInt(opts.fee),
 			);
 			s.stop();
 
-			console.log(`App:    ${loadConfig().appId}`);
+			console.log(`App:    ${currentAppName()}`);
 			console.log(`App id: ${registry.getAppId()}`);
 			console.log(`Owner:  ${self}`);
+			console.log(`Terms:  ${termsHash}`);
+			console.log(`Tx:     ${txHash}`);
+			if (!opts.termsHash) {
+				console.log(
+					`\nThose are placeholder terms. Publish real ones with \`fangorn app terms <hash> <uri>\` —` +
+					`\nanyone who joined against the placeholder must then re-accept.`,
+				);
+			}
+			console.log(`\nClaiming makes you your own first publisher; run \`fangorn register\` for global standing.`);
+			process.exit(0);
+		} catch (err) {
+			console.error("Failed:", (err as Error).message);
+			process.exit(1);
+		}
+	});
+
+appCmd
+	.command("join")
+	.description("Join the configured app, accepting its current terms")
+	.action(async () => {
+		try {
+			const self = getAccount().address;
+			const registry = getFangorn().getAppRegistry();
+			const s = spinner();
+
+			s.start("Reading terms...");
+			const info = await registry.joinInfo(self);
+			s.stop();
+
+			if (info.registered) {
+				console.log(`Already joined ${registry.getAppId()} as ${self}`);
+				process.exit(0);
+			}
+			// A zero terms hash means the app was never claimed (or its owner never
+			// set terms) — there is nothing to accept, and the client would throw
+			// only after the user had already confirmed.
+			if (info.termsHash === ZERO_HASH) {
+				console.error(
+					`App ${registry.getAppId()} has published no terms — it cannot be joined.` +
+					`\nIf it is unclaimed, \`fangorn app claim\` takes it; otherwise its owner must set terms.`,
+				);
+				process.exit(1);
+			}
+			if (info.status === PublisherStatus.SUSPENDED) {
+				console.error(
+					`Suspended from this app by its owner — joining again will revert. Ask them to reinstate you.`,
+				);
+				process.exit(1);
+			}
+
+			// Joining pins the exact hash read here, so terms cannot move under a
+			// pending join and land as agreement to something else.
+			console.log(`Terms:     ${info.termsHash}`);
+			if (info.termsUri) console.log(`Terms uri: ${info.termsUri}`);
+			console.log(`Join fee:  ${info.fee.toString()} wei`);
+
+			const ok = await confirm({
+				message: needsReacceptance(info)
+					? "The terms changed since you joined. Accept the new ones?"
+					: "Accept these terms and join?",
+			});
+			handleCancel(ok);
+			if (!ok) process.exit(0);
+
+			s.start("Joining app...");
+			const txHash = await registry.registerForApp();
+			s.stop();
+
+			console.log(`Joined: ${registry.getAppId()}`);
 			console.log(`Tx:     ${txHash}`);
 			process.exit(0);
 		} catch (err) {
@@ -421,28 +589,208 @@ program
 		}
 	});
 
+appCmd
+	.command("terms")
+	.description("Publish new terms for your app (owner only)")
+	.argument("<hash>", "32-byte hash of the terms document")
+	.argument("[uri]", "Where the document lives", "")
+	.action(async (hash: string, uri: string) => {
+		try {
+			const registry = getFangorn().getAppRegistry();
+			// Moving the terms drops every publisher back to "must accept again".
+			const ok = await confirm({
+				message:
+					"New terms unregister every publisher until they re-accept (free). Continue?",
+			});
+			handleCancel(ok);
+			if (!ok) process.exit(0);
+
+			const s = spinner();
+			s.start("Publishing terms...");
+			const txHash = await registry.setAppTerms(hash as Hex, uri);
+			s.stop();
+			console.log(`Terms: ${hash}`);
+			console.log(`Tx:    ${txHash}`);
+			process.exit(0);
+		} catch (err) {
+			console.error("Failed:", (err as Error).message);
+			process.exit(1);
+		}
+	});
+
+appCmd
+	.command("fee")
+	.description("Set what joining your app costs, in wei (owner only)")
+	.argument("<wei>", "Join fee in wei")
+	.action(async (wei: string) => {
+		try {
+			const s = spinner();
+			s.start("Setting join fee...");
+			const txHash = await getFangorn().getAppRegistry().setAppFee(BigInt(wei));
+			s.stop();
+			console.log(`Join fee: ${wei} wei`);
+			console.log(`Tx:       ${txHash}`);
+			process.exit(0);
+		} catch (err) {
+			console.error("Failed:", (err as Error).message);
+			process.exit(1);
+		}
+	});
+
+appCmd
+	.command("suspend")
+	.description("Eject a publisher from your app (owner only)")
+	.argument("<publisher>", "Publisher address")
+	.action(async (publisher: string) => {
+		try {
+			const s = spinner();
+			s.start("Suspending publisher...");
+			const txHash = await getFangorn()
+				.getAppRegistry()
+				.suspendForApp(publisher as Address);
+			s.stop();
+			// Per-app only: their global standing and other apps are untouched.
+			console.log(`Suspended: ${publisher}`);
+			console.log(`Tx:        ${txHash}`);
+			process.exit(0);
+		} catch (err) {
+			console.error("Failed:", (err as Error).message);
+			process.exit(1);
+		}
+	});
+
+appCmd
+	.command("reinstate")
+	.description("Reinstate a suspended publisher in your app (owner only)")
+	.argument("<publisher>", "Publisher address")
+	.action(async (publisher: string) => {
+		try {
+			const s = spinner();
+			s.start("Reinstating publisher...");
+			const txHash = await getFangorn()
+				.getAppRegistry()
+				.reinstateForApp(publisher as Address);
+			s.stop();
+			console.log(`Reinstated: ${publisher}`);
+			console.log(`Tx:         ${txHash}`);
+			process.exit(0);
+		} catch (err) {
+			console.error("Failed:", (err as Error).message);
+			process.exit(1);
+		}
+	});
+
+// Kept so existing scripts and docs keep working; `app claim` is the real one.
+program
+	.command("register-app", { hidden: true })
+	.description("Deprecated alias for `fangorn app claim`")
+	.action(() => {
+		console.error("`register-app` is now `fangorn app claim`.");
+		process.exit(1);
+	});
+
 // ─── register (publisher registration) ─────────────────────────────────────────
 
 program
 	.command("register")
-	.description("Register your wallet as a data publisher on-chain")
+	.description("Register as a publisher: global standing, then join this app")
 	.action(async () => {
 		try {
 			const self = getAccount().address;
-			const registry = getFangorn().getDataRegistry();
+			const fangorn = getFangorn();
+			const data = fangorn.getDataRegistry();
+			const apps = fangorn.getAppRegistry();
 			const s = spinner();
 
-			if (await registry.isRegistered(self)) {
-				console.log(`Already registered: ${self}`);
+			// 1. Global standing in the DataRegistry.
+			s.start("Checking publisher registration...");
+			const already = await data.isRegistered(self);
+			s.stop();
+
+			if (already) {
+				console.log(`DataRegistry: already registered`);
+			} else {
+				s.start("Registering publisher...");
+				const txHash = await data.register();
+				s.stop();
+				console.log(`DataRegistry: registered (tx ${txHash})`);
+			}
+
+			// 2. Membership of the app this CLI is pointed at. Without it every
+			// push reverts NotRegisteredForApp, so doing only step 1 is a trap.
+			s.start("Checking app membership...");
+			const owner = await apps.getAppOwner();
+			if (owner === ZERO_ADDRESS) {
+				s.stop();
+				console.log(
+					`This app:     ${apps.getAppId()} is unclaimed — nothing to join yet.` +
+					`\n              Claim it with \`fangorn app claim\`, or point elsewhere with \`fangorn set-app\`.`,
+				);
 				process.exit(0);
 			}
 
-			s.start("Registering publisher...");
-			const txHash = await registry.register();
+			const info = await apps.joinInfo(self);
 			s.stop();
 
-			console.log(`Publisher: ${self}`);
-			console.log(`Tx:        ${txHash}`);
+			if (info.registered) {
+				console.log(`This app:     already joined`);
+				process.exit(0);
+			}
+			if (info.status === PublisherStatus.SUSPENDED) {
+				console.error(`This app:     suspended by the app owner — cannot join.`);
+				process.exit(1);
+			}
+
+			s.start(needsReacceptance(info) ? "Re-accepting terms..." : "Joining app...");
+			const joinTx = await apps.registerForApp();
+			s.stop();
+			console.log(
+				`This app:     joined ${apps.getAppId()} (tx ${joinTx}, fee ${info.fee.toString()} wei)`,
+			);
+			console.log(`\nPublisher: ${self}`);
+			process.exit(0);
+		} catch (err) {
+			console.error("Failed:", (err as Error).message);
+			process.exit(1);
+		}
+	});
+
+// ─── wallet ───────────────────────────────────────────────────────────────────
+
+program
+	.command("wallet")
+	.description("Show the wallet this CLI signs with")
+	.argument("[action]", "show", "show")
+	.option(
+		"--reveal",
+		"Also print the PRIVATE key — it grants full control of this wallet",
+	)
+	.action(async (_action: string, opts: { reveal?: boolean }) => {
+		try {
+			const cfg = loadConfig();
+			const account = getAccount();
+			const s = spinner();
+
+			s.start("Reading balance...");
+			const publicClient = createPublicClient({ transport: http(cfg.cfg.rpcUrl) });
+			const balance = await publicClient.getBalance({ address: account.address });
+			s.stop();
+
+			console.log(`Address:     ${account.address}`);
+			console.log(`Public key:  ${account.publicKey}`);
+			console.log(`Balance:     ${formatEther(balance)} ETH`);
+			console.log(`Network:     ${cfg.cfg.chain.name} (${cfg.cfg.caip2.toString()})`);
+			console.log(`App:         ${currentAppName()}`);
+			console.log(`Config:      ${existsSync(CONFIG_PATH) ? CONFIG_PATH : "(from environment)"}`);
+
+			// Printing a key to a terminal puts it in scrollback, shell logs and any
+			// screen share, so it takes an explicit flag — never the default output.
+			if (opts.reveal) {
+				console.log(`\nPrivate key: ${cfg.privateKey}`);
+				console.log(`Anyone with that key controls this wallet. Do not share it.`);
+			} else {
+				console.log(`\nPrivate key: hidden — pass --reveal to print it`);
+			}
 			process.exit(0);
 		} catch (err) {
 			console.error("Failed:", (err as Error).message);
