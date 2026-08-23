@@ -2,20 +2,15 @@ import { Chain, Hex, keccak256, toHex } from "viem";
 import { arbitrumSepolia, baseSepolia } from "viem/chains";
 
 /**
- * Derive an app id from a human-readable name. Apps claim one of these on-chain
- * with `registerApp`; it prefixes every namespace key the app's publishers write.
+ * Derive an app id from a human-readable name (keccak256(hex(name)).
+ * Apps are claim one of these on-chain with `AppRegistry.registerApp`
  */
 export function appId(name: string): Hex {
 	return keccak256(toHex(name));
 }
 
-/** The app every client publishes under until told otherwise. */
 export const DEFAULT_APP = "fangorn";
 
-/**
- * Accept either form callers have on hand: a human-readable app name, or an
- * already-derived app id (32-byte hex), which is what an app owner sees on-chain.
- */
 export function toAppId(nameOrId: string): Hex {
 	return /^0x[0-9a-fA-F]{64}$/.test(nameOrId)
 		? (nameOrId as Hex)
@@ -49,6 +44,12 @@ export default function getNetwork(name: string) {
 export interface AppConfig {
 	// The deployed publisher_registry contract address
 	dataRegistryContractAddress: Hex;
+	// The deployed app_registry contract address
+	appRegistryContractAddress: Hex;
+	// The deployed subscription_registry contract address (publisher storage paywall)
+	subscriptionRegistryContractAddress: Hex;
+	// The deployed settlement_registry contract address (consumer pay-then-read rail)
+	settlementRegistryContractAddress: Hex;
 	// The viem chain
 	chain: Chain;
 	// The public rpc address of the chain we are connecting to
@@ -59,14 +60,29 @@ export interface AppConfig {
 	ipfsGateway: string;
 }
 
-// Network/deployment settings only. The app id is deliberately NOT here: it is
-// per-client state, set with `Fangorn.create({ appId })` and switchable at
+// Network/deployment settings only
+// set with `Fangorn.create({ appId })` and switchable at
 // runtime via `fangorn.setAppId(...)` (defaults to `DEFAULT_APP`).
 export const FangornConfig = {
 	dataRegistryContractAddress:
-		"0x9dfa1680e682e0fc79c5904ab453c04c7252572c",
+		"0x97d63259bd91e386322c12fa7e923e5e1c0ddf91",
+	appRegistryContractAddress:
+		"0xeb1309d4607ffbe2051d296de72d3ca4d2795731",
+	subscriptionRegistryContractAddress:
+		"0x81681e4f89a24cb46112480f63404fdc35ee4cec",
+	settlementRegistryContractAddress:
+		"0x480d54411d77820701fd80f42b81fb6e20176d12",
 	chain: arbitrumSepolia,
 	rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
 	caip2: 421614,
 	ipfsGateway: 'https://ipfs.io'
 } satisfies AppConfig
+
+// =========================================
+//  🎉 Deployment complete
+// =========================================
+// DataRegistry:            0x97d63259bd91e386322c12fa7e923e5e1c0ddf91
+// AppRegistry:          0xeb1309d4607ffbe2051d296de72d3ca4d2795731
+// Default app "fangorn": 0xe9cb5c7e3e8fb962393e314a9387731152c9b2e3cfb1fcbfe79c0c3038b2ed37
+// SubscriptionRegistry:    0x81681e4f89a24cb46112480f63404fdc35ee4cec
+// SettlementRegistry:      0x480d54411d77820701fd80f42b81fb6e20176d12

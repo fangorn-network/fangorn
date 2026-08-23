@@ -4,6 +4,7 @@ import {
     GetContractEventsReturnType,
     concatHex,
     encodeFunctionData,
+    type Abi,
     keccak256,
     toHex,
     type Address,
@@ -14,13 +15,8 @@ import {
 } from "viem";
 
 import { DATA_REGISTRY_ABI } from "./abi.js";
-
-// Mirroring the contract's explicit lifecycle status codes
-export enum PublisherStatus {
-    UNREGISTERED = 0,
-    ACTIVE = 1,
-    SUSPENDED = 2,
-}
+import { requireWallet, sendWrite } from "../write.js";
+import { PublisherStatus } from "../types.js";
 
 /**
  * The on-chain id of a namespace within an app: the SDK's human-readable
@@ -121,6 +117,15 @@ function decodeStateCommitted(log: StateCommittedEventLog): StateCommittedLog {
     };
 }
 
+/**
+ * Publisher registration, the state-root timeline, and nothing about apps.
+ *
+ * `registerApp` and `getAppOwner` used to live here. They are on
+ * {@link AppRegistryClient} now, together with the per-app terms and membership
+ * they belong with — and `commitStateRoot` cross-calls that contract, so a
+ * publisher must join an app before they can write under it. A commit for an app
+ * this wallet never joined reverts `NotRegisteredForApp`.
+ */
 export class DataRegistryClient {
     constructor(
         private contractAddress: Address,
@@ -139,54 +144,32 @@ export class DataRegistryClient {
         this.appId = appId;
     }
 
-    private getWriteConfig() {
-        if (!this.walletClient.chain) throw new Error("Chain required");
-        if (!this.walletClient.account) throw new Error("Account required");
-
-        return {
-            chain: this.walletClient.chain,
-            account: this.walletClient.account,
-        };
+    /** The deployed DataRegistry this client talks to. */
+    getAddress(): Address {
+        return this.contractAddress;
     }
+
 
     /**
      * Internal helper to execute state-mutating transactions
      * matching the exact gas buffer and aggressive fee styling of the protocol.
      */
-    private async executeWrite<
+    private executeWrite<
         TFunctionName extends ContractFunctionName<typeof DATA_REGISTRY_ABI, "payable" | "nonpayable">
     >(
         functionName: TFunctionName,
         args: ContractFunctionArgs<typeof DATA_REGISTRY_ABI, "payable" | "nonpayable", TFunctionName>,
         value?: bigint
     ): Promise<Hash> {
-        const { chain, account } = this.getWriteConfig();
-
-        const fees = await this.publicClient.estimateFeesPerGas();
-
-        const gas: bigint = await this.publicClient.estimateContractGas({
-            address: this.contractAddress,
-            abi: DATA_REGISTRY_ABI,
+        return sendWrite(
+            this.publicClient,
+            requireWallet(this.walletClient, functionName),
+            this.contractAddress,
+            DATA_REGISTRY_ABI as unknown as Abi,
             functionName,
-            args, // TypeScript now guarantees this matches the function's strict tuple definition
-            account,
+            args as readonly unknown[],
             value,
-        } as unknown as Parameters<typeof this.publicClient.estimateContractGas>[0]); // Safe escape hatch avoiding 'any'
-
-        const hash = await this.walletClient.writeContract({
-            address: this.contractAddress,
-            abi: DATA_REGISTRY_ABI,
-            functionName,
-            args,
-            chain,
-            account,
-            gas: (gas * 130n) / 100n,
-            maxFeePerGas: fees.maxFeePerGas * 3n, // Redundant nullish coalescing removed
-            maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
-            value,
-        } as unknown as Parameters<typeof this.walletClient.writeContract>[0]);
-        await this.publicClient.waitForTransactionReceipt({ hash });
-        return hash;
+        );
     }
 
     /** The composite key for one of this app's namespaces. */
@@ -195,14 +178,6 @@ export class DataRegistryClient {
     }
 
     // ── Writes ───────────────────────────────────────────────────────────────
-
-    /**
-     * Claim this client's `appId` on-chain. First come, first served — an app
-     * must own its id before any publisher can commit under it.
-     */
-    async registerApp(): Promise<Hash> {
-        return this.executeWrite("registerApp", [this.appId]);
-    }
 
     /**
      * Register as a new data publisher or reactivate a suspended account.
@@ -306,13 +281,12 @@ export class DataRegistryClient {
         });
     }
 
-    /** Owner of this client's app id, or the zero address if unclaimed. */
-    async getAppOwner(): Promise<Address> {
+    /** The AppRegistry this contract defers to for apps and per-app membership. */
+    async appRegistry(): Promise<Address> {
         return this.publicClient.readContract({
             address: this.contractAddress,
             abi: DATA_REGISTRY_ABI,
-            functionName: "getAppOwner",
-            args: [this.appId],
+            functionName: "appRegistry",
         });
     }
 

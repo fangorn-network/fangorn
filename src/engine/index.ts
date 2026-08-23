@@ -64,18 +64,25 @@ export interface NamespaceContents {
 	edges: Edge[];
 }
 
-/** Net change to one namespace between two on-chain roots (see `namespaceDiff`). */
+/** Namespace diff between a namespace's state graph */
 export interface NamespaceDiff {
-	/** Vertices new vs. the old root, decoded to their payloads. */
+	// vertices that were added to the graph
 	addedVertices: NamespaceContents["vertices"];
-	/** Edges new vs. the old root. */
+	// edges that were added to the graph
 	addedEdges: Edge[];
-	/** CIDs of vertices present at the old root but gone at the new one. */
+	// CIDs of vertices that were removed from the grap
 	removedVertexCids: string[];
-	/** Edges present at the old root but gone at the new one. */
+	// edges that were removed from the graph
 	removedEdges: Edge[];
 }
 
+/**
+ * The Metagraph registry is a class for building and validating knowledge graphs 
+ * 
+ * The vertices each represent a unique piece of data, while the edges
+ * represent the relationships that connect them into a graph. 
+ * 
+ */
 export class MetagraphRegistry {
 	private vertexSchemas = new Map<string, VertexSchema>();
 	private edgeSchemas = new Set<string>();
@@ -127,6 +134,7 @@ export class MetagraphRegistry {
 	}
 }
 
+// TODO: this should be moved to a constants file.
 const ZERO_BYTES32 =
 	"0x0000000000000000000000000000000000000000000000000000000000000000";
 
@@ -135,18 +143,14 @@ const ZERO_BYTES32 =
  * map block, so this is just a sanity bound keeping that block small and
  * rejecting garbage input early.
  */
+export const MAX_NAMESPACE_LENGTH = 256;
+
 /**
- * The 32-byte root a commit settles to on-chain.
- *
- * The contract stores the commit CID's bare multihash digest — NOT a hash of the
- * CID. Re-hashing here would produce a root that resolves to nothing, so this is
- * the one encoding every caller must share rather than re-derive.
+ * The root of the graph, committed to IPFS, as hex
  */
 export function rootHexFromCid(commitCid: CID): Hex {
 	return `0x${Buffer.from(commitCid.multihash.digest).toString("hex")}`;
 }
-
-export const MAX_NAMESPACE_LENGTH = 256;
 
 /** Namespaces must be non-empty strings whose length does not exceed MAX_NAMESPACE_LENGTH */
 export function assertValidNamespace(namespace: NamespaceID): void {
@@ -401,6 +405,9 @@ export class FangornEngine {
 	}
 
 	/**
+	 * TODO: revisit the storage model
+	 * 		Q: what if CAR is not supported?
+	 * 
 	 * Build a new commit on top of `base` — entirely in memory, then persisted
 	 * as exactly TWO uploads: one CAR file holding every block this commit
 	 * introduced (git's packfile), and the small commit block itself (stored
@@ -777,7 +784,7 @@ export class FangornEngine {
 		};
 	}
 
-	/** Has this publisher committed to this namespace on-chain yet? */
+	/** check if the namespace already exists (head resolves) */
 	async namespaceExists(
 		namespace: NamespaceID,
 		publisher: Address,
