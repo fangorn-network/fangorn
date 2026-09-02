@@ -37,16 +37,22 @@ export interface SignedUrlSigner {
 /**
  * Storage backend for users who don't bring their own Pinata JWT.
  *
- * Uploads go through the pinata-url-provider Worker: prove wallet ownership by
+ * Uploads go through the pinata-url-provider Worker. For users using their own subscription, prove wallet ownership by
  * signing the worker's challenge, and it hands back a short-lived, single-use
- * Pinata presigned upload URL that we POST the file to — the JWT never leaves
- * the worker. Reads need no auth: every Fangorn block is public content, so we
- * fetch it straight from a public IPFS gateway by CID (privacy is cryptographic,
+ * Pinata presigned upload URL that users POST the file to. 
+ * Reads need no auth: every Fangorn block is public content, so it's
+ * fetched straight from a public IPFS gateway by CID (privacy is cryptographic,
  * not access-controlled). Each upload runs a fresh handshake because the
  * presigned URL is one-time and expires in minutes.
  *
  * JWT-only operations (server-side metadata queries / deletes) are unavailable
- * here — switch to a PinataBackend (your own JWT) if you need them.
+ * here. Switch to a PinataBackend they're needed.
+ *
+ * Uploads are app-scoped only when the caller named an app (`create({ appId })` or
+ * `setAppId`). Then each request carries that id, and the worker bills the bytes to
+ * that app owner's storage subscription and files the pins under a per-app group. With no app named, no id is
+ * sent and the caller's own subscription pays. The id is read per request so a
+ * later `setAppId` takes effect immediately.
  */
 export class SignedUrlBackend implements MetadataStorage {
 	private readonly workerUrl: string;
@@ -55,6 +61,8 @@ export class SignedUrlBackend implements MetadataStorage {
 		workerUrl: string | undefined,
 		private readonly signer: SignedUrlSigner,
 		private readonly gateway: string,
+		/** The client's current app id, read per upload (see setAppId). */
+		private readonly appId?: () => Hex | undefined,
 	) {
 		// Blank/whitespace (e.g. an unset CLI field) falls back to the default —
 		// so `??` alone won't do, it wouldn't catch "".
@@ -67,11 +75,14 @@ export class SignedUrlBackend implements MetadataStorage {
 		uploadId: string,
 	): Promise<{ uploadUrl: string; network: string }> {
 		const address = this.signer.address;
+		// Which app's subscription pays for this upload. Sent on both requests so the
+		// worker can reject a bad id before the SDK signs anything.
+		const appId = this.appId?.();
 
 		// 1) Ask for the challenge to sign, declaring the upload size up front so
 		// the worker mints a presigned URL scoped to exactly this many bytes. The
 		// uploadId lets the worker charge one logical upload once across retries.
-		const challenge = await this.workerJson({ address, size, uploadId });
+		const challenge = await this.workerJson({ address, size, uploadId, appId });
 		if (!challenge.challenge) {
 			throw new Error(
 				`Presigned-URL worker did not issue a challenge: ${workerError(challenge)}`,
@@ -86,6 +97,7 @@ export class SignedUrlBackend implements MetadataStorage {
 			signature,
 			size,
 			uploadId,
+			appId,
 		});
 		if (!grant.ok || !grant.uploadUrl) {
 			throw new Error(

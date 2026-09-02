@@ -16,6 +16,12 @@ export interface FangornContext {
     appRegistry: AppRegistryClient;
     subscriptionRegistry: SubscriptionRegistryClient;
     settlementRegistry: SettlementRegistryClient;
+    // The app the caller explicitly chose using`create({ appId })` or `setAppId()`.
+    // Undefined when the app id is only the DEFAULT_APP fallback, which is why this
+    // is not just `dataRegistry.getAppId()`. The signed-url uploads bill an app owner's
+    // storage subscription, and defaulting to `fangorn` would spend the default
+    // app owner's quota on behalf of a caller who didn't choose an app.
+    appScope: Hex | undefined;
 }
 
 export type StorageConfig =
@@ -32,8 +38,10 @@ export interface FangornCreateOptions {
     // workerUrl?: string;
     config?: AppConfig;
     // The app (global namespace) every commit this client makes or watches is
-    // scoped under: a human-readable name or a 32-byte app id. Defaults to
-    // `DEFAULT_APP`; switch it later with `fangorn.setAppId()`.
+    // scoped under a human-readable name or a 32-byte app id. Defaults to
+    // `DEFAULT_APP`. This can be switched later with `fangorn.setAppId()`. Naming one also
+    // bills signed-url uploads to that app owner's storage subscription. The default
+    // does not (see FangornContext.appScope).
     appId?: string;
     domain?: string;
     privateKey?: Hex;

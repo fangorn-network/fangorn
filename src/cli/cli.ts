@@ -52,7 +52,11 @@ interface StoredConfig {
 interface Config {
 	privateKey: Hex;
 	cfg: AppConfig;
-	appId: string;
+	// The app the user actually chose (env, config file, or `--app`), if any.
+	// Left undefined since naming an app bills uploads to that
+	// app owner's storage subscription. We do not want `fangorn` to be filled in on the user's
+	// behalf. `currentAppName()` applies the default for display and namespace keys.
+	appId?: string;
 	pinataJwt: string;
 	pinataGateway: string;
 	accessWorkerUrl: string;
@@ -92,14 +96,17 @@ function loadConfig(): Config {
 	const pinataGateway = process.env.PINATA_GATEWAY;
 	const accessWorkerUrl = process.env.ACCESS_WORKER_URL;
 	const signedUrlWorkerUrl = process.env.SIGNED_URL_WORKER_URL;
-	const envAppId = process.env.FANGORN_APP_ID;
+	// Blank counts as unset, so an exported-but-empty FANGORN_APP_ID (common in
+	// Docker/CI) falls through to the stored app instead of overriding it with an
+	// app called "". `??` would not catch it — "" is not nullish.
+	const envAppId = process.env.FANGORN_APP_ID?.trim() || undefined;
 
 	if (existsSync(CONFIG_PATH)) {
 		const stored = readStoredConfig();
 		_config = {
 			privateKey: stored.privateKey,
 			cfg: FangornConfig,
-			appId: envAppId ?? stored.appId ?? DEFAULT_APP,
+			appId: envAppId ?? (stored.appId?.trim() || undefined),
 			pinataJwt: stored.pinataJwt,
 			pinataGateway: stored.pinataGateway,
 			accessWorkerUrl: stored.accessWorkerUrl ?? "",
@@ -121,7 +128,7 @@ function loadConfig(): Config {
 		_config = {
 			privateKey: privateKey as Hex,
 			cfg: FangornConfig,
-			appId: envAppId ?? DEFAULT_APP,
+			appId: envAppId,
 			pinataJwt: pinataJwt ?? "",
 			pinataGateway: pinataGateway ?? "",
 			accessWorkerUrl: accessWorkerUrl ?? "",
@@ -168,16 +175,21 @@ function getFangorn(): Fangorn {
 		domain: "localhost",
 		config: cfg.cfg,
 		// `--app` (global option) wins over the stored app for this invocation.
-		appId: (program.opts().app as string | undefined) ?? cfg.appId,
+		appId: appFlag() ?? cfg.appId,
 	});
 	return _fangorn;
+}
+
+/** The `--app` override for this invocation; blank counts as unset. */
+function appFlag(): string | undefined {
+	return (program.opts().app as string | undefined)?.trim() || undefined;
 }
 
 /**
  * The currently configured app name
  */
 function currentAppName(): string {
-	return (program.opts().app as string | undefined) ?? loadConfig().appId;
+	return appFlag() ?? loadConfig().appId ?? DEFAULT_APP;
 }
 
 // ─── Local repo (working-directory ref) ─────────────────────────────────────────
@@ -357,7 +369,7 @@ program
 	.action((app: string | undefined) => {
 		try {
 			if (!app) {
-				const current = loadConfig().appId;
+				const current = currentAppName();
 				console.log(`App:    ${current}`);
 				console.log(`App id: ${toAppId(current)}`);
 				process.exit(0);

@@ -94,6 +94,11 @@ function resolveStorage(
 	storage: StorageConfig | undefined,
 	walletClient: WalletClient,
 	config: AppConfig,
+	// setAppId` must reach uploads already configured, and
+	// billing the previous app owner's subscription would result in the wrong publisher's
+	// quota running out. Undefined means no app was chosen, so the caller's own
+	// subscription pays (see FangornContext.appScope).
+	getAppId: () => Hex | undefined,
 ): MetadataStorage | undefined {
 	if (!storage) return undefined;
 	if ("pinata" in storage)
@@ -103,6 +108,7 @@ function resolveStorage(
 			storage.signedUrl.workerUrl,
 			walletSigner(walletClient),
 			storage.signedUrl.gateway ?? config.ipfsGateway,
+			getAppId,
 		);
 	throw new Error(
 		`Invalid storage config: must be { pinata: … } or { signedUrl: … }, got ${JSON.stringify(storage)}`,
@@ -172,18 +178,16 @@ export class Fangorn {
 				transport: http(resolvedConfig.rpcUrl),
 			});
 
-		const metadataStorage = resolveStorage(
-			options.storage,
-			walletClient,
-			resolvedConfig,
-		);
 		const domain = options.domain ?? new URL(resolvedConfig.rpcUrl).hostname;
 
 		const publicClient = createPublicClient({
 			transport: http(resolvedConfig.rpcUrl),
 		}) as PublicClient;
 
-		const appId = toAppId(options.appId ?? DEFAULT_APP);
+		// Blank is "no app chosen", not an app called "". An empty FANGORN_APP_ID
+		// or `--app ""` must not silently re-scope the registries or the billing.
+		const chosenApp = options.appId?.trim() || undefined;
+		const appId = toAppId(chosenApp ?? DEFAULT_APP);
 		const dataRegistry = new DataRegistryClient(
 			resolvedConfig.dataRegistryContractAddress,
 			appId,
@@ -210,16 +214,29 @@ export class Fangorn {
 			walletClient,
 		);
 
-		return new Fangorn({
+		const ctx: FangornContext = {
 			walletClient,
-			metadataStorage,
+			metadataStorage: undefined,
 			domain,
 			dataRegistry: dataRegistry,
 			appRegistry,
 			subscriptionRegistry,
 			settlementRegistry,
 			config: resolvedConfig,
-		});
+			// Only what the caller actually asked for. The `appId` above falls back to
+			// DEFAULT_APP for the registries (every namespace key needs an app), but
+			// uploads must not bill that app's subscription by default.
+			appScope: chosenApp ? appId : undefined,
+		};
+		// Last, so it can read the app scope off the ctx that setAppId updates.
+		ctx.metadataStorage = resolveStorage(
+			options.storage,
+			walletClient,
+			resolvedConfig,
+			() => ctx.appScope,
+		);
+
+		return new Fangorn(ctx);
 	}
 
 	/**
@@ -928,6 +945,8 @@ export class Fangorn {
 		const appId = toAppId(nameOrId);
 		this.ctx.dataRegistry.setAppId(appId);
 		this.ctx.appRegistry.setAppId(appId);
+		// Naming an app is what opts uploads into its storage subscription.
+		this.ctx.appScope = appId;
 		this.nsCache.clear();
 		this._feed = null;
 	}
@@ -951,6 +970,7 @@ export class Fangorn {
 			storage,
 			this.ctx.walletClient,
 			this.ctx.config,
+			() => this.ctx.appScope,
 		);
 		this._engine = null;
 	}

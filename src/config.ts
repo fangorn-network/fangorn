@@ -12,9 +12,13 @@ export function appId(name: string): Hex {
 export const DEFAULT_APP = "fangorn";
 
 export function toAppId(nameOrId: string): Hex {
-	return /^0x[0-9a-fA-F]{64}$/.test(nameOrId)
-		? (nameOrId as Hex)
-		: appId(nameOrId);
+	// A blank name hashes to keccak("") — a valid-looking id for an app nobody
+	// owns. Callers normalise blank to "unset" at their input boundary; anything
+	// that gets here blank is a bug, so say so instead of publishing into a
+	// phantom app (and billing the wrong subscription).
+	const name = nameOrId.trim();
+	if (!name) throw new Error("App name or id must not be blank.");
+	return /^0x[0-9a-fA-F]{64}$/.test(name) ? (name as Hex) : appId(name);
 }
 
 /**
