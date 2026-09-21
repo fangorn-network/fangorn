@@ -19,19 +19,15 @@ import { requireWallet, sendWrite } from "../write.js";
 import { PublisherStatus } from "../types.js";
 
 /**
- * The on-chain id of a namespace within an app: the SDK's human-readable
- * namespace name, hashed. Names never touch storage — the contract only ever
- * sees these 32 bytes.
+ * The onchain id of a namespace within an app is the sha256 hash of its hex representation
+ * i.e. ns = 'a' => ns_id = sha256(hex('a'))
  */
 export function subspaceId(namespace: string): Hex {
     return keccak256(toHex(namespace));
 }
 
 /**
- * The composite storage key the contract derives for `app:publisher:subspace`.
- * Mirrors `namespace_key()` in contracts/data_registry — keccak256 over the
- * packed 84 bytes. Computing it client-side is what lets a subscriber filter
- * one exact subspace with a single indexed topic.
+ * The composite storage key for a full path to a subspace: `app:publisher:subspace`.
  */
 export function namespaceKey(
     appId: Hex,
