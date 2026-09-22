@@ -17,7 +17,8 @@ export async function getLogsInWindows<T>(
     toBlock: bigint | undefined,
     fetch: (fromBlock: bigint, toBlock: bigint) => Promise<T[]>,
 ): Promise<T[]> {
-    const window = BigInt(process.env.FANGORN_LOG_WINDOW ?? 1000);
+    // `process` is absent in a browser, where only the default applies.
+    const window = BigInt((typeof process !== "undefined" ? process.env.FANGORN_LOG_WINDOW : undefined) ?? 1000);
     // Uncached: viem caches the block number for ~4s, and a caller that has just
     // awaited a receipt would otherwise scan to a head from before its own tx.
     const end = toBlock ?? (await publicClient.getBlockNumber({ cacheTime: 0 }));
