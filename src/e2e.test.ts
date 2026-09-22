@@ -338,7 +338,7 @@ describe("Fangorn registries E2E", () => {
     // until a commit reverts NotRegisteredForApp, or a subscription reports a
     // publisher unregistered who plainly is. Asserting the pointers here is the
     // cheapest place to catch a half-finished deploy.
-    it("the four registries point at each other", async () => {
+    it("registries are properly wired", async () => {
         const f = testbed.getFangorn(0);
         const data = f.getDataRegistry();
         const apps = f.getAppRegistry();
@@ -368,7 +368,7 @@ describe("Fangorn registries E2E", () => {
 
     // Publishing under an app is gated on membership of that app: the
     // DataRegistry cross-calls isRegisteredForApp inside commitStateRoot.
-    it("app membership is what lets a publisher commit", async () => {
+    it("publishers can commit iff registered to the app", async () => {
         await testbed.registerApp(0);
         await testbed.register(0);
 
@@ -393,7 +393,7 @@ describe("Fangorn registries E2E", () => {
 
     // A wallet that never joined the app is not a member, and the app it did not
     // join reports so without throwing — an unclaimed app id is a legitimate read.
-    it("a stranger is not a member, and an unclaimed app has no owner", async () => {
+    it("cannot register for unclaimed app", async () => {
         const f = testbed.getFangorn(0);
         const apps = f.getAppRegistry();
 
@@ -411,7 +411,7 @@ describe("Fangorn registries E2E", () => {
 
     // The admin takedown, one level above an app owner ejecting a publisher:
     // suspending the app unregisters everyone under it, its owner included.
-    it("the protocol admin can take a whole app down", async () => {
+    it("admin app suspension works", async () => {
         await testbed.registerApp(0);
         await testbed.register(0);
 

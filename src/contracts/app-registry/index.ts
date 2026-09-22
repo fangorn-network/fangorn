@@ -13,6 +13,7 @@ import {
 
 import { APP_REGISTRY_ABI } from "./abi.js";
 import { requireWallet, sendWrite } from "../write.js";
+import { getLogsInWindows } from "../logs.js";
 import type { PreparedTx } from "../data-registry/index.js";
 import { PublisherStatus } from "../types.js";
 
@@ -35,6 +36,14 @@ export interface AppJoinInfo {
     acceptedTerms: Hex;
     /** The protocol admin has taken the whole app down — nobody is registered. */
     appSuspended: boolean;
+}
+
+/** One `AppAgentChanged` event: an app owner pointed their app at a card. */
+export interface AppAgentLog {
+    appId: Hex;
+    agentUri: string;
+    blockNumber: bigint;
+    transactionHash: Hash;
 }
 
 /** True when the publisher joined but the app's terms have since changed. */
@@ -102,6 +111,18 @@ export class AppRegistryClient {
      */
     async setAppTerms(termsHash: Hex, termsUri: string): Promise<Hash> {
         return this.executeWrite("setAppTerms", [this.appId, termsHash, termsUri]);
+    }
+
+    /**
+     * Point this app at its ERC-8004 agent card.
+     *
+     * Safe to call whenever the card moves. It is a separate field from the terms
+     * URI for one reason: publishers are bound to `termsHash`, so anything sharing
+     * that slot unregisters every publisher in the app the moment it changes (see
+     * `needsReacceptance`). A card holds endpoints and pubkeys, which rotate.
+     */
+    async setAppAgentUri(agentUri: string): Promise<Hash> {
+        return this.executeWrite("setAppAgentUri", [this.appId, agentUri]);
     }
 
     async setAppFee(fee: bigint): Promise<Hash> {
@@ -249,6 +270,50 @@ export class AppRegistryClient {
             functionName: "appTermsUri",
             args: [this.appId],
         });
+    }
+
+    /** The agent card URI of this app, or of `appId`. Empty if none is set. */
+    async appAgentUri(appId: Hex = this.appId): Promise<string> {
+        return this.publicClient.readContract({
+            address: this.contractAddress,
+            abi: APP_REGISTRY_ABI,
+            functionName: "appAgentUri",
+            args: [appId],
+        });
+    }
+
+    /**
+     * `AppAgentChanged` events, oldest first. The last one for an app is its
+     * current card; an empty `agentUri` means the owner unset it.
+     *
+     * Leave `appId` out to list every app that has ever set a card. The chain is
+     * the directory: one windowed log scan, no indexer and no registry namespace.
+     * `fromBlock` is required because scanning from genesis on an L2 costs
+     * hundreds of thousands of RPC calls. Pass the AppRegistry's deploy block, or
+     * a block you know to be before the app's registration.
+     */
+    async getAppAgentLogs(opts: {
+        appId?: Hex;
+        fromBlock: bigint;
+        toBlock?: bigint;
+    }): Promise<AppAgentLog[]> {
+        const logs = await getLogsInWindows(this.publicClient, opts.fromBlock, opts.toBlock, (from, to) =>
+            this.publicClient.getContractEvents({
+                address: this.contractAddress,
+                abi: APP_REGISTRY_ABI,
+                eventName: "AppAgentChanged",
+                args: opts.appId ? { app_id: opts.appId } : {},
+                fromBlock: from,
+                toBlock: to,
+                strict: true,
+            }),
+        );
+        return logs.map((log) => ({
+            appId: log.args.app_id,
+            agentUri: log.args.agent_uri,
+            blockNumber: log.blockNumber,
+            transactionHash: log.transactionHash,
+        }));
     }
 
     async appFee(): Promise<bigint> {

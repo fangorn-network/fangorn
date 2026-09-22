@@ -33,6 +33,7 @@ export async function encodeBlock(obj: unknown): Promise<Block> {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters -- caller-chosen decode type is the point
+// decode a dab-cbor block from bytes
 export function decodeBlock<T>(bytes: Uint8Array): T {
 	return dagCbor.decode(bytes);
 }

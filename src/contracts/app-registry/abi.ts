@@ -137,6 +137,25 @@ export const APP_REGISTRY_ABI = [
                 "type": "bytes32"
             }
         ],
+        "name": "appAgentUri",
+        "outputs": [
+            {
+                "internalType": "string",
+                "name": "",
+                "type": "string"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "app_id",
+                "type": "bytes32"
+            }
+        ],
         "name": "appTermsUri",
         "outputs": [
             {
@@ -370,6 +389,24 @@ export const APP_REGISTRY_ABI = [
                 "type": "bytes32"
             },
             {
+                "internalType": "string",
+                "name": "agent_uri",
+                "type": "string"
+            }
+        ],
+        "name": "setAppAgentUri",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "app_id",
+                "type": "bytes32"
+            },
+            {
                 "internalType": "bytes32",
                 "name": "terms_hash",
                 "type": "bytes32"
@@ -506,6 +543,25 @@ export const APP_REGISTRY_ABI = [
             }
         ],
         "name": "AppFeeChanged",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "bytes32",
+                "name": "app_id",
+                "type": "bytes32"
+            },
+            {
+                "indexed": false,
+                "internalType": "string",
+                "name": "agent_uri",
+                "type": "string"
+            }
+        ],
+        "name": "AppAgentChanged",
         "type": "event"
     },
     {
