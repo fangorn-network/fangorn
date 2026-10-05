@@ -23,11 +23,7 @@ Metagraphs are stored in IPFS. The SDK currently expects Pinata to be used to en
 
 This is not a graph database. There is no query langauge here and there is no native indexer.
 
-
 ## Supported Networks
-
-- Arbitrum Sepolia
-
 ---
 
 ## Installation
