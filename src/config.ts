@@ -72,10 +72,3 @@ export const FangornConfig = {
 	caip2: 421614,
 	ipfsGateway: 'https://ipfs.io'
 } satisfies AppConfig
-
-
-// DataRegistry:            0x775026e905d7b58b34d16bcbd385fa630ee36c26
-// AppRegistry:          0x11d228c4774af3d9cae3b4b6874a12576a1a83ec
-// Default app "fangorn": 0xe9cb5c7e3e8fb962393e314a9387731152c9b2e3cfb1fcbfe79c0c3038b2ed37
-// SubscriptionRegistry:    0x9c599136b195d70edea0106017fdf081a0401f9d
-// SettlementRegistry:      0xbbecb93142d1a5144260d2c30fe3c4a11fdda346
