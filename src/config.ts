@@ -1,5 +1,5 @@
 import { Chain, Hex, keccak256, toHex } from "viem";
-import { arbitrumSepolia, baseSepolia } from "viem/chains";
+import { arbitrumSepolia } from "viem/chains";
 
 /**
  * Derive an app id from a human-readable name (keccak256(hex(name)).
