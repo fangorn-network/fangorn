@@ -109,6 +109,23 @@ function resolveStorage(
 	);
 }
 
+/** The A2A extension a Fangorn app's agent card carries: it names the app the card speaks for. */
+export const FANGORN_APP_EXTENSION = "https://fangorn.network/a2a/app/v1";
+
+/**
+ * The part of an A2A agent card `discoverApp` reads. A card's other fields
+ * (skills, endpoints and so on) pass through untouched.
+ */
+export interface AgentCard {
+	name?: string;
+	description?: string;
+	url?: string;
+	capabilities?: {
+		extensions?: { uri: string; params?: Record<string, unknown> }[];
+	};
+	[key: string]: unknown;
+}
+
 export class Fangorn {
 
 	private readonly ctx: FangornContext;
@@ -649,6 +666,63 @@ export class Fangorn {
 			});
 		}
 		return [...latest.values()];
+	}
+
+	/**
+	 * Resolve an app from its agent card URL alone, and prove the card speaks for it.
+	 *
+	 * The card names its app in the `FANGORN_APP_EXTENSION` A2A extension, but
+	 * anyone can serve a card that names any app. So the card is trusted only if
+	 * the app's on-chain `agent_uri`, which only the app owner can set, points
+	 * back at this exact URL. The comparison is exact string equality, so a
+	 * trailing slash or a different host counts as a different card.
+	 *
+	 * Doesn't touch this client's app. Pass `appId` to `setAppId` to read under it.
+	 */
+	async discoverApp(cardUrl: string): Promise<{
+		card: AgentCard;
+		appId: Hex;
+		fromBlock: bigint;
+		namespaces: string[];
+	}> {
+		const res = await fetch(cardUrl, { signal: AbortSignal.timeout(10_000) });
+		if (!res.ok) throw new Error(`agent card ${cardUrl}: HTTP ${String(res.status)}`);
+		const card = (await res.json()) as AgentCard;
+
+		const ext = card.capabilities?.extensions?.find((e) => e.uri === FANGORN_APP_EXTENSION);
+		if (!ext) throw new Error(`agent card ${cardUrl} has no ${FANGORN_APP_EXTENSION} extension`);
+		const p = ext.params ?? {};
+		if (typeof p.appId !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(p.appId)) {
+			throw new Error(`agent card ${cardUrl}: appId is not a 32-byte hex string`);
+		}
+		if (typeof p.fromBlock !== "string" || !/^\d+$/.test(p.fromBlock)) {
+			throw new Error(`agent card ${cardUrl}: fromBlock is not a decimal block number`);
+		}
+		const namespaces = p.namespaces ?? [];
+		if (!Array.isArray(namespaces) || !namespaces.every((n) => typeof n === "string")) {
+			throw new Error(`agent card ${cardUrl}: namespaces is not a list of strings`);
+		}
+		// Checked before the binding: a card from another deployment would
+		// otherwise fail as "not bound", which sends the reader looking for a forgery.
+		const apps = this.getAppRegistry();
+		if (
+			p.chainId !== this.ctx.config.caip2 ||
+			typeof p.appRegistry !== "string" ||
+			p.appRegistry.toLowerCase() !== apps.getAddress().toLowerCase()
+		) {
+			throw new Error(
+				`agent card ${cardUrl} is for chain ${String(p.chainId)} / AppRegistry ${String(p.appRegistry)}, not this client's`,
+			);
+		}
+
+		const appId = p.appId as Hex;
+		const bound = await apps.appAgentUri(appId);
+		if (bound !== cardUrl) {
+			throw new Error(
+				`agent card ${cardUrl} is not bound to app ${appId}: its on-chain agent_uri is ${bound ? `"${bound}"` : "unset"}`,
+			);
+		}
+		return { card, appId, fromBlock: BigInt(p.fromBlock), namespaces };
 	}
 
 	/**

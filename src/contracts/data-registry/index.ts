@@ -16,22 +16,19 @@ import {
 
 import { DATA_REGISTRY_ABI } from "./abi.js";
 import { requireWallet, sendWrite } from "../write.js";
+import { getLogsInWindows } from "../logs.js";
 import { PublisherStatus } from "../types.js";
 
 /**
- * The on-chain id of a namespace within an app: the SDK's human-readable
- * namespace name, hashed. Names never touch storage — the contract only ever
- * sees these 32 bytes.
+ * The onchain id of a namespace within an app is the sha256 hash of its hex representation
+ * i.e. ns = 'a' => ns_id = sha256(hex('a'))
  */
 export function subspaceId(namespace: string): Hex {
     return keccak256(toHex(namespace));
 }
 
 /**
- * The composite storage key the contract derives for `app:publisher:subspace`.
- * Mirrors `namespace_key()` in contracts/data_registry — keccak256 over the
- * packed 84 bytes. Computing it client-side is what lets a subscriber filter
- * one exact subspace with a single indexed topic.
+ * The composite storage key for a full path to a subspace: `app:publisher:subspace`.
  */
 export function namespaceKey(
     appId: Hex,
@@ -338,34 +335,23 @@ export class DataRegistryClient {
      * Historical `StateCommitted` logs for one slice of this app, oldest →
      * newest — the catch-up path for a subscriber resuming from a saved block
      * cursor. Node-side filtered by indexed topics, so no indexer is involved.
-     *
-     * Fetched in windows: RPC providers cap the block span of a single
-     * `eth_getLogs` (the public Arbitrum Sepolia endpoint rejects anything past a
-     * couple of thousand blocks with a bare "internal server errror"), so one
-     * wide-range call fails outright and takes the whole catch-up with it. Tune
-     * the window with `FANGORN_LOG_WINDOW` — a private RPC will take far more.
+     * Fetched in block windows (see `getLogsInWindows`).
      */
     async getStateCommittedLogs(
         filter: CommitFilter,
         fromBlock: bigint,
         toBlock?: bigint,
     ): Promise<StateCommittedLog[]> {
-        const window = BigInt(process.env.FANGORN_LOG_WINDOW ?? 1000);
-        const end = toBlock ?? (await this.publicClient.getBlockNumber());
-        const logs = [];
-        for (let start = fromBlock; start <= end; start += window) {
-            const stop = start + window - 1n < end ? start + window - 1n : end;
-            logs.push(
-                ...(await this.publicClient.getContractEvents({
-                    address: this.contractAddress,
-                    abi: DATA_REGISTRY_ABI,
-                    eventName: "StateCommitted",
-                    args: this.topicsFor(filter),
-                    fromBlock: start,
-                    toBlock: stop,
-                })),
-            );
-        }
+        const logs = await getLogsInWindows(this.publicClient, fromBlock, toBlock, (from, to) =>
+            this.publicClient.getContractEvents({
+                address: this.contractAddress,
+                abi: DATA_REGISTRY_ABI,
+                eventName: "StateCommitted",
+                args: this.topicsFor(filter),
+                fromBlock: from,
+                toBlock: to,
+            }),
+        );
         return logs
             .map(decodeStateCommitted)
             .filter((log) => matchesFilter(log, filter))

@@ -13,6 +13,7 @@ import {
 
 import { APP_REGISTRY_ABI } from "./abi.js";
 import { requireWallet, sendWrite } from "../write.js";
+import { getLogsInWindows } from "../logs.js";
 import type { PreparedTx } from "../data-registry/index.js";
 import { PublisherStatus } from "../types.js";
 
@@ -37,6 +38,14 @@ export interface AppJoinInfo {
     appSuspended: boolean;
 }
 
+/** One `AppAgentChanged` event: an app owner pointed their app at a card. */
+export interface AppAgentLog {
+    appId: Hex;
+    agentUri: string;
+    blockNumber: bigint;
+    transactionHash: Hash;
+}
+
 /** True when the publisher joined but the app's terms have since changed. */
 export function needsReacceptance(info: AppJoinInfo): boolean {
     return (
@@ -47,17 +56,7 @@ export function needsReacceptance(info: AppJoinInfo): boolean {
 }
 
 /**
- * Client for the AppRegistry — app ids, per-app publisher terms, per-app join
- * fees, and per-app membership.
- *
- * This contract owns what an "app" is. `registerApp` and `getAppOwner` used to
- * live on the DataRegistry, which meant two contracts held partial opinions about
- * apps and neither could enforce membership. The dependency now runs one way:
- * `DataRegistry.commitStateRoot` cross-calls `isRegisteredForApp` here, so a
- * publisher must join an app *before* they can write under it.
- *
- * Scoped to one `appId`, like `DataRegistryClient` — the app is an identity the
- * client carries, not an argument every call repeats.
+ * Client for the AppRegistry
  */
 export class AppRegistryClient {
     constructor(
@@ -67,23 +66,19 @@ export class AppRegistryClient {
         private walletClient: WalletClient,
     ) { }
 
-    /** The app every call on this client is scoped to. */
     getAppId(): Hex {
         return this.appId;
     }
 
-    /** Re-scope every subsequent call to a different app. */
     setAppId(appId: Hex): void {
         this.appId = appId;
     }
 
-    /** The deployed AppRegistry this client talks to. */
     getAddress(): Address {
         return this.contractAddress;
     }
 
-
-    /** Same gas buffer and fee styling as DataRegistryClient.executeWrite. */
+    // call the contract
     private executeWrite<
         TFunctionName extends ContractFunctionName<typeof APP_REGISTRY_ABI, "payable" | "nonpayable">
     >(
@@ -102,15 +97,8 @@ export class AppRegistryClient {
         );
     }
 
-    // ── App owner ────────────────────────────────────────────────────────────
-
     /**
-     * Claim this client's `appId` and open it in one transaction — owner, terms
-     * and join fee together. First come, first served, and irreversible: there is
-     * no transfer and no release.
-     *
-     * `termsHash` must be real. An app whose terms hash is zero cannot be joined
-     * by anyone, so claiming an id without them creates a market nobody can enter.
+     * try to register an app (if it has not been claimed)
      */
     async registerApp(termsHash: Hex, termsUri: string, fee = 0n): Promise<Hash> {
         return this.executeWrite("registerApp", [this.appId, termsHash, termsUri, fee]);
@@ -119,22 +107,31 @@ export class AppRegistryClient {
     /**
      * Publish new terms for this app.
      *
-     * This drops every publisher back to "must accept again" — `isRegisteredForApp`
-     * is false for anyone whose accepted hash no longer matches — so it is a real
-     * act with a real consequence, not a copy edit. Re-accepting is free for them.
+     * Every registered must accept the new terms in order to publish again
      */
     async setAppTerms(termsHash: Hex, termsUri: string): Promise<Hash> {
         return this.executeWrite("setAppTerms", [this.appId, termsHash, termsUri]);
     }
 
-    /** Set what joining this app costs, in wei. Paid to the app owner. */
+    /**
+     * Point this app at its ERC-8004 agent card.
+     *
+     * Safe to call whenever the card moves. It is a separate field from the terms
+     * URI for one reason: publishers are bound to `termsHash`, so anything sharing
+     * that slot unregisters every publisher in the app the moment it changes (see
+     * `needsReacceptance`). A card holds endpoints and pubkeys, which rotate.
+     */
+    async setAppAgentUri(agentUri: string): Promise<Hash> {
+        return this.executeWrite("setAppAgentUri", [this.appId, agentUri]);
+    }
+
     async setAppFee(fee: bigint): Promise<Hash> {
         return this.executeWrite("setAppFee", [this.appId, fee]);
     }
 
     /**
-     * Eject a publisher from THIS app. Their global DataRegistry standing and
-     * their membership of every other app are untouched.
+     * Suspend a publisher from this app
+     * only callable by the app owner
      */
     async suspendForApp(publisher: Address): Promise<Hash> {
         return this.executeWrite("suspendForApp", [this.appId, publisher]);
@@ -144,24 +141,17 @@ export class AppRegistryClient {
         return this.executeWrite("reinstateForApp", [this.appId, publisher]);
     }
 
-    // ── Protocol admin ───────────────────────────────────────────────────────
-
     /**
-     * Take this whole app down. Protocol-admin only, and a level above
-     * `suspendForApp`: every publisher of the app — its owner included — reads as
-     * unregistered, so nothing commits under it until it is reinstated. The
-     * memberships underneath are left intact, so reinstating restores them exactly.
+     * Suspend an app and all publish capabilities
      */
     async suspendApp(): Promise<Hash> {
         return this.executeWrite("suspendApp", [this.appId]);
     }
 
-    /** Lift an admin takedown, restoring every membership as it was. */
     async reinstateApp(): Promise<Hash> {
         return this.executeWrite("reinstateApp", [this.appId]);
     }
 
-    /** The protocol admin of this AppRegistry — the only caller `suspendApp` accepts. */
     async admin(): Promise<Address> {
         return this.publicClient.readContract({
             address: this.contractAddress,
@@ -170,21 +160,9 @@ export class AppRegistryClient {
         });
     }
 
-    // ── Publishers ───────────────────────────────────────────────────────────
-
     /**
-     * Join this app, accepting its current terms by the act of doing so.
-     *
-     * The hash is read immediately before sending and passed as an argument, and
-     * the contract reverts `TermsMismatch` if it no longer matches. That is the
-     * point: the transaction is only valid against the exact version that was in
-     * front of the caller, so terms cannot change under a pending registration and
-     * land as agreement to something else. A race here is a revert, not a
-     * surprise obligation.
-     *
-     * The join fee is read from the chain rather than passed in, for the same
-     * reason `DataRegistryClient.register()` reads the registration fee: a caller
-     * who supplies it can supply the wrong one.
+     * Register as a publisher within an app
+     * Registration = accepting its current terms
      */
     async registerForApp(): Promise<Hash> {
         const [termsHash, , fee] = await this.readJoinInfoTuple(this.senderAddress());
@@ -197,8 +175,7 @@ export class AppRegistryClient {
     }
 
     /**
-     * The same join, as an unsigned transaction for a wallet that signs elsewhere
-     * (the sond3r relay never holds a key). Mirrors `prepareCommitStateRoot`.
+     * prepare the tx to register as a publisher for an app
      */
     async prepareRegisterForApp(publisher: Address): Promise<PreparedTx & { value: Hex }> {
         const [termsHash, , fee] = await this.readJoinInfoTuple(publisher);
@@ -235,7 +212,8 @@ export class AppRegistryClient {
                     `joining would revert — this wallet may already be registered, or suspended from this app: ${message}`,
                 );
             }
-            gas = 1_000_000n; // RPC hiccup, not a revert
+            // e.g. rpc hiccup
+            gas = 1_000_000n;
         }
 
         return {
@@ -245,15 +223,10 @@ export class AppRegistryClient {
             gas: toHex(gas),
             maxFeePerGas: toHex(fees.maxFeePerGas * 2n),
             maxPriorityFeePerGas: toHex(fees.maxPriorityFeePerGas),
-            // The join fee rides as tx value. Omitting it is a `JoinFeeRequired`
-            // revert after the user has already clicked sign.
             value: toHex(fee),
         };
     }
 
-    // ── Views ────────────────────────────────────────────────────────────────
-
-    /** Owner of this client's app id, or the zero address if unclaimed. */
     async getAppOwner(): Promise<Address> {
         return this.publicClient.readContract({
             address: this.contractAddress,
@@ -263,11 +236,6 @@ export class AppRegistryClient {
         });
     }
 
-    /**
-     * May this publisher commit under this app? This is the exact question
-     * `DataRegistry.commitStateRoot` asks on-chain, so a false here means a
-     * publish would revert.
-     */
     async isRegisteredForApp(publisher: Address): Promise<boolean> {
         return this.publicClient.readContract({
             address: this.contractAddress,
@@ -277,7 +245,6 @@ export class AppRegistryClient {
         });
     }
 
-    /** Has the protocol admin taken this app down? */
     async isAppSuspended(): Promise<boolean> {
         return this.publicClient.readContract({
             address: this.contractAddress,
@@ -287,7 +254,6 @@ export class AppRegistryClient {
         });
     }
 
-    /** This app's current terms hash, or the zero hash if it has published none. */
     async appTerms(): Promise<Hex> {
         return this.publicClient.readContract({
             address: this.contractAddress,
@@ -306,6 +272,50 @@ export class AppRegistryClient {
         });
     }
 
+    /** The agent card URI of this app, or of `appId`. Empty if none is set. */
+    async appAgentUri(appId: Hex = this.appId): Promise<string> {
+        return this.publicClient.readContract({
+            address: this.contractAddress,
+            abi: APP_REGISTRY_ABI,
+            functionName: "appAgentUri",
+            args: [appId],
+        });
+    }
+
+    /**
+     * `AppAgentChanged` events, oldest first. The last one for an app is its
+     * current card; an empty `agentUri` means the owner unset it.
+     *
+     * Leave `appId` out to list every app that has ever set a card. The chain is
+     * the directory: one windowed log scan, no indexer and no registry namespace.
+     * `fromBlock` is required because scanning from genesis on an L2 costs
+     * hundreds of thousands of RPC calls. Pass the AppRegistry's deploy block, or
+     * a block you know to be before the app's registration.
+     */
+    async getAppAgentLogs(opts: {
+        appId?: Hex;
+        fromBlock: bigint;
+        toBlock?: bigint;
+    }): Promise<AppAgentLog[]> {
+        const logs = await getLogsInWindows(this.publicClient, opts.fromBlock, opts.toBlock, (from, to) =>
+            this.publicClient.getContractEvents({
+                address: this.contractAddress,
+                abi: APP_REGISTRY_ABI,
+                eventName: "AppAgentChanged",
+                args: opts.appId ? { app_id: opts.appId } : {},
+                fromBlock: from,
+                toBlock: to,
+                strict: true,
+            }),
+        );
+        return logs.map((log) => ({
+            appId: log.args.app_id,
+            agentUri: log.args.agent_uri,
+            blockNumber: log.blockNumber,
+            transactionHash: log.transactionHash,
+        }));
+    }
+
     async appFee(): Promise<bigint> {
         return this.publicClient.readContract({
             address: this.contractAddress,
@@ -315,7 +325,6 @@ export class AppRegistryClient {
         });
     }
 
-    /** The terms hash this publisher accepted, or the zero hash. */
     async acceptedTerms(publisher: Address): Promise<Hex> {
         return this.publicClient.readContract({
             address: this.contractAddress,
@@ -325,17 +334,10 @@ export class AppRegistryClient {
         });
     }
 
-    /**
-     * Everything a join screen needs. Two reads rather than one, because the
-     * accepted hash is what turns "not registered" into the far more useful "the
-     * terms changed since you joined".
-     */
     async joinInfo(publisher: Address): Promise<AppJoinInfo> {
         const [tuple, acceptedTerms, appSuspended] = await Promise.all([
             this.readJoinInfoTuple(publisher),
             this.acceptedTerms(publisher),
-            // Otherwise an admin takedown is indistinguishable from "you never
-            // joined", and the caller is told to join an app that cannot be joined.
             this.isAppSuspended(),
         ]);
         const [termsHash, termsUri, fee, status, registered] = tuple;
