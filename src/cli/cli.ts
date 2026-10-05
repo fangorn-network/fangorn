@@ -652,6 +652,129 @@ appCmd
 		}
 	});
 
+// ERC-8004 registry addresses on Arbitrum Sepolia, carried over from the
+// ArbitrumOpenHouse branch where this flow last worked. agent0-sdk needs them
+// because it does not ship 421614 itself; drop the override the day it does.
+const ERC8004_ARBITRUM_SEPOLIA = {
+	IDENTITY: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+	REPUTATION: "0x8004B663056A597Dffe9eCcC1965A193B7388713",
+};
+const ERC8004_SUBGRAPH =
+	"https://api.studio.thegraph.com/query/1742225/erc-8004-arbitrum-sepolia/version/latest";
+
+appCmd
+	.command("agent")
+	.description(
+		"Register this app's gateway as an ERC-8004 agent and point the app at its card (owner only)",
+	)
+	.argument(
+		"[cardUrl]",
+		"The agent card URL; defaults to the configured access worker's /.well-known/agent-card.json",
+	)
+	.option("--mcp <url>", "An MCP endpoint to index alongside the card")
+	.option(
+		"--skip-register",
+		"Only set agent_uri on-chain — for a gateway already registered with ERC-8004",
+	)
+	.action(
+		async (cardUrl: string | undefined, opts: { mcp?: string; skipRegister?: boolean }) => {
+			try {
+				const cfg = loadConfig();
+				const url =
+					cardUrl ??
+					(cfg.accessWorkerUrl
+						? `${cfg.accessWorkerUrl.replace(/\/$/, "")}/.well-known/agent-card.json`
+						: undefined);
+				if (!url) {
+					throw new Error(
+						"No card URL. Pass one, or set an access worker URL with `fangorn init`.",
+					);
+				}
+
+				// Fetched rather than prompted: the card is the source of truth for the
+				// agent's name and description, and agent0-sdk's setA2A will fetch it
+				// again anyway. A card that is not reachable now cannot be registered.
+				const s = spinner();
+				s.start(`Reading ${url}`);
+				const res = await fetch(url);
+				if (!res.ok) {
+					s.stop();
+					throw new Error(`card at ${url} returned ${String(res.status)}`);
+				}
+				const card = (await res.json()) as {
+					name?: string;
+					description?: string;
+					skills?: { tags?: string[] }[];
+				};
+				s.stop(`Card: ${card.name ?? "(unnamed)"}`);
+				if (!card.name || !card.description) {
+					throw new Error("card is missing `name` or `description`");
+				}
+
+				let agentId: string | undefined;
+				if (!opts.skipRegister) {
+					if (!cfg.pinataJwt) {
+						throw new Error(
+							"ERC-8004 registration pins the registration file to IPFS — set PINATA_JWT, or pass --skip-register.",
+						);
+					}
+					// Imported here, not at module scope: agent0-sdk pulls a full in-process
+					// IPFS node (helia + kubo-rpc-client), and nothing outside this command
+					// should pay for it — least of all the access worker, which depends on
+					// this package and bundles for workerd.
+					const { SDK } = await import("agent0-sdk");
+					const sdk = new SDK({
+						chainId: cfg.cfg.caip2,
+						rpcUrl: cfg.cfg.rpcUrl,
+						subgraphUrl: ERC8004_SUBGRAPH,
+						registryOverrides: { [cfg.cfg.caip2]: ERC8004_ARBITRUM_SEPOLIA },
+						subgraphOverrides: { [cfg.cfg.caip2]: ERC8004_SUBGRAPH },
+						ipfs: "pinata",
+						pinataJwt: cfg.pinataJwt,
+						privateKey: cfg.privateKey,
+					});
+
+					const agent = sdk.createAgent(card.name, card.description);
+					s.start("Indexing skills and capabilities from the card");
+					await agent.setA2A(url);
+					if (opts.mcp) await agent.setMCP(opts.mcp);
+					s.stop();
+
+					// Reputation only. Crypto-economic needs a bond nobody has posted, and
+					// TEE attestation would be a lie: the gateway is a Cloudflare Worker,
+					// which has no enclave to attest with.
+					agent.setTrust(true, false, false);
+					// Read off the card rather than assumed: an agent that advertises x402
+					// against free endpoints sends payers down a rail that is not there.
+					// The card grows an `x402`-tagged skill the day a paywall is actually
+					// baked, and this flips with it.
+					agent.setX402Support(
+						card.skills?.some((sk) => sk.tags?.includes("x402")) ?? false,
+					);
+					agent.setActive(true);
+
+					s.start("Registering with the ERC-8004 identity registry");
+					const tx = await agent.registerIPFS();
+					const { result } = await tx.waitConfirmed();
+					s.stop();
+					agentId = String(result.agentId);
+				}
+
+				s.start("Pointing the app at its card");
+				const txHash = await getFangorn().getAppRegistry().setAppAgentUri(url);
+				s.stop();
+
+				if (agentId) console.log(`Agent ID:  ${agentId}`);
+				console.log(`Card:      ${url}`);
+				console.log(`Tx:        ${txHash}`);
+				process.exit(0);
+			} catch (err) {
+				console.error("Failed:", (err as Error).message);
+				process.exit(1);
+			}
+		},
+	);
+
 appCmd
 	.command("suspend")
 	.description("Eject a publisher from your app (owner only)")

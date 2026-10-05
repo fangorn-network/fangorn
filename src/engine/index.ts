@@ -258,6 +258,8 @@ export class FangornEngine {
 			bytes = await this.storage.getRawBlock(key);
 			this.cache.set(key, bytes);
 		}
+
+		// the decoded dag-cbor block
 		const decoded = decodeBlock<{
 			root?: unknown;
 			parents?: unknown[];

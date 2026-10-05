@@ -1,8 +1,8 @@
 # Fangorn SDK
 
-The Fangorn SDK is git for graphs, enabling version control and distribution of *metagraphs* organized into applications and namespaces. 
+The Fangorn SDK is a lightweight "git for knowledge graphs" protocol, enabling version control and distribution of *metagraphs* organized into applications and namespaces. 
 
-It lets you treat IPFS as a hierarchical data store for your app-level storage with enforced terms, conditions, and validation logic for publishers.  Data is published under a *namespace* in a *registered application*, **`app : publisher : namespace`**. Each namespace has its own on-chain state root (the digest of a commit block wrapping a native IPLD DAG) owned by the *publisher* who passed the app's validation logic. Updating a namespace root is a compare-and-swap operation (i.e. a git ref update).
+It lets you treat IPFS as a hierarchical data store for app-level storage with published "terms", conditions, and validation logic that publishers must adhere to. Data is published under a *namespace* in a *registered application*, **`app : publisher : namespace`**. Each namespace has its own on-chain state root (the digest of a commit block wrapping a native IPLD DAG) owned by the *publisher* who passed the app's validation logic. Updating a namespace root is a compare-and-swap operation (i.e. a git ref update).
 
 Each namespace's state is represented by a **metagraph**, $G = (V, E, L)$ where $V$=**vertices** (a JSON payload tagged by a free-form schema id) and $E$=**edges** (a labeled relation between two vertices, as native IPLD links), $L$=**labels** (the allowed labels in any edge).
 
@@ -21,13 +21,9 @@ Metagraphs are stored in IPFS. The SDK currently expects Pinata to be used to en
 
 #### What it is not
 
-This is not a graph database, there is no query langauge here, and there is no native indexer.
-
+This is not a graph database. There is no query langauge here and there is no native indexer.
 
 ## Supported Networks
-
-- Arbitrum Sepolia
-
 ---
 
 ## Installation
