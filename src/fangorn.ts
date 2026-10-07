@@ -35,7 +35,6 @@ import {
 	DataRegistryClient,
 	PreparedTx,
 	SettlementRegistryClient,
-	SubscriptionRegistryClient,
 	StateCommittedLog,
 	subspaceId,
 } from "./contracts/index.js";
@@ -94,11 +93,9 @@ function resolveStorage(
 	storage: StorageConfig | undefined,
 	walletClient: WalletClient,
 	config: AppConfig,
-	// setAppId` must reach uploads already configured, and
-	// billing the previous app owner's subscription would result in the wrong publisher's
-	// quota running out. Undefined means no app was chosen, so the caller's own
-	// subscription pays (see FangornContext.appScope).
-	getAppId: () => Hex | undefined,
+	// Read per upload, not captured: `setAppId` must reach uploads already
+	// configured, or they would keep billing the previous app's subscription.
+	getAppId: () => Hex,
 ): MetadataStorage | undefined {
 	if (!storage) return undefined;
 	if ("pinata" in storage)
@@ -219,12 +216,6 @@ export class Fangorn {
 			walletClient,
 		);
 
-		const subscriptionRegistry = new SubscriptionRegistryClient(
-			resolvedConfig.subscriptionRegistryContractAddress,
-			publicClient,
-			walletClient,
-		);
-
 		const settlementRegistry = new SettlementRegistryClient(
 			resolvedConfig.settlementRegistryContractAddress,
 			publicClient,
@@ -233,25 +224,20 @@ export class Fangorn {
 
 		const ctx: FangornContext = {
 			walletClient,
-			metadataStorage: undefined,
+			// Every upload is billed to the app it lands in, so the worker is
+			// always told which one — the DEFAULT_APP fallback included.
+			metadataStorage: resolveStorage(
+				options.storage,
+				walletClient,
+				resolvedConfig,
+				() => dataRegistry.getAppId(),
+			),
 			domain,
 			dataRegistry: dataRegistry,
 			appRegistry,
-			subscriptionRegistry,
 			settlementRegistry,
 			config: resolvedConfig,
-			// Only what the caller actually asked for. The `appId` above falls back to
-			// DEFAULT_APP for the registries (every namespace key needs an app), but
-			// uploads must not bill that app's subscription by default.
-			appScope: chosenApp ? appId : undefined,
 		};
-		// Last, so it can read the app scope off the ctx that setAppId updates.
-		ctx.metadataStorage = resolveStorage(
-			options.storage,
-			walletClient,
-			resolvedConfig,
-			() => ctx.appScope,
-		);
 
 		return new Fangorn(ctx);
 	}
@@ -970,22 +956,17 @@ export class Fangorn {
 	}
 
 	/**
-	 * Apps, their publisher terms, and per-app membership.
+	 * Apps, their publisher terms, per-app membership, and the storage
+	 * subscription — an app IS a subscription: claiming one pays the fee, and
+	 * the upload gate bills every publisher's bytes to the app.
 	 *
-	 * `commitStateRoot` cross-calls this contract, so joining the app here is a
-	 * precondition for publishing under it — `registerForApp()` before
-	 * `commit()`, or the commit reverts `NotRegisteredForApp`.
+	 * `commitStateRoot` cross-calls this contract, so being a publisher of the
+	 * app is a precondition for publishing under it. Membership is by invitation:
+	 * the owner calls `addPublisher()`, then the publisher `registerForApp()`.
+	 * Without both, the commit reverts `NotRegisteredForApp`.
 	 */
 	getAppRegistry(): AppRegistryClient {
 		return this.ctx.appRegistry;
-	}
-
-	/**
-	 * The publisher-side storage paywall. Per-wallet, not per-app: one
-	 * subscription covers everything this publisher writes, under every app.
-	 */
-	getSubscriptionRegistry(): SubscriptionRegistryClient {
-		return this.ctx.subscriptionRegistry;
 	}
 
 	/**
@@ -1019,8 +1000,6 @@ export class Fangorn {
 		const appId = toAppId(nameOrId);
 		this.ctx.dataRegistry.setAppId(appId);
 		this.ctx.appRegistry.setAppId(appId);
-		// Naming an app is what opts uploads into its storage subscription.
-		this.ctx.appScope = appId;
 		this.nsCache.clear();
 		this._feed = null;
 	}
@@ -1044,7 +1023,7 @@ export class Fangorn {
 			storage,
 			this.ctx.walletClient,
 			this.ctx.config,
-			() => this.ctx.appScope,
+			() => this.ctx.dataRegistry.getAppId(),
 		);
 		this._engine = null;
 	}

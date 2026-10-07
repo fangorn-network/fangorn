@@ -46,13 +46,17 @@ export class TestBed {
     /**
      * Claim the configured app namespace, if nobody has yet.
      *
-     * Orthogonal to `register`: an app claims a unique namespace prefix that
-     * publishers may write under, while a publisher registers for the right to
-     * write at all. Neither implies the other — one app hosts many publishers,
-     * and one publisher writes into many apps. Idempotent, and safe when someone
-     * else already owns it: apps are shared, not per-test.
+     * An app claims a unique namespace prefix that publishers may write under,
+     * while a publisher registers for the right to write at all. One app hosts
+     * many publishers, and one publisher writes into many apps — but only a
+     * registered publisher can claim an app or be added to one, so this runs
+     * `register` first. Idempotent, and safe when someone else already owns it:
+     * apps are shared, not per-test.
      */
     async registerApp(index: number) {
+        // Global standing first: the AppRegistry refuses a claim from a wallet the
+        // DataRegistry does not know.
+        await this.register(index);
         const registry = this.getFangorn(index).getAppRegistry();
         const owner = await registry.getAppOwner();
         if (owner === "0x0000000000000000000000000000000000000000") {
@@ -61,7 +65,9 @@ export class TestBed {
             // every commit in the suite would then revert NotRegisteredForApp.
             await registry.registerApp(TESTBED_APP_TERMS, "https://example.test/terms", 0n);
         }
-        // Joining is now a precondition for committing under the app.
+        // Joining is a precondition for committing under the app, and it is by
+        // invitation: for an app someone else owns, they must have added this
+        // wallet first (`addPublisher`) or the join below throws saying so.
         const self = this.getFangorn(index).getAddress();
         if (!(await registry.isRegisteredForApp(self))) {
             console.log(`Joining app ${registry.getAppId()} as ${self}...`);

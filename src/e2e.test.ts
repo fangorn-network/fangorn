@@ -333,32 +333,35 @@ describe("Fangorn registries E2E", () => {
         testbed = TestBed.init([PRIVATE_KEY]);
     });
 
-    // The four contracts are deployed independently and point at each other by
-    // address. A redeploy that updates one address and not the others is silent
-    // until a commit reverts NotRegisteredForApp, or a subscription reports a
-    // publisher unregistered who plainly is. Asserting the pointers here is the
-    // cheapest place to catch a half-finished deploy.
+    // The contracts are deployed independently and point at each other by
+    // address. A redeploy that updates one address and not the other is silent
+    // until a commit reverts NotRegisteredForApp for a publisher who plainly
+    // joined, or a claim reverts NotRegisteredGlobally for one who plainly
+    // registered. Asserting the pointers here is the cheapest place to catch a
+    // half-finished deploy.
     it("registries are properly wired", async () => {
         const f = testbed.getFangorn(0);
         const data = f.getDataRegistry();
         const apps = f.getAppRegistry();
-        const subs = f.getSubscriptionRegistry();
         const settlement = f.getSettlementRegistry();
 
         expect((await data.appRegistry()).toLowerCase()).toBe(
             apps.getAddress().toLowerCase(),
         );
-        expect((await subs.dataRegistry()).toLowerCase()).toBe(
+        // ...and back: the AppRegistry asks this DataRegistry who is a registered
+        // publisher. Unwired, it treats everyone as unregistered and no app can
+        // be claimed.
+        expect((await apps.dataRegistry()).toLowerCase()).toBe(
             data.getAddress().toLowerCase(),
         );
         // Both paywalls settle in the same token, or a price quoted by one means
         // nothing to the other.
-        expect((await subs.usdc()).toLowerCase()).toBe(
+        expect((await apps.usdc()).toLowerCase()).toBe(
             (await settlement.getUsdc()).toLowerCase(),
         );
 
-        // setAppId moves the app-scoped clients together and leaves the two
-        // per-wallet ones alone (CO-1).
+        // setAppId moves the app-scoped clients together and leaves the
+        // per-wallet one alone (CO-1).
         const before = f.getAppId();
         f.setAppId("some-other-app");
         expect(apps.getAppId()).toBe(f.getAppId());
@@ -454,32 +457,32 @@ describe("Fangorn registries E2E", () => {
         expect(await apps.isRegisteredForApp(self)).toBe(true);
     }, 180_000);
 
-    // The publisher-side storage paywall. The fee is pulled in USDC, so a
-    // non-zero fee needs an ERC-20 approve first; at fee 0 this is a plain write.
-    it("subscribing stamps the publisher's paid-at", async () => {
-        await testbed.register(0);
+    // The storage paywall: an app IS its subscription. Claiming one pulls the
+    // fee in USDC (the client approves it first) and stamps the app's paid-at.
+    it("claiming an app stamps its subscription", async () => {
+        // A throwaway name, so the claim always happens here.
+        const bed = TestBed.init([PRIVATE_KEY], `sub-e2e-${Date.now().toString()}`);
+        const apps = bed.getFangorn(0).getAppRegistry();
+        const self = bed.getFangorn(0).getAddress();
 
-        const f = testbed.getFangorn(0);
-        const subs = f.getSubscriptionRegistry();
-        const self = f.getAddress();
-
-        const fee = await subs.subscriptionFee();
+        const fee = await apps.subscriptionFee();
         if (fee > 0n) {
-            console.log(`subscription fee is ${fee}; skipping (needs a USDC approve)`);
+            console.log(`subscription fee is ${fee.toString()}; skipping (a throwaway claim would spend USDC)`);
             return;
         }
 
-        await subs.subscribe();
+        await bed.registerApp(0);
 
-        const access = await subs.access(self);
+        const access = await apps.access(self);
         expect(access.registered).toBe(true);
+        expect(access.owner.toLowerCase()).toBe(self.toLowerCase());
         expect(access.paidAt).toBeGreaterThan(0n);
-        expect(await subs.subscribedAt(self)).toBe(access.paidAt);
+        expect(await apps.subscribedAt()).toBe(access.paidAt);
 
         // The active window is the gate's policy, not chain state: the same
         // paidAt is active under a wide window and expired under a zero one.
-        expect(await subs.isActiveAt(self, 30n * 24n * 3600n)).toBe(true);
-        expect(await subs.isActiveAt(self, 0n)).toBe(false);
+        expect(await apps.isActiveAt(30n * 24n * 3600n)).toBe(true);
+        expect(await apps.isActiveAt(0n)).toBe(false);
     }, 180_000);
 
     // The consumer rail, publisher half. register/settle need an EIP-3009

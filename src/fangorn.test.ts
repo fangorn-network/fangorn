@@ -3,10 +3,9 @@ import type { Hex } from "viem";
 import { Fangorn } from "./fangorn.js";
 import { appId as toAppId, DEFAULT_APP } from "./config.js";
 
-// Signed-url uploads bill an app's storage subscription, so the app id is sent
-// only when the caller actually named an app. The DEFAULT_APP fallback still
-// scopes namespace keys — it must not reach the worker, or every upload would
-// spend the default app owner's quota.
+// Signed-url uploads bill an app's storage subscription, so every upload names
+// the app the client is scoped to — the DEFAULT_APP fallback included, since
+// nobody publishes outside an app.
 
 const WORKER = "https://worker.example/";
 const KEY = ("0x" + "11".repeat(32)) as Hex;
@@ -41,12 +40,13 @@ describe("Fangorn app scope → signed-url uploads", () => {
 	const create = (appId?: string) =>
 		Fangorn.create({ privateKey: KEY, appId, storage: { signedUrl: { workerUrl: WORKER } } });
 
-	it("sends no appId when the caller never named an app", async () => {
+	it("sends the default app id when the caller never named an app", async () => {
 		const fangorn = create();
-		// The registries still default, so namespace keys are unchanged…
 		expect(fangorn.getAppId()).toBe(toAppId(DEFAULT_APP));
-		// …but the worker is told nothing, and bills the caller's own subscription.
-		expect(await uploadAndCaptureAppIds(fangorn)).toEqual([undefined, undefined]);
+		expect(await uploadAndCaptureAppIds(fangorn)).toEqual([
+			toAppId(DEFAULT_APP),
+			toAppId(DEFAULT_APP),
+		]);
 	});
 
 	it("treats a blank app id as no app, not as an app called \"\"", async () => {
@@ -55,7 +55,10 @@ describe("Fangorn app scope → signed-url uploads", () => {
 		// registries or the worker.
 		const fangorn = create("  ");
 		expect(fangorn.getAppId()).toBe(toAppId(DEFAULT_APP));
-		expect(await uploadAndCaptureAppIds(fangorn)).toEqual([undefined, undefined]);
+		expect(await uploadAndCaptureAppIds(fangorn)).toEqual([
+			toAppId(DEFAULT_APP),
+			toAppId(DEFAULT_APP),
+		]);
 	});
 
 	it("sends the app id once one is named, including via setAppId", async () => {

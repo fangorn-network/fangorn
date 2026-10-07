@@ -5,7 +5,8 @@ import { namespaceKey, subspaceId } from "./data-registry/index.js";
 import { appId } from "../config.js";
 
 // Golden fixture shared with the contract
-// (`test_namespace_key_matches_sdk_fixture` in contracts/data_registry).
+// (`test_namespace_key_matches_sdk_fixture` in contracts/stylus/data_registry, and
+// `test_namespace_key_matches_sdk_fixture` in contracts/solidity/test/DataRegistry.t.sol).
 //
 // The client derives this key to filter events and to address heads, and the
 // contract derives it to pick a storage slot. If the two ever diverge, reads

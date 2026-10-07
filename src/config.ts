@@ -43,10 +43,9 @@ export default function getNetwork(name: string) {
 export interface AppConfig {
 	// The deployed publisher_registry contract address
 	dataRegistryContractAddress: Hex;
-	// The deployed app_registry contract address
+	// The deployed app_registry contract address (apps, membership, and the
+	// per-app storage subscription)
 	appRegistryContractAddress: Hex;
-	// The deployed subscription_registry contract address (publisher storage paywall)
-	subscriptionRegistryContractAddress: Hex;
 	// The deployed settlement_registry contract address (consumer pay-then-read rail)
 	settlementRegistryContractAddress: Hex;
 	// The viem chain
@@ -67,8 +66,6 @@ export const FangornConfig = {
 		"0x775026e905d7b58b34d16bcbd385fa630ee36c26",
 	appRegistryContractAddress:
 		"0x11d228c4774af3d9cae3b4b6874a12576a1a83ec",
-	subscriptionRegistryContractAddress:
-		"0x9c599136b195d70edea0106017fdf081a0401f9d",
 	settlementRegistryContractAddress:
 		"0xbbecb93142d1a5144260d2c30fe3c4a11fdda346",
 	chain: arbitrumSepolia,

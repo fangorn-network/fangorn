@@ -26,12 +26,27 @@ export const APP_REGISTRY_ABI = [
     },
     {
         "inputs": [],
+        "name": "NotInvited",
+        "type": "error"
+    },
+    {
+        "inputs": [],
         "name": "NotRegistered",
         "type": "error"
     },
     {
         "inputs": [],
+        "name": "NotRegisteredGlobally",
+        "type": "error"
+    },
+    {
+        "inputs": [],
         "name": "PublisherSuspendedErr",
+        "type": "error"
+    },
+    {
+        "inputs": [],
+        "name": "SubscriptionFeeRequired",
         "type": "error"
     },
     {
@@ -79,6 +94,58 @@ export const APP_REGISTRY_ABI = [
         "type": "function"
     },
     {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "app_id",
+                "type": "bytes32"
+            },
+            {
+                "internalType": "address",
+                "name": "publisher",
+                "type": "address"
+            }
+        ],
+        "name": "access",
+        "outputs": [
+            {
+                "internalType": "bool",
+                "name": "",
+                "type": "bool"
+            },
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            },
+            {
+                "internalType": "uint64",
+                "name": "",
+                "type": "uint64"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "app_id",
+                "type": "bytes32"
+            },
+            {
+                "internalType": "address",
+                "name": "publisher",
+                "type": "address"
+            }
+        ],
+        "name": "addPublisher",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
         "inputs": [],
         "name": "admin",
         "outputs": [
@@ -86,6 +153,25 @@ export const APP_REGISTRY_ABI = [
                 "internalType": "address",
                 "name": "",
                 "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "app_id",
+                "type": "bytes32"
+            }
+        ],
+        "name": "appAgentUri",
+        "outputs": [
+            {
+                "internalType": "string",
+                "name": "",
+                "type": "string"
             }
         ],
         "stateMutability": "view",
@@ -137,7 +223,7 @@ export const APP_REGISTRY_ABI = [
                 "type": "bytes32"
             }
         ],
-        "name": "appAgentUri",
+        "name": "appTermsUri",
         "outputs": [
             {
                 "internalType": "string",
@@ -149,19 +235,13 @@ export const APP_REGISTRY_ABI = [
         "type": "function"
     },
     {
-        "inputs": [
-            {
-                "internalType": "bytes32",
-                "name": "app_id",
-                "type": "bytes32"
-            }
-        ],
-        "name": "appTermsUri",
+        "inputs": [],
+        "name": "dataRegistry",
         "outputs": [
             {
-                "internalType": "string",
+                "internalType": "address",
                 "name": "",
-                "type": "string"
+                "type": "address"
             }
         ],
         "stateMutability": "view",
@@ -325,6 +405,19 @@ export const APP_REGISTRY_ABI = [
                 "internalType": "bytes32",
                 "name": "app_id",
                 "type": "bytes32"
+            }
+        ],
+        "name": "reinstateApp",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "app_id",
+                "type": "bytes32"
             },
             {
                 "internalType": "address",
@@ -345,38 +438,7 @@ export const APP_REGISTRY_ABI = [
                 "type": "bytes32"
             }
         ],
-        "name": "reinstateApp",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "bytes32",
-                "name": "app_id",
-                "type": "bytes32"
-            }
-        ],
-        "name": "suspendApp",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "bytes32",
-                "name": "app_id",
-                "type": "bytes32"
-            },
-            {
-                "internalType": "uint256",
-                "name": "fee",
-                "type": "uint256"
-            }
-        ],
-        "name": "setAppFee",
+        "name": "renewApp",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"
@@ -407,6 +469,24 @@ export const APP_REGISTRY_ABI = [
                 "type": "bytes32"
             },
             {
+                "internalType": "uint256",
+                "name": "fee",
+                "type": "uint256"
+            }
+        ],
+        "name": "setAppFee",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "app_id",
+                "type": "bytes32"
+            },
+            {
                 "internalType": "bytes32",
                 "name": "terms_hash",
                 "type": "bytes32"
@@ -418,6 +498,45 @@ export const APP_REGISTRY_ABI = [
             }
         ],
         "name": "setAppTerms",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "registry",
+                "type": "address"
+            }
+        ],
+        "name": "setDataRegistry",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "fee",
+                "type": "uint256"
+            }
+        ],
+        "name": "setSubscriptionFee",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "token",
+                "type": "address"
+            }
+        ],
+        "name": "setUsdc",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"
@@ -452,6 +571,51 @@ export const APP_REGISTRY_ABI = [
                 "internalType": "bytes32",
                 "name": "app_id",
                 "type": "bytes32"
+            }
+        ],
+        "name": "subscribedAt",
+        "outputs": [
+            {
+                "internalType": "uint64",
+                "name": "",
+                "type": "uint64"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "subscriptionFee",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "app_id",
+                "type": "bytes32"
+            }
+        ],
+        "name": "suspendApp",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "app_id",
+                "type": "bytes32"
             },
             {
                 "internalType": "address",
@@ -460,6 +624,37 @@ export const APP_REGISTRY_ABI = [
             }
         ],
         "name": "suspendForApp",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "usdc",
+        "outputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "to",
+                "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "amount",
+                "type": "uint256"
+            }
+        ],
+        "name": "withdrawEth",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"
@@ -477,7 +672,7 @@ export const APP_REGISTRY_ABI = [
                 "type": "uint256"
             }
         ],
-        "name": "withdrawEth",
+        "name": "withdrawUsdc",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"
@@ -650,6 +845,63 @@ export const APP_REGISTRY_ABI = [
             }
         ],
         "name": "AppSuspensionChanged",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "bytes32",
+                "name": "app_id",
+                "type": "bytes32"
+            },
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "publisher",
+                "type": "address"
+            }
+        ],
+        "name": "PublisherInvited",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "bytes32",
+                "name": "app_id",
+                "type": "bytes32"
+            },
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "payer",
+                "type": "address"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint64",
+                "name": "paid_at",
+                "type": "uint64"
+            }
+        ],
+        "name": "AppSubscribed",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "fee",
+                "type": "uint256"
+            }
+        ],
+        "name": "SubscriptionFeeChanged",
         "type": "event"
     }
 ] as const;

@@ -37,7 +37,7 @@ export interface SignedUrlSigner {
 /**
  * Storage backend for users who don't bring their own Pinata JWT.
  *
- * Uploads go through the pinata-url-provider Worker. For users using their own subscription, prove wallet ownership by
+ * Uploads go through the pinata-url-provider Worker. Prove wallet ownership by
  * signing the worker's challenge, and it hands back a short-lived, single-use
  * Pinata presigned upload URL that users POST the file to. 
  * Reads need no auth: every Fangorn block is public content, so it's
@@ -48,11 +48,11 @@ export interface SignedUrlSigner {
  * JWT-only operations (server-side metadata queries / deletes) are unavailable
  * here. Switch to a PinataBackend they're needed.
  *
- * Uploads are app-scoped only when the caller named an app (`create({ appId })` or
- * `setAppId`). Then each request carries that id, and the worker bills the bytes to
- * that app owner's storage subscription and files the pins under a per-app group. With no app named, no id is
- * sent and the caller's own subscription pays. The id is read per request so a
- * later `setAppId` takes effect immediately.
+ * Every upload is billed to an app's storage subscription. Each request carries
+ * the client's app id (the worker assumes the default app when none is sent),
+ * the signer must be one of that app's publishers, and the pins are filed under
+ * a per-app group. The id is read per request so a later `setAppId` takes
+ * effect immediately.
  */
 export class SignedUrlBackend implements MetadataStorage {
 	private readonly workerUrl: string;

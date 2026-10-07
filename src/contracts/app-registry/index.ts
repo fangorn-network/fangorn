@@ -2,6 +2,7 @@ import {
     ContractFunctionArgs,
     ContractFunctionName,
     encodeFunctionData,
+    erc20Abi,
     type Abi,
     toHex,
     type Address,
@@ -36,6 +37,16 @@ export interface AppJoinInfo {
     acceptedTerms: Hex;
     /** The protocol admin has taken the whole app down — nobody is registered. */
     appSuspended: boolean;
+}
+
+/** What the upload gate needs to decide whether to serve a publisher under an app. */
+export interface AppAccess {
+    /** An active publisher of the app, on its current terms. */
+    registered: boolean;
+    /** The app's owner, or the zero address for an unclaimed app. */
+    owner: Address;
+    /** Unix seconds of the app's last subscription payment, or 0 if unclaimed. */
+    paidAt: bigint;
 }
 
 /** One `AppAgentChanged` event: an app owner pointed their app at a card. */
@@ -99,9 +110,64 @@ export class AppRegistryClient {
 
     /**
      * try to register an app (if it has not been claimed)
+     *
+     * Claiming an app IS subscribing: the contract pulls `subscriptionFee()` in
+     * USDC, so this approves it first when the allowance is short. `fee` is the
+     * app's own join fee (wei), not the subscription.
+     *
+     * The caller must already be registered in the DataRegistry
+     * (`DataRegistryClient.register()`), or the claim reverts
+     * `NotRegisteredGlobally`.
      */
     async registerApp(termsHash: Hex, termsUri: string, fee = 0n): Promise<Hash> {
+        await this.approveSubscriptionFee();
         return this.executeWrite("registerApp", [this.appId, termsHash, termsUri, fee]);
+    }
+
+    /**
+     * Renew this app's subscription (owner only): pays the fee again and
+     * re-stamps the payment time. Renewing early loses nothing.
+     */
+    async renewApp(): Promise<Hash> {
+        await this.approveSubscriptionFee();
+        return this.executeWrite("renewApp", [this.appId]);
+    }
+
+    /**
+     * Add a publisher to this app (owner only). An invitation, not a membership:
+     * they still accept the terms and pay the join fee with `registerForApp()`.
+     * Nobody can join uninvited. Take it back with `suspendForApp()`.
+     *
+     * The publisher must already be registered in the DataRegistry — never
+     * registered, or banned by the protocol admin, reverts `NotRegisteredGlobally`.
+     */
+    async addPublisher(publisher: Address): Promise<Hash> {
+        return this.executeWrite("addPublisher", [this.appId, publisher]);
+    }
+
+    /**
+     * The subscription fee is pulled with `transferFrom`, so the registry needs an
+     * allowance for it. Without one the call reverts `SubscriptionFeeRequired`,
+     * which reads like a pricing error but is really an allowance one.
+     */
+    private async approveSubscriptionFee(): Promise<void> {
+        const [fee, token] = await Promise.all([this.subscriptionFee(), this.usdc()]);
+        if (fee === 0n) return;
+        const allowance = await this.publicClient.readContract({
+            address: token,
+            abi: erc20Abi,
+            functionName: "allowance",
+            args: [this.senderAddress(), this.contractAddress],
+        });
+        if (allowance >= fee) return;
+        await sendWrite(
+            this.publicClient,
+            requireWallet(this.walletClient, "approve"),
+            token,
+            erc20Abi as unknown as Abi,
+            "approve",
+            [this.contractAddress, fee],
+        );
     }
 
     /**
@@ -162,15 +228,11 @@ export class AppRegistryClient {
 
     /**
      * Register as a publisher within an app
-     * Registration = accepting its current terms
+     * Registration = accepting its current terms. The app owner must have added
+     * this wallet first (`addPublisher`).
      */
     async registerForApp(): Promise<Hash> {
-        const [termsHash, , fee] = await this.readJoinInfoTuple(this.senderAddress());
-        if (termsHash === ZERO_HASH) {
-            throw new Error(
-                `app ${this.appId} has published no terms — it cannot be joined until its owner sets them`,
-            );
-        }
+        const { termsHash, fee } = await this.joinTerms(this.senderAddress());
         return this.executeWrite("registerForApp", [this.appId, termsHash], fee);
     }
 
@@ -178,12 +240,7 @@ export class AppRegistryClient {
      * prepare the tx to register as a publisher for an app
      */
     async prepareRegisterForApp(publisher: Address): Promise<PreparedTx & { value: Hex }> {
-        const [termsHash, , fee] = await this.readJoinInfoTuple(publisher);
-        if (termsHash === ZERO_HASH) {
-            throw new Error(
-                `app ${this.appId} has published no terms — it cannot be joined until its owner sets them`,
-            );
-        }
+        const { termsHash, fee } = await this.joinTerms(publisher);
 
         const data = encodeFunctionData({
             abi: APP_REGISTRY_ABI,
@@ -209,7 +266,7 @@ export class AppRegistryClient {
             const message = err instanceof Error ? err.message : String(err);
             if (/revert/i.test(message)) {
                 throw new Error(
-                    `joining would revert — this wallet may already be registered, or suspended from this app: ${message}`,
+                    `joining would revert — this wallet may not have been added by the app owner, may already be registered, or is suspended from this app: ${message}`,
                 );
             }
             // e.g. rpc hiccup
@@ -243,6 +300,86 @@ export class AppRegistryClient {
             functionName: "isRegisteredForApp",
             args: [this.appId, publisher],
         });
+    }
+
+    /** The single oracle the upload gate reads for one publisher under this app. */
+    async access(publisher: Address): Promise<AppAccess> {
+        const [registered, owner, paidAt] = await this.publicClient.readContract({
+            address: this.contractAddress,
+            abi: APP_REGISTRY_ABI,
+            functionName: "access",
+            args: [this.appId, publisher],
+        });
+        return { registered, owner, paidAt };
+    }
+
+    /**
+     * Whether this app's subscription is inside `windowSeconds` of its last
+     * payment. The contract stores only the timestamp; the window is the gate's
+     * policy, passed in here. `now` is injectable so a caller can evaluate
+     * against block time rather than wall-clock skew.
+     */
+    async isActiveAt(
+        windowSeconds: bigint,
+        now = BigInt(Math.floor(Date.now() / 1000)),
+    ): Promise<boolean> {
+        const paidAt = await this.subscribedAt();
+        return paidAt > 0n && now < paidAt + windowSeconds;
+    }
+
+    /** Unix seconds of this app's last subscription payment, or 0 if unclaimed. */
+    async subscribedAt(): Promise<bigint> {
+        return this.publicClient.readContract({
+            address: this.contractAddress,
+            abi: APP_REGISTRY_ABI,
+            functionName: "subscribedAt",
+            args: [this.appId],
+        });
+    }
+
+    /** What claiming or renewing an app costs, in USDC's smallest unit (6 decimals), not wei. */
+    async subscriptionFee(): Promise<bigint> {
+        return this.publicClient.readContract({
+            address: this.contractAddress,
+            abi: APP_REGISTRY_ABI,
+            functionName: "subscriptionFee",
+        });
+    }
+
+    /** The ERC-20 token (USDC) the subscription fee is paid in. */
+    async usdc(): Promise<Address> {
+        return this.publicClient.readContract({
+            address: this.contractAddress,
+            abi: APP_REGISTRY_ABI,
+            functionName: "usdc",
+        });
+    }
+
+    /** The DataRegistry this contract asks whether a wallet is a registered publisher. */
+    async dataRegistry(): Promise<Address> {
+        return this.publicClient.readContract({
+            address: this.contractAddress,
+            abi: APP_REGISTRY_ABI,
+            functionName: "dataRegistry",
+        });
+    }
+
+    // ── Protocol admin ───────────────────────────────────────────────────────
+
+    async setDataRegistry(registry: Address): Promise<Hash> {
+        return this.executeWrite("setDataRegistry", [registry]);
+    }
+
+    async setSubscriptionFee(fee: bigint): Promise<Hash> {
+        return this.executeWrite("setSubscriptionFee", [fee]);
+    }
+
+    async setUsdc(token: Address): Promise<Hash> {
+        return this.executeWrite("setUsdc", [token]);
+    }
+
+    async withdrawUsdc(to: Address, amount: bigint): Promise<Hash> {
+        return this.executeWrite("withdrawUsdc", [to, amount]);
     }
 
     async isAppSuspended(): Promise<boolean> {
@@ -350,6 +487,22 @@ export class AppRegistryClient {
             acceptedTerms,
             appSuspended,
         };
+    }
+
+    /** The terms hash and fee a join must carry, or why `publisher` cannot join. */
+    private async joinTerms(publisher: Address): Promise<{ termsHash: Hex; fee: bigint }> {
+        const [termsHash, , fee, status] = await this.readJoinInfoTuple(publisher);
+        if (termsHash === ZERO_HASH) {
+            throw new Error(
+                `app ${this.appId} has published no terms — it cannot be joined until its owner sets them`,
+            );
+        }
+        if ((status as PublisherStatus) === PublisherStatus.UNREGISTERED) {
+            throw new Error(
+                `${publisher} has not been added to app ${this.appId} — its owner must add them (addPublisher) before they can join`,
+            );
+        }
+        return { termsHash, fee };
     }
 
     private async readJoinInfoTuple(

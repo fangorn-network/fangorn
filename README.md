@@ -83,13 +83,26 @@ at push time — far from the cause.
 ```sh
 fangorn set-app my-app     # persists the app; --app <name-or-id> overrides per command
 fangorn app info           # owner, terms, join fee, and where you stand in both registries
-fangorn app claim          # claim it, if nobody owns it yet (irreversible)
-fangorn register           # global standing in the DataRegistry, then join the app
+fangorn register           # global standing in the DataRegistry (then joins the app, if you were added)
+fangorn app claim          # claim it, if nobody owns it yet (irreversible; pays the subscription)
 ```
 
-`fangorn register` is idempotent and does both halves, reporting each. It is the
-only registration command you normally need; `fangorn app join` exists for
-joining an app you don't own, and for re-accepting terms after the owner moves
+Register first: the AppRegistry asks the DataRegistry before letting a wallet claim
+an app or be added to one, so a wallet that never registered — or that the protocol
+admin has banned network-wide — can do neither.
+
+**An app is a storage subscription.** `fangorn app claim` pulls the subscription
+fee in USDC (the client approves it for you) and `fangorn app renew` pays it
+again. Hosted uploads are billed to the app, so nobody publishes outside one.
+
+**Membership is by invitation.** The owner runs `fangorn app add <address>` (the
+address must already be a registered publisher);
+only then can that wallet `fangorn app join`, which accepts the terms and pays
+the join fee. The owner is their own first publisher and needs neither.
+
+`fangorn register` is idempotent and does both halves, reporting each — it joins
+the app when you have been added, and tells you to ask the owner when you have
+not. `fangorn app join` is also how you re-accept terms after the owner moves
 them (free).
 
 Owning an app comes with its own commands:
@@ -279,6 +292,7 @@ const data = fangorn.getDataRegistry();
 const apps = fangorn.getAppRegistry();
 
 if (!(await data.isRegistered(self))) await data.register();
+// Throws unless the app's owner has added this wallet (`apps.addPublisher`).
 if (!(await apps.isRegisteredForApp(self))) await apps.registerForApp();
 ```
 
@@ -293,10 +307,15 @@ const info = await apps.joinInfo(self);
 if (needsReacceptance(info)) await apps.registerForApp(); // free re-accept
 ```
 
-The other two clients hang off the same object: `fangorn.getSubscriptionRegistry()`
-(publisher storage paywall) and `fangorn.getSettlementRegistry()` (consumer
-pay-then-read). Neither is app-scoped — a subscription is per wallet and a
-resource is per owner — so `setAppId` deliberately leaves both alone.
+The storage paywall lives on the same client, because an app is its
+subscription: `apps.subscriptionFee()`, `apps.subscribedAt()`, `apps.renewApp()`,
+and `apps.access(publisher)` — the `{ registered, owner, paidAt }` the upload
+gate reads. The contract stores only when the app last paid; `apps.isActiveAt(window)`
+applies a window you pass in.
+
+`fangorn.getSettlementRegistry()` (consumer pay-then-read) hangs off the same
+object. It is not app-scoped — a resource is per owner — so `setAppId`
+deliberately leaves it alone.
 
 ### Namespaces & the git-native flow
 
@@ -442,8 +461,10 @@ publishing under it:
 ```ts
 const apps = fangorn.getAppRegistry();
 
-await apps.registerApp(termsHash, termsUri, joinFee); // claim it (first come, first served)
-await apps.registerForApp(); // join it, accepting the current terms
+await apps.registerApp(termsHash, termsUri, joinFee); // claim it — pays the subscription fee (USDC); caller must be registered
+await apps.addPublisher(publisher); // owner: invite a registered publisher
+await apps.registerForApp(); // publisher: join, accepting the current terms
+await apps.renewApp(); // owner: pay the subscription again
 ```
 
 Joining reads the terms hash immediately before sending and passes it as an
@@ -608,17 +629,16 @@ gadget_ behind the same handle shape, so committed data doesn't change form.
 | Contract             | Address                                      | What it owns                                        |
 | -------------------- | -------------------------------------------- | --------------------------------------------------- |
 | DataRegistry         | `0x3b0cf19bef492500401e4d74e6fa29a56d0cc67b` | Namespace state roots; global publisher standing    |
-| AppRegistry          | `0xcc92f3d827df33be7323eef28e67a509034f5a59` | Apps: owner, terms, join fee, per-app membership    |
-| SubscriptionRegistry | `0xe82192be4c20d3dc93fbc63e3ecd7e13c3889726` | Publisher-side storage paywall (USDC)               |
+| AppRegistry          | `0xcc92f3d827df33be7323eef28e67a509034f5a59` | Apps: owner, terms, membership, storage subscription (USDC) |
 | SettlementRegistry   | `0x47a2a0d7e7fc8a044f6d6f1d878c4178952ea779` | Consumer-side pay-then-read rail (USDC + Semaphore) |
 
 `FangornConfig` in `src/config.ts` is the authoritative list and what the SDK
 uses by default — these contracts have been redeployed more than once, so prefer
 the config over any address copied out of a document, including this table.
 
-The dependency runs one way: `DataRegistry.commitStateRoot` cross-calls
-`AppRegistry.isRegisteredForApp`, and `SubscriptionRegistry` cross-calls
-`DataRegistry.isRegistered`. Nothing calls back the other way.
+The two point at each other: `DataRegistry.commitStateRoot` cross-calls
+`AppRegistry.isRegisteredForApp`, and `AppRegistry.registerApp` / `addPublisher`
+cross-call `DataRegistry.isRegistered`.
 
 ---
 
@@ -658,7 +678,7 @@ claiming the app first if nobody owns it.
 
 - Sealed fields are live (`self-hkdf-v1`, `worker-usdc-v1`), but which fields to seal is expressed per-call at stage time — there is no schema-level `sealedFields` hint yet, and no CLI command for sealing.
 - The SDK covers the **publisher** half of the settlement rail (`createResource`, `updatePrice`, `setDisabled`, plus the reads). The **buyer** half — Semaphore identity, the EIP-3009 authorization, membership proofs — lives in [`@fangorn-network/fetch`](https://github.com/fangorn-network/x402f), which relays both writes through a facilitator so the buyer needs no gas. This package deliberately carries no proving dependency.
-- The SubscriptionRegistry (publisher storage paywall) has a client but no CLI command yet; `fangorn subscribe` is the event stream, not the paywall.
+- `fangorn subscribe` is the event stream, not the storage paywall — that is `fangorn app claim` / `fangorn app renew`.
 - `worker-usdc-v1` trusts the access worker with the unsealing key. A TEE- or threshold-backed replacement would ship as a new gadget, and the on-chain gadget registry (`gadget → resolver`) is still future work.
 - Vertex/edge schema validation is client-side only — no on-chain enforcement.
 - Push authorization is client-side in this release; on-chain write policies and non-fast-forward rejection are planned.
