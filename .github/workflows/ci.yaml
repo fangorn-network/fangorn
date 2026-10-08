@@ -30,6 +30,17 @@ jobs:
       - run: pnpm run test --coverage
       - if: always()
         uses: codecov/codecov-action@v3
+  admin_fork:
+    # The protocol admin suite, against a local fork of the deployed contracts.
+    # It generates its own admin key on the fork and needs no secrets, so it can
+    # run on every pull request.
+    name: Admin (fork)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/prepare
+      - uses: foundry-rs/foundry-toolchain@v1
+      - run: pnpm test:admin
   type_check:
     name: Type Check
     runs-on: ubuntu-latest

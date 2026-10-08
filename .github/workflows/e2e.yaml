@@ -1,13 +1,15 @@
-# The end-to-end suite against Arbitrum Sepolia, including the protocol admin tests.
+# The end-to-end suite against Arbitrum Sepolia.
 #
-# ADMIN_ETH_PRIVATE_KEY is the admin of the registries, which means it can also
-# upgrade them. Everything unusual here is to keep it away from code nobody reviewed:
+# It holds a funded test wallet and a Pinata token, and no admin key: the protocol
+# admin suite runs on a local fork instead (the "Admin (fork)" job in ci.yaml), so
+# the key that can upgrade the contracts is never a secret here. The rest is still
+# kept away from code nobody reviewed:
 # - The secrets belong to the `sepolia-e2e` environment, not the repository, so no
 #   other workflow can read them. Restrict that environment to `main` in the
-#   repository settings, or a manual run from any branch gets the key.
-# - No pull_request trigger: a pull request's code never runs with the key.
+#   repository settings, or a manual run from any branch gets them.
+# - No pull_request trigger: a pull request's code never runs with them.
 # - The secrets reach the one step that runs the tests, not the install.
-# - Actions are pinned to a commit, because a moved tag would run with the key,
+# - Actions are pinned to a commit, because a moved tag would run with them,
 #   and the install is frozen to the lockfile and runs no package scripts.
 
 name: E2E
@@ -21,8 +23,7 @@ on:
 permissions:
   contents: read
 
-# One wallet is one nonce sequence, and the admin tests suspend the suite's app
-# while they run: two runs at once would fail each other.
+# One wallet is one nonce sequence: two runs at once would fail each other.
 concurrency:
   group: e2e-sepolia
   cancel-in-progress: false
@@ -43,9 +44,9 @@ jobs:
           node-version: 22.21.1
       - run: pnpm install --frozen-lockfile --ignore-scripts
       # Not `pnpm test:e2e`: that reads a .env file, and there is none here.
-      - run: pnpm exec vitest run --config vitest.e2e.config.ts
+      # The admin suite is left to ci.yaml: it needs anvil, and nothing from here.
+      - run: pnpm exec vitest run --config vitest.e2e.config.ts --exclude src/admin.e2e.test.ts
         env:
           ETH_PRIVATE_KEY: ${{ secrets.ETH_PRIVATE_KEY }}
-          ADMIN_ETH_PRIVATE_KEY: ${{ secrets.ADMIN_ETH_PRIVATE_KEY }}
           PINATA_JWT: ${{ secrets.PINATA_JWT }}
           PINATA_GATEWAY: ${{ secrets.PINATA_GATEWAY }}

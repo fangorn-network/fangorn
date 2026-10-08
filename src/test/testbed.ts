@@ -1,7 +1,7 @@
 import { createPublicClient, http, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { Fangorn } from "../fangorn.js";
-import { FangornConfig } from "../config.js";
+import { type AppConfig, FangornConfig } from "../config.js";
 
 // The testbed's app terms. Any non-zero value works — zero would leave the app
 // unjoinable and every commit in the suite would revert NotRegisteredForApp.
@@ -18,25 +18,32 @@ export function suiteApp(sk: Hex | undefined): string {
     return `e2e-${privateKeyToAccount(sk).address.toLowerCase()}`;
 }
 
-const rpc = () => createPublicClient({ transport: http(FangornConfig.rpcUrl) });
-
 export class TestBed {
-    private constructor(private readonly f_list: Fangorn[]) {}
+    private constructor(
+        private readonly f_list: Fangorn[],
+        private readonly config: AppConfig,
+    ) {}
 
     /**
      * @param sks     one wallet per publisher in the forest; the first owns the app
      * @param appName the app namespace to publish under; defaults to the first
      *                wallet's own (`suiteApp`). Pass an unclaimed name to exercise
      *                the AppNotFound path.
+     * @param config  the deployment to talk to; defaults to the SDK's. Pass one
+     *                with another `rpcUrl` to run against a local fork.
      */
-    static init(sks: Hex[], appName: string = suiteApp(sks[0])): TestBed {
+    static init(
+        sks: Hex[],
+        appName: string = suiteApp(sks[0]),
+        config: AppConfig = FangornConfig,
+    ): TestBed {
         // populate fangorn forest
         const f_list: Fangorn[] = [];
         sks.forEach((sk) => {
             f_list.push(
                 Fangorn.create({
                     privateKey: sk,
-                    config: FangornConfig,
+                    config,
                     appId: appName,
                     storage: {
                         pinata: {
@@ -48,7 +55,7 @@ export class TestBed {
             );
         });
 
-        return new TestBed(f_list);
+        return new TestBed(f_list, config);
     }
 
     getFangorn(index: number): Fangorn {
@@ -119,7 +126,11 @@ export class TestBed {
             to: this.getFangorn(to).getAddress(),
             value: wei,
         });
-        await rpc().waitForTransactionReceipt({ hash });
+        await this.rpc().waitForTransactionReceipt({ hash });
+    }
+
+    private rpc() {
+        return createPublicClient({ transport: http(this.config.rpcUrl) });
     }
 
     /**
@@ -134,7 +145,7 @@ export class TestBed {
         if (!wallet.account) throw new Error("Account required");
         const { account } = wallet;
         const recipient = this.getFangorn(to).getAddress();
-        const client = rpc();
+        const client = this.rpc();
 
         const [balance, fees, estimate] = await Promise.all([
             client.getBalance({ address: account.address }),

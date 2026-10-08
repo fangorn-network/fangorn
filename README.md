@@ -667,12 +667,6 @@ Required variables:
 | `PINATA_JWT`      | Pinata API JWT                            |
 | `PINATA_GATEWAY`  | Pinata gateway URL                        |
 
-Optional:
-
-| Variable                | Description                                                                |
-| ----------------------- | -------------------------------------------------------------------------- |
-| `ADMIN_ETH_PRIVATE_KEY` | Protocol admin key. Without it the admin suite is skipped (in CI it fails) |
-
 The suite needs no setup beyond a funded wallet. It publishes under its own app,
 `e2e-<wallet address>`, which `TestBed.registerApp` claims on the first run and
 reuses after; it does not write to the default `fangorn` app, which only its owner
@@ -680,13 +674,20 @@ can invite a wallet into. The invitation flow is tested with a second wallet tha
 is generated on each run, sent 0.002 ETH for gas from `ETH_PRIVATE_KEY`, and swept
 back into it when the test ends.
 
-The protocol admin suite (suspending and reinstating an app and a publisher) runs
-only with `ADMIN_ETH_PRIVATE_KEY`, and only against the suite's own app and a
-generated wallet. In GitHub Actions it runs from `.github/workflows/e2e.yaml`,
-with the four variables stored as secrets of the `sepolia-e2e` environment.
+The protocol admin suite (suspending and reinstating an app and a publisher) is
+`src/admin.e2e.test.ts`. It never uses the real admin key: it starts a local fork
+of the deployed contracts with `anvil` ([Foundry](https://getfoundry.sh)), hands
+the admin role to a key it generates there, and runs against that. It needs no
+secrets and no `.env`:
 
-The two test files share that wallet, so they run one after the other
-(`fileParallelism: false`); in parallel they race for nonces.
+```sh
+pnpm test:admin
+```
+
+Without `anvil` installed it is skipped (in CI it fails). In GitHub Actions it runs
+on every pull request as the "Admin (fork)" job in `ci.yaml`. The rest of the e2e
+suite runs from `.github/workflows/e2e.yaml`, with `ETH_PRIVATE_KEY` and the two
+Pinata variables stored as secrets of the `sepolia-e2e` environment.
 
 ---
 
