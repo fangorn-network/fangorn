@@ -34,6 +34,7 @@ import {
 	CommitFilter,
 	DataRegistryClient,
 	PreparedTx,
+	MembershipRegistryClient,
 	SettlementRegistryClient,
 	StateCommittedLog,
 	subspaceId,
@@ -222,6 +223,12 @@ export class Fangorn {
 			walletClient,
 		);
 
+		const membershipRegistry = new MembershipRegistryClient(
+			resolvedConfig.membershipRegistryContractAddress,
+			publicClient,
+			walletClient,
+		);
+
 		const ctx: FangornContext = {
 			walletClient,
 			// Every upload is billed to the app it lands in, so the worker is
@@ -236,6 +243,7 @@ export class Fangorn {
 			dataRegistry: dataRegistry,
 			appRegistry,
 			settlementRegistry,
+			membershipRegistry,
 			config: resolvedConfig,
 		};
 
@@ -975,6 +983,10 @@ export class Fangorn {
 	 */
 	getSettlementRegistry(): SettlementRegistryClient {
 		return this.ctx.settlementRegistry;
+	}
+
+	getMembershipRegistry(): MembershipRegistryClient {
+		return this.ctx.membershipRegistry;
 	}
 
 	/** The app (global namespace) this client publishes and reads under. */
