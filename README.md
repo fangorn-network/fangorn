@@ -313,8 +313,8 @@ and `apps.access(publisher)` — the `{ registered, owner, paidAt }` the upload
 gate reads. The contract stores only when the app last paid; `apps.isActiveAt(window)`
 applies a window you pass in.
 
-`fangorn.getSettlementRegistry()` (consumer pay-then-read) hangs off the same
-object. It is not app-scoped — a resource is per owner — so `setAppId`
+`fangorn.getMembershipRegistry()` (consumer access to an app's paid records)
+hangs off the same object. It takes the app id per call, so `setAppId`
 deliberately leaves it alone.
 
 ### Namespaces & the git-native flow
@@ -611,8 +611,8 @@ const plaintext = await decryptHandle({
   having unsealed with its own key; the bytes arrive as plaintext.
 
 `buildAccessRequest` / `accessMessageHash` are exported if you want to drive the
-`/access` endpoint yourself, and `SettlementRegistryClient` (`isSettled`, `getPrice`)
-reads the settlement rail directly.
+`/access` endpoint yourself, and `MembershipRegistryClient` (`canRead`, `planOf`)
+reads the membership rail directly.
 
 **Trust model.** For `worker-usdc-v1` the access worker is the "somewhat trusted" party:
 it holds the unsealing key and sees plaintext at release time. That is deliberate for
@@ -630,7 +630,7 @@ gadget_ behind the same handle shape, so committed data doesn't change form.
 | -------------------- | -------------------------------------------- | --------------------------------------------------- |
 | DataRegistry         | `0x3b0cf19bef492500401e4d74e6fa29a56d0cc67b` | Namespace state roots; global publisher standing    |
 | AppRegistry          | `0xcc92f3d827df33be7323eef28e67a509034f5a59` | Apps: owner, terms, membership, storage subscription (USDC) |
-| SettlementRegistry   | `0x47a2a0d7e7fc8a044f6d6f1d878c4178952ea779` | Consumer-side pay-then-read rail (USDC + Semaphore) |
+| MembershipRegistry   | not yet deployed                             | Time-limited, unlinkable access to an app's paid records (USDC + Semaphore) |
 
 `FangornConfig` in `src/config.ts` is the authoritative list and what the SDK
 uses by default — these contracts have been redeployed more than once, so prefer
@@ -677,7 +677,7 @@ claiming the app first if nobody owns it.
 ## Limitations / Future Work
 
 - Sealed fields are live (`self-hkdf-v1`, `worker-usdc-v1`), but which fields to seal is expressed per-call at stage time — there is no schema-level `sealedFields` hint yet, and no CLI command for sealing.
-- The SDK covers the **publisher** half of the settlement rail (`createResource`, `updatePrice`, `setDisabled`, plus the reads). The **buyer** half — Semaphore identity, the EIP-3009 authorization, membership proofs — lives in [`@fangorn-network/fetch`](https://github.com/fangorn-network/x402f), which relays both writes through a facilitator so the buyer needs no gas. This package deliberately carries no proving dependency.
+- The SDK covers the **app owner** half of the membership rail (`setPlan`, plus the reads and the relayed `join`/`claim`). The **buyer** half — Semaphore identity, the ERC-3009 authorization, membership proofs — lives in [`@fangorn-network/fetch`](https://github.com/fangorn-network/x402f), which relays both writes through a facilitator so the buyer needs no gas. This package deliberately carries no proving dependency.
 - `fangorn subscribe` is the event stream, not the storage paywall — that is `fangorn app claim` / `fangorn app renew`.
 - `worker-usdc-v1` trusts the access worker with the unsealing key. A TEE- or threshold-backed replacement would ship as a new gadget, and the on-chain gadget registry (`gadget → resolver`) is still future work.
 - Vertex/edge schema validation is client-side only — no on-chain enforcement.

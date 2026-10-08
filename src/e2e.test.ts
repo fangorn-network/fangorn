@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { type Hex, keccak256, stringToBytes, hexToBytes, bytesToHex } from "viem";
 import { TestBed } from "./test/testbed.js";
-import { needsReacceptance, packResourceUri, PublisherStatus, resourceIdOf } from "./contracts/index.js";
+import { needsReacceptance, PublisherStatus } from "./contracts/index.js";
 import { sealSelf, unsealSelf, GADGET_SELF_HKDF_V1 } from "./crypto/encryption.js";
 
 const PRIVATE_KEY = process.env.ETH_PRIVATE_KEY as Hex;
@@ -343,7 +343,6 @@ describe("Fangorn registries E2E", () => {
         const f = testbed.getFangorn(0);
         const data = f.getDataRegistry();
         const apps = f.getAppRegistry();
-        const settlement = f.getSettlementRegistry();
 
         expect((await data.appRegistry()).toLowerCase()).toBe(
             apps.getAddress().toLowerCase(),
@@ -353,11 +352,6 @@ describe("Fangorn registries E2E", () => {
         // be claimed.
         expect((await apps.dataRegistry()).toLowerCase()).toBe(
             data.getAddress().toLowerCase(),
-        );
-        // Both paywalls settle in the same token, or a price quoted by one means
-        // nothing to the other.
-        expect((await apps.usdc()).toLowerCase()).toBe(
-            (await settlement.getUsdc()).toLowerCase(),
         );
 
         // setAppId moves the app-scoped clients together and leaves the
@@ -484,53 +478,4 @@ describe("Fangorn registries E2E", () => {
         expect(await apps.isActiveAt(30n * 24n * 3600n)).toBe(true);
         expect(await apps.isActiveAt(0n)).toBe(false);
     }, 180_000);
-
-    // The consumer rail, publisher half. register/settle need an EIP-3009
-    // authorization and a Semaphore proof and are not exercised here; listing,
-    // pricing and delisting are, because those are what a publisher does.
-    it("listing a resource makes it readable and delistable", async () => {
-        const f = testbed.getFangorn(0);
-        const settlement = f.getSettlementRegistry();
-        const self = f.getAddress();
-
-        const uid = keccak256(stringToBytes(`e2e-resource-${Date.now()}`));
-        const price = 1_000n; // 0.001 USDC — 6 decimals, not wei
-        // The uri is not free-form: `@fangorn-network/fetch` splits it on "#" and
-        // verifies the bytes it decrypts against the hash half.
-        const plaintextHash = keccak256(stringToBytes("pretend-plaintext"));
-        const uri = packResourceUri("https://worker.example", plaintextHash);
-
-        // The id is derivable before the transaction lands, and the local
-        // derivation must equal the contract's — this is the one constant the
-        // publisher (this SDK) and the buyer (@fangorn-network/fetch, which
-        // derives it offline and never asks the chain) have to agree on. A
-        // mismatch means buyers pay for an id no publisher ever listed.
-        const resourceId = await settlement.resourceIdFor(self, uid);
-        expect(resourceId).not.toBe(ZERO_BYTES32);
-        expect(resourceIdOf(self, uid)).toBe(resourceId);
-
-        await settlement.createResource(uid, price, uri);
-
-        const resource = await settlement.getResource(resourceId);
-        expect(resource.owner.toLowerCase()).toBe(self.toLowerCase());
-        expect(resource.price).toBe(price);
-        expect(resource.uri).toBe(uri);
-        // Round-trips through the buyer's unpackUri: `${workerUrl}#${hash}`.
-        expect(resource.uri.split("#")).toEqual(["https://worker.example", plaintextHash]);
-        expect(resource.disabled).toBe(false);
-        expect(resource.groupId).toBeGreaterThan(0n);
-
-        // Access is checked against the reader's stealth address, and nobody has
-        // settled for this one.
-        expect(await settlement.isSettled(self, resourceId)).toBe(false);
-
-        // Delisting blocks new registrations; it does not revoke what was paid for.
-        await settlement.setDisabled(resourceId, true);
-        expect(await settlement.isDisabled(resourceId)).toBe(true);
-
-        // An unlisted resource reads as a zero owner rather than throwing —
-        // getPrice alone cannot tell "free" from "does not exist".
-        const missing = await settlement.getResource(keccak256(stringToBytes("nope")));
-        expect(missing.owner).toBe(ZERO_ADDRESS);
-    }, 240_000);
 });

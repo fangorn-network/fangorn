@@ -82,21 +82,9 @@ membership in the AppRegistry. `commitStateRoot` cross-calls the second.
 
 ## C. Consumer level
 
-The thinnest-covered side today, and the reason `settle`/`register` were added to
-the wrapper. The privacy property lives in the *separation* of the two calls.
-
-| id | scenario |
-|----|----------|
-| **CON-1** | **Discover what a resource costs.** `getResource(id)` fans out five reads into one struct. An unlisted resource returns `owner === 0x0` rather than throwing — `getPrice` alone cannot tell "free" from "does not exist", and both are `0`. |
-| **CON-2** | **`getPrice === 0` means free**, and the access worker lets a signed request through without settlement. |
-| **CON-3** | **Pay.** `register(id, commitment, auth)` flattens `TransferAuthorization` into the contract's 10 positional arguments in exactly the order `[resourceId, identityCommitment, from, amount, validAfter, validBefore, nonce, v, r, s]`. This is the single most error-prone call in the SDK — a transposed `r`/`s` or `validAfter`/`validBefore` is a signature failure with no useful message. Assert the full array. |
-| **CON-4** | **`register` sends no ETH value.** The USDC moves via the EIP-3009 authorization, not from `msg.sender`, which is exactly what makes the call safe to relay and the consumer gasless. |
-| **CON-5** | **Read.** `settle(id, stealthAddress, proof, hookData)` flattens `SemaphoreProof` to `[resourceId, stealthAddress, merkleTreeDepth, merkleTreeRoot, nullifier, message, points, hookData]`, with `points` an 8-element array passed through intact. |
-| **CON-6** | **`hookData` defaults to `[]` and is `uint8[]`, not `bytes`.** The contract declares `Vec<u8>`; every byte costs a 32-byte calldata slot. Assert the default is empty. |
-| **CON-7** | **Access is checked against the stealth address, not the payer.** `isSettled(stealthAddress, resourceId)`. A test that passes the payer address here would pass against a mock and fail against a chain, so assert the argument *order* explicitly. |
-| **CON-8** | **Settling twice is refused.** The proof's nullifier makes it once-per-identity; a second `settle` reverts `AlreadySettled`. [rust] |
-| **CON-9** | **A disabled resource blocks new registrations but not existing access.** `isDisabled` is true, `isSettled` still true for whoever already paid. Disabling is delisting, not revocation — anyone who paid keeps what they bought. [rust] |
-| **CON-10** | **Read-only construction.** A client built with no `walletClient` answers `isSettled` / `getPrice` (the access worker's whole usage) and throws a named error on any write, rather than a `TypeError` on `undefined`. |
+The SettlementRegistry (per-resource `register`/`settle`) is deprecated and its
+client removed; consumer access is now the MembershipRegistry (`join`/`claim`
+per app and epoch). Scenarios for it are still to be written.
 
 ## D. Coordinator — `fangorn.ts`
 

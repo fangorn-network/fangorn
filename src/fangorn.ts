@@ -35,7 +35,6 @@ import {
 	DataRegistryClient,
 	PreparedTx,
 	MembershipRegistryClient,
-	SettlementRegistryClient,
 	StateCommittedLog,
 	subspaceId,
 } from "./contracts/index.js";
@@ -217,12 +216,6 @@ export class Fangorn {
 			walletClient,
 		);
 
-		const settlementRegistry = new SettlementRegistryClient(
-			resolvedConfig.settlementRegistryContractAddress,
-			publicClient,
-			walletClient,
-		);
-
 		const membershipRegistry = new MembershipRegistryClient(
 			resolvedConfig.membershipRegistryContractAddress,
 			publicClient,
@@ -242,7 +235,6 @@ export class Fangorn {
 			domain,
 			dataRegistry: dataRegistry,
 			appRegistry,
-			settlementRegistry,
 			membershipRegistry,
 			config: resolvedConfig,
 		};
@@ -975,14 +967,6 @@ export class Fangorn {
 	 */
 	getAppRegistry(): AppRegistryClient {
 		return this.ctx.appRegistry;
-	}
-
-	/**
-	 * The consumer-side pay-then-read rail. Resources are keyed by owner+uid, so
-	 * this client is app-agnostic too.
-	 */
-	getSettlementRegistry(): SettlementRegistryClient {
-		return this.ctx.settlementRegistry;
 	}
 
 	getMembershipRegistry(): MembershipRegistryClient {

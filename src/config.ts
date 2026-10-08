@@ -46,9 +46,6 @@ export interface AppConfig {
 	// The deployed app_registry contract address (apps, membership, and the
 	// per-app storage subscription)
 	appRegistryContractAddress: Hex;
-	// The deployed settlement_registry contract address (consumer pay-then-read rail).
-	// Superseded by the MembershipRegistry; kept until nothing reads it.
-	settlementRegistryContractAddress: Hex;
 	// The deployed MembershipRegistry (time-limited, unlinkable access to an app's
 	// paid records). Zero until deployed on this network.
 	membershipRegistryContractAddress: Hex;
@@ -67,14 +64,12 @@ export interface AppConfig {
 // runtime via `fangorn.setAppId(...)` (defaults to `DEFAULT_APP`).
 export const FangornConfig = {
 	dataRegistryContractAddress:
-		"0x775026e905d7b58b34d16bcbd385fa630ee36c26",
+		"0x0312503913656f25c2bfDf229425aA6926ccF1Cd",
 	appRegistryContractAddress:
-		"0x11d228c4774af3d9cae3b4b6874a12576a1a83ec",
-	settlementRegistryContractAddress:
-		"0xbbecb93142d1a5144260d2c30fe3c4a11fdda346",
+		"0x57b41E334864B430db44F7FbCD8d165C56e41402",
 	// MEMBERSHIP_REGISTRY: set after scripts/deploy-membership.sh
 	membershipRegistryContractAddress:
-		"0x0000000000000000000000000000000000000000",
+		"0x5054D8611111Bb9F36318eb5c3e6968646415A9D",
 	chain: arbitrumSepolia,
 	rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
 	caip2: 421614,

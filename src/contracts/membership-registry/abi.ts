@@ -1,7 +1,4 @@
 /**
- * The MembershipRegistry: time-limited access to an app's paid records, held by an
- * address nobody can tie to the wallet that paid. Replaces the SettlementRegistry.
- *
  * Generated from `forge inspect MembershipRegistry abi` in fangorn-network/contracts
  * (solidity/src/MembershipRegistry.sol). Regenerate, do not edit.
  */
