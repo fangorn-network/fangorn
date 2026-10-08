@@ -9,7 +9,7 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import { CID } from "multiformats/cid";
 
-import { AppConfig, DEFAULT_APP, FangornConfig, toAppId } from "./config.js";
+import { AppConfig, DEFAULT_APP, FangornConfig, nonBlank, toAppId } from "./config.js";
 import {
 	FangornContext,
 	FangornCreateOptions,
@@ -200,7 +200,7 @@ export class Fangorn {
 
 		// Blank is "no app chosen", not an app called "". An empty FANGORN_APP_ID
 		// or `--app ""` must not silently re-scope the registries or the billing.
-		const chosenApp = options.appId?.trim() || undefined;
+		const chosenApp = nonBlank(options.appId);
 		const appId = toAppId(chosenApp ?? DEFAULT_APP);
 		const dataRegistry = new DataRegistryClient(
 			resolvedConfig.dataRegistryContractAddress,

@@ -22,7 +22,7 @@ import "dotenv/config";
 
 import { Fangorn } from "../fangorn.js";
 import { handleCancel } from "./index.js";
-import { AppConfig, DEFAULT_APP, FangornConfig, toAppId } from "../config.js";
+import { AppConfig, DEFAULT_APP, FangornConfig, nonBlank, toAppId } from "../config.js";
 import { StorageConfig } from "../types/index.js";
 import {
 	needsReacceptance,
@@ -98,15 +98,15 @@ function loadConfig(): Config {
 	const signedUrlWorkerUrl = process.env.SIGNED_URL_WORKER_URL;
 	// Blank counts as unset, so an exported-but-empty FANGORN_APP_ID (common in
 	// Docker/CI) falls through to the stored app instead of overriding it with an
-	// app called "". `??` would not catch it — "" is not nullish.
-	const envAppId = process.env.FANGORN_APP_ID?.trim() || undefined;
+	// app called "".
+	const envAppId = nonBlank(process.env.FANGORN_APP_ID);
 
 	if (existsSync(CONFIG_PATH)) {
 		const stored = readStoredConfig();
 		_config = {
 			privateKey: stored.privateKey,
 			cfg: FangornConfig,
-			appId: envAppId ?? (stored.appId?.trim() || undefined),
+			appId: envAppId ?? nonBlank(stored.appId),
 			pinataJwt: stored.pinataJwt,
 			pinataGateway: stored.pinataGateway,
 			accessWorkerUrl: stored.accessWorkerUrl ?? "",
@@ -182,7 +182,7 @@ function getFangorn(): Fangorn {
 
 /** The `--app` override for this invocation; blank counts as unset. */
 function appFlag(): string | undefined {
-	return (program.opts().app as string | undefined)?.trim() || undefined;
+	return nonBlank(program.opts().app as string | undefined);
 }
 
 /**

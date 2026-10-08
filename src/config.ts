@@ -10,6 +10,16 @@ export function appId(name: string): Hex {
 
 export const DEFAULT_APP = "fangorn";
 
+/**
+ * Blank input means "not set", never an app called "". Returns the trimmed value,
+ * or undefined when it is missing or only whitespace, so it can sit on the left of
+ * a `??` fallback. `??` on the raw value would let "" through: it is not nullish.
+ */
+export function nonBlank(value: string | undefined): string | undefined {
+	const trimmed = value?.trim();
+	return trimmed === "" ? undefined : trimmed;
+}
+
 export function toAppId(nameOrId: string): Hex {
 	// A blank name hashes to keccak("") — a valid-looking id for an app nobody
 	// owns. Callers normalise blank to "unset" at their input boundary; anything
