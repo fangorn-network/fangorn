@@ -1,0 +1,51 @@
+# The end-to-end suite against Arbitrum Sepolia, including the protocol admin tests.
+#
+# ADMIN_ETH_PRIVATE_KEY is the admin of the registries, which means it can also
+# upgrade them. Everything unusual here is to keep it away from code nobody reviewed:
+# - The secrets belong to the `sepolia-e2e` environment, not the repository, so no
+#   other workflow can read them. Restrict that environment to `main` in the
+#   repository settings, or a manual run from any branch gets the key.
+# - No pull_request trigger: a pull request's code never runs with the key.
+# - The secrets reach the one step that runs the tests, not the install.
+# - Actions are pinned to a commit, because a moved tag would run with the key,
+#   and the install is frozen to the lockfile and runs no package scripts.
+
+name: E2E
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: ~
+
+permissions:
+  contents: read
+
+# One wallet is one nonce sequence, and the admin tests suspend the suite's app
+# while they run: two runs at once would fail each other.
+concurrency:
+  group: e2e-sepolia
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    name: E2E (Arbitrum Sepolia)
+    runs-on: ubuntu-latest
+    environment: sepolia-e2e
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22.21.1
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      # Not `pnpm test:e2e`: that reads a .env file, and there is none here.
+      - run: pnpm exec vitest run --config vitest.e2e.config.ts
+        env:
+          ETH_PRIVATE_KEY: ${{ secrets.ETH_PRIVATE_KEY }}
+          ADMIN_ETH_PRIVATE_KEY: ${{ secrets.ADMIN_ETH_PRIVATE_KEY }}
+          PINATA_JWT: ${{ secrets.PINATA_JWT }}
+          PINATA_GATEWAY: ${{ secrets.PINATA_GATEWAY }}
