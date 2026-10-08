@@ -3,7 +3,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { createPublicClient, http, type Hex } from "viem";
 import { TestBed } from "./test/testbed.js";
-import { FangornConfig, appId } from "./config.js";
+import { DEFAULT_APP, FangornConfig, appId } from "./config.js";
 import { FANGORN_APP_EXTENSION } from "./fangorn.js";
 
 // App registration as an agent, end to end: an app claims its id, points
@@ -123,7 +123,7 @@ describe("App as agent E2E", () => {
 
         // 4. A stranger holding only the card URL — on the default app, with no
         //    idea this app exists — resolves it and reads everything.
-        const reader = TestBed.init([OWNER_KEY]).getFangorn(0);
+        const reader = TestBed.init([OWNER_KEY], DEFAULT_APP).getFangorn(0);
         const found = await reader.discoverApp(cardUrl);
         expect(found.appId).toBe(appId(appName));
         expect(found.fromBlock).toBe(fromBlock);

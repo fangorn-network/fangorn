@@ -667,10 +667,26 @@ Required variables:
 | `PINATA_JWT`      | Pinata API JWT                            |
 | `PINATA_GATEWAY`  | Pinata gateway URL                        |
 
-The publisher must be registered on the target key — `fangorn register` does
-both halves (DataRegistry standing, then joining the app). The suite's own
-`TestBed.registerApp` / `TestBed.register` do the same thing programmatically,
-claiming the app first if nobody owns it.
+Optional:
+
+| Variable                | Description                                                                |
+| ----------------------- | -------------------------------------------------------------------------- |
+| `ADMIN_ETH_PRIVATE_KEY` | Protocol admin key. Without it the admin suite is skipped (in CI it fails) |
+
+The suite needs no setup beyond a funded wallet. It publishes under its own app,
+`e2e-<wallet address>`, which `TestBed.registerApp` claims on the first run and
+reuses after; it does not write to the default `fangorn` app, which only its owner
+can invite a wallet into. The invitation flow is tested with a second wallet that
+is generated on each run, sent 0.002 ETH for gas from `ETH_PRIVATE_KEY`, and swept
+back into it when the test ends.
+
+The protocol admin suite (suspending and reinstating an app and a publisher) runs
+only with `ADMIN_ETH_PRIVATE_KEY`, and only against the suite's own app and a
+generated wallet. In GitHub Actions it runs from `.github/workflows/e2e.yaml`,
+with the four variables stored as secrets of the `sepolia-e2e` environment.
+
+The two test files share that wallet, so they run one after the other
+(`fileParallelism: false`); in parallel they race for nonces.
 
 ---
 

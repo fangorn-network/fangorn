@@ -63,11 +63,11 @@ export interface AppConfig {
 // runtime via `fangorn.setAppId(...)` (defaults to `DEFAULT_APP`).
 export const FangornConfig = {
 	dataRegistryContractAddress:
-		"0x775026e905d7b58b34d16bcbd385fa630ee36c26",
+		"0x0312503913656f25c2bfDf229425aA6926ccF1Cd",
 	appRegistryContractAddress:
-		"0x11d228c4774af3d9cae3b4b6874a12576a1a83ec",
+		"0x57b41E334864B430db44F7FbCD8d165C56e41402",
 	settlementRegistryContractAddress:
-		"0xbbecb93142d1a5144260d2c30fe3c4a11fdda346",
+		"0x281580BDc478393857955EE61b6F05dB4A29d887",
 	chain: arbitrumSepolia,
 	rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
 	caip2: 421614,

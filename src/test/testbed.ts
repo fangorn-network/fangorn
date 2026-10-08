@@ -1,4 +1,5 @@
-import { type Hex } from "viem";
+import { createPublicClient, http, type Hex } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import { Fangorn } from "../fangorn.js";
 import { FangornConfig } from "../config.js";
 
@@ -7,15 +8,28 @@ import { FangornConfig } from "../config.js";
 const TESTBED_APP_TERMS =
     "0x0000000000000000000000000000000000000000000000000000000000000002" as const;
 
+/**
+ * The app the suite publishes under: one per test wallet, claimed by that wallet
+ * on its first run and reused after. Not the SDK's default app — that one has an
+ * owner, and joining it takes an invitation this wallet cannot give itself.
+ */
+export function suiteApp(sk: Hex | undefined): string {
+    if (!sk) throw new Error("TestBed needs a private key: is ETH_PRIVATE_KEY set?");
+    return `e2e-${privateKeyToAccount(sk).address.toLowerCase()}`;
+}
+
+const rpc = () => createPublicClient({ transport: http(FangornConfig.rpcUrl) });
+
 export class TestBed {
     private constructor(private readonly f_list: Fangorn[]) {}
 
     /**
-     * @param sks     one wallet per publisher in the forest
-     * @param appName the app namespace to publish under; defaults to the SDK's
-     *                own. Pass an unclaimed name to exercise the AppNotFound path.
+     * @param sks     one wallet per publisher in the forest; the first owns the app
+     * @param appName the app namespace to publish under; defaults to the first
+     *                wallet's own (`suiteApp`). Pass an unclaimed name to exercise
+     *                the AppNotFound path.
      */
-    static init(sks: Hex[], appName?: string): TestBed {
+    static init(sks: Hex[], appName: string = suiteApp(sks[0])): TestBed {
         // populate fangorn forest
         const f_list: Fangorn[] = [];
         sks.forEach((sk) => {
@@ -50,8 +64,8 @@ export class TestBed {
      * while a publisher registers for the right to write at all. One app hosts
      * many publishers, and one publisher writes into many apps — but only a
      * registered publisher can claim an app or be added to one, so this runs
-     * `register` first. Idempotent, and safe when someone else already owns it:
-     * apps are shared, not per-test.
+     * `register` first. Idempotent: the app is shared by every test and every
+     * run of this wallet, not claimed per test.
      */
     async registerApp(index: number) {
         // Global standing first: the AppRegistry refuses a claim from a wallet the
@@ -86,6 +100,63 @@ export class TestBed {
             console.log("Registering publisher on-chain...");
             await registry.register();
         }
+    }
+
+    /** The owner's half of a join: `owner` adds `publisher` to the app. */
+    async invite(owner: number, publisher: number) {
+        await this.getFangorn(owner)
+            .getAppRegistry()
+            .addPublisher(this.getFangorn(publisher).getAddress());
+    }
+
+    /** Gas money for a wallet the test generated, sent from a funded one. */
+    async fund(from: number, to: number, wei: bigint) {
+        const wallet = this.getFangorn(from).getWalletClient();
+        if (!wallet.account) throw new Error("Account required");
+        const hash = await wallet.sendTransaction({
+            account: wallet.account,
+            chain: wallet.chain,
+            to: this.getFangorn(to).getAddress(),
+            value: wei,
+        });
+        await rpc().waitForTransactionReceipt({ hash });
+    }
+
+    /**
+     * Send what `from` still holds back to `to`: the other end of `fund`.
+     *
+     * The transfer has to leave room for its own gas, at the limit and price it
+     * is sent with, so whatever of that goes unused stays behind. That is dust,
+     * a small fraction of one transfer's fee.
+     */
+    async sweep(from: number, to: number) {
+        const wallet = this.getFangorn(from).getWalletClient();
+        if (!wallet.account) throw new Error("Account required");
+        const { account } = wallet;
+        const recipient = this.getFangorn(to).getAddress();
+        const client = rpc();
+
+        const [balance, fees, estimate] = await Promise.all([
+            client.getBalance({ address: account.address }),
+            client.estimateFeesPerGas(),
+            client.estimateGas({ account, to: recipient, value: 1n }),
+        ]);
+        // The same 30% headroom as `sendWrite`: Arbitrum's estimate includes an
+        // L1 component that can move before the transfer lands.
+        const gas = (estimate * 130n) / 100n;
+        const value = balance - gas * fees.maxFeePerGas;
+        if (value <= 0n) return;
+
+        const hash = await wallet.sendTransaction({
+            account,
+            chain: wallet.chain,
+            to: recipient,
+            value,
+            gas,
+            maxFeePerGas: fees.maxFeePerGas,
+            maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
+        });
+        await client.waitForTransactionReceipt({ hash });
     }
 
     async initRepo(index: number, name: string) {
