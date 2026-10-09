@@ -22,7 +22,7 @@ import "dotenv/config";
 
 import { Fangorn } from "../fangorn.js";
 import { handleCancel } from "./index.js";
-import { AppConfig, DEFAULT_APP, FangornConfig, toAppId } from "../config.js";
+import { AppConfig, DEFAULT_APP, FangornConfig, nonBlank, toAppId } from "../config.js";
 import { StorageConfig } from "../types/index.js";
 import {
 	needsReacceptance,
@@ -52,7 +52,11 @@ interface StoredConfig {
 interface Config {
 	privateKey: Hex;
 	cfg: AppConfig;
-	appId: string;
+	// The app the user actually chose (env, config file, or `--app`), if any.
+	// Left undefined since naming an app bills uploads to that
+	// app owner's storage subscription. We do not want `fangorn` to be filled in on the user's
+	// behalf. `currentAppName()` applies the default for display and namespace keys.
+	appId?: string;
 	pinataJwt: string;
 	pinataGateway: string;
 	accessWorkerUrl: string;
@@ -92,14 +96,17 @@ function loadConfig(): Config {
 	const pinataGateway = process.env.PINATA_GATEWAY;
 	const accessWorkerUrl = process.env.ACCESS_WORKER_URL;
 	const signedUrlWorkerUrl = process.env.SIGNED_URL_WORKER_URL;
-	const envAppId = process.env.FANGORN_APP_ID;
+	// Blank counts as unset, so an exported-but-empty FANGORN_APP_ID (common in
+	// Docker/CI) falls through to the stored app instead of overriding it with an
+	// app called "".
+	const envAppId = nonBlank(process.env.FANGORN_APP_ID);
 
 	if (existsSync(CONFIG_PATH)) {
 		const stored = readStoredConfig();
 		_config = {
 			privateKey: stored.privateKey,
 			cfg: FangornConfig,
-			appId: envAppId ?? stored.appId ?? DEFAULT_APP,
+			appId: envAppId ?? nonBlank(stored.appId),
 			pinataJwt: stored.pinataJwt,
 			pinataGateway: stored.pinataGateway,
 			accessWorkerUrl: stored.accessWorkerUrl ?? "",
@@ -121,7 +128,7 @@ function loadConfig(): Config {
 		_config = {
 			privateKey: privateKey as Hex,
 			cfg: FangornConfig,
-			appId: envAppId ?? DEFAULT_APP,
+			appId: envAppId,
 			pinataJwt: pinataJwt ?? "",
 			pinataGateway: pinataGateway ?? "",
 			accessWorkerUrl: accessWorkerUrl ?? "",
@@ -168,16 +175,21 @@ function getFangorn(): Fangorn {
 		domain: "localhost",
 		config: cfg.cfg,
 		// `--app` (global option) wins over the stored app for this invocation.
-		appId: (program.opts().app as string | undefined) ?? cfg.appId,
+		appId: appFlag() ?? cfg.appId,
 	});
 	return _fangorn;
+}
+
+/** The `--app` override for this invocation; blank counts as unset. */
+function appFlag(): string | undefined {
+	return nonBlank(program.opts().app as string | undefined);
 }
 
 /**
  * The currently configured app name
  */
 function currentAppName(): string {
-	return (program.opts().app as string | undefined) ?? loadConfig().appId;
+	return appFlag() ?? loadConfig().appId ?? DEFAULT_APP;
 }
 
 // ─── Local repo (working-directory ref) ─────────────────────────────────────────
@@ -357,7 +369,7 @@ program
 	.action((app: string | undefined) => {
 		try {
 			if (!app) {
-				const current = loadConfig().appId;
+				const current = currentAppName();
 				console.log(`App:    ${current}`);
 				console.log(`App id: ${toAppId(current)}`);
 				process.exit(0);
@@ -400,6 +412,14 @@ program
 // `commitStateRoot` cross-calls the second, so a wallet registered globally but
 // not joined to the app gets `NotRegisteredForApp` at push time — far from the
 // cause. `fangorn register` does both; `fangorn app info` shows where you stand.
+//
+// The order is enforced the other way too: the AppRegistry asks the DataRegistry
+// before letting a wallet claim an app or be added to one, so a wallet the
+// protocol admin has banned network-wide cannot come back through an app.
+//
+// Membership is by invitation: the app's owner runs `fangorn app add <address>`,
+// and only then can that wallet `fangorn app join`. An app is also a storage
+// subscription — `app claim` pays the fee, `app renew` pays it again.
 
 /** The status word for a publisher in one app, and whether they can publish. */
 function membershipLine(info: AppJoinInfo): string {
@@ -412,7 +432,9 @@ function membershipLine(info: AppJoinInfo): string {
 		return "terms changed since you joined — run `fangorn app join` to re-accept (free)";
 	if (info.status === PublisherStatus.SUSPENDED)
 		return "suspended from this app by its owner";
-	return "not joined — run `fangorn app join`";
+	if (info.status === PublisherStatus.INVITED)
+		return "added by the owner — run `fangorn app join` to accept the terms";
+	return "not a publisher here — ask the app's owner to add you (`fangorn app add <address>`)";
 }
 
 const appCmd = program
@@ -431,10 +453,11 @@ appCmd
 			const s = spinner();
 
 			s.start("Reading registries...");
-			const [owner, info, registeredGlobally] = await Promise.all([
+			const [owner, info, registeredGlobally, paidAt] = await Promise.all([
 				apps.getAppOwner(),
 				apps.joinInfo(self),
 				data.isRegistered(self),
+				apps.subscribedAt(),
 			]);
 			s.stop();
 
@@ -450,6 +473,9 @@ appCmd
 				console.log(`Terms:      ${info.termsHash}`);
 				if (info.termsUri) console.log(`Terms uri:  ${info.termsUri}`);
 				console.log(`Join fee:   ${info.fee.toString()} wei`);
+				// The contract stores when, not whether it is still active: the
+				// window is the upload gate's policy.
+				console.log(`Subscribed: last paid ${new Date(Number(paidAt) * 1000).toISOString()}`);
 			}
 
 			if (info.appSuspended)
@@ -479,11 +505,15 @@ appCmd
 	.action(async (opts: { termsHash?: string; termsUri: string; fee: string }) => {
 		try {
 			const self = getAccount().address;
-			const registry = getFangorn().getAppRegistry();
+			const fangorn = getFangorn();
+			const registry = fangorn.getAppRegistry();
 			const s = spinner();
 
 			s.start("Checking app ownership...");
-			const owner = await registry.getAppOwner();
+			const [owner, registeredGlobally] = await Promise.all([
+				registry.getAppOwner(),
+				fangorn.getDataRegistry().isRegistered(self),
+			]);
 			s.stop();
 
 			// Apps are first come, first served — claiming a taken one reverts.
@@ -492,12 +522,26 @@ appCmd
 				console.log(
 					mine
 						? `Already claimed by you: ${registry.getAppId()}`
-						: `App ${registry.getAppId()} is already owned by ${owner}. Pick another name with \`fangorn set-app\`, or join this one with \`fangorn app join\`.`,
+						: `App ${registry.getAppId()} is already owned by ${owner}. Pick another name with \`fangorn set-app\`, or ask its owner to add you.`,
 				);
 				process.exit(mine ? 0 : 1);
 			}
 
+			// The contract refuses a claim from a wallet the DataRegistry does not
+			// know (never registered, or suspended) — say so before any USDC moves.
+			if (!registeredGlobally) {
+				console.error(
+					`${self} is not a registered publisher — claiming will revert.` +
+					`\nRun \`fangorn register\` first. (A wallet suspended by the protocol admin cannot claim an app.)`,
+				);
+				process.exit(1);
+			}
+
 			const termsHash = (opts.termsHash ?? APP_TERMS_PLACEHOLDER) as Hex;
+			// Claiming an app is subscribing: the fee is pulled in USDC, and the
+			// client approves it first.
+			const subscriptionFee = await registry.subscriptionFee();
+			console.log(`Subscription fee: ${subscriptionFee.toString()} USDC base units`);
 			s.start("Claiming app...");
 			const txHash = await registry.registerApp(
 				termsHash,
@@ -517,7 +561,7 @@ appCmd
 					`\nanyone who joined against the placeholder must then re-accept.`,
 				);
 			}
-			console.log(`\nClaiming makes you your own first publisher; run \`fangorn register\` for global standing.`);
+			console.log(`\nClaiming makes you your own first publisher. Add others with \`fangorn app add <address>\`.`);
 			process.exit(0);
 		} catch (err) {
 			console.error("Failed:", (err as Error).message);
@@ -555,6 +599,13 @@ appCmd
 			if (info.status === PublisherStatus.SUSPENDED) {
 				console.error(
 					`Suspended from this app by its owner — joining again will revert. Ask them to reinstate you.`,
+				);
+				process.exit(1);
+			}
+			if (info.status === PublisherStatus.UNREGISTERED) {
+				console.error(
+					`${self} has not been added to this app — joining will revert.` +
+					`\nAsk its owner to run \`fangorn app add ${self}\`.`,
 				);
 				process.exit(1);
 			}
@@ -764,6 +815,94 @@ appCmd
 	);
 
 appCmd
+	.command("invitations")
+	.description("List the apps that have added this wallet and are waiting for it to join")
+	.action(async () => {
+		try {
+			const s = spinner();
+			s.start("Reading invitations...");
+			const invitations = await getFangorn().getInvitations();
+			s.stop();
+
+			if (invitations.length === 0) {
+				console.log("No app is waiting for this wallet to join.");
+				process.exit(0);
+			}
+			for (const invitation of invitations) {
+				console.log(`App id:     ${invitation.appId}`);
+				console.log(`Owner:      ${invitation.owner}`);
+				console.log(`Terms:      ${invitation.termsHash}`);
+				if (invitation.termsUri) console.log(`Terms uri:  ${invitation.termsUri}`);
+				console.log(`Join fee:   ${invitation.fee.toString()} wei`);
+				if (invitation.agentUri) console.log(`Agent card: ${invitation.agentUri}`);
+				console.log("");
+			}
+			// Any app owner can add any registered wallet, so this list is not vetted.
+			console.log("Anyone who owns an app can add you. Check the owner before you join.");
+			console.log("To join one: `fangorn set-app <app id>`, then `fangorn app join`.");
+			process.exit(0);
+		} catch (err) {
+			console.error("Failed:", (err as Error).message);
+			process.exit(1);
+		}
+	});
+
+appCmd
+	.command("add")
+	.description("Add a publisher to your app (owner only); they then run `app join`")
+	.argument("<publisher>", "Publisher address")
+	.action(async (publisher: string) => {
+		try {
+			const fangorn = getFangorn();
+			const s = spinner();
+			// The contract refuses to add a wallet the DataRegistry does not know.
+			s.start("Checking publisher registration...");
+			const registered = await fangorn.getDataRegistry().isRegistered(publisher as Address);
+			s.stop();
+			if (!registered) {
+				console.error(
+					`${publisher} is not a registered publisher — adding them will revert.` +
+					`\nThey must run \`fangorn register\` first. (A wallet suspended by the protocol admin cannot be added.)`,
+				);
+				process.exit(1);
+			}
+
+			s.start("Adding publisher...");
+			const txHash = await fangorn
+				.getAppRegistry()
+				.addPublisher(publisher as Address);
+			s.stop();
+			// An invitation: they still accept the terms (and pay the join fee).
+			console.log(`Added: ${publisher}`);
+			console.log(`Tx:    ${txHash}`);
+			console.log(`\nThey can publish once they run \`fangorn app join\`.`);
+			process.exit(0);
+		} catch (err) {
+			console.error("Failed:", (err as Error).message);
+			process.exit(1);
+		}
+	});
+
+appCmd
+	.command("renew")
+	.description("Renew your app's storage subscription (owner only)")
+	.action(async () => {
+		try {
+			const registry = getFangorn().getAppRegistry();
+			const s = spinner();
+			s.start("Renewing subscription...");
+			const txHash = await registry.renewApp();
+			s.stop();
+			console.log(`Renewed: ${registry.getAppId()}`);
+			console.log(`Tx:      ${txHash}`);
+			process.exit(0);
+		} catch (err) {
+			console.error("Failed:", (err as Error).message);
+			process.exit(1);
+		}
+	});
+
+appCmd
 	.command("suspend")
 	.description("Eject a publisher from your app (owner only)")
 	.argument("<publisher>", "Publisher address")
@@ -964,6 +1103,14 @@ program
 			if (info.status === PublisherStatus.SUSPENDED) {
 				console.error(`This app:     suspended by the app owner — cannot join.`);
 				process.exit(1);
+			}
+			// Membership is by invitation; the global step above still stands.
+			if (info.status === PublisherStatus.UNREGISTERED) {
+				console.log(
+					`This app:     not added yet — ask its owner to run \`fangorn app add ${self}\`,` +
+					`\n              then run \`fangorn app join\`.`,
+				);
+				process.exit(0);
 			}
 
 			s.start(needsReacceptance(info) ? "Re-accepting terms..." : "Joining app...");

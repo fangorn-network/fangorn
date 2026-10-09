@@ -9,7 +9,7 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import { CID } from "multiformats/cid";
 
-import { AppConfig, DEFAULT_APP, FangornConfig, toAppId } from "./config.js";
+import { AppConfig, DEFAULT_APP, FangornConfig, nonBlank, toAppId } from "./config.js";
 import {
 	FangornContext,
 	FangornCreateOptions,
@@ -30,12 +30,12 @@ import {
 	rootHexFromCid,
 } from "./engine/index.js";
 import {
+	AppInvitation,
 	AppRegistryClient,
 	CommitFilter,
 	DataRegistryClient,
 	PreparedTx,
 	SettlementRegistryClient,
-	SubscriptionRegistryClient,
 	StateCommittedLog,
 	subspaceId,
 } from "./contracts/index.js";
@@ -94,6 +94,9 @@ function resolveStorage(
 	storage: StorageConfig | undefined,
 	walletClient: WalletClient,
 	config: AppConfig,
+	// Read per upload, not captured: `setAppId` must reach uploads already
+	// configured, or they would keep billing the previous app's subscription.
+	getAppId: () => Hex,
 ): MetadataStorage | undefined {
 	if (!storage) return undefined;
 	if ("pinata" in storage)
@@ -103,6 +106,7 @@ function resolveStorage(
 			storage.signedUrl.workerUrl,
 			walletSigner(walletClient),
 			storage.signedUrl.gateway ?? config.ipfsGateway,
+			getAppId,
 		);
 	throw new Error(
 		`Invalid storage config: must be { pinata: … } or { signedUrl: … }, got ${JSON.stringify(storage)}`,
@@ -189,18 +193,16 @@ export class Fangorn {
 				transport: http(resolvedConfig.rpcUrl),
 			});
 
-		const metadataStorage = resolveStorage(
-			options.storage,
-			walletClient,
-			resolvedConfig,
-		);
 		const domain = options.domain ?? new URL(resolvedConfig.rpcUrl).hostname;
 
 		const publicClient = createPublicClient({
 			transport: http(resolvedConfig.rpcUrl),
 		}) as PublicClient;
 
-		const appId = toAppId(options.appId ?? DEFAULT_APP);
+		// Blank is "no app chosen", not an app called "". An empty FANGORN_APP_ID
+		// or `--app ""` must not silently re-scope the registries or the billing.
+		const chosenApp = nonBlank(options.appId);
+		const appId = toAppId(chosenApp ?? DEFAULT_APP);
 		const dataRegistry = new DataRegistryClient(
 			resolvedConfig.dataRegistryContractAddress,
 			appId,
@@ -215,28 +217,30 @@ export class Fangorn {
 			walletClient,
 		);
 
-		const subscriptionRegistry = new SubscriptionRegistryClient(
-			resolvedConfig.subscriptionRegistryContractAddress,
-			publicClient,
-			walletClient,
-		);
-
 		const settlementRegistry = new SettlementRegistryClient(
 			resolvedConfig.settlementRegistryContractAddress,
 			publicClient,
 			walletClient,
 		);
 
-		return new Fangorn({
+		const ctx: FangornContext = {
 			walletClient,
-			metadataStorage,
+			// Every upload is billed to the app it lands in, so the worker is
+			// always told which one — the DEFAULT_APP fallback included.
+			metadataStorage: resolveStorage(
+				options.storage,
+				walletClient,
+				resolvedConfig,
+				() => dataRegistry.getAppId(),
+			),
 			domain,
 			dataRegistry: dataRegistry,
 			appRegistry,
-			subscriptionRegistry,
 			settlementRegistry,
 			config: resolvedConfig,
-		});
+		};
+
+		return new Fangorn(ctx);
 	}
 
 	/**
@@ -953,22 +957,28 @@ export class Fangorn {
 	}
 
 	/**
-	 * Apps, their publisher terms, and per-app membership.
+	 * Apps, their publisher terms, per-app membership, and the storage
+	 * subscription — an app IS a subscription: claiming one pays the fee, and
+	 * the upload gate bills every publisher's bytes to the app.
 	 *
-	 * `commitStateRoot` cross-calls this contract, so joining the app here is a
-	 * precondition for publishing under it — `registerForApp()` before
-	 * `commit()`, or the commit reverts `NotRegisteredForApp`.
+	 * `commitStateRoot` cross-calls this contract, so being a publisher of the
+	 * app is a precondition for publishing under it. Membership is by invitation:
+	 * the owner calls `addPublisher()`, then the publisher `registerForApp()`.
+	 * Without both, the commit reverts `NotRegisteredForApp`.
 	 */
 	getAppRegistry(): AppRegistryClient {
 		return this.ctx.appRegistry;
 	}
 
 	/**
-	 * The publisher-side storage paywall. Per-wallet, not per-app: one
-	 * subscription covers everything this publisher writes, under every app.
+	 * The apps that have invited `publisher` (this wallet by default) and are
+	 * waiting for them to join. Read from the AppRegistry's logs since its
+	 * deployment. See `AppRegistryClient.getInvitations`.
 	 */
-	getSubscriptionRegistry(): SubscriptionRegistryClient {
-		return this.ctx.subscriptionRegistry;
+	getInvitations(publisher: Hex = this.getAddress()): Promise<AppInvitation[]> {
+		return this.ctx.appRegistry.getInvitations(publisher, {
+			fromBlock: this.ctx.config.appRegistryFromBlock,
+		});
 	}
 
 	/**
@@ -1025,6 +1035,7 @@ export class Fangorn {
 			storage,
 			this.ctx.walletClient,
 			this.ctx.config,
+			() => this.ctx.dataRegistry.getAppId(),
 		);
 		this._engine = null;
 	}

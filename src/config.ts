@@ -10,10 +10,24 @@ export function appId(name: string): Hex {
 
 export const DEFAULT_APP = "fangorn";
 
+/**
+ * Blank input means "not set", never an app called "". Returns the trimmed value,
+ * or undefined when it is missing or only whitespace, so it can sit on the left of
+ * a `??` fallback. `??` on the raw value would let "" through: it is not nullish.
+ */
+export function nonBlank(value: string | undefined): string | undefined {
+	const trimmed = value?.trim();
+	return trimmed === "" ? undefined : trimmed;
+}
+
 export function toAppId(nameOrId: string): Hex {
-	return /^0x[0-9a-fA-F]{64}$/.test(nameOrId)
-		? (nameOrId as Hex)
-		: appId(nameOrId);
+	// A blank name hashes to keccak("") — a valid-looking id for an app nobody
+	// owns. Callers normalise blank to "unset" at their input boundary; anything
+	// that gets here blank is a bug, so say so instead of publishing into a
+	// phantom app (and billing the wrong subscription).
+	const name = nameOrId.trim();
+	if (!name) throw new Error("App name or id must not be blank.");
+	return /^0x[0-9a-fA-F]{64}$/.test(name) ? (name as Hex) : appId(name);
 }
 
 /**
@@ -39,10 +53,11 @@ export default function getNetwork(name: string) {
 export interface AppConfig {
 	// The deployed publisher_registry contract address
 	dataRegistryContractAddress: Hex;
-	// The deployed app_registry contract address
+	// The deployed app_registry contract address (apps, membership, and the
+	// per-app storage subscription)
 	appRegistryContractAddress: Hex;
-	// The deployed subscription_registry contract address (publisher storage paywall)
-	subscriptionRegistryContractAddress: Hex;
+	// The block the AppRegistry was deployed in. Scans of the registry's logs start here.
+	appRegistryFromBlock: bigint;
 	// The deployed settlement_registry contract address (consumer pay-then-read rail)
 	settlementRegistryContractAddress: Hex;
 	// The viem chain
@@ -60,13 +75,12 @@ export interface AppConfig {
 // runtime via `fangorn.setAppId(...)` (defaults to `DEFAULT_APP`).
 export const FangornConfig = {
 	dataRegistryContractAddress:
-		"0x775026e905d7b58b34d16bcbd385fa630ee36c26",
+		"0x0312503913656f25c2bfDf229425aA6926ccF1Cd",
 	appRegistryContractAddress:
-		"0x11d228c4774af3d9cae3b4b6874a12576a1a83ec",
-	subscriptionRegistryContractAddress:
-		"0x9c599136b195d70edea0106017fdf081a0401f9d",
+		"0x57b41E334864B430db44F7FbCD8d165C56e41402",
+	appRegistryFromBlock: 317102111n,
 	settlementRegistryContractAddress:
-		"0xbbecb93142d1a5144260d2c30fe3c4a11fdda346",
+		"0x281580BDc478393857955EE61b6F05dB4A29d887",
 	chain: arbitrumSepolia,
 	rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
 	caip2: 421614,

@@ -73,6 +73,59 @@ describe("SignedUrlBackend", () => {
 		expect(uploadedFile).toBeInstanceOf(File);
 	});
 
+	it("sends the client's current app id on both handshake legs", async () => {
+		const signer = makeSigner();
+		const sent: (Hex | undefined)[] = [];
+		// A getter, so a setAppId between uploads is picked up without rebuilding.
+		let appId = "0xaa" + "bb".repeat(31) as Hex;
+
+		vi.stubGlobal(
+			"fetch",
+			vi.fn((url: string | URL, init?: RequestInit) => {
+				const target = String(url);
+				if (target === WORKER) {
+					const body = JSON.parse(init?.body as string) as {
+						signature?: string;
+						appId?: Hex;
+					};
+					sent.push(body.appId);
+					if (!body.signature) return jsonRes({ challenge: "SIGN ME" });
+					return jsonRes({ ok: true, uploadUrl: "https://upload.example/put", network: "public" });
+				}
+				return jsonRes({ data: { cid: "bafkreiuploaded" } });
+			}),
+		);
+
+		const backend = new SignedUrlBackend(WORKER, signer, GATEWAY, () => appId);
+		await backend.putFile(new Uint8Array([1]), "x");
+		const first = appId;
+		appId = "0xcc" + "dd".repeat(31) as Hex;
+		await backend.putFile(new Uint8Array([1]), "x");
+
+		expect(sent).toEqual([first, first, appId, appId]);
+	});
+
+	it("omits appId entirely when the client has no app scope", async () => {
+		const signer = makeSigner();
+		let grantBody: Record<string, unknown> = {};
+		vi.stubGlobal(
+			"fetch",
+			vi.fn((url: string | URL, init?: RequestInit) => {
+				if (String(url) !== WORKER) return jsonRes({ data: { cid: "bafkreiuploaded" } });
+				const body = JSON.parse(init?.body as string) as Record<string, unknown>;
+				if (!body.signature) return jsonRes({ challenge: "SIGN ME" });
+				grantBody = body;
+				return jsonRes({ ok: true, uploadUrl: "https://upload.example/put", network: "public" });
+			}),
+		);
+
+		const backend = new SignedUrlBackend(WORKER, signer, GATEWAY);
+		await backend.putFile(new Uint8Array([1]), "x");
+		// Not just undefined — the key must be absent, so an older worker sees the
+		// exact request it saw before.
+		expect("appId" in grantBody).toBe(false);
+	});
+
 	it("falls back to the hosted worker when no URL is given", async () => {
 		const signer = makeSigner();
 		const hosts = new Set<string>();
