@@ -815,6 +815,39 @@ appCmd
 	);
 
 appCmd
+	.command("invitations")
+	.description("List the apps that have added this wallet and are waiting for it to join")
+	.action(async () => {
+		try {
+			const s = spinner();
+			s.start("Reading invitations...");
+			const invitations = await getFangorn().getInvitations();
+			s.stop();
+
+			if (invitations.length === 0) {
+				console.log("No app is waiting for this wallet to join.");
+				process.exit(0);
+			}
+			for (const invitation of invitations) {
+				console.log(`App id:     ${invitation.appId}`);
+				console.log(`Owner:      ${invitation.owner}`);
+				console.log(`Terms:      ${invitation.termsHash}`);
+				if (invitation.termsUri) console.log(`Terms uri:  ${invitation.termsUri}`);
+				console.log(`Join fee:   ${invitation.fee.toString()} wei`);
+				if (invitation.agentUri) console.log(`Agent card: ${invitation.agentUri}`);
+				console.log("");
+			}
+			// Any app owner can add any registered wallet, so this list is not vetted.
+			console.log("Anyone who owns an app can add you. Check the owner before you join.");
+			console.log("To join one: `fangorn set-app <app id>`, then `fangorn app join`.");
+			process.exit(0);
+		} catch (err) {
+			console.error("Failed:", (err as Error).message);
+			process.exit(1);
+		}
+	});
+
+appCmd
 	.command("add")
 	.description("Add a publisher to your app (owner only); they then run `app join`")
 	.argument("<publisher>", "Publisher address")

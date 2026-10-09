@@ -1,4 +1,5 @@
 import type { PublicClient } from "viem";
+import { nonBlank } from "../config.js";
 
 /**
  * Run `fetch` over [fromBlock, toBlock] in consecutive block windows and
@@ -10,15 +11,22 @@ import type { PublicClient } from "viem";
  * outright, and whatever depends on it (a catch-up, a directory listing) fails
  * with it. Tune the window with `FANGORN_LOG_WINDOW`; a private RPC will take far
  * more.
+ *
+ * `defaultWindow` is for a query the endpoint is known to serve over a wider
+ * range. `FANGORN_LOG_WINDOW` still overrides it.
  */
 export async function getLogsInWindows<T>(
     publicClient: PublicClient,
     fromBlock: bigint,
     toBlock: bigint | undefined,
     fetch: (fromBlock: bigint, toBlock: bigint) => Promise<T[]>,
+    defaultWindow = 1000n,
 ): Promise<T[]> {
     // `process` is absent in a browser, where only the default applies.
-    const window = BigInt((typeof process !== "undefined" ? process.env.FANGORN_LOG_WINDOW : undefined) ?? 1000);
+    const tuned = typeof process !== "undefined" ? nonBlank(process.env.FANGORN_LOG_WINDOW) : undefined;
+    const window = tuned === undefined ? defaultWindow : BigInt(tuned);
+    // Zero or less would never advance the loop below.
+    if (window <= 0n) throw new Error(`FANGORN_LOG_WINDOW must be a positive number of blocks, not "${String(tuned)}"`);
     // Uncached: viem caches the block number for ~4s, and a caller that has just
     // awaited a receipt would otherwise scan to a head from before its own tx.
     const end = toBlock ?? (await publicClient.getBlockNumber({ cacheTime: 0 }));

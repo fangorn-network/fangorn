@@ -57,6 +57,30 @@ export interface AppAgentLog {
     transactionHash: Hash;
 }
 
+/** An app that has invited a publisher who has not joined it yet. */
+export interface AppInvitation {
+    appId: Hex;
+    /** Who invited them. Any app owner can invite any registered wallet. */
+    owner: Address;
+    /** The terms the publisher would accept by joining. */
+    termsHash: Hex;
+    termsUri: string;
+    /** The join fee, in wei. */
+    fee: bigint;
+    /** The app's agent card, or "" if its owner has not set one. */
+    agentUri: string;
+    /** The block the invitation was made in. */
+    blockNumber: bigint;
+}
+
+/**
+ * Blocks per `eth_getLogs` call for a query that names the contract and an
+ * indexed topic. The public Arbitrum Sepolia endpoint serves such a query over
+ * 10,000,000 blocks and no more (measured 2026-10-09); the explorer scans in
+ * the same windows.
+ */
+const INDEXED_LOG_WINDOW = 10_000_000n;
+
 /** True when the publisher joined but the app's terms have since changed. */
 export function needsReacceptance(info: AppJoinInfo): boolean {
     return (
@@ -284,12 +308,12 @@ export class AppRegistryClient {
         };
     }
 
-    async getAppOwner(): Promise<Address> {
+    async getAppOwner(appId: Hex = this.appId): Promise<Address> {
         return this.publicClient.readContract({
             address: this.contractAddress,
             abi: APP_REGISTRY_ABI,
             functionName: "getAppOwner",
-            args: [this.appId],
+            args: [appId],
         });
     }
 
@@ -453,6 +477,55 @@ export class AppRegistryClient {
         }));
     }
 
+    /**
+     * The apps that have invited `publisher` and are still waiting for them to
+     * join (`registerForApp`), oldest invitation first.
+     *
+     * The contract cannot list a publisher's apps, so this reads the
+     * `PublisherInvited` logs that name the publisher, the way the explorer reads
+     * `AppAgentChanged` to find apps. A log says an invitation was made, not that
+     * it still stands, so each app's current status is then read from the
+     * contract: an invitation that was accepted or taken back is left out.
+     *
+     * `fromBlock` is the AppRegistry's deploy block (`appRegistryFromBlock` in the
+     * config). Doesn't touch this client's app.
+     */
+    async getInvitations(
+        publisher: Address,
+        opts: { fromBlock: bigint; toBlock?: bigint },
+    ): Promise<AppInvitation[]> {
+        const logs = await getLogsInWindows(
+            this.publicClient,
+            opts.fromBlock,
+            opts.toBlock,
+            (from, to) =>
+                this.publicClient.getContractEvents({
+                    address: this.contractAddress,
+                    abi: APP_REGISTRY_ABI,
+                    eventName: "PublisherInvited",
+                    args: { publisher },
+                    fromBlock: from,
+                    toBlock: to,
+                    strict: true,
+                }),
+            INDEXED_LOG_WINDOW,
+        );
+        // Oldest first; an app can only invite a wallet once (`AlreadyRegistered`).
+        const invitedAt = new Map(logs.map((log) => [log.args.app_id, log.blockNumber]));
+        const invitations = await Promise.all(
+            [...invitedAt].map(async ([appId, blockNumber]): Promise<AppInvitation | undefined> => {
+                const [[termsHash, termsUri, fee, status], owner, agentUri] = await Promise.all([
+                    this.readJoinInfoTuple(publisher, appId),
+                    this.getAppOwner(appId),
+                    this.appAgentUri(appId),
+                ]);
+                if ((status as PublisherStatus) !== PublisherStatus.INVITED) return undefined;
+                return { appId, owner, termsHash, termsUri, fee, agentUri, blockNumber };
+            }),
+        );
+        return invitations.filter((invitation) => invitation !== undefined);
+    }
+
     async appFee(): Promise<bigint> {
         return this.publicClient.readContract({
             address: this.contractAddress,
@@ -507,12 +580,13 @@ export class AppRegistryClient {
 
     private async readJoinInfoTuple(
         publisher: Address,
+        appId: Hex = this.appId,
     ): Promise<readonly [Hex, string, bigint, number, boolean]> {
         return this.publicClient.readContract({
             address: this.contractAddress,
             abi: APP_REGISTRY_ABI,
             functionName: "joinInfo",
-            args: [this.appId, publisher],
+            args: [appId, publisher],
         });
     }
 

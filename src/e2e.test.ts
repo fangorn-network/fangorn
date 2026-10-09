@@ -426,8 +426,12 @@ describe("Fangorn registries E2E", () => {
         await bed.invite(0, 1);
         expect((await apps.joinInfo(self)).status).toBe(PublisherStatus.INVITED);
         expect(await apps.isRegisteredForApp(self)).toBe(false);
+        // The guest finds the invitation without being told which app it is.
+        const owner = bed.getFangorn(0).getAddress();
+        expect(await guest.getInvitations()).toMatchObject([{ appId: guest.getAppId(), owner }]);
 
         await apps.registerForApp();
+        expect(await guest.getInvitations()).toEqual([]);
         const info = await apps.joinInfo(self);
         expect(info.status).toBe(PublisherStatus.ACTIVE);
         expect(info.acceptedTerms).toBe(info.termsHash);

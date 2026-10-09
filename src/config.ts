@@ -56,6 +56,8 @@ export interface AppConfig {
 	// The deployed app_registry contract address (apps, membership, and the
 	// per-app storage subscription)
 	appRegistryContractAddress: Hex;
+	// The block the AppRegistry was deployed in. Scans of the registry's logs start here.
+	appRegistryFromBlock: bigint;
 	// The deployed settlement_registry contract address (consumer pay-then-read rail)
 	settlementRegistryContractAddress: Hex;
 	// The viem chain
@@ -76,6 +78,7 @@ export const FangornConfig = {
 		"0x0312503913656f25c2bfDf229425aA6926ccF1Cd",
 	appRegistryContractAddress:
 		"0x57b41E334864B430db44F7FbCD8d165C56e41402",
+	appRegistryFromBlock: 317102111n,
 	settlementRegistryContractAddress:
 		"0x281580BDc478393857955EE61b6F05dB4A29d887",
 	chain: arbitrumSepolia,

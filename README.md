@@ -100,6 +100,10 @@ address must already be a registered publisher);
 only then can that wallet `fangorn app join`, which accepts the terms and pays
 the join fee. The owner is their own first publisher and needs neither.
 
+`fangorn app invitations` lists the apps that have added your wallet and are
+still waiting for you to join, with each one's owner, terms and join fee. Any
+app owner can add any registered wallet, so check the owner before joining.
+
 `fangorn register` is idempotent and does both halves, reporting each — it joins
 the app when you have been added, and tells you to ask the owner when you have
 not. `fangorn app join` is also how you re-accept terms after the owner moves
@@ -465,7 +469,15 @@ await apps.registerApp(termsHash, termsUri, joinFee); // claim it — pays the s
 await apps.addPublisher(publisher); // owner: invite a registered publisher
 await apps.registerForApp(); // publisher: join, accepting the current terms
 await apps.renewApp(); // owner: pay the subscription again
+
+await fangorn.getInvitations(); // publisher: the apps waiting for this wallet to join
 ```
+
+The contract cannot list a publisher's apps, so `getInvitations` reads the
+AppRegistry's `PublisherInvited` logs from its deploy block
+(`appRegistryFromBlock` in the config) and keeps the apps whose invitation
+still stands. It asks for 10,000,000 blocks per call, which the public Arbitrum
+Sepolia RPC serves; set `FANGORN_LOG_WINDOW` for an RPC that allows fewer.
 
 Joining reads the terms hash immediately before sending and passes it as an
 argument, so the contract reverts `TermsMismatch` if the owner moved the terms

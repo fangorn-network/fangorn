@@ -30,6 +30,7 @@ import {
 	rootHexFromCid,
 } from "./engine/index.js";
 import {
+	AppInvitation,
 	AppRegistryClient,
 	CommitFilter,
 	DataRegistryClient,
@@ -967,6 +968,17 @@ export class Fangorn {
 	 */
 	getAppRegistry(): AppRegistryClient {
 		return this.ctx.appRegistry;
+	}
+
+	/**
+	 * The apps that have invited `publisher` (this wallet by default) and are
+	 * waiting for them to join. Read from the AppRegistry's logs since its
+	 * deployment. See `AppRegistryClient.getInvitations`.
+	 */
+	getInvitations(publisher: Hex = this.getAddress()): Promise<AppInvitation[]> {
+		return this.ctx.appRegistry.getInvitations(publisher, {
+			fromBlock: this.ctx.config.appRegistryFromBlock,
+		});
 	}
 
 	/**
