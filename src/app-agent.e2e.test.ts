@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { createPublicClient, http, type Hex } from "viem";
-import { TestBed } from "./test/testbed.js";
+import type { Hex } from "viem";
+import { cleanUp, type Fork, skipFork, startFork } from "./test/testbed.js";
 import { DEFAULT_APP, FangornConfig, appId } from "./config.js";
 import { FANGORN_APP_EXTENSION } from "./fangorn.js";
 
@@ -15,8 +15,10 @@ import { FANGORN_APP_EXTENSION } from "./fangorn.js";
 // gateway's origin, not a pinned one. Trust comes from the on-chain binding
 // (`appAgentUri(appId) === cardUrl`), checked by `discoverApp`, not from the
 // transport or from content addressing.
-
-const OWNER_KEY = process.env.ETH_PRIVATE_KEY as Hex;
+//
+// It runs on a local fork of the deployed chain: on the real one, every run
+// would leave another app in the registry, bound to a card on a localhost port
+// that every later scan of the directory then tries to read.
 
 const NAMESPACE = "catalog";
 
@@ -64,30 +66,36 @@ function card(origin: string, params: { appId: Hex; fromBlock: string; namespace
     };
 }
 
-describe("App as agent E2E", () => {
+describe.skipIf(skipFork)("App as agent E2E (fork)", () => {
     const appName = `agent-app-${String(Date.now())}`;
     const cards: Record<string, unknown> = {};
     let server: Server;
     let origin: string;
+    let fork: Fork;
+    // The app's owner: generated on the fork, and given gas there.
+    let OWNER_KEY: Hex;
 
     beforeAll(async () => {
+        if (!process.env.PINATA_JWT) throw new Error("PINATA_JWT is not set: the suite uploads to Pinata");
         // origin = 127.0.0.1
         ({ server, origin } = await serveCards(cards));
-    });
+        fork = await startFork();
+        OWNER_KEY = await fork.wallet();
+    }, 60_000);
 
-    afterAll(() => {
+    afterAll(async () => {
         server.close();
-    });
+        await cleanUp();
+    }, 300_000);
 
     it("registers an app, binds its agent card, and discovers publishers' data from the card", async () => {
         // app owner = single publisher
-        const bed = TestBed.init([OWNER_KEY], appName);
+        const bed = fork.bed([OWNER_KEY], appName);
         const owner = bed.getFangorn(0);
         const apps = owner.getAppRegistry();
 
-        const publicClient = createPublicClient({ chain: FangornConfig.chain, transport: http(FangornConfig.rpcUrl) });
         //  the agent was NOT registered before this block
-        const fromBlock = await publicClient.getBlockNumber();
+        const fromBlock = await fork.chain.getBlockNumber();
 
         // 1. Claim the app.
         await bed.registerApp(0);
@@ -123,7 +131,7 @@ describe("App as agent E2E", () => {
 
         // 4. A stranger holding only the card URL — on the default app, with no
         //    idea this app exists — resolves it and reads everything.
-        const reader = TestBed.init([OWNER_KEY], DEFAULT_APP).getFangorn(0);
+        const reader = fork.bed([OWNER_KEY], DEFAULT_APP).getFangorn(0);
         const found = await reader.discoverApp(cardUrl);
         expect(found.appId).toBe(appId(appName));
         expect(found.fromBlock).toBe(fromBlock);
@@ -144,7 +152,7 @@ describe("App as agent E2E", () => {
         const forgedPath = "/forged/agent-card.json";
         cards[forgedPath] = card(origin, { appId: appId("fangorn"), fromBlock: "0", namespaces: [NAMESPACE] });
 
-        const reader = TestBed.init([OWNER_KEY]).getFangorn(0);
+        const reader = fork.bed([OWNER_KEY]).getFangorn(0);
         await expect(reader.discoverApp(`${origin}${forgedPath}`)).rejects.toThrow(/not bound|agent_uri/i);
     }, 60_000);
 });

@@ -1,20 +1,7 @@
-import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import {
-    type Address,
-    createTestClient,
-    http,
-    keccak256,
-    parseAbi,
-    parseEther,
-    publicActions,
-    stringToBytes,
-    walletActions,
-} from "viem";
-import { generatePrivateKey } from "viem/accounts";
-import { FangornConfig } from "./config.js";
+import { type Address, keccak256, parseAbi, parseEther, stringToBytes } from "viem";
 import { PublisherStatus } from "./contracts/index.js";
-import { TestBed } from "./test/testbed.js";
+import { cleanUp, skipFork, startFork, type TestBed } from "./test/testbed.js";
 
 // What the protocol admin can do to the network: take an app down, and ban a
 // publisher everywhere.
@@ -39,35 +26,10 @@ const ADMIN_ABI = parseAbi([
     "function setAdmin(address new_admin)",
 ]);
 
-const hasAnvil = spawnSync("anvil", ["--version"]).status === 0;
-
-/** Fork the deployed chain locally, on a port anvil picks. */
-async function startFork(): Promise<{ anvil: ChildProcess; rpcUrl: string }> {
-    const anvil = spawn("anvil", ["--fork-url", FangornConfig.rpcUrl, "--port", "0"], {
-        stdio: ["ignore", "pipe", "inherit"],
-    });
-    const rpcUrl = await new Promise<string>((resolve, reject) => {
-        let output = "";
-        anvil.stdout.on("data", (chunk: Buffer) => {
-            output += chunk.toString();
-            const listening = /Listening on (\S+)/.exec(output);
-            if (listening) resolve(`http://${listening[1]}`);
-        });
-        anvil.once("error", reject);
-        anvil.once("exit", (code) => {
-            reject(new Error(`anvil exited (${String(code)}) before it was listening`));
-        });
-    });
-    return { anvil, rpcUrl };
-}
-
-// Without anvil the suite shows as skipped, except in CI, where it has to fail
-// rather than quietly stop testing the takedown path.
-describe.skipIf(!hasAnvil && !process.env.CI)("Fangorn protocol admin E2E (fork)", () => {
+describe.skipIf(skipFork)("Fangorn protocol admin E2E (fork)", () => {
     const OWNER = 0;
     const GUEST = 1;
     const ADMIN = 2;
-    let anvil: ChildProcess | undefined;
     let bed: TestBed;
 
     /**
@@ -82,32 +44,9 @@ describe.skipIf(!hasAnvil && !process.env.CI)("Fangorn protocol admin E2E (fork)
     }
 
     beforeAll(async () => {
-        if (!hasAnvil) {
-            throw new Error("anvil is not installed: in CI the admin tests fail rather than skip");
-        }
-        const fork = await startFork();
-        anvil = fork.anvil;
-        const config = { ...FangornConfig, rpcUrl: fork.rpcUrl };
-        const chain = createTestClient({
-            mode: "anvil",
-            chain: config.chain,
-            transport: http(config.rpcUrl),
-        })
-            .extend(publicActions)
-            .extend(walletActions);
-
-        bed = TestBed.init(
-            [generatePrivateKey(), generatePrivateKey(), generatePrivateKey()],
-            undefined,
-            config,
-        );
+        const { chain, config, wallet, bed: bedOn } = await startFork();
+        bed = bedOn([await wallet(), await wallet(), await wallet()]);
         const newAdmin = bed.getFangorn(ADMIN).getAddress();
-        for (const index of [OWNER, GUEST, ADMIN]) {
-            await chain.setBalance({
-                address: bed.getFangorn(index).getAddress(),
-                value: parseEther("1"),
-            });
-        }
 
         // Hand each registry's admin role to the generated key, as its current
         // admin. Only a fork lets us act as an account we hold no key for.
@@ -149,9 +88,7 @@ describe.skipIf(!hasAnvil && !process.env.CI)("Fangorn protocol admin E2E (fork)
         await bed.getFangorn(GUEST).getAppRegistry().registerForApp();
     }, 180_000);
 
-    afterAll(() => {
-        anvil?.kill();
-    });
+    afterAll(cleanUp);
 
     // The admin takedown, one level above an app owner ejecting a publisher:
     // suspending the app unregisters everyone under it, its owner included.

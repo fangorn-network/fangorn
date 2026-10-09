@@ -23,6 +23,7 @@
 		"test": "dotenvx run -f .env -- vitest run",
 		"test:e2e": "dotenvx run -f .env -- vitest run --config vitest.e2e.config.ts",
 		"test:admin": "vitest run --config vitest.e2e.config.ts src/admin.e2e.test.ts",
+		"test:live": "vitest run --config vitest.e2e.config.ts src/live.e2e.test.ts",
 		"tsc": "tsc",
 		"deploy": "dotenvx run -f .env -- tsx deploy.ts",
 		"setup:embeddings": "dotenvx run -f .env -- tsx src/test/setup-embeddings-testdata.ts",

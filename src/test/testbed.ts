@@ -1,6 +1,8 @@
-import { createPublicClient, http, type Hex } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+import { type ChildProcess, spawn, spawnSync } from "node:child_process";
+import { createTestClient, http, parseEther, publicActions, walletActions, type Hex } from "viem";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { Fangorn } from "../fangorn.js";
+import { PinataSDK } from "pinata";
 import { type AppConfig, FangornConfig } from "../config.js";
 
 // The testbed's app terms. Any non-zero value works — zero would leave the app
@@ -14,15 +16,121 @@ const TESTBED_APP_TERMS =
  * owner, and joining it takes an invitation this wallet cannot give itself.
  */
 export function suiteApp(sk: Hex | undefined): string {
-    if (!sk) throw new Error("TestBed needs a private key: is ETH_PRIVATE_KEY set?");
+    if (!sk) throw new Error("TestBed needs a private key");
     return `e2e-${privateKeyToAccount(sk).address.toLowerCase()}`;
 }
 
+const hasAnvil = spawnSync("anvil", ["--version"]).status === 0;
+
+/**
+ * Without anvil a suite that runs on a fork shows as skipped, except in CI,
+ * where it has to fail rather than quietly stop testing.
+ */
+export const skipFork = !hasAnvil && !process.env.CI;
+
+// What this test file started and has to put away again: see `cleanUp`.
+const forks: ChildProcess[] = [];
+// Pinata's id for every file this test file uploads. A delete takes that id,
+// and the SDK's storage backend hands back CIDs, never ids. So it is read here,
+// from Pinata's own answer to each upload, and the SDK is left without any
+// code that exists only for the tests.
+const uploaded: string[] = [];
+
+const PINATA_UPLOADS = "https://uploads.pinata.cloud/v3/files";
+const realFetch = globalThis.fetch;
+globalThis.fetch = async (input, init) => {
+    const response = await realFetch(input, init);
+    const url = input instanceof Request ? input.url : input.toString();
+    if (init?.method === "POST" && url.startsWith(PINATA_UPLOADS) && response.ok) {
+        const { data } = (await response.clone().json()) as {
+            data?: { id?: string; is_duplicate?: boolean };
+        };
+        // A duplicate is a file the account had pinned before this upload: not
+        // ours to remove.
+        if (data?.id && !data.is_duplicate) uploaded.push(data.id);
+    }
+    return response;
+};
+
+/**
+ * Fork the deployed chain locally (anvil, on a port it picks).
+ *
+ * Every suite that writes runs on one. The contracts and their state are the
+ * deployed ones, so the tests exercise the real code, but what they claim,
+ * register and commit is gone when the fork stops. On the real chain it could
+ * never be removed, and every run would add to the registries.
+ */
+export async function startFork() {
+    if (!hasAnvil) {
+        throw new Error("anvil is not installed: in CI the fork suites fail rather than skip");
+    }
+    const anvil = spawn("anvil", ["--fork-url", FangornConfig.rpcUrl, "--port", "0"], {
+        stdio: ["ignore", "pipe", "inherit"],
+    });
+    forks.push(anvil);
+    const rpcUrl = await new Promise<string>((resolve, reject) => {
+        let output = "";
+        anvil.stdout.on("data", (chunk: Buffer) => {
+            output += chunk.toString();
+            const listening = /Listening on (\S+)/.exec(output);
+            if (listening) resolve(`http://${listening[1]}`);
+        });
+        anvil.once("error", reject);
+        anvil.once("exit", (code) => {
+            reject(new Error(`anvil exited (${String(code)}) before it was listening`));
+        });
+    });
+    const config: AppConfig = { ...FangornConfig, rpcUrl };
+    const chain = createTestClient({
+        mode: "anvil",
+        chain: config.chain,
+        transport: http(rpcUrl),
+    })
+        .extend(publicActions)
+        .extend(walletActions);
+
+    return {
+        /** The SDK's deployment, reached through the fork. */
+        config,
+        /** The fork itself: set balances, impersonate accounts, read blocks. */
+        chain,
+        /** A new wallet with gas. Nothing on a fork costs anything. */
+        wallet: async (): Promise<Hex> => {
+            const sk = generatePrivateKey();
+            await chain.setBalance({
+                address: privateKeyToAccount(sk).address,
+                value: parseEther("1"),
+            });
+            return sk;
+        },
+        /** A test bed on the fork: `TestBed.init` with the fork's config. */
+        bed: (sks: Hex[], appName?: string) => TestBed.init(sks, appName, config),
+    };
+}
+
+export type Fork = Awaited<ReturnType<typeof startFork>>;
+
+/**
+ * Put away what this test file left behind: stop its forks, and unpin every
+ * file it uploaded to Pinata. Call it from `afterAll`.
+ */
+export async function cleanUp(): Promise<void> {
+    for (const anvil of forks.splice(0)) anvil.kill();
+    const ids = uploaded.splice(0);
+    if (ids.length === 0) return;
+    const pinata = new PinataSDK({ pinataJwt: process.env.PINATA_JWT ?? "" });
+    // The SDK reports a failed delete as a status string rather than throwing.
+    const failed = (await pinata.files.public.delete(ids)).filter((r) => /error|failed/i.test(r.status));
+    if (failed.length > 0) {
+        throw new Error(
+            `Pinata did not unpin ${String(failed.length)} of ${String(ids.length)} files: ${failed[0].status}`,
+        );
+    }
+    console.log(`Unpinned ${String(ids.length)} files from Pinata`);
+}
+
 export class TestBed {
-    private constructor(
-        private readonly f_list: Fangorn[],
-        private readonly config: AppConfig,
-    ) {}
+    private constructor(private readonly f_list: Fangorn[]) {}
 
     /**
      * @param sks     one wallet per publisher in the forest; the first owns the app
@@ -55,7 +163,7 @@ export class TestBed {
             );
         });
 
-        return new TestBed(f_list, config);
+        return new TestBed(f_list);
     }
 
     getFangorn(index: number): Fangorn {
@@ -114,60 +222,6 @@ export class TestBed {
         await this.getFangorn(owner)
             .getAppRegistry()
             .addPublisher(this.getFangorn(publisher).getAddress());
-    }
-
-    /** Gas money for a wallet the test generated, sent from a funded one. */
-    async fund(from: number, to: number, wei: bigint) {
-        const wallet = this.getFangorn(from).getWalletClient();
-        if (!wallet.account) throw new Error("Account required");
-        const hash = await wallet.sendTransaction({
-            account: wallet.account,
-            chain: wallet.chain,
-            to: this.getFangorn(to).getAddress(),
-            value: wei,
-        });
-        await this.rpc().waitForTransactionReceipt({ hash });
-    }
-
-    private rpc() {
-        return createPublicClient({ transport: http(this.config.rpcUrl) });
-    }
-
-    /**
-     * Send what `from` still holds back to `to`: the other end of `fund`.
-     *
-     * The transfer has to leave room for its own gas, at the limit and price it
-     * is sent with, so whatever of that goes unused stays behind. That is dust,
-     * a small fraction of one transfer's fee.
-     */
-    async sweep(from: number, to: number) {
-        const wallet = this.getFangorn(from).getWalletClient();
-        if (!wallet.account) throw new Error("Account required");
-        const { account } = wallet;
-        const recipient = this.getFangorn(to).getAddress();
-        const client = this.rpc();
-
-        const [balance, fees, estimate] = await Promise.all([
-            client.getBalance({ address: account.address }),
-            client.estimateFeesPerGas(),
-            client.estimateGas({ account, to: recipient, value: 1n }),
-        ]);
-        // The same 30% headroom as `sendWrite`: Arbitrum's estimate includes an
-        // L1 component that can move before the transfer lands.
-        const gas = (estimate * 130n) / 100n;
-        const value = balance - gas * fees.maxFeePerGas;
-        if (value <= 0n) return;
-
-        const hash = await wallet.sendTransaction({
-            account,
-            chain: wallet.chain,
-            to: recipient,
-            value,
-            gas,
-            maxFeePerGas: fees.maxFeePerGas,
-            maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
-        });
-        await client.waitForTransactionReceipt({ hash });
     }
 
     async initRepo(index: number, name: string) {

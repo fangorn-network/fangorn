@@ -41,6 +41,14 @@ jobs:
       - uses: ./.github/actions/prepare
       - uses: foundry-rs/foundry-toolchain@v1
       - run: pnpm test:admin
+  live_reads:
+    # Read-only checks of the deployed contracts and the public RPC. No secrets.
+    name: Live reads (Arbitrum Sepolia)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/prepare
+      - run: pnpm test:live
   type_check:
     name: Type Check
     runs-on: ubuntu-latest

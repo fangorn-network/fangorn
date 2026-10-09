@@ -664,42 +664,45 @@ pnpm test
 
 ### E2E Tests
 
-Runs the storage + on-chain anchor flow against live IPFS + the deployed contract.
+The end-to-end suite runs the storage and on-chain flows against a local fork
+of Arbitrum Sepolia, so nothing is left on the real chain. The fork starts as a
+copy of the chain, so the tests still run the deployed contracts' code.
 
 ```sh
 cp env.example .env
 pnpm test:e2e
 ```
 
-Required variables:
+| File                        | Runs against                 | Needs                    |
+| --------------------------- | ---------------------------- | ------------------------ |
+| `src/e2e.test.ts`           | a local fork                 | `anvil`, Pinata          |
+| `src/app-agent.e2e.test.ts` | a local fork                 | `anvil`, Pinata          |
+| `src/admin.e2e.test.ts`     | a local fork                 | `anvil`                  |
+| `src/live.e2e.test.ts`      | Arbitrum Sepolia, read-only  | nothing                  |
 
-| Variable          | Description                               |
-| ----------------- | ----------------------------------------- |
-| `ETH_PRIVATE_KEY` | Publisher private key (needs testnet ETH) |
-| `PINATA_JWT`      | Pinata API JWT                            |
-| `PINATA_GATEWAY`  | Pinata gateway URL                        |
+**The fork suites** start `anvil` ([Foundry](https://getfoundry.sh)) as a fork of
+Arbitrum Sepolia. The contracts and their state are the deployed ones; the
+wallets are generated and given gas on the fork, and everything the tests claim,
+register and commit is gone when it stops. Without `anvil` they are skipped (in
+CI they fail). The admin suite hands the admin role to a key it generates on the
+fork, so the real admin key is never needed.
 
-The suite needs no setup beyond a funded wallet. It publishes under its own app,
-`e2e-<wallet address>`, which `TestBed.registerApp` claims on the first run and
-reuses after; it does not write to the default `fangorn` app, which only its owner
-can invite a wallet into. The invitation flow is tested with a second wallet that
-is generated on each run, sent 0.002 ETH for gas from `ETH_PRIVATE_KEY`, and swept
-back into it when the test ends.
+**Pinata.** Uploads go to the real Pinata account (`PINATA_JWT`,
+`PINATA_GATEWAY`). Every file a run uploads is unpinned when its test file
+finishes (`cleanUp` in `src/test/testbed.ts`, which notes Pinata's id for each
+upload as it happens). A file that was already pinned before the run is never
+removed.
 
-The protocol admin suite (suspending and reinstating an app and a publisher) is
-`src/admin.e2e.test.ts`. It never uses the real admin key: it starts a local fork
-of the deployed contracts with `anvil` ([Foundry](https://getfoundry.sh)), hands
-the admin role to a key it generates there, and runs against that. It needs no
-secrets and no `.env`:
+**The live suite** only reads: that the registries point at each other, that the
+config's start block is the AppRegistry's deployment, and that the public RPC
+serves the invitation scan.
 
 ```sh
+pnpm test:live
 pnpm test:admin
 ```
 
-Without `anvil` installed it is skipped (in CI it fails). In GitHub Actions it runs
-on every pull request as the "Admin (fork)" job in `ci.yaml`. The rest of the e2e
-suite runs from `.github/workflows/e2e.yaml`, with `ETH_PRIVATE_KEY` and the two
-Pinata variables stored as secrets of the `sepolia-e2e` environment.
+The whole suite runs from `.github/workflows/e2e.yaml` on `main`, with the two Pinata variables stored as secrets of the `sepolia-e2e` environment.
 
 ---
 

@@ -1,9 +1,12 @@
-# The end-to-end suite against Arbitrum Sepolia.
+# The end-to-end suite.
 #
-# It holds a funded test wallet and a Pinata token, and no admin key: the protocol
-# admin suite runs on a local fork instead (the "Admin (fork)" job in ci.yaml), so
-# the key that can upgrade the contracts is never a secret here. The rest is still
-# kept away from code nobody reviewed:
+# Everything that writes runs on a local fork of Arbitrum Sepolia (anvil), so a
+# run leaves nothing in the registries, and what it uploads to Pinata is unpinned
+# when it ends. The real chain is only read.
+#
+# It holds a Pinata token, which can delete files as well as upload them, and no
+# wallet key of any kind: every wallet, the admin included, is generated on the
+# fork. The token is still kept away from code nobody reviewed:
 # - The secrets belong to the `sepolia-e2e` environment, not the repository, so no
 #   other workflow can read them. Restrict that environment to `main` in the
 #   repository settings, or a manual run from any branch gets them.
@@ -23,14 +26,9 @@ on:
 permissions:
   contents: read
 
-# One wallet is one nonce sequence: two runs at once would fail each other.
-concurrency:
-  group: e2e-sepolia
-  cancel-in-progress: false
-
 jobs:
   e2e:
-    name: E2E (Arbitrum Sepolia)
+    name: E2E (fork)
     runs-on: ubuntu-latest
     environment: sepolia-e2e
     timeout-minutes: 20
@@ -43,10 +41,10 @@ jobs:
         with:
           node-version: 22.21.1
       - run: pnpm install --frozen-lockfile --ignore-scripts
+      # anvil, for the fork.
+      - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
       # Not `pnpm test:e2e`: that reads a .env file, and there is none here.
-      # The admin suite is left to ci.yaml: it needs anvil, and nothing from here.
-      - run: pnpm exec vitest run --config vitest.e2e.config.ts --exclude src/admin.e2e.test.ts
+      - run: pnpm exec vitest run --config vitest.e2e.config.ts
         env:
-          ETH_PRIVATE_KEY: ${{ secrets.ETH_PRIVATE_KEY }}
           PINATA_JWT: ${{ secrets.PINATA_JWT }}
           PINATA_GATEWAY: ${{ secrets.PINATA_GATEWAY }}
