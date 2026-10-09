@@ -342,13 +342,17 @@ export class AppRegistryClient {
      * payment. The contract stores only the timestamp; the window is the gate's
      * policy, passed in here. `now` is injectable so a caller can evaluate
      * against block time rather than wall-clock skew.
+     *
+     * A `now` before the last payment answers false. The contract keeps only the
+     * latest payment, so it cannot say whether the app was active before it, and
+     * a bad clock (zero, or a bad override) must not read as an active subscription.
      */
     async isActiveAt(
         windowSeconds: bigint,
         now = BigInt(Math.floor(Date.now() / 1000)),
     ): Promise<boolean> {
         const paidAt = await this.subscribedAt();
-        return paidAt > 0n && now < paidAt + windowSeconds;
+        return paidAt > 0n && now >= paidAt && now < paidAt + windowSeconds;
     }
 
     /** Unix seconds of this app's last subscription payment, or 0 if unclaimed. */
