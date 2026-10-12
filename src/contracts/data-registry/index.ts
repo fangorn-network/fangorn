@@ -177,7 +177,8 @@ export class DataRegistryClient {
     // ── Writes ───────────────────────────────────────────────────────────────
 
     /**
-     * Register as a new data publisher or reactivate a suspended account.
+     * Register as a new data publisher. Reverts `PublisherSuspendedErr` for a
+     * suspended account: only the admin can bring one back (`reinstateGlobal`).
      * Automatically reads the required on-chain fee and attaches it to the call.
      */
     async register(): Promise<Hash> {
@@ -421,6 +422,14 @@ export class DataRegistryClient {
      */
     async suspendPublisher(publisher: Address): Promise<Hash> {
         return this.executeWrite("suspendPublisher", [publisher]);
+    }
+
+    /**
+     * Lifts a network-wide suspension. Admin-only; reverts `NotRegistered` unless
+     * the publisher is currently suspended. Their namespace heads are untouched.
+     */
+    async reinstateGlobal(publisher: Address): Promise<Hash> {
+        return this.executeWrite("reinstateGlobal", [publisher]);
     }
 
     /**

@@ -3,7 +3,6 @@ import { AppConfig } from "../config.js";
 import { AppRegistryClient } from "../contracts/app-registry/index.js";
 import { DataRegistryClient } from "../contracts/data-registry/index.js";
 import { SettlementRegistryClient } from "../contracts/settlement-registry/index.js";
-import { SubscriptionRegistryClient } from "../contracts/subscription-registry/index.js";
 import { MetadataStorage } from "../providers/storage/types.js";
 
 export interface FangornContext {
@@ -14,7 +13,6 @@ export interface FangornContext {
     domain: string;
     dataRegistry: DataRegistryClient;
     appRegistry: AppRegistryClient;
-    subscriptionRegistry: SubscriptionRegistryClient;
     settlementRegistry: SettlementRegistryClient;
 }
 
@@ -32,8 +30,10 @@ export interface FangornCreateOptions {
     // workerUrl?: string;
     config?: AppConfig;
     // The app (global namespace) every commit this client makes or watches is
-    // scoped under: a human-readable name or a 32-byte app id. Defaults to
-    // `DEFAULT_APP`; switch it later with `fangorn.setAppId()`.
+    // scoped under a human-readable name or a 32-byte app id. Defaults to
+    // `DEFAULT_APP`. This can be switched later with `fangorn.setAppId()`. Signed-url
+    // uploads are billed to this app's storage subscription, so the wallet must be
+    // one of its publishers.
     appId?: string;
     domain?: string;
     privateKey?: Hex;

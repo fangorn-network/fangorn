@@ -191,6 +191,19 @@ export const DATA_REGISTRY_ABI = [
     {
         "inputs": [
             {
+                "internalType": "address",
+                "name": "publisher",
+                "type": "address"
+            }
+        ],
+        "name": "reinstateGlobal",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
                 "internalType": "bytes32",
                 "name": "app_id",
                 "type": "bytes32"
