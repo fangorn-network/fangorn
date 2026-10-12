@@ -139,9 +139,8 @@ export class AppRegistryClient {
      * USDC, so this approves it first when the allowance is short. `fee` is the
      * app's own join fee (wei), not the subscription.
      *
-     * The caller must already be registered in the DataRegistry
-     * (`DataRegistryClient.register()`), or the claim reverts
-     * `NotRegisteredGlobally`.
+     * A caller the protocol admin has banned network-wide
+     * (`DataRegistryClient.isSuspended()`) reverts `PublisherSuspendedErr`.
      */
     async registerApp(termsHash: Hex, termsUri: string, fee = 0n): Promise<Hash> {
         await this.approveSubscriptionFee();
@@ -162,8 +161,8 @@ export class AppRegistryClient {
      * they still accept the terms and pay the join fee with `registerForApp()`.
      * Nobody can join uninvited. Take it back with `suspendForApp()`.
      *
-     * The publisher must already be registered in the DataRegistry — never
-     * registered, or banned by the protocol admin, reverts `NotRegisteredGlobally`.
+     * A publisher the protocol admin has banned network-wide reverts
+     * `PublisherSuspendedErr`. There is nothing else for them to do first.
      */
     async addPublisher(publisher: Address): Promise<Hash> {
         return this.executeWrite("addPublisher", [this.appId, publisher]);

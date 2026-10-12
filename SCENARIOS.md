@@ -64,7 +64,7 @@ membership in the AppRegistry. `commitStateRoot` cross-calls the second.
 
 | id | scenario |
 |----|----------|
-| **PUB-1** | **Register globally.** `register()` reads `registrationFee()` first and attaches it as tx value. A caller who supplies the fee can supply the wrong one, so the client never accepts it as an argument. |
+| **PUB-1** | **There is no global registration.** A wallet that has never touched the DataRegistry can claim an app, be added to one, join and commit. The DataRegistry keeps only the protocol admin's network-wide ban, read with `isSuspended(address)`. |
 | **PUB-2** | **Join an app.** `registerForApp()` reads `joinInfo` immediately before sending, passes the hash it read as the argument, and attaches the fee it read as tx value. |
 | **PUB-3** | **A terms change mid-flight is a revert, not a surprise agreement.** The hash is passed as an argument precisely so the contract reverts `TermsMismatch` rather than binding the publisher to a document they never saw. Assert the argument comes from the read, not from a caller parameter. |
 | **PUB-4** | **Refuse to join an app with no terms.** `termsHash === 0` → the client throws before sending, naming the app. The contract would revert `TermsNotSet`; failing here costs no gas and says why. |
@@ -78,7 +78,7 @@ membership in the AppRegistry. `commitStateRoot` cross-calls the second.
 | **PUB-12** | **`access()` decodes `(bool, address, uint64)`** into `{ registered, owner, paidAt }` with `paidAt` widened to `bigint`. `owner` is the zero address for an unclaimed app. |
 | **PUB-13** | **`isActiveAt` is policy, not chain state.** `paidAt > 0` + `now < paidAt + window` → true, for the app, not a wallet. Assert each falsifies it alone, and that `now` is injectable so a caller can use block time rather than wall-clock skew. The contract deliberately stores no expiry. |
 | **PUB-14** | **Membership is by invitation.** `registerForApp()` throws before sending anything when the wallet's status is UNREGISTERED — the owner has not called `addPublisher`. INVITED joins and pays the join fee; ACTIVE on stale terms re-accepts free. |
-| **PUB-15** | **Claiming and adding need DataRegistry registration.** `registerApp()` reverts `NotRegisteredGlobally` unless the caller is an active publisher in the DataRegistry, and `addPublisher(p)` reverts the same way unless `p` is. Suspended counts as not registered, so a network-wide ban cannot be sidestepped through an app. The CLI checks `isRegistered` first and says to run `fangorn register`. [rust] |
+| **PUB-15** | **Claiming and adding are refused for a banned wallet.** `registerApp()` reverts `PublisherSuspendedErr` when the caller is suspended in the DataRegistry, and `addPublisher(p)` reverts the same way when `p` is, so a network-wide ban cannot be sidestepped through an app. An AppRegistry that cannot reach its DataRegistry treats every wallet as suspended. The CLI checks `isSuspended` first and says so. [rust] |
 
 ## C. Consumer level
 

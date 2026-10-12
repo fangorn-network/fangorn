@@ -46,9 +46,6 @@ describe.skipIf(skipFork)("Fangorn E2E (fork)", () => {
         // register a fresh app
         await testbed.registerApp(0)
 
-        // register a publisher (TODO: should we register per-app? Do we need a publisher permissions map or something?)
-        await testbed.register(0)
-        console.log('publisher registration success')
         // initialize a new namespace
         const namespace = `test-${Date.now()}`
         await testbed.initRepo(0, namespace)
@@ -103,9 +100,7 @@ describe.skipIf(skipFork)("Fangorn E2E (fork)", () => {
 
     // publishers must be registered onchain as publishers in order to write to an app
     // QQ: What if we used UCAN here?
-    it("rejects a registered publisher writing to an unregistered app", async () => {
-        await testbed.register(0); // publisher rights, no app claimed
-
+    it("rejects a publisher writing to an unregistered app", async () => {
         const orphan = fork.bed([PRIVATE_KEY], `unclaimed-${Date.now()}`);
         expect(await orphan.appOwner(0)).toBe(ZERO_ADDRESS);
 
@@ -118,7 +113,6 @@ describe.skipIf(skipFork)("Fangorn E2E (fork)", () => {
     it("supports multiple namespaces under a single publisher", async () => {
         // registration
         await testbed.registerApp(0);
-        await testbed.register(0);
 
         const stamp = Date.now();
         const nsA = `alpha-${stamp}`;
@@ -166,7 +160,6 @@ describe.skipIf(skipFork)("Fangorn E2E (fork)", () => {
     // concurrency guarantee is covered by `test_subspaces_have_isolated_timelines`.
     it("advances each namespace's on-chain head independently", async () => {
         await testbed.registerApp(0);
-        await testbed.register(0);
 
         const stamp = Date.now();
         const nsA = `head-a-${stamp}`;
@@ -201,7 +194,6 @@ describe.skipIf(skipFork)("Fangorn E2E (fork)", () => {
     // the batch modest so it settles quickly while still exercising the path.
     it("publishes a batch of vertices to one namespace in a single commit", async () => {
         await testbed.registerApp(0);
-        await testbed.register(0);
 
         const namespace = `batch-${Date.now()}`;
         await testbed.initRepo(0, namespace);
@@ -231,7 +223,6 @@ describe.skipIf(skipFork)("Fangorn E2E (fork)", () => {
     // — that machinery is only for the gated worker-usdc-v1 gadget.
     it("purely private: encrypt for self, ingest, retrieve, decrypt", async () => {
         await testbed.registerApp(0);
-        await testbed.register(0);
         const namespace = `private-${Date.now()}`;
         await testbed.initRepo(0, namespace);
 
@@ -291,13 +282,6 @@ describe.skipIf(skipFork)("Fangorn E2E (fork)", () => {
     //     const registry = fangorn.getDataRegistry();
     //     const storage = fangorn.getStorage();
 
-    //     // check onchain registration
-    //     const isRegistered = await registry.isRegistered(accountAddress);
-    //     if (!isRegistered) {
-    //         console.log("Registering publisher on-chain...");
-    //         await registry.register();
-    //     }
-
     //     const initialHead = await registry.getNamespaceHead(accountAddress);
     //     console.log(`Current authoritative on-chain head: ${initialHead}`);
 
@@ -352,7 +336,6 @@ describe.skipIf(skipFork)("Fangorn registries E2E (fork)", () => {
     // DataRegistry cross-calls isRegisteredForApp inside commitStateRoot.
     it("publishers can commit iff registered to the app", async () => {
         await testbed.registerApp(0);
-        await testbed.register(0);
 
         const f = testbed.getFangorn(0);
         const apps = f.getAppRegistry();
@@ -381,7 +364,6 @@ describe.skipIf(skipFork)("Fangorn registries E2E (fork)", () => {
         // A second wallet, which nobody has invited anywhere.
         const bed = fork.bed([PRIVATE_KEY, await fork.wallet()]);
         await bed.registerApp(0);
-        await bed.register(1);
 
         const guest = bed.getFangorn(1);
         const apps = guest.getAppRegistry();
@@ -456,7 +438,7 @@ describe.skipIf(skipFork)("Fangorn registries E2E (fork)", () => {
         await expect(data.reinstateGlobal(self)).rejects.toThrow(/Unauthorized/);
 
         expect(await apps.isAppSuspended()).toBe(false);
-        expect(await data.getPublisherStatus(self)).toBe(PublisherStatus.ACTIVE);
+        expect(await data.isSuspended(self)).toBe(false);
     }, 60_000);
 
     // The storage paywall: an app IS its subscription. Claiming one pulls the

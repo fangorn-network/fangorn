@@ -17,7 +17,6 @@ import {
 import { DATA_REGISTRY_ABI } from "./abi.js";
 import { requireWallet, sendWrite } from "../write.js";
 import { getLogsInWindows } from "../logs.js";
-import { PublisherStatus } from "../types.js";
 
 /**
  * The onchain id of a namespace within an app is the sha256 hash of its hex representation
@@ -177,16 +176,6 @@ export class DataRegistryClient {
     // ── Writes ───────────────────────────────────────────────────────────────
 
     /**
-     * Register as a new data publisher. Reverts `PublisherSuspendedErr` for a
-     * suspended account: only the admin can bring one back (`reinstateGlobal`).
-     * Automatically reads the required on-chain fee and attaches it to the call.
-     */
-    async register(): Promise<Hash> {
-        const fee = await this.registrationFee();
-        return this.executeWrite("register", [], fee);
-    }
-
-    /**
      * The single mutating state gateway route. Enforces the sequential
      * Compare-And-Swap (CAS) timeline rule — per namespace, so concurrent pushes
      * to *different* namespaces never contend.
@@ -289,26 +278,15 @@ export class DataRegistryClient {
     }
 
     /**
-     * Reads the explicit enum lifecycle state from the registry status machine.
+     * Whether the protocol admin has banned this wallet network-wide. A banned
+     * wallet cannot claim an app, be added to one, or commit. There is no
+     * registration: every other wallet is in good standing.
      */
-    async getPublisherStatus(publisher: Address): Promise<PublisherStatus> {
-        const status = await this.publicClient.readContract({
-            address: this.contractAddress,
-            abi: DATA_REGISTRY_ABI,
-            functionName: "getPublisherStatus",
-            args: [publisher],
-        });
-        return status as PublisherStatus;
-    }
-
-    /**
-     * Helper boolean view returning true if a publisher can currently commit data.
-     */
-    async isRegistered(publisher: Address): Promise<boolean> {
+    async isSuspended(publisher: Address): Promise<boolean> {
         return this.publicClient.readContract({
             address: this.contractAddress,
             abi: DATA_REGISTRY_ABI,
-            functionName: "isRegistered",
+            functionName: "suspended",
             args: [publisher],
         });
     }
@@ -391,22 +369,6 @@ export class DataRegistryClient {
         });
     }
 
-    async publisherCount(): Promise<bigint> {
-        return this.publicClient.readContract({
-            address: this.contractAddress,
-            abi: DATA_REGISTRY_ABI,
-            functionName: "publisherCount",
-        });
-    }
-
-    async registrationFee(): Promise<bigint> {
-        return this.publicClient.readContract({
-            address: this.contractAddress,
-            abi: DATA_REGISTRY_ABI,
-            functionName: "registrationFee",
-        });
-    }
-
     async admin(): Promise<Address> {
         return this.publicClient.readContract({
             address: this.contractAddress,
@@ -425,18 +387,11 @@ export class DataRegistryClient {
     }
 
     /**
-     * Lifts a network-wide suspension. Admin-only; reverts `NotRegistered` unless
-     * the publisher is currently suspended. Their namespace heads are untouched.
+     * Lifts a network-wide suspension. Admin-only, and a no-op for a wallet that
+     * is not suspended. Their namespace heads are untouched.
      */
     async reinstateGlobal(publisher: Address): Promise<Hash> {
         return this.executeWrite("reinstateGlobal", [publisher]);
-    }
-
-    /**
-     * Adjusts the current native/token onboarding collateral tier.
-     */
-    async setRegistrationFee(fee: bigint): Promise<Hash> {
-        return this.executeWrite("setRegistrationFee", [fee]);
     }
 }
 

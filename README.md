@@ -73,41 +73,38 @@ fangorn wallet show --reveal   # also prints the PRIVATE key — it grants full 
 The private key is never printed without `--reveal`: terminal scrollback, shell
 logs and screen shares all outlive the command.
 
-### Pick an app, then register
+### Pick an app, then join
 
-Publishing takes standing in **two** registries, and skipping the second is the
-usual first failure: `commitStateRoot` cross-calls `isRegisteredForApp`, so a
-wallet registered globally but not joined to the app gets `NotRegisteredForApp`
-at push time — far from the cause.
+Publishing takes membership of an app, and nothing else: there is no publisher
+registration. `commitStateRoot` cross-calls `isRegisteredForApp`, so a wallet
+that has not joined the app gets `NotRegisteredForApp` at push time — far from
+the cause.
 
 ```sh
 fangorn set-app my-app     # persists the app; --app <name-or-id> overrides per command
-fangorn app info           # owner, terms, join fee, and where you stand in both registries
-fangorn register           # global standing in the DataRegistry (then joins the app, if you were added)
+fangorn app info           # owner, terms, join fee, and where you stand in it
 fangorn app claim          # claim it, if nobody owns it yet (irreversible; pays the subscription)
+fangorn app join           # or join it, once its owner has added you
 ```
 
-Register first: the AppRegistry asks the DataRegistry before letting a wallet claim
-an app or be added to one, so a wallet that never registered — or that the protocol
-admin has banned network-wide — can do neither.
+The DataRegistry keeps one thing about a wallet: whether the protocol admin has
+banned it network-wide. The AppRegistry asks before letting a wallet claim an app
+or be added to one, so a banned wallet can do neither, and cannot commit.
 
 **An app is a storage subscription.** `fangorn app claim` pulls the subscription
 fee in USDC (the client approves it for you) and `fangorn app renew` pays it
 again. Hosted uploads are billed to the app, so nobody publishes outside one.
 
-**Membership is by invitation.** The owner runs `fangorn app add <address>` (the
-address must already be a registered publisher);
+**Membership is by invitation.** The owner runs `fangorn app add <address>`;
 only then can that wallet `fangorn app join`, which accepts the terms and pays
 the join fee. The owner is their own first publisher and needs neither.
 
 `fangorn app invitations` lists the apps that have added your wallet and are
 still waiting for you to join, with each one's owner, terms and join fee. Any
-app owner can add any registered wallet, so check the owner before joining.
+app owner can add any wallet, so check the owner before joining.
 
-`fangorn register` is idempotent and does both halves, reporting each — it joins
-the app when you have been added, and tells you to ask the owner when you have
-not. `fangorn app join` is also how you re-accept terms after the owner moves
-them (free).
+`fangorn app join` is also how you re-accept terms after the owner moves them
+(free).
 
 Owning an app comes with its own commands:
 
@@ -288,14 +285,11 @@ const fangorn = Fangorn.create({
 	domain: "localhost",
 });
 
-// Register once before committing — BOTH registries. The second is the one
-// `commitStateRoot` cross-calls, so skipping it surfaces as a revert at push
-// time rather than here.
+// Join the app once before committing. `commitStateRoot` cross-calls the
+// AppRegistry, so skipping it surfaces as a revert at push time rather than here.
 const self = fangorn.getAddress();
-const data = fangorn.getDataRegistry();
 const apps = fangorn.getAppRegistry();
 
-if (!(await data.isRegistered(self))) await data.register();
 // Throws unless the app's owner has added this wallet (`apps.addPublisher`).
 if (!(await apps.isRegisteredForApp(self))) await apps.registerForApp();
 ```
@@ -465,8 +459,8 @@ publishing under it:
 ```ts
 const apps = fangorn.getAppRegistry();
 
-await apps.registerApp(termsHash, termsUri, joinFee); // claim it — pays the subscription fee (USDC); caller must be registered
-await apps.addPublisher(publisher); // owner: invite a registered publisher
+await apps.registerApp(termsHash, termsUri, joinFee); // claim it — pays the subscription fee (USDC)
+await apps.addPublisher(publisher); // owner: invite a publisher
 await apps.registerForApp(); // publisher: join, accepting the current terms
 await apps.renewApp(); // owner: pay the subscription again
 
@@ -485,7 +479,7 @@ in between. A race is a revert, never silent agreement to a document the
 publisher never saw. The join fee is read from the chain for the same reason a
 caller never supplies it: a caller can supply the wrong one.
 
-See the [CLI quickstart](#pick-an-app-then-register) for the same flow from the
+See the [CLI quickstart](#pick-an-app-then-join) for the same flow from the
 command line.
 
 ### Storage
@@ -650,7 +644,7 @@ the config over any address copied out of a document, including this table.
 
 The two point at each other: `DataRegistry.commitStateRoot` cross-calls
 `AppRegistry.isRegisteredForApp`, and `AppRegistry.registerApp` / `addPublisher`
-cross-call `DataRegistry.isRegistered`.
+cross-call `DataRegistry.suspended`.
 
 ---
 
