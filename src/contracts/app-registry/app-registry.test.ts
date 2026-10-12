@@ -13,7 +13,7 @@ const SELF = "0x00000000000000000000000000000000000000cc" as Address;
 const APP = ("0x" + "ab".repeat(32)) as Hex;
 const TERMS = ("0x" + "11".repeat(32)) as Hex;
 
-function client(opts: { fee: bigint; allowance: bigint; status?: PublisherStatus }) {
+function client(opts: { fee: bigint; allowance: bigint; status?: PublisherStatus; paidAt?: bigint }) {
 	const writes: string[] = [];
 	const publicClient = {
 		readContract: ({ functionName }: { functionName: string }) =>
@@ -22,6 +22,7 @@ function client(opts: { fee: bigint; allowance: bigint; status?: PublisherStatus
 					subscriptionFee: opts.fee,
 					usdc: USDC,
 					allowance: opts.allowance,
+					subscribedAt: opts.paidAt ?? 0n,
 					joinInfo: [TERMS, "", 0n, opts.status ?? PublisherStatus.UNREGISTERED, false],
 				}[functionName],
 			),
@@ -65,5 +66,88 @@ describe("AppRegistryClient subscription + invitation", () => {
 		const invited = client({ fee: 0n, allowance: 0n, status: PublisherStatus.INVITED });
 		await invited.apps.registerForApp();
 		expect(invited.writes).toEqual(["registerForApp@registry"]);
+	});
+});
+
+// The window is measured from the last payment. A clock that reads before that
+// payment (zero, for one) must not make a lapsed app look active.
+describe("AppRegistryClient.isActiveAt", () => {
+	const WINDOW = 100n;
+	const active = (paidAt: bigint, now: bigint) =>
+		client({ fee: 0n, allowance: 0n, paidAt }).apps.isActiveAt(WINDOW, now);
+
+	it("is active from the payment until the window closes", async () => {
+		expect(await active(1000n, 1000n)).toBe(true);
+		expect(await active(1000n, 1099n)).toBe(true);
+		expect(await active(1000n, 1100n)).toBe(false);
+	});
+
+	it("is not active for an unclaimed app, or at a time before the payment", async () => {
+		expect(await active(0n, 50n)).toBe(false);
+		expect(await active(1000n, 0n)).toBe(false);
+		expect(await active(1000n, 999n)).toBe(false);
+	});
+});
+
+// The contract cannot list a publisher's apps. The invitations are found in the
+// logs, and whether each still stands is read from the contract.
+describe("AppRegistryClient.getInvitations", () => {
+	const OWNER = "0x00000000000000000000000000000000000000dd" as Address;
+	const PENDING = ("0x" + "01".repeat(32)) as Hex;
+	const JOINED = ("0x" + "02".repeat(32)) as Hex;
+	const WITHDRAWN = ("0x" + "03".repeat(32)) as Hex;
+	const FROM = 100n;
+	const HEAD = FROM + 2_500_000n;
+
+	function invited(statuses: Record<Hex, PublisherStatus>) {
+		const scans: { publisher: Address; fromBlock: bigint; toBlock: bigint }[] = [];
+		const publicClient = {
+			getBlockNumber: () => Promise.resolve(HEAD),
+			getContractEvents: (q: { args: { publisher: Address }; fromBlock: bigint; toBlock: bigint }) => {
+				scans.push({ publisher: q.args.publisher, fromBlock: q.fromBlock, toBlock: q.toBlock });
+				return Promise.resolve(
+					Object.keys(statuses).map((appId, i) => ({
+						args: { app_id: appId, publisher: SELF },
+						blockNumber: FROM + BigInt(i),
+					})),
+				);
+			},
+			readContract: ({ functionName, args }: { functionName: string; args: [Hex, ...unknown[]] }) =>
+				Promise.resolve(
+					{
+						joinInfo: [TERMS, "ipfs://terms", 7n, statuses[args[0]], false],
+						getAppOwner: OWNER,
+						appAgentUri: "https://card.test/",
+					}[functionName],
+				),
+		} as unknown as PublicClient;
+		const apps = new AppRegistryClient(REGISTRY, APP, publicClient, {} as WalletClient);
+		return { apps, scans };
+	}
+
+	it("lists only the apps still waiting for the publisher to join", async () => {
+		const { apps } = invited({
+			[PENDING]: PublisherStatus.INVITED,
+			[JOINED]: PublisherStatus.ACTIVE,
+			[WITHDRAWN]: PublisherStatus.SUSPENDED,
+		});
+		expect(await apps.getInvitations(SELF, { fromBlock: FROM })).toEqual([
+			{
+				appId: PENDING,
+				owner: OWNER,
+				termsHash: TERMS,
+				termsUri: "ipfs://terms",
+				fee: 7n,
+				agentUri: "https://card.test/",
+				blockNumber: FROM,
+			},
+		]);
+	});
+
+	it("asks for the publisher's logs from the deploy block, in one wide window", async () => {
+		const { apps, scans } = invited({});
+		expect(await apps.getInvitations(SELF, { fromBlock: FROM })).toEqual([]);
+		// 2.5M blocks: 2,500 calls at the default window, one at this query's.
+		expect(scans).toEqual([{ publisher: SELF, fromBlock: FROM, toBlock: HEAD }]);
 	});
 });

@@ -1,0 +1,50 @@
+# The end-to-end suite.
+#
+# Everything that writes runs on a local fork of Arbitrum Sepolia (anvil), so a
+# run leaves nothing in the registries, and what it uploads to Pinata is unpinned
+# when it ends. The real chain is only read.
+#
+# It holds a Pinata token, which can delete files as well as upload them, and no
+# wallet key of any kind: every wallet, the admin included, is generated on the
+# fork. The token is still kept away from code nobody reviewed:
+# - The secrets belong to the `sepolia-e2e` environment, not the repository, so no
+#   other workflow can read them. Restrict that environment to `main` in the
+#   repository settings, or a manual run from any branch gets them.
+# - No pull_request trigger: a pull request's code never runs with them.
+# - The secrets reach the one step that runs the tests, not the install.
+# - Actions are pinned to a commit, because a moved tag would run with them,
+#   and the install is frozen to the lockfile and runs no package scripts.
+
+name: E2E
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: ~
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: E2E (fork)
+    runs-on: ubuntu-latest
+    environment: sepolia-e2e
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22.21.1
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      # anvil, for the fork.
+      - uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+      # Not `pnpm test:e2e`: that reads a .env file, and there is none here.
+      - run: pnpm exec vitest run --config vitest.e2e.config.ts
+        env:
+          PINATA_JWT: ${{ secrets.PINATA_JWT }}
+          PINATA_GATEWAY: ${{ secrets.PINATA_GATEWAY }}

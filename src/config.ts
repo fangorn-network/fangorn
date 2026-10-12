@@ -10,6 +10,16 @@ export function appId(name: string): Hex {
 
 export const DEFAULT_APP = "fangorn";
 
+/**
+ * Blank input means "not set", never an app called "". Returns the trimmed value,
+ * or undefined when it is missing or only whitespace, so it can sit on the left of
+ * a `??` fallback. `??` on the raw value would let "" through: it is not nullish.
+ */
+export function nonBlank(value: string | undefined): string | undefined {
+	const trimmed = value?.trim();
+	return trimmed === "" ? undefined : trimmed;
+}
+
 export function toAppId(nameOrId: string): Hex {
 	// A blank name hashes to keccak("") — a valid-looking id for an app nobody
 	// owns. Callers normalise blank to "unset" at their input boundary; anything
@@ -49,6 +59,8 @@ export interface AppConfig {
 	// The deployed MembershipRegistry (time-limited, unlinkable access to an app's
 	// paid records). Zero until deployed on this network.
 	membershipRegistryContractAddress: Hex;
+	// The block the AppRegistry was deployed in. Scans of the registry's logs start here.
+	appRegistryFromBlock: bigint;
 	// The viem chain
 	chain: Chain;
 	// The public rpc address of the chain we are connecting to
@@ -70,6 +82,7 @@ export const FangornConfig = {
 	// MEMBERSHIP_REGISTRY: set after scripts/deploy-membership.sh
 	membershipRegistryContractAddress:
 		"0x5054D8611111Bb9F36318eb5c3e6968646415A9D",
+	appRegistryFromBlock: 317102111n,
 	chain: arbitrumSepolia,
 	rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
 	caip2: 421614,

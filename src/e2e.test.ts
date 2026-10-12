@@ -1,10 +1,25 @@
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { type Hex, keccak256, stringToBytes, hexToBytes, bytesToHex } from "viem";
-import { TestBed } from "./test/testbed.js";
+import { cleanUp, Fork, skipFork, startFork, TestBed } from "./test/testbed.js";
 import { needsReacceptance, PublisherStatus } from "./contracts/index.js";
 import { sealSelf, unsealSelf, GADGET_SELF_HKDF_V1 } from "./crypto/encryption.js";
 
-const PRIVATE_KEY = process.env.ETH_PRIVATE_KEY as Hex;
+// Everything here writes, so it runs on a local fork of the deployed chain. The
+// contracts and their state are the live ones; what the suite claims, registers
+// and commits is gone when the fork stops, where on the real chain it could
+// never be removed. Uploads still go to Pinata and are unpinned at the end. The
+// few checks that need the real chain are in live.e2e.test.ts.
+let fork: Fork;
+// The suite's wallet: generated on the fork, and given gas there.
+let PRIVATE_KEY: Hex;
+
+beforeAll(async () => {
+    if (!process.env.PINATA_JWT) throw new Error("PINATA_JWT is not set: the suite uploads to Pinata");
+    fork = await startFork();
+    PRIVATE_KEY = await fork.wallet();
+}, 60_000);
+
+afterAll(cleanUp, 300_000);
 // const RPC_URL = process.env.RPC_URL ?? "https://sepolia-rollup.arbitrum.io/rpc";
 // const REGISTRY_ADDRESS = process.env.DATA_SOURCE_REGISTRY_ADDRESS as Hex;
 
@@ -20,11 +35,11 @@ interface TestPayload {
     status: string;
 }
 
-describe("Fangorn E2E", () => {
+describe.skipIf(skipFork)("Fangorn E2E (fork)", () => {
     let testbed: TestBed;
 
     beforeAll(() => {
-        testbed = TestBed.init([PRIVATE_KEY]);
+        testbed = fork.bed([PRIVATE_KEY]);
     });
 
     it("single uploader mutates its namespace state root properly", async () => {
@@ -91,7 +106,7 @@ describe("Fangorn E2E", () => {
     it("rejects a registered publisher writing to an unregistered app", async () => {
         await testbed.register(0); // publisher rights, no app claimed
 
-        const orphan = TestBed.init([PRIVATE_KEY], `unclaimed-${Date.now()}`);
+        const orphan = fork.bed([PRIVATE_KEY], `unclaimed-${Date.now()}`);
         expect(await orphan.appOwner(0)).toBe(ZERO_ADDRESS);
 
         await expect(
@@ -326,11 +341,11 @@ describe("Fangorn E2E", () => {
 
 });
 
-describe("Fangorn registries E2E", () => {
+describe.skipIf(skipFork)("Fangorn registries E2E (fork)", () => {
     let testbed: TestBed;
 
     beforeAll(() => {
-        testbed = TestBed.init([PRIVATE_KEY]);
+        testbed = fork.bed([PRIVATE_KEY]);
     });
 
     // The contracts are deployed independently and point at each other by
@@ -388,6 +403,54 @@ describe("Fangorn registries E2E", () => {
         expect(res.txHash).toBeTruthy();
     }, 180_000);
 
+    // Membership is by invitation. Every other test here publishes as the app's
+    // owner, who is its own first publisher and never needs one, so this is the
+    // only place the two-party path runs: a second wallet that the owner adds,
+    // that accepts the terms, publishes, and is then read by the owner.
+    it("an invited publisher joins and publishes; an uninvited one cannot", async () => {
+        // A second wallet, which nobody has invited anywhere.
+        const bed = fork.bed([PRIVATE_KEY, await fork.wallet()]);
+        await bed.registerApp(0);
+        await bed.register(1);
+
+        const guest = bed.getFangorn(1);
+        const apps = guest.getAppRegistry();
+        const self = guest.getAddress();
+        const stamp = Date.now();
+
+        // Uninvited: the client refuses the join, and the chain refuses the commit.
+        expect((await apps.joinInfo(self)).status).toBe(PublisherStatus.UNREGISTERED);
+        await expect(apps.registerForApp()).rejects.toThrow(/has not been added/i);
+        await expect(
+            bed.initRepo(1, `uninvited-${stamp}`),
+        ).rejects.toThrow(/NotRegisteredForApp|revert/i);
+
+        // Invited is not yet a member: the publisher still has to accept the terms.
+        await bed.invite(0, 1);
+        expect((await apps.joinInfo(self)).status).toBe(PublisherStatus.INVITED);
+        expect(await apps.isRegisteredForApp(self)).toBe(false);
+        // The guest finds the invitation without being told which app it is.
+        const owner = bed.getFangorn(0).getAddress();
+        expect(await guest.getInvitations()).toMatchObject([{ appId: guest.getAppId(), owner }]);
+
+        await apps.registerForApp();
+        expect(await guest.getInvitations()).toEqual([]);
+        const info = await apps.joinInfo(self);
+        expect(info.status).toBe(PublisherStatus.ACTIVE);
+        expect(info.acceptedTerms).toBe(info.termsHash);
+        expect(await apps.isRegisteredForApp(self)).toBe(true);
+
+        const namespace = `invited-${stamp}`;
+        await bed.initRepo(1, namespace);
+        const res = await bed.upload(1, namespace, { event: "from the guest" }, "invited");
+        expect(res.txHash).toBeTruthy();
+
+        // And the owner, a different wallet, reads what the guest published.
+        await sleep(5000); // pinata
+        const { contents } = await bed.getFangorn(0).readNamespace(self, namespace);
+        expect(contents.vertices.map((v) => v.cid)).toEqual([res.payloadCid]);
+    }, 300_000);
+
     // A wallet that never joined the app is not a member, and the app it did not
     // join reports so without throwing — an unclaimed app id is a legitimate read.
     it("cannot register for unclaimed app", async () => {
@@ -406,56 +469,31 @@ describe("Fangorn registries E2E", () => {
         f.setAppId(before);
     }, 60_000);
 
-    // The admin takedown, one level above an app owner ejecting a publisher:
-    // suspending the app unregisters everyone under it, its owner included.
-    it("admin app suspension works", async () => {
+    // The other half of the admin suite (admin.e2e.test.ts, where a generated
+    // key is made the admin). Here every takedown is refused for a wallet that is
+    // not the protocol admin, including an app's own owner acting on its own app.
+    it("only the protocol admin can suspend or reinstate", async () => {
         await testbed.registerApp(0);
-        await testbed.register(0);
 
         const f = testbed.getFangorn(0);
         const apps = f.getAppRegistry();
+        const data = f.getDataRegistry();
         const self = f.getAddress();
 
-        const admin = await apps.admin();
-        if (admin.toLowerCase() !== self.toLowerCase()) {
-            console.log(`test wallet is not the AppRegistry admin (${admin}); skipping`);
-            return;
-        }
+        await expect(apps.suspendApp()).rejects.toThrow(/Unauthorized/);
+        await expect(apps.reinstateApp()).rejects.toThrow(/Unauthorized/);
+        await expect(data.suspendPublisher(self)).rejects.toThrow(/Unauthorized/);
+        await expect(data.reinstateGlobal(self)).rejects.toThrow(/Unauthorized/);
 
         expect(await apps.isAppSuspended()).toBe(false);
-        expect(await apps.isRegisteredForApp(self)).toBe(true);
-
-        // Always lift it: the app is shared by every test in this file, so a
-        // failure that left it suspended would take the rest of the suite with it.
-        try {
-            await apps.suspendApp();
-            expect(await apps.isAppSuspended()).toBe(true);
-            expect(await apps.isRegisteredForApp(self)).toBe(false);
-
-            // The membership underneath is untouched — this is a takedown, not an
-            // eviction, which is what makes reinstating free for the publishers.
-            const info = await apps.joinInfo(self);
-            expect(info.appSuspended).toBe(true);
-            expect(info.registered).toBe(false);
-            expect(info.status).toBe(PublisherStatus.ACTIVE);
-            expect(info.acceptedTerms).toBe(info.termsHash);
-
-            // And the DataRegistry reads the same answer: nothing commits.
-            const namespace = `taken-down-${Date.now()}`;
-            await expect(testbed.initRepo(0, namespace)).rejects.toThrow();
-        } finally {
-            await apps.reinstateApp();
-        }
-
-        expect(await apps.isAppSuspended()).toBe(false);
-        expect(await apps.isRegisteredForApp(self)).toBe(true);
-    }, 180_000);
+        expect(await data.getPublisherStatus(self)).toBe(PublisherStatus.ACTIVE);
+    }, 60_000);
 
     // The storage paywall: an app IS its subscription. Claiming one pulls the
     // fee in USDC (the client approves it first) and stamps the app's paid-at.
     it("claiming an app stamps its subscription", async () => {
         // A throwaway name, so the claim always happens here.
-        const bed = TestBed.init([PRIVATE_KEY], `sub-e2e-${Date.now().toString()}`);
+        const bed = fork.bed([PRIVATE_KEY], `sub-e2e-${Date.now().toString()}`);
         const apps = bed.getFangorn(0).getAppRegistry();
         const self = bed.getFangorn(0).getAddress();
 
@@ -475,7 +513,9 @@ describe("Fangorn registries E2E", () => {
 
         // The active window is the gate's policy, not chain state: the same
         // paidAt is active under a wide window and expired under a zero one.
-        expect(await apps.isActiveAt(30n * 24n * 3600n)).toBe(true);
-        expect(await apps.isActiveAt(0n)).toBe(false);
+        // Judged by block time: a fork's blocks can run ahead of this clock.
+        const now = (await fork.chain.getBlock()).timestamp;
+        expect(await apps.isActiveAt(30n * 24n * 3600n, now)).toBe(true);
+        expect(await apps.isActiveAt(0n, now)).toBe(false);
     }, 180_000);
 });

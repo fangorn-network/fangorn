@@ -1,24 +1,151 @@
-import { type Hex } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { Fangorn } from "../fangorn.js";
-import { FangornConfig } from "../config.js";
+import { PinataSDK } from "pinata";
+import { type AppConfig, FangornConfig } from "../config.js";
 import { PublisherStatus } from "../contracts/index.js";
+import { type ChildProcess, spawn, spawnSync } from "node:child_process";
+import { createTestClient, http, parseEther, publicActions, walletActions, type Hex } from "viem";
 
 // The testbed's app terms. Any non-zero value works — zero would leave the app
 // unjoinable and every commit in the suite would revert NotRegisteredForApp.
 const TESTBED_APP_TERMS =
     "0x0000000000000000000000000000000000000000000000000000000000000002" as const;
 
+/**
+ * The app the suite publishes under: one per test wallet, claimed by that wallet
+ * on its first run and reused after. Not the SDK's default app — that one has an
+ * owner, and joining it takes an invitation this wallet cannot give itself.
+ */
+export function suiteApp(sk: Hex | undefined): string {
+    if (!sk) throw new Error("TestBed needs a private key");
+    return `e2e-${privateKeyToAccount(sk).address.toLowerCase()}`;
+}
+
+const hasAnvil = spawnSync("anvil", ["--version"]).status === 0;
+
+/**
+ * Without anvil a suite that runs on a fork shows as skipped, except in CI,
+ * where it has to fail rather than quietly stop testing.
+ */
+export const skipFork = !hasAnvil && !process.env.CI;
+
+// What this test file started and has to put away again: see `cleanUp`.
+const forks: ChildProcess[] = [];
+// Pinata's id for every file this test file uploads. A delete takes that id,
+// and the SDK's storage backend hands back CIDs, never ids. So it is read here,
+// from Pinata's own answer to each upload, and the SDK is left without any
+// code that exists only for the tests.
+const uploaded: string[] = [];
+
+const PINATA_UPLOADS = "https://uploads.pinata.cloud/v3/files";
+const realFetch = globalThis.fetch;
+globalThis.fetch = async (input, init) => {
+    const response = await realFetch(input, init);
+    const url = input instanceof Request ? input.url : input.toString();
+    if (init?.method === "POST" && url.startsWith(PINATA_UPLOADS) && response.ok) {
+        const { data } = (await response.clone().json()) as {
+            data?: { id?: string; is_duplicate?: boolean };
+        };
+        // A duplicate is a file the account had pinned before this upload: not
+        // ours to remove.
+        if (data?.id && !data.is_duplicate) uploaded.push(data.id);
+    }
+    return response;
+};
+
+/**
+ * Fork the deployed chain locally (anvil, on a port it picks).
+ *
+ * Every suite that writes runs on one. The contracts and their state are the
+ * deployed ones, so the tests exercise the real code, but what they claim,
+ * register and commit is gone when the fork stops. On the real chain it could
+ * never be removed, and every run would add to the registries.
+ */
+export async function startFork() {
+    if (!hasAnvil) {
+        throw new Error("anvil is not installed: in CI the fork suites fail rather than skip");
+    }
+    const anvil = spawn("anvil", ["--fork-url", FangornConfig.rpcUrl, "--port", "0"], {
+        stdio: ["ignore", "pipe", "inherit"],
+    });
+    forks.push(anvil);
+    const rpcUrl = await new Promise<string>((resolve, reject) => {
+        let output = "";
+        anvil.stdout.on("data", (chunk: Buffer) => {
+            output += chunk.toString();
+            const listening = /Listening on (\S+)/.exec(output);
+            if (listening) resolve(`http://${listening[1]}`);
+        });
+        anvil.once("error", reject);
+        anvil.once("exit", (code) => {
+            reject(new Error(`anvil exited (${String(code)}) before it was listening`));
+        });
+    });
+    const config: AppConfig = { ...FangornConfig, rpcUrl };
+    const chain = createTestClient({
+        mode: "anvil",
+        chain: config.chain,
+        transport: http(rpcUrl),
+    })
+        .extend(publicActions)
+        .extend(walletActions);
+
+    return {
+        /** The SDK's deployment, reached through the fork. */
+        config,
+        /** The fork itself: set balances, impersonate accounts, read blocks. */
+        chain,
+        /** A new wallet with gas. Nothing on a fork costs anything. */
+        wallet: async (): Promise<Hex> => {
+            const sk = generatePrivateKey();
+            await chain.setBalance({
+                address: privateKeyToAccount(sk).address,
+                value: parseEther("1"),
+            });
+            return sk;
+        },
+        /** A test bed on the fork: `TestBed.init` with the fork's config. */
+        bed: (sks: Hex[], appName?: string) => TestBed.init(sks, appName, config),
+    };
+}
+
+export type Fork = Awaited<ReturnType<typeof startFork>>;
+
+/**
+ * Put away what this test file left behind: stop its forks, and unpin every
+ * file it uploaded to Pinata. Call it from `afterAll`.
+ */
+export async function cleanUp(): Promise<void> {
+    for (const anvil of forks.splice(0)) anvil.kill();
+    const ids = uploaded.splice(0);
+    if (ids.length === 0) return;
+    const pinata = new PinataSDK({ pinataJwt: process.env.PINATA_JWT ?? "" });
+    // The SDK reports a failed delete as a status string rather than throwing.
+    const failed = (await pinata.files.public.delete(ids)).filter((r) => /error|failed/i.test(r.status));
+    if (failed.length > 0) {
+        throw new Error(
+            `Pinata did not unpin ${String(failed.length)} of ${String(ids.length)} files: ${failed[0].status}`,
+        );
+    }
+    console.log(`Unpinned ${String(ids.length)} files from Pinata`);
+}
+
 export class TestBed {
     private constructor(private readonly f_list: Fangorn[]) {}
 
     /**
-     * @param sks     one wallet per publisher in the forest
-     * @param appName the app namespace to publish under; defaults to one owned by
-     *                the first wallet. Pass an unclaimed name to exercise the
-     *                AppNotFound path.
+     * @param sks     one wallet per publisher in the forest; the first owns the app
+     * @param appName the app namespace to publish under; defaults to the first
+     *                wallet's own (`suiteApp`). Pass an unclaimed name to exercise
+     *                the AppNotFound path.
+     * @param config  the deployment to talk to; defaults to the SDK's. Pass one
+     *                with another `rpcUrl` to run against a local fork.
      */
-    static init(sks: Hex[], appName?: string): TestBed {
+    static init(
+        sks: Hex[],
+        appName: string = suiteApp(sks[0]),
+        config: AppConfig = FangornConfig,
+    ): TestBed {
         // populate fangorn forest
         const f_list: Fangorn[] = [];
         // Joining is by invitation, so the suite cannot use the SDK's shared
@@ -29,8 +156,8 @@ export class TestBed {
             f_list.push(
                 Fangorn.create({
                     privateKey: sk,
-                    config: FangornConfig,
-                    appId: app,
+                    config,
+                    appId: appName,
                     storage: {
                         pinata: {
                             jwt: process.env.PINATA_JWT ?? "",
@@ -57,8 +184,8 @@ export class TestBed {
      * while a publisher registers for the right to write at all. One app hosts
      * many publishers, and one publisher writes into many apps — but only a
      * registered publisher can claim an app or be added to one, so this runs
-     * `register` first. Idempotent, and safe when someone else already owns it:
-     * apps are shared, not per-test.
+     * `register` first. Idempotent: the app is shared by every test and every
+     * run of this wallet, not claimed per test.
      */
     async registerApp(index: number) {
         // Global standing first: the AppRegistry refuses a claim from a wallet the
@@ -98,6 +225,13 @@ export class TestBed {
             console.log("Registering publisher on-chain...");
             await registry.register();
         }
+    }
+
+    /** The owner's half of a join: `owner` adds `publisher` to the app. */
+    async invite(owner: number, publisher: number) {
+        await this.getFangorn(owner)
+            .getAppRegistry()
+            .addPublisher(this.getFangorn(publisher).getAddress());
     }
 
     async initRepo(index: number, name: string) {

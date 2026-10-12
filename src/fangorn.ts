@@ -9,7 +9,7 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import { CID } from "multiformats/cid";
 
-import { AppConfig, DEFAULT_APP, FangornConfig, toAppId } from "./config.js";
+import { AppConfig, DEFAULT_APP, FangornConfig, nonBlank, toAppId } from "./config.js";
 import {
 	FangornContext,
 	FangornCreateOptions,
@@ -30,6 +30,7 @@ import {
 	rootHexFromCid,
 } from "./engine/index.js";
 import {
+	AppInvitation,
 	AppRegistryClient,
 	CommitFilter,
 	DataRegistryClient,
@@ -200,7 +201,7 @@ export class Fangorn {
 
 		// Blank is "no app chosen", not an app called "". An empty FANGORN_APP_ID
 		// or `--app ""` must not silently re-scope the registries or the billing.
-		const chosenApp = options.appId?.trim() || undefined;
+		const chosenApp = nonBlank(options.appId);
 		const appId = toAppId(chosenApp ?? DEFAULT_APP);
 		const dataRegistry = new DataRegistryClient(
 			resolvedConfig.dataRegistryContractAddress,
@@ -971,6 +972,17 @@ export class Fangorn {
 
 	getMembershipRegistry(): MembershipRegistryClient {
 		return this.ctx.membershipRegistry;
+	}
+	
+	/**
+	 * The apps that have invited `publisher` (this wallet by default) and are
+	 * waiting for them to join. Read from the AppRegistry's logs since its
+	 * deployment. See `AppRegistryClient.getInvitations`.
+	 */
+	getInvitations(publisher: Hex = this.getAddress()): Promise<AppInvitation[]> {
+		return this.ctx.appRegistry.getInvitations(publisher, {
+			fromBlock: this.ctx.config.appRegistryFromBlock,
+		});
 	}
 
 	/** The app (global namespace) this client publishes and reads under. */
