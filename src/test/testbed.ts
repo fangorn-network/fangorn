@@ -151,7 +151,6 @@ export class TestBed {
         // Joining is by invitation, so the suite cannot use the SDK's shared
         // DEFAULT_APP (owned by someone else). Its own app, claimed once per
         // wallet, lets the owner invite itself.
-        const app = appName ?? `e2e-${privateKeyToAccount(sks[0]).address.toLowerCase()}`;
         sks.forEach((sk) => {
             f_list.push(
                 Fangorn.create({

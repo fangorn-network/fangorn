@@ -42,7 +42,7 @@ describe("Fangorn live deployment (read-only)", () => {
         );
         // Both paywalls settle in the same token, or a price quoted by one means
         // nothing to the other.
-        expect((await membership.getAddress()).toLowerCase()).toBeDefined();
+        expect((membership.getAddress()).toLowerCase()).toBeDefined();
 
         // setAppId moves the app-scoped clients together and leaves the
         // per-wallet one alone (CO-1).
