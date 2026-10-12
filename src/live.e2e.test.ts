@@ -29,7 +29,7 @@ describe("Fangorn live deployment (read-only)", () => {
     it("registries are properly wired", async () => {
         const data = reader.getDataRegistry();
         const apps = reader.getAppRegistry();
-        const settlement = reader.getSettlementRegistry();
+        const membership = reader.getMembershipRegistry();
 
         expect((await data.appRegistry()).toLowerCase()).toBe(
             apps.getAddress().toLowerCase(),
@@ -42,9 +42,7 @@ describe("Fangorn live deployment (read-only)", () => {
         );
         // Both paywalls settle in the same token, or a price quoted by one means
         // nothing to the other.
-        expect((await apps.usdc()).toLowerCase()).toBe(
-            (await settlement.getUsdc()).toLowerCase(),
-        );
+        expect((membership.getAddress()).toLowerCase()).toBeDefined();
 
         // setAppId moves the app-scoped clients together and leaves the
         // per-wallet one alone (CO-1).

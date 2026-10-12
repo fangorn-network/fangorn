@@ -35,7 +35,7 @@ import {
 	CommitFilter,
 	DataRegistryClient,
 	PreparedTx,
-	SettlementRegistryClient,
+	MembershipRegistryClient,
 	StateCommittedLog,
 	subspaceId,
 } from "./contracts/index.js";
@@ -217,8 +217,8 @@ export class Fangorn {
 			walletClient,
 		);
 
-		const settlementRegistry = new SettlementRegistryClient(
-			resolvedConfig.settlementRegistryContractAddress,
+		const membershipRegistry = new MembershipRegistryClient(
+			resolvedConfig.membershipRegistryContractAddress,
 			publicClient,
 			walletClient,
 		);
@@ -236,7 +236,7 @@ export class Fangorn {
 			domain,
 			dataRegistry: dataRegistry,
 			appRegistry,
-			settlementRegistry,
+			membershipRegistry,
 			config: resolvedConfig,
 		};
 
@@ -970,6 +970,10 @@ export class Fangorn {
 		return this.ctx.appRegistry;
 	}
 
+	getMembershipRegistry(): MembershipRegistryClient {
+		return this.ctx.membershipRegistry;
+	}
+	
 	/**
 	 * The apps that have invited `publisher` (this wallet by default) and are
 	 * waiting for them to join. Read from the AppRegistry's logs since its
@@ -979,14 +983,6 @@ export class Fangorn {
 		return this.ctx.appRegistry.getInvitations(publisher, {
 			fromBlock: this.ctx.config.appRegistryFromBlock,
 		});
-	}
-
-	/**
-	 * The consumer-side pay-then-read rail. Resources are keyed by owner+uid, so
-	 * this client is app-agnostic too.
-	 */
-	getSettlementRegistry(): SettlementRegistryClient {
-		return this.ctx.settlementRegistry;
 	}
 
 	/** The app (global namespace) this client publishes and reads under. */
