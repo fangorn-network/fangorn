@@ -404,10 +404,9 @@ program
 
 // ─── app membership ───────────────────────────────────────────────────────────
 //
-// Publishing is gated by app membership (AppRegistry.registerForApp()), and by
-// nothing else: there is no global registration. `commitStateRoot` cross-calls
+// Publishing is gated by app membership (AppRegistry.registerForApp()). `commitStateRoot` cross-calls
 // the AppRegistry, so a wallet that has not joined the app gets
-// `NotRegisteredForApp` at push time — far from the cause. `fangorn app info`
+// `NotRegisteredForApp` at push time. `fangorn app info`
 // shows where you stand.
 //
 // The DataRegistry only keeps the protocol admin's network-wide ban. The
@@ -524,7 +523,7 @@ appCmd
 			}
 
 			// The contract refuses a claim from a wallet the protocol admin has
-			// banned — say so before any USDC moves.
+			// banned.
 			if (suspendedGlobally) {
 				console.error(
 					`${self} is suspended by the protocol admin — claiming will revert.`,
@@ -1047,7 +1046,6 @@ program
 		process.exit(1);
 	});
 
-// Wallets no longer register: publishing is gated by app membership alone.
 program
 	.command("register", { hidden: true })
 	.description("Removed: there is no publisher registration. Use `fangorn app join`")

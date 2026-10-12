@@ -75,10 +75,8 @@ logs and screen shares all outlive the command.
 
 ### Pick an app, then join
 
-Publishing takes membership of an app, and nothing else: there is no publisher
-registration. `commitStateRoot` cross-calls `isRegisteredForApp`, so a wallet
-that has not joined the app gets `NotRegisteredForApp` at push time — far from
-the cause.
+Publishing takes membership or ownership of an app. `commitStateRoot` cross-calls `isRegisteredForApp`, so a wallet
+that has not joined the app gets `NotRegisteredForApp` at push time.
 
 ```sh
 fangorn set-app my-app     # persists the app; --app <name-or-id> overrides per command

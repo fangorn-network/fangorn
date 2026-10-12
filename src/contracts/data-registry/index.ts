@@ -279,8 +279,7 @@ export class DataRegistryClient {
 
     /**
      * Whether the protocol admin has banned this wallet network-wide. A banned
-     * wallet cannot claim an app, be added to one, or commit. There is no
-     * registration: every other wallet is in good standing.
+     * wallet cannot claim an app, be added to one, or commit.
      */
     async isSuspended(publisher: Address): Promise<boolean> {
         return this.publicClient.readContract({

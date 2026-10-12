@@ -162,7 +162,7 @@ export class AppRegistryClient {
      * Nobody can join uninvited. Take it back with `suspendForApp()`.
      *
      * A publisher the protocol admin has banned network-wide reverts
-     * `PublisherSuspendedErr`. There is nothing else for them to do first.
+     * `PublisherSuspendedErr`.
      */
     async addPublisher(publisher: Address): Promise<Hash> {
         return this.executeWrite("addPublisher", [this.appId, publisher]);
