@@ -1,9 +1,10 @@
-import { type ChildProcess, spawn, spawnSync } from "node:child_process";
-import { createTestClient, http, parseEther, publicActions, walletActions, type Hex } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { Fangorn } from "../fangorn.js";
 import { PinataSDK } from "pinata";
 import { type AppConfig, FangornConfig } from "../config.js";
+import { PublisherStatus } from "../contracts/index.js";
+import { type ChildProcess, spawn, spawnSync } from "node:child_process";
+import { createTestClient, http, parseEther, publicActions, walletActions, type Hex } from "viem";
 
 // The testbed's app terms. Any non-zero value works — zero would leave the app
 // unjoinable and every commit in the suite would revert NotRegisteredForApp.
@@ -147,6 +148,9 @@ export class TestBed {
     ): TestBed {
         // populate fangorn forest
         const f_list: Fangorn[] = [];
+        // Joining is by invitation, so the suite cannot use the SDK's shared
+        // DEFAULT_APP (owned by someone else). Its own app, claimed once per
+        // wallet, lets the owner invite itself.
         sks.forEach((sk) => {
             f_list.push(
                 Fangorn.create({
@@ -190,10 +194,15 @@ export class TestBed {
             await registry.registerApp(TESTBED_APP_TERMS, "https://example.test/terms", 0n);
         }
         // Joining is a precondition for committing under the app, and it is by
-        // invitation: for an app someone else owns, they must have added this
-        // wallet first (`addPublisher`) or the join below throws saying so.
+        // invitation — the owner included. For an app someone else owns, they
+        // must have added this wallet first or the join below throws saying so.
         const self = this.getFangorn(index).getAddress();
         if (!(await registry.isRegisteredForApp(self))) {
+            const info = await registry.joinInfo(self);
+            const ownsApp = (await registry.getAppOwner()).toLowerCase() === self.toLowerCase();
+            if (ownsApp && info.status === PublisherStatus.UNREGISTERED) {
+                await registry.addPublisher(self);
+            }
             console.log(`Joining app ${registry.getAppId()} as ${self}...`);
             await registry.registerForApp();
         }
