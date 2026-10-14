@@ -404,18 +404,14 @@ program
 
 // ─── app membership ───────────────────────────────────────────────────────────
 //
-// Two registries, in this order:
+// Publishing is gated by app membership (AppRegistry.registerForApp()). `commitStateRoot` cross-calls
+// the AppRegistry, so a wallet that has not joined the app gets
+// `NotRegisteredForApp` at push time. `fangorn app info`
+// shows where you stand.
 //
-//   DataRegistry.register()      global standing — "this wallet may publish at all"
-//   AppRegistry.registerForApp() per-app membership — "…and under THIS app"
-//
-// `commitStateRoot` cross-calls the second, so a wallet registered globally but
-// not joined to the app gets `NotRegisteredForApp` at push time — far from the
-// cause. `fangorn register` does both; `fangorn app info` shows where you stand.
-//
-// The order is enforced the other way too: the AppRegistry asks the DataRegistry
-// before letting a wallet claim an app or be added to one, so a wallet the
-// protocol admin has banned network-wide cannot come back through an app.
+// The DataRegistry only keeps the protocol admin's network-wide ban. The
+// AppRegistry asks it before letting a wallet claim an app or be added to one,
+// so a banned wallet cannot come back through an app.
 //
 // Membership is by invitation: the app's owner runs `fangorn app add <address>`,
 // and only then can that wallet `fangorn app join`. An app is also a storage
@@ -453,10 +449,10 @@ appCmd
 			const s = spinner();
 
 			s.start("Reading registries...");
-			const [owner, info, registeredGlobally, paidAt] = await Promise.all([
+			const [owner, info, suspendedGlobally, paidAt] = await Promise.all([
 				apps.getAppOwner(),
 				apps.joinInfo(self),
-				data.isRegistered(self),
+				data.isSuspended(self),
 				apps.subscribedAt(),
 			]);
 			s.stop();
@@ -482,9 +478,8 @@ appCmd
 				console.log(`Status:     SUSPENDED by the protocol admin`);
 
 			console.log(`\nWallet:     ${self}`);
-			console.log(
-				`DataRegistry: ${registeredGlobally ? "registered" : "not registered — run `fangorn register`"}`,
-			);
+			if (suspendedGlobally)
+				console.log(`Network:      SUSPENDED by the protocol admin — cannot claim, join or publish`);
 			console.log(`This app:     ${owner === ZERO_ADDRESS ? "n/a (unclaimed)" : membershipLine(info)}`);
 			process.exit(0);
 		} catch (err) {
@@ -510,9 +505,9 @@ appCmd
 			const s = spinner();
 
 			s.start("Checking app ownership...");
-			const [owner, registeredGlobally] = await Promise.all([
+			const [owner, suspendedGlobally] = await Promise.all([
 				registry.getAppOwner(),
-				fangorn.getDataRegistry().isRegistered(self),
+				fangorn.getDataRegistry().isSuspended(self),
 			]);
 			s.stop();
 
@@ -527,12 +522,11 @@ appCmd
 				process.exit(mine ? 0 : 1);
 			}
 
-			// The contract refuses a claim from a wallet the DataRegistry does not
-			// know (never registered, or suspended) — say so before any USDC moves.
-			if (!registeredGlobally) {
+			// The contract refuses a claim from a wallet the protocol admin has
+			// banned.
+			if (suspendedGlobally) {
 				console.error(
-					`${self} is not a registered publisher — claiming will revert.` +
-					`\nRun \`fangorn register\` first. (A wallet suspended by the protocol admin cannot claim an app.)`,
+					`${self} is suspended by the protocol admin — claiming will revert.`,
 				);
 				process.exit(1);
 			}
@@ -855,14 +849,13 @@ appCmd
 		try {
 			const fangorn = getFangorn();
 			const s = spinner();
-			// The contract refuses to add a wallet the DataRegistry does not know.
-			s.start("Checking publisher registration...");
-			const registered = await fangorn.getDataRegistry().isRegistered(publisher as Address);
+			// The contract refuses to add a wallet the protocol admin has banned.
+			s.start("Checking publisher standing...");
+			const suspended = await fangorn.getDataRegistry().isSuspended(publisher as Address);
 			s.stop();
-			if (!registered) {
+			if (suspended) {
 				console.error(
-					`${publisher} is not a registered publisher — adding them will revert.` +
-					`\nThey must run \`fangorn register\` first. (A wallet suspended by the protocol admin cannot be added.)`,
+					`${publisher} is suspended by the protocol admin — adding them will revert.`,
 				);
 				process.exit(1);
 			}
@@ -1053,78 +1046,12 @@ program
 		process.exit(1);
 	});
 
-// ─── register (publisher registration) ─────────────────────────────────────────
-
 program
-	.command("register")
-	.description("Register as a publisher: global standing, then join this app")
-	.action(async () => {
-		try {
-			const self = getAccount().address;
-			const fangorn = getFangorn();
-			const data = fangorn.getDataRegistry();
-			const apps = fangorn.getAppRegistry();
-			const s = spinner();
-
-			// 1. Global standing in the DataRegistry.
-			s.start("Checking publisher registration...");
-			const already = await data.isRegistered(self);
-			s.stop();
-
-			if (already) {
-				console.log(`DataRegistry: already registered`);
-			} else {
-				s.start("Registering publisher...");
-				const txHash = await data.register();
-				s.stop();
-				console.log(`DataRegistry: registered (tx ${txHash})`);
-			}
-
-			// 2. Membership of the app this CLI is pointed at. Without it every
-			// push reverts NotRegisteredForApp, so doing only step 1 is a trap.
-			s.start("Checking app membership...");
-			const owner = await apps.getAppOwner();
-			if (owner === ZERO_ADDRESS) {
-				s.stop();
-				console.log(
-					`This app:     ${apps.getAppId()} is unclaimed — nothing to join yet.` +
-					`\n              Claim it with \`fangorn app claim\`, or point elsewhere with \`fangorn set-app\`.`,
-				);
-				process.exit(0);
-			}
-
-			const info = await apps.joinInfo(self);
-			s.stop();
-
-			if (info.registered) {
-				console.log(`This app:     already joined`);
-				process.exit(0);
-			}
-			if (info.status === PublisherStatus.SUSPENDED) {
-				console.error(`This app:     suspended by the app owner — cannot join.`);
-				process.exit(1);
-			}
-			// Membership is by invitation; the global step above still stands.
-			if (info.status === PublisherStatus.UNREGISTERED) {
-				console.log(
-					`This app:     not added yet — ask its owner to run \`fangorn app add ${self}\`,` +
-					`\n              then run \`fangorn app join\`.`,
-				);
-				process.exit(0);
-			}
-
-			s.start(needsReacceptance(info) ? "Re-accepting terms..." : "Joining app...");
-			const joinTx = await apps.registerForApp();
-			s.stop();
-			console.log(
-				`This app:     joined ${apps.getAppId()} (tx ${joinTx}, fee ${info.fee.toString()} wei)`,
-			);
-			console.log(`\nPublisher: ${self}`);
-			process.exit(0);
-		} catch (err) {
-			console.error("Failed:", (err as Error).message);
-			process.exit(1);
-		}
+	.command("register", { hidden: true })
+	.description("Removed: there is no publisher registration. Use `fangorn app join`")
+	.action(() => {
+		console.error("There is no publisher registration any more. Join an app with `fangorn app join`.");
+		process.exit(1);
 	});
 
 // ─── wallet ───────────────────────────────────────────────────────────────────

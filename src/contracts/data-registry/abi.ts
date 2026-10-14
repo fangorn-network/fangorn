@@ -1,27 +1,12 @@
 export const DATA_REGISTRY_ABI = [
     {
         "inputs": [],
-        "name": "AlreadyRegistered",
-        "type": "error"
-    },
-    {
-        "inputs": [],
-        "name": "NotRegistered",
-        "type": "error"
-    },
-    {
-        "inputs": [],
         "name": "NotRegisteredForApp",
         "type": "error"
     },
     {
         "inputs": [],
         "name": "PublisherSuspendedErr",
-        "type": "error"
-    },
-    {
-        "inputs": [],
-        "name": "RegistrationFeeRequired",
         "type": "error"
     },
     {
@@ -125,77 +110,6 @@ export const DATA_REGISTRY_ABI = [
                 "type": "address"
             }
         ],
-        "name": "getPublisherStatus",
-        "outputs": [
-            {
-                "internalType": "uint8",
-                "name": "",
-                "type": "uint8"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "address",
-                "name": "publisher",
-                "type": "address"
-            }
-        ],
-        "name": "isRegistered",
-        "outputs": [
-            {
-                "internalType": "bool",
-                "name": "",
-                "type": "bool"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "publisherCount",
-        "outputs": [
-            {
-                "internalType": "uint64",
-                "name": "",
-                "type": "uint64"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "register",
-        "outputs": [],
-        "stateMutability": "payable",
-        "type": "function"
-    },
-    {
-        "inputs": [],
-        "name": "registrationFee",
-        "outputs": [
-            {
-                "internalType": "uint256",
-                "name": "",
-                "type": "uint256"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "internalType": "address",
-                "name": "publisher",
-                "type": "address"
-            }
-        ],
         "name": "reinstateGlobal",
         "outputs": [],
         "stateMutability": "nonpayable",
@@ -245,19 +159,6 @@ export const DATA_REGISTRY_ABI = [
     {
         "inputs": [
             {
-                "internalType": "uint256",
-                "name": "fee",
-                "type": "uint256"
-            }
-        ],
-        "name": "setRegistrationFee",
-        "outputs": [],
-        "stateMutability": "nonpayable",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
                 "internalType": "address",
                 "name": "publisher",
                 "type": "address"
@@ -269,23 +170,23 @@ export const DATA_REGISTRY_ABI = [
         "type": "function"
     },
     {
-        "anonymous": false,
         "inputs": [
             {
-                "indexed": true,
                 "internalType": "address",
-                "name": "publisher",
+                "name": "",
                 "type": "address"
-            },
-            {
-                "indexed": false,
-                "internalType": "bytes32",
-                "name": "initial_root",
-                "type": "bytes32"
             }
         ],
-        "name": "PublisherRegistered",
-        "type": "event"
+        "name": "suspended",
+        "outputs": [
+            {
+                "internalType": "bool",
+                "name": "",
+                "type": "bool"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
     },
     {
         "anonymous": false,
@@ -317,19 +218,6 @@ export const DATA_REGISTRY_ABI = [
             }
         ],
         "name": "PublisherSuspended",
-        "type": "event"
-    },
-    {
-        "anonymous": false,
-        "inputs": [
-            {
-                "indexed": false,
-                "internalType": "uint256",
-                "name": "fee",
-                "type": "uint256"
-            }
-        ],
-        "name": "RegistrationFeeChanged",
         "type": "event"
     },
     {

@@ -36,11 +36,6 @@ export const APP_REGISTRY_ABI = [
     },
     {
         "inputs": [],
-        "name": "NotRegisteredGlobally",
-        "type": "error"
-    },
-    {
-        "inputs": [],
         "name": "PublisherSuspendedErr",
         "type": "error"
     },

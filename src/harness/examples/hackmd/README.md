@@ -12,8 +12,8 @@ This example shows how you can implement a custom graph builder using the [build
 npm i -g @fangorn-network/sdk
 # One-time setup: stores your wallet key + storage creds in ~/.fangorn/config.json
 fangorn init
-# Register your wallet as a publisher on-chain (one-time)
-fangorn register
+# Join the app you publish under, once its owner has added your wallet (one-time)
+fangorn app join
 ```
 
 `fangorn init` prompts for a wallet private key, a Pinata JWT + gateway (content

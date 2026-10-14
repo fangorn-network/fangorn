@@ -124,7 +124,6 @@ describe.skipIf(skipFork)("App as agent E2E (fork)", () => {
         expect(await apps.isRegisteredForApp(owner.getAddress())).toBe(true);
 
         // 3. Publish into the app's declared namespace.
-        await bed.register(0);
         await bed.initRepo(0, NAMESPACE);
         const publisher = owner.getAddress().toLowerCase();
         await bed.upload(0, NAMESPACE, { title: "hello from the app" }, "entry");

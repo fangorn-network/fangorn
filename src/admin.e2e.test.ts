@@ -81,9 +81,8 @@ describe.skipIf(skipFork)("Fangorn protocol admin E2E (fork)", () => {
 
         // ponytail: claiming is free while the subscription fee is 0. If it is
         // raised, mint the owner USDC on the fork (anvil_setStorageAt) here.
-        // The guest is an ordinary member: registered, invited, joined.
+        // The guest is an ordinary member: invited, joined.
         await bed.registerApp(OWNER);
-        await bed.register(GUEST);
         await bed.invite(OWNER, GUEST);
         await bed.getFangorn(GUEST).getAppRegistry().registerForApp();
     }, 180_000);
@@ -131,8 +130,8 @@ describe.skipIf(skipFork)("Fangorn protocol admin E2E (fork)", () => {
     }, 120_000);
 
     // The network-wide ban. It is on the wallet, not on one app: a suspended
-    // publisher cannot commit anywhere, cannot register its way back in, and
-    // cannot start over by claiming an app of its own.
+    // publisher cannot commit anywhere, and cannot start over by claiming an app
+    // of its own.
     it("admin publisher suspension works", async () => {
         const admin = bed.getFangorn(ADMIN).getDataRegistry();
         const guest = bed.getFangorn(GUEST);
@@ -148,18 +147,16 @@ describe.skipIf(skipFork)("Fangorn protocol admin E2E (fork)", () => {
         expect(head).not.toBe(ZERO_BYTES32);
 
         await admin.suspendPublisher(self);
-        expect(await data.getPublisherStatus(self)).toBe(PublisherStatus.SUSPENDED);
-        expect(await data.isRegistered(self)).toBe(false);
+        expect(await data.isSuspended(self)).toBe(true);
 
         await expect(commit(GUEST, namespace)).rejects.toThrow(/PublisherSuspendedErr/);
-        await expect(data.register()).rejects.toThrow(/PublisherSuspendedErr/);
 
         const suiteApp = guest.getAppId();
         guest.setAppId(`banned-app-${stamp}`);
         try {
             await expect(
                 apps.registerApp(keccak256(stringToBytes("terms")), "https://example.test/terms", 0n),
-            ).rejects.toThrow(/NotRegisteredGlobally/);
+            ).rejects.toThrow(/PublisherSuspendedErr/);
         } finally {
             guest.setAppId(suiteApp);
         }
@@ -170,7 +167,7 @@ describe.skipIf(skipFork)("Fangorn protocol admin E2E (fork)", () => {
         // Lifting it restores the wallet where it stood: same head, and the next
         // commit builds on it.
         await admin.reinstateGlobal(self);
-        expect(await data.getPublisherStatus(self)).toBe(PublisherStatus.ACTIVE);
+        expect(await data.isSuspended(self)).toBe(false);
         expect(await bed.head(GUEST, namespace)).toBe(head);
 
         await commit(GUEST, namespace);

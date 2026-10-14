@@ -23,8 +23,8 @@ describe("Fangorn live deployment (read-only)", () => {
     // The contracts are deployed independently and point at each other by
     // address. A redeploy that updates one address and not the other is silent
     // until a commit reverts NotRegisteredForApp for a publisher who plainly
-    // joined, or a claim reverts NotRegisteredGlobally for one who plainly
-    // registered. Asserting the pointers here is the cheapest place to catch a
+    // joined, or a claim reverts PublisherSuspendedErr for one nobody
+    // suspended. Asserting the pointers here is the cheapest place to catch a
     // half-finished deploy.
     it("registries are properly wired", async () => {
         const data = reader.getDataRegistry();

@@ -179,17 +179,12 @@ export class TestBed {
     /**
      * Claim the configured app namespace, if nobody has yet.
      *
-     * An app claims a unique namespace prefix that publishers may write under,
-     * while a publisher registers for the right to write at all. One app hosts
-     * many publishers, and one publisher writes into many apps — but only a
-     * registered publisher can claim an app or be added to one, so this runs
-     * `register` first. Idempotent: the app is shared by every test and every
-     * run of this wallet, not claimed per test.
+     * An app claims a unique namespace prefix that publishers may write under.
+     * One app hosts many publishers, and one publisher writes into many apps.
+     * Idempotent: the app is shared by every test and every run of this wallet,
+     * not claimed per test.
      */
     async registerApp(index: number) {
-        // Global standing first: the AppRegistry refuses a claim from a wallet the
-        // DataRegistry does not know.
-        await this.register(index);
         const registry = this.getFangorn(index).getAppRegistry();
         const owner = await registry.getAppOwner();
         if (owner === "0x0000000000000000000000000000000000000000") {
@@ -210,19 +205,6 @@ export class TestBed {
             }
             console.log(`Joining app ${registry.getAppId()} as ${self}...`);
             await registry.registerForApp();
-        }
-    }
-
-    // register as a publisher
-    async register(index: number) {
-        const fangorn = this.getFangorn(index);
-        const accountAddress = fangorn.getAddress();
-
-        const registry = fangorn.getDataRegistry();
-        const isRegistered = await registry.isRegistered(accountAddress);
-        if (!isRegistered) {
-            console.log("Registering publisher on-chain...");
-            await registry.register();
         }
     }
 
