@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { createPublicClient, http, parseAbiItem } from "viem";
 import { generatePrivateKey } from "viem/accounts";
 import { DEFAULT_APP, FangornConfig } from "./config.js";
-import { APP_REGISTRY_ABI, PublisherStatus } from "./contracts/index.js";
+import { MEMBERSHIP_REGISTRY_ABI } from "./contracts/index.js";
 import { TestBed } from "./test/testbed.js";
 
 // The only tests that touch the real chain, and they only read it.
@@ -22,10 +22,8 @@ describe("Fangorn live deployment (read-only)", () => {
 
     // The contracts are deployed independently and point at each other by
     // address. A redeploy that updates one address and not the other is silent
-    // until a commit reverts NotRegisteredForApp for a publisher who plainly
-    // joined, or a claim reverts PublisherSuspendedErr for one nobody
-    // suspended. Asserting the pointers here is the cheapest place to catch a
-    // half-finished deploy.
+    // until every commit reverts `Unauthorized` in the DataRegistry. Asserting
+    // the pointers here is the cheapest place to catch a half-finished deploy.
     it("registries are properly wired", async () => {
         const data = reader.getDataRegistry();
         const apps = reader.getAppRegistry();
@@ -34,15 +32,17 @@ describe("Fangorn live deployment (read-only)", () => {
         expect((await data.appRegistry()).toLowerCase()).toBe(
             apps.getAddress().toLowerCase(),
         );
-        // ...and back: the AppRegistry asks this DataRegistry who is a registered
-        // publisher. Unwired, it treats everyone as unregistered and no app can
-        // be claimed.
+        // ...and back: the AppRegistry forwards commits to this DataRegistry.
         expect((await apps.dataRegistry()).toLowerCase()).toBe(
             data.getAddress().toLowerCase(),
         );
-        // Both paywalls settle in the same token, or a price quoted by one means
+        // The MembershipRegistry reads apps from this AppRegistry, and both
+        // paywalls settle in the same token, or a price quoted by one means
         // nothing to the other.
-        expect((membership.getAddress()).toLowerCase()).toBeDefined();
+        const read = (functionName: "appRegistry" | "usdc") =>
+            client.readContract({ address: membership.getAddress(), abi: MEMBERSHIP_REGISTRY_ABI, functionName });
+        expect((await read("appRegistry")).toLowerCase()).toBe(apps.getAddress().toLowerCase());
+        expect((await read("usdc")).toLowerCase()).toBe((await apps.usdc()).toLowerCase());
 
         // setAppId moves the app-scoped clients together and leaves the
         // per-wallet one alone (CO-1).
@@ -67,26 +67,9 @@ describe("Fangorn live deployment (read-only)", () => {
 
     // The invitation scan asks the RPC for the registry's whole history in wide
     // windows. An endpoint that stops serving them fails here, not for a user.
+    // Whether a listed invitation still stands is covered on the fork
+    // (e2e.test.ts) and in the unit tests.
     it("the public RPC serves the invitation scan", async () => {
-        // An invitation from the registry's first days, so there is one to find.
-        const [first] = await client.getContractEvents({
-            address: FangornConfig.appRegistryContractAddress,
-            abi: APP_REGISTRY_ABI,
-            eventName: "PublisherInvited",
-            fromBlock: FangornConfig.appRegistryFromBlock,
-            toBlock: FangornConfig.appRegistryFromBlock + 1_000_000n,
-            strict: true,
-        });
-        const { app_id: appId, publisher } = first.args;
-
-        // It is listed exactly when the contract says it still stands.
-        const before = reader.getAppId();
-        reader.setAppId(appId);
-        const { status } = await reader.getAppRegistry().joinInfo(publisher);
-        reader.setAppId(before);
-        const listed = (await reader.getInvitations(publisher)).some((i) => i.appId === appId);
-        expect(listed).toBe(status === PublisherStatus.INVITED);
-
         expect(await reader.getInvitations()).toEqual([]);
     }, 60_000);
 });

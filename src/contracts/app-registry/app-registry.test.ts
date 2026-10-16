@@ -3,89 +3,131 @@ import type { Address, Hex, PublicClient, WalletClient } from "viem";
 import { AppRegistryClient } from "./index.js";
 import { PublisherStatus } from "../types.js";
 
-// Claiming an app pulls the subscription fee with transferFrom, and joining one
-// needs the owner's invitation. Both are checked client-side so the caller gets
-// a reason instead of a bare revert.
+// Every fee is pulled in USDC with transferFrom, and joining needs the owner's
+// invitation and a live app. Both are checked client-side so the caller gets a
+// reason instead of a bare revert.
 
 const REGISTRY = "0x00000000000000000000000000000000000000aa" as Address;
 const USDC = "0x00000000000000000000000000000000000000bb" as Address;
 const SELF = "0x00000000000000000000000000000000000000cc" as Address;
 const APP = ("0x" + "ab".repeat(32)) as Hex;
 const TERMS = ("0x" + "11".repeat(32)) as Hex;
+const NOW = 1_000n;
+const PERIOD = 30n;
 
-function client(opts: { fee: bigint; allowance: bigint; status?: PublisherStatus; paidAt?: bigint }) {
-	const writes: string[] = [];
+function client(opts: {
+	fee?: bigint;
+	joinFee?: bigint;
+	allowance?: bigint;
+	status?: PublisherStatus;
+	expiresAt?: bigint;
+	renewable?: boolean;
+}) {
+	const writes: { call: string; args: readonly unknown[] }[] = [];
+	const simulated: string[] = [];
 	const publicClient = {
 		readContract: ({ functionName }: { functionName: string }) =>
 			Promise.resolve(
 				{
-					subscriptionFee: opts.fee,
+					subscriptionFee: opts.fee ?? 0n,
+					subscriptionPeriod: PERIOD,
+					isRenewable: opts.renewable ?? true,
+					expiresAt: opts.expiresAt ?? NOW + PERIOD,
 					usdc: USDC,
-					allowance: opts.allowance,
-					subscribedAt: opts.paidAt ?? 0n,
-					joinInfo: [TERMS, "", 0n, opts.status ?? PublisherStatus.UNREGISTERED, false],
+					allowance: opts.allowance ?? 0n,
+					access: [false, SELF, opts.expiresAt ?? NOW + PERIOD],
+					joinInfo: [TERMS, "", opts.joinFee ?? 0n, opts.status ?? PublisherStatus.NONE, false],
 				}[functionName],
 			),
+		getBlock: () => Promise.resolve({ timestamp: NOW }),
 		estimateFeesPerGas: () => Promise.resolve({ maxFeePerGas: 1n, maxPriorityFeePerGas: 1n }),
-		estimateContractGas: () => Promise.resolve(1n),
+		estimateContractGas: ({ functionName }: { functionName: string }) => {
+			simulated.push(functionName);
+			return Promise.resolve(1n);
+		},
 		waitForTransactionReceipt: () => Promise.resolve({}),
 	} as unknown as PublicClient;
 	const walletClient = {
 		chain: {},
 		account: { address: SELF },
-		writeContract: ({ address, functionName }: { address: Address; functionName: string }) => {
-			writes.push(`${functionName}@${address === USDC ? "usdc" : "registry"}`);
+		writeContract: (q: { address: Address; functionName: string; args: readonly unknown[] }) => {
+			writes.push({ call: `${q.functionName}@${q.address === USDC ? "usdc" : "registry"}`, args: q.args });
 			return Promise.resolve("0xhash");
 		},
 	} as unknown as WalletClient;
-	return { apps: new AppRegistryClient(REGISTRY, APP, publicClient, walletClient), writes };
+	const apps = new AppRegistryClient(REGISTRY, APP, publicClient, walletClient);
+	return { apps, calls: () => writes.map((w) => w.call), writes, simulated };
 }
 
-describe("AppRegistryClient subscription + invitation", () => {
-	it("approves the subscription fee before claiming when the allowance is short", async () => {
-		const { apps, writes } = client({ fee: 5n, allowance: 4n });
-		await apps.registerApp(TERMS, "");
-		expect(writes).toEqual(["approve@usdc", "registerApp@registry"]);
+describe("AppRegistryClient subscription", () => {
+	it("approves exactly the subscription fee and caps the claim at it", async () => {
+		const { apps, calls, writes } = client({ fee: 5n, allowance: 4n });
+		await apps.registerApp(TERMS, "", 2n);
+		expect(calls()).toEqual(["approve@usdc", "registerApp@registry"]);
+		expect(writes[0].args).toEqual([REGISTRY, 5n]);
+		expect(writes[1].args).toEqual([APP, TERMS, "", 2n, 5n]);
 	});
 
 	it("skips the approve when the allowance covers it, or the fee is zero", async () => {
 		const covered = client({ fee: 5n, allowance: 5n });
-		await covered.apps.renewApp();
-		expect(covered.writes).toEqual(["renewApp@registry"]);
+		await covered.apps.renewSubscription();
+		expect(covered.calls()).toEqual(["renewSubscription@registry"]);
+		expect(covered.writes[0].args).toEqual([BigInt(APP), PERIOD]);
 
-		const free = client({ fee: 0n, allowance: 0n });
+		const free = client({});
 		await free.apps.registerApp(TERMS, "");
-		expect(free.writes).toEqual(["registerApp@registry"]);
+		expect(free.calls()).toEqual(["registerApp@registry"]);
 	});
 
-	it("refuses to join an app the owner never added this wallet to", async () => {
-		const uninvited = client({ fee: 0n, allowance: 0n });
-		await expect(uninvited.apps.registerForApp()).rejects.toThrow(/has not been added/);
-		expect(uninvited.writes).toEqual([]);
-
-		const invited = client({ fee: 0n, allowance: 0n, status: PublisherStatus.INVITED });
-		await invited.apps.registerForApp();
-		expect(invited.writes).toEqual(["registerForApp@registry"]);
+	it("refuses to renew with a period or more left", async () => {
+		const { apps, calls } = client({ renewable: false });
+		await expect(apps.renewSubscription()).rejects.toThrow(/cannot be renewed/);
+		expect(calls()).toEqual([]);
 	});
 });
 
-// The window is measured from the last payment. A clock that reads before that
-// payment (zero, for one) must not make a lapsed app look active.
-describe("AppRegistryClient.isActiveAt", () => {
-	const WINDOW = 100n;
-	const active = (paidAt: bigint, now: bigint) =>
-		client({ fee: 0n, allowance: 0n, paidAt }).apps.isActiveAt(WINDOW, now);
-
-	it("is active from the payment until the window closes", async () => {
-		expect(await active(1000n, 1000n)).toBe(true);
-		expect(await active(1000n, 1099n)).toBe(true);
-		expect(await active(1000n, 1100n)).toBe(false);
+describe("AppRegistryClient.joinApp", () => {
+	it("refuses an app the owner never invited this wallet to", async () => {
+		const { apps, calls } = client({});
+		await expect(apps.joinApp()).rejects.toThrow(/has not been invited/);
+		expect(calls()).toEqual([]);
 	});
 
-	it("is not active for an unclaimed app, or at a time before the payment", async () => {
-		expect(await active(0n, 50n)).toBe(false);
-		expect(await active(1000n, 0n)).toBe(false);
-		expect(await active(1000n, 999n)).toBe(false);
+	it("refuses a member, who accepts new terms instead", async () => {
+		const { apps } = client({ status: PublisherStatus.ACTIVE });
+		await expect(apps.joinApp()).rejects.toThrow(/acceptUpdatedTerms/);
+	});
+
+	it("refuses an app whose subscription has expired, by block time", async () => {
+		const { apps, calls } = client({ status: PublisherStatus.INVITED, expiresAt: NOW });
+		await expect(apps.joinApp()).rejects.toThrow(/expired/);
+		expect(calls()).toEqual([]);
+	});
+
+	it("approves exactly the join fee and caps the join at it", async () => {
+		const { apps, calls, writes } = client({ status: PublisherStatus.INVITED, joinFee: 7n });
+		await apps.joinApp();
+		expect(calls()).toEqual(["approve@usdc", "joinApp@registry"]);
+		expect(writes[0].args).toEqual([REGISTRY, 7n]);
+		expect(writes[1].args).toEqual([APP, TERMS, 7n]);
+	});
+});
+
+// A browser wallet signs both: the approval first, and the join only simulates
+// once nothing has to land before it.
+describe("AppRegistryClient.prepareJoinApp", () => {
+	it("returns the approval then an unsimulated join when the allowance is short", async () => {
+		const { apps, simulated } = client({ status: PublisherStatus.INVITED, joinFee: 7n, allowance: 6n });
+		const txs = await apps.prepareJoinApp(SELF);
+		expect(txs.map((tx) => tx.to)).toEqual([USDC, REGISTRY]);
+		expect(simulated).toEqual(["approve"]);
+	});
+
+	it("returns the simulated join alone when the allowance covers it", async () => {
+		const { apps, simulated } = client({ status: PublisherStatus.INVITED, joinFee: 7n, allowance: 7n });
+		const txs = await apps.prepareJoinApp(SELF);
+		expect(txs.map((tx) => tx.to)).toEqual([REGISTRY]);
+		expect(simulated).toEqual(["joinApp"]);
 	});
 });
 
@@ -137,7 +179,7 @@ describe("AppRegistryClient.getInvitations", () => {
 				owner: OWNER,
 				termsHash: TERMS,
 				termsUri: "ipfs://terms",
-				fee: 7n,
+				joinFee: 7n,
 				agentUri: "https://card.test/",
 				blockNumber: FROM,
 			},

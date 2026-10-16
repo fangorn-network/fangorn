@@ -120,8 +120,8 @@ describe.skipIf(skipFork)("App as agent E2E (fork)", () => {
         ]);
         // ...and it shows up in the unfiltered, every-app listing too.
         expect(await apps.getAppAgentLogs({ fromBlock })).toContainEqual(mine[0]);
-        // The card is not the terms: binding it must not unregister anyone.
-        expect(await apps.isRegisteredForApp(owner.getAddress())).toBe(true);
+        // The card is not the terms: binding it must not stop anyone publishing.
+        expect(await apps.canPublish(owner.getAddress())).toBe(true);
 
         // 3. Publish into the app's declared namespace.
         await bed.initRepo(0, NAMESPACE);

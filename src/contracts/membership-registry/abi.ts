@@ -1,5 +1,5 @@
 /**
- * Generated from `forge inspect MembershipRegistry abi` in fangorn-network/contracts
+ * Generated from `forge inspect MembershipRegistry abi --json` in fangorn-network/contracts
  * (solidity/src/MembershipRegistry.sol). Regenerate, do not edit.
  */
 export const MEMBERSHIP_REGISTRY_ABI = [
@@ -523,7 +523,7 @@ export const MEMBERSHIP_REGISTRY_ABI = [
 				"internalType": "string"
 			}
 		],
-		"stateMutability": "pure"
+		"stateMutability": "view"
 	},
 	{
 		"type": "function",
@@ -827,7 +827,7 @@ export const MEMBERSHIP_REGISTRY_ABI = [
 				"internalType": "string"
 			}
 		],
-		"stateMutability": "pure"
+		"stateMutability": "view"
 	},
 	{
 		"type": "function",
@@ -988,13 +988,13 @@ export const MEMBERSHIP_REGISTRY_ABI = [
 		"name": "AdminChanged",
 		"inputs": [
 			{
-				"name": "previousAdmin",
+				"name": "previous_admin",
 				"type": "address",
 				"indexed": false,
 				"internalType": "address"
 			},
 			{
-				"name": "newAdmin",
+				"name": "new_admin",
 				"type": "address",
 				"indexed": false,
 				"internalType": "address"
@@ -1412,11 +1412,6 @@ export const MEMBERSHIP_REGISTRY_ABI = [
 	},
 	{
 		"type": "error",
-		"name": "InvalidShortString",
-		"inputs": []
-	},
-	{
-		"type": "error",
 		"name": "NoGroup",
 		"inputs": []
 	},
@@ -1442,7 +1437,7 @@ export const MEMBERSHIP_REGISTRY_ABI = [
 	},
 	{
 		"type": "error",
-		"name": "Reentrancy",
+		"name": "ReentrancyGuardReentrantCall",
 		"inputs": []
 	},
 	{
@@ -1453,17 +1448,6 @@ export const MEMBERSHIP_REGISTRY_ABI = [
 				"name": "token",
 				"type": "address",
 				"internalType": "address"
-			}
-		]
-	},
-	{
-		"type": "error",
-		"name": "StringTooLong",
-		"inputs": [
-			{
-				"name": "str",
-				"type": "string",
-				"internalType": "string"
 			}
 		]
 	},

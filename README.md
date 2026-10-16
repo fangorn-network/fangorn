@@ -75,31 +75,34 @@ logs and screen shares all outlive the command.
 
 ### Pick an app, then join
 
-Publishing takes membership or ownership of an app. `commitStateRoot` cross-calls `isRegisteredForApp`, so a wallet
-that has not joined the app gets `NotRegisteredForApp` at push time.
+Publishing takes membership or ownership of an app. Commits go through the
+AppRegistry, which refuses one from a wallet that has not joined the app at push
+time, naming the reason (`NotInvited`, `NotJoined`, `SubscriptionExpired`, ...).
 
 ```sh
 fangorn set-app my-app     # persists the app; --app <name-or-id> overrides per command
 fangorn app info           # owner, terms, join fee, and where you stand in it
 fangorn app claim          # claim it, if nobody owns it yet (irreversible; pays the subscription)
-fangorn app join           # or join it, once its owner has added you
+fangorn app join           # or join it, once its owner has invited you
 ```
 
-The DataRegistry keeps one thing about a wallet: whether the protocol admin has
-banned it network-wide. The AppRegistry asks before letting a wallet claim an app
-or be added to one, so a banned wallet can do neither, and cannot commit.
+The protocol admin can ban a wallet network-wide. A banned wallet cannot claim
+an app, be invited to one, join one, or commit.
 
-**An app is a storage subscription.** `fangorn app claim` pulls the subscription
-fee in USDC (the client approves it for you) and `fangorn app renew` pays it
-again. Hosted uploads are billed to the app, so nobody publishes outside one.
+**An app is a storage subscription** (ERC-5643; the app is a token that cannot
+be transferred). `fangorn app claim` pays one period of the subscription fee in
+USDC (the client approves exactly the fee for you), and `fangorn app renew` pays
+the next once less than a period is left. An app whose subscription has expired
+takes no commits and no joins until it is renewed. Hosted uploads are billed to
+the app, so nobody publishes outside one.
 
-**Membership is by invitation.** The owner runs `fangorn app add <address>`;
+**Membership is by invitation.** The owner runs `fangorn app invite <address>`;
 only then can that wallet `fangorn app join`, which accepts the terms and pays
-the join fee. The owner is their own first publisher and needs neither.
+the join fee in USDC. The owner is their own first publisher and needs neither.
 
-`fangorn app invitations` lists the apps that have added your wallet and are
+`fangorn app invitations` lists the apps that have invited your wallet and are
 still waiting for you to join, with each one's owner, terms and join fee. Any
-app owner can add any wallet, so check the owner before joining.
+app owner can invite any wallet, so check the owner before joining.
 
 `fangorn app join` is also how you re-accept terms after the owner moves them
 (free).
@@ -107,10 +110,15 @@ app owner can add any wallet, so check the owner before joining.
 Owning an app comes with its own commands:
 
 ```sh
-fangorn app terms <hash> [uri]   # publish new terms — everyone must re-accept
-fangorn app fee <wei>            # what joining costs
-fangorn app suspend <address>    # eject a publisher from THIS app only
+fangorn app terms <hash> [uri]   # publish new terms — every member must accept them (free)
+fangorn app fee <usdc>           # what joining costs, e.g. 1.50
+fangorn app invite <address>     # invite a publisher
+fangorn app revoke <address>     # take back an invitation not yet accepted
+fangorn app suspend <address>    # suspend a member from THIS app only
 fangorn app reinstate <address>
+fangorn app renew                # pay for the next period
+fangorn app cancel               # end the subscription now, no refund
+fangorn app withdraw-fees [to]   # collect the join fees paid to your apps
 ```
 
 ### Track a namespace (git-native repo)
@@ -283,31 +291,36 @@ const fangorn = Fangorn.create({
 	domain: "localhost",
 });
 
-// Join the app once before committing. `commitStateRoot` cross-calls the
-// AppRegistry, so skipping it surfaces as a revert at push time rather than here.
+// Join the app once before committing. Commits go through the AppRegistry, so
+// skipping it surfaces as a revert at push time rather than here.
 const self = fangorn.getAddress();
 const apps = fangorn.getAppRegistry();
 
-// Throws unless the app's owner has added this wallet (`apps.addPublisher`).
-if (!(await apps.isRegisteredForApp(self))) await apps.registerForApp();
+// Throws unless the app's owner has invited this wallet (`apps.invitePublisher`).
+if (!(await apps.canPublish(self))) await apps.joinApp();
 ```
 
 `joinInfo` is what a join screen needs, and it separates two failures a bare
-"not registered" conflates — never joined, versus joined before the owner moved
+"cannot publish" conflates — never joined, versus joined before the owner moved
 the terms:
 
 ```ts
 import { needsReacceptance } from "@fangorn-network/sdk";
 
 const info = await apps.joinInfo(self);
-if (needsReacceptance(info)) await apps.registerForApp(); // free re-accept
+if (needsReacceptance(info)) await apps.acceptUpdatedTerms(); // free
 ```
 
+A browser wallet signs its own join: `apps.prepareJoinApp(publisher)` returns
+the unsigned transactions in order — a USDC approval of exactly the join fee,
+left out when the allowance already covers it, then the join.
+
 The storage paywall lives on the same client, because an app is its
-subscription: `apps.subscriptionFee()`, `apps.subscribedAt()`, `apps.renewApp()`,
-and `apps.access(publisher)` — the `{ registered, owner, paidAt }` the upload
-gate reads. The contract stores only when the app last paid; `apps.isActiveAt(window)`
-applies a window you pass in.
+subscription: `apps.subscriptionFee()`, `apps.expiresAt()`,
+`apps.renewSubscription()`, `apps.cancelSubscription()`, and
+`apps.access(publisher)` — the `{ canPublish, owner, expiresAt }` the upload gate
+reads. The contract enforces the expiry itself: `canPublish` is false once it
+has passed.
 
 `fangorn.getMembershipRegistry()` (consumer access to an app's paid records)
 hangs off the same object. It takes the app id per call, so `setAppId`
@@ -447,9 +460,8 @@ fangorn.getAppId(); // 0x… — what the registry keys on
 ```
 
 `setAppId` re-scopes the DataRegistry and AppRegistry clients **together**. They
-must never disagree: a DataRegistry pointed at one app while the AppRegistry
-answers for another checks membership against the wrong market, and it surfaces
-as a revert at commit time, far from the mistake.
+must never disagree: heads read from one app and commits sent to another surface
+as a stale-root revert at commit time, far from the mistake.
 
 Apps live in the AppRegistry, and membership of one is a precondition for
 publishing under it:
@@ -458,9 +470,9 @@ publishing under it:
 const apps = fangorn.getAppRegistry();
 
 await apps.registerApp(termsHash, termsUri, joinFee); // claim it — pays the subscription fee (USDC)
-await apps.addPublisher(publisher); // owner: invite a publisher
-await apps.registerForApp(); // publisher: join, accepting the current terms
-await apps.renewApp(); // owner: pay the subscription again
+await apps.invitePublisher(publisher); // owner: invite a publisher
+await apps.joinApp(); // publisher: join, accepting the current terms and paying the join fee (USDC)
+await apps.renewSubscription(); // owner: pay for the next period
 
 await fangorn.getInvitations(); // publisher: the apps waiting for this wallet to join
 ```
@@ -632,17 +644,17 @@ gadget_ behind the same handle shape, so committed data doesn't change form.
 
 | Contract             | Address                                      | What it owns                                        |
 | -------------------- | -------------------------------------------- | --------------------------------------------------- |
-| DataRegistry         | `0x3b0cf19bef492500401e4d74e6fa29a56d0cc67b` | Namespace state roots; global publisher standing    |
-| AppRegistry          | `0xcc92f3d827df33be7323eef28e67a509034f5a59` | Apps: owner, terms, membership, storage subscription (USDC) |
-| MembershipRegistry   | not yet deployed                             | Time-limited, unlinkable access to an app's paid records (USDC + Semaphore) |
+| DataRegistry         | `0x72B5f83526F3893aF9f1eE0f32A27218EA09f8aE` | Namespace state roots                               |
+| AppRegistry          | `0x55e6209ea1833ceD900989a3b3b22466934E04A5` | Apps: owner, terms, membership, bans, commits, storage subscription (ERC-5643, USDC) |
+| MembershipRegistry   | `0xDF17030Cd65435C86eb043F31DDACa99E819E347` | Time-limited, unlinkable access to an app's paid records (USDC + Semaphore) |
 
 `FangornConfig` in `src/config.ts` is the authoritative list and what the SDK
 uses by default — these contracts have been redeployed more than once, so prefer
 the config over any address copied out of a document, including this table.
 
-The two point at each other: `DataRegistry.commitStateRoot` cross-calls
-`AppRegistry.isRegisteredForApp`, and `AppRegistry.registerApp` / `addPublisher`
-cross-call `DataRegistry.suspended`.
+Commits go to `AppRegistry.commitStateRoot`, which checks the publisher may
+publish and forwards to `DataRegistry.commitStateRoot`; the DataRegistry accepts
+commits from the AppRegistry alone.
 
 ---
 

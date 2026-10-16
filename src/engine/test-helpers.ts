@@ -4,7 +4,7 @@ import type {
 	RawBlock,
 	StorageMeta,
 } from "../providers/storage/types.js";
-import type { DataRegistryClient } from "../contracts/index.js";
+import type { AppRegistryClient, DataRegistryClient } from "../contracts/index.js";
 import { CID } from "multiformats/cid";
 
 export const ZERO_BYTES32 =
@@ -95,5 +95,10 @@ export class StubRegistry {
 
 	asClient(): DataRegistryClient {
 		return this as unknown as DataRegistryClient;
+	}
+
+	/** Commits go through the AppRegistry; the stub plays both contracts. */
+	asAppClient(): AppRegistryClient {
+		return this as unknown as AppRegistryClient;
 	}
 }
