@@ -1,21 +1,14 @@
 import {
-    ContractFunctionArgs,
-    ContractFunctionName,
     GetContractEventsReturnType,
     concatHex,
-    encodeFunctionData,
-    type Abi,
     keccak256,
     toHex,
     type Address,
-    type Hash,
     type Hex,
     type PublicClient,
-    type WalletClient,
 } from "viem";
 
 import { DATA_REGISTRY_ABI } from "./abi.js";
-import { requireWallet, sendWrite } from "../write.js";
 import { getLogsInWindows } from "../logs.js";
 
 /**
@@ -75,19 +68,6 @@ export interface CommitFilter {
     namespace?: string;
 }
 
-/**
- * An unsigned transaction, hex-encoded and ready to hand to a browser wallet's
- * `eth_sendTransaction` — no `from`, since the signing wallet supplies it.
- */
-export interface PreparedTx {
-    to: Address;
-    data: Hex;
-    chainId: number | undefined;
-    gas: Hex;
-    maxFeePerGas: Hex;
-    maxPriorityFeePerGas: Hex;
-}
-
 function decodeStateCommitted(log: StateCommittedEventLog): StateCommittedLog {
     const a = log.args;
     if (
@@ -114,20 +94,16 @@ function decodeStateCommitted(log: StateCommittedEventLog): StateCommittedLog {
 }
 
 /**
- * Publisher registration, the state-root timeline, and nothing about apps.
- *
- * `registerApp` and `getAppOwner` used to live here. They are on
- * {@link AppRegistryClient} now, together with the per-app terms and membership
- * they belong with — and `commitStateRoot` cross-calls that contract, so a
- * publisher must join an app before they can write under it. A commit for an app
- * this wallet never joined reverts `NotRegisteredForApp`.
+ * The state-root timeline: namespace heads and their `StateCommitted` logs. Read
+ * only — commits go through {@link AppRegistryClient.commitStateRoot}, which checks
+ * the publisher may publish and forwards them here; this contract accepts commits
+ * from the AppRegistry alone.
  */
 export class DataRegistryClient {
     constructor(
         private contractAddress: Address,
         private appId: Hex,
         private publicClient: PublicClient,
-        private walletClient: WalletClient,
     ) { }
 
     /** The app namespace every call on this client is scoped to. */
@@ -145,112 +121,9 @@ export class DataRegistryClient {
         return this.contractAddress;
     }
 
-
-    /**
-     * Internal helper to execute state-mutating transactions
-     * matching the exact gas buffer and aggressive fee styling of the protocol.
-     */
-    private executeWrite<
-        TFunctionName extends ContractFunctionName<typeof DATA_REGISTRY_ABI, "payable" | "nonpayable">
-    >(
-        functionName: TFunctionName,
-        args: ContractFunctionArgs<typeof DATA_REGISTRY_ABI, "payable" | "nonpayable", TFunctionName>,
-        value?: bigint
-    ): Promise<Hash> {
-        return sendWrite(
-            this.publicClient,
-            requireWallet(this.walletClient, functionName),
-            this.contractAddress,
-            DATA_REGISTRY_ABI as unknown as Abi,
-            functionName,
-            args as readonly unknown[],
-            value,
-        );
-    }
-
     /** The composite key for one of this app's namespaces. */
     namespaceKey(publisher: Address, namespace: string): Hex {
         return namespaceKey(this.appId, publisher, subspaceId(namespace));
-    }
-
-    // ── Writes ───────────────────────────────────────────────────────────────
-
-    /**
-     * The single mutating state gateway route. Enforces the sequential
-     * Compare-And-Swap (CAS) timeline rule — per namespace, so concurrent pushes
-     * to *different* namespaces never contend.
-     */
-    async commitStateRoot(
-        namespace: string,
-        oldRoot: Hex,
-        newRoot: Hex,
-    ): Promise<Hash> {
-        return this.executeWrite("commitStateRoot", [
-            this.appId,
-            subspaceId(namespace),
-            oldRoot,
-            newRoot,
-        ]);
-    }
-
-    /**
-     * Build the `commitStateRoot` call as an UNSIGNED transaction for `publisher`
-     * to sign, instead of sending it from this client's wallet.
-     *
-     * This is the self-custodial publish path: a relay server builds and pins the
-     * commit with a keyless service wallet, then hands this back for the user's
-     * browser wallet to sign. The server never holds the key that moves the head,
-     * and the on-chain sender IS the publisher — which is what authenticates the
-     * publish, since the contract keys the namespace by `msg_sender`.
-     */
-    async prepareCommitStateRoot(
-        publisher: Address,
-        namespace: string,
-        oldRoot: Hex,
-        newRoot: Hex,
-    ): Promise<PreparedTx> {
-        const data = encodeFunctionData({
-            abi: DATA_REGISTRY_ABI,
-            functionName: "commitStateRoot",
-            args: [this.appId, subspaceId(namespace), oldRoot, newRoot],
-        });
-
-        // Quote fees and gas here rather than leaving them to the wallet. Wallet
-        // estimation runs too tight against a live L2 base fee, and an
-        // eth_estimateGas from the wallet against a public RPC is what surfaces
-        // as "Network fee Unavailable" in MetaMask. maxFeePerGas is only a
-        // ceiling — you pay base+priority — so headroom costs nothing.
-        const fees = await this.publicClient.estimateFeesPerGas();
-
-        // Simulating here also turns a would-be revert (a stale root, an
-        // unregistered app) into a clear error now, instead of a cryptic wallet
-        // message after the user has already clicked sign.
-        let gas: bigint;
-        try {
-            const estimate = await this.publicClient.estimateGas({
-                account: publisher,
-                to: this.contractAddress,
-                data,
-            });
-            gas = (estimate * 3n) / 2n;
-        } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
-            if (/revert/i.test(message)) {
-                throw new Error(
-                    `settlement would revert — the head may have moved on-chain, or the app is unregistered: ${message}`,
-                );
-            }
-            gas = 5_000_000n; // RPC hiccup, not a revert — proceed with a safe ceiling
-        }
-
-        return {
-            to: this.contractAddress,
-            data,
-            chainId: this.publicClient.chain?.id,
-            gas: toHex(gas),
-            maxFeePerGas: toHex(fees.maxFeePerGas * 2n),
-            maxPriorityFeePerGas: toHex(fees.maxPriorityFeePerGas),
-        };
     }
 
     // ── Views ────────────────────────────────────────────────────────────────
@@ -268,25 +141,12 @@ export class DataRegistryClient {
         });
     }
 
-    /** The AppRegistry this contract defers to for apps and per-app membership. */
+    /** The AppRegistry: the only caller this contract takes commits from. */
     async appRegistry(): Promise<Address> {
         return this.publicClient.readContract({
             address: this.contractAddress,
             abi: DATA_REGISTRY_ABI,
             functionName: "appRegistry",
-        });
-    }
-
-    /**
-     * Whether the protocol admin has banned this wallet network-wide. A banned
-     * wallet cannot claim an app, be added to one, or commit.
-     */
-    async isSuspended(publisher: Address): Promise<boolean> {
-        return this.publicClient.readContract({
-            address: this.contractAddress,
-            abi: DATA_REGISTRY_ABI,
-            functionName: "suspended",
-            args: [publisher],
         });
     }
 
@@ -374,23 +234,6 @@ export class DataRegistryClient {
             abi: DATA_REGISTRY_ABI,
             functionName: "admin",
         });
-    }
-
-    // ── Admin Functions ──────────────────────────────────────────────────────
-
-    /**
-     * Allows governance or protocol administrator to immediately freeze a publisher namespace.
-     */
-    async suspendPublisher(publisher: Address): Promise<Hash> {
-        return this.executeWrite("suspendPublisher", [publisher]);
-    }
-
-    /**
-     * Lifts a network-wide suspension. Admin-only, and a no-op for a wallet that
-     * is not suspended. Their namespace heads are untouched.
-     */
-    async reinstateGlobal(publisher: Address): Promise<Hash> {
-        return this.executeWrite("reinstateGlobal", [publisher]);
     }
 }
 

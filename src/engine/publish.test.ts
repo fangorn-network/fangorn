@@ -97,7 +97,7 @@ function newEngine(storage = new MemStorage(), registry = new StubRegistry()) {
 		mg.registerEdge(NS, { sourceSchema: s, relation: rel, targetSchema: t });
 	}
 	return {
-		engine: new FangornEngine(storage, mg, registry.asClient()),
+		engine: new FangornEngine(storage, mg, registry.asClient(), registry.asAppClient()),
 		storage,
 		registry,
 	};
@@ -312,7 +312,8 @@ describe("publish scalability & cost", () => {
 		const ns = "n".repeat(MAX_NAMESPACE_LENGTH);
 		const mg = new MetagraphRegistry();
 		mg.registerVertex(ns, { id: "rec", requiredFields: [] });
-		const e2 = new FangornEngine(storage, mg, new StubRegistry().asClient());
+		const stub = new StubRegistry();
+		const e2 = new FangornEngine(storage, mg, stub.asClient(), stub.asAppClient());
 		const { commitCid } = await e2.createCommit({
 			namespace: ns,
 			base: null,

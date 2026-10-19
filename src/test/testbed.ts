@@ -2,12 +2,12 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { Fangorn } from "../fangorn.js";
 import { PinataSDK } from "pinata";
 import { type AppConfig, FangornConfig } from "../config.js";
-import { PublisherStatus } from "../contracts/index.js";
+import { needsReacceptance } from "../contracts/index.js";
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import { createTestClient, http, parseEther, publicActions, walletActions, type Hex } from "viem";
 
 // The testbed's app terms. Any non-zero value works — zero would leave the app
-// unjoinable and every commit in the suite would revert NotRegisteredForApp.
+// unclaimable (`TermsNotSet`).
 const TESTBED_APP_TERMS =
     "0x0000000000000000000000000000000000000000000000000000000000000002" as const;
 
@@ -189,30 +189,24 @@ export class TestBed {
         const owner = await registry.getAppOwner();
         if (owner === "0x0000000000000000000000000000000000000000") {
             console.log(`Registering app ${registry.getAppId()} on-chain...`);
-            // Real terms, because an app with a zero hash cannot be joined and
-            // every commit in the suite would then revert NotRegisteredForApp.
             await registry.registerApp(TESTBED_APP_TERMS, "https://example.test/terms", 0n);
         }
-        // Joining is a precondition for committing under the app, and it is by
-        // invitation — the owner included. For an app someone else owns, they
-        // must have added this wallet first or the join below throws saying so.
+        // Joining is a precondition for committing under the app. Claiming joins
+        // the owner; anyone else must have been invited first or the join below
+        // throws saying so. A member on old terms accepts the new ones instead.
         const self = this.getFangorn(index).getAddress();
-        if (!(await registry.isRegisteredForApp(self))) {
-            const info = await registry.joinInfo(self);
-            const ownsApp = (await registry.getAppOwner()).toLowerCase() === self.toLowerCase();
-            if (ownsApp && info.status === PublisherStatus.UNREGISTERED) {
-                await registry.addPublisher(self);
-            }
+        if (!(await registry.canPublish(self))) {
             console.log(`Joining app ${registry.getAppId()} as ${self}...`);
-            await registry.registerForApp();
+            if (needsReacceptance(await registry.joinInfo(self))) await registry.acceptUpdatedTerms();
+            else await registry.joinApp();
         }
     }
 
-    /** The owner's half of a join: `owner` adds `publisher` to the app. */
+    /** The owner's half of a join: `owner` invites `publisher` to the app. */
     async invite(owner: number, publisher: number) {
         await this.getFangorn(owner)
             .getAppRegistry()
-            .addPublisher(this.getFangorn(publisher).getAddress());
+            .invitePublisher(this.getFangorn(publisher).getAddress());
     }
 
     async initRepo(index: number, name: string) {

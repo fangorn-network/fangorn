@@ -164,6 +164,7 @@ export class Fangorn {
 			this.ctx.metadataStorage,
 			this._metagraph,
 			this.ctx.dataRegistry,
+			this.ctx.appRegistry,
 		);
 		return this._engine;
 	}
@@ -207,7 +208,6 @@ export class Fangorn {
 			resolvedConfig.dataRegistryContractAddress,
 			appId,
 			publicClient,
-			walletClient,
 		);
 		
 		const appRegistry = new AppRegistryClient(
@@ -249,12 +249,11 @@ export class Fangorn {
 	 * Use at your own risk.
 	*/ 
 	async reset(namespace: string) {
-		const registry = this.getDataRegistry();
-		const currentRoot = await registry.getNamespaceHead(
+		const currentRoot = await this.getDataRegistry().getNamespaceHead(
 			this.getAddress(),
 			namespace,
 		);
-		await registry.commitStateRoot(namespace, currentRoot, ZERO_BYTES32);
+		await this.getAppRegistry().commitStateRoot(namespace, currentRoot, ZERO_BYTES32);
 	}
 
 	/**
@@ -557,7 +556,7 @@ export class Fangorn {
 				vertices: opts.vertices?.length ?? 0,
 				edges: opts.edges?.length ?? 0,
 			},
-			tx: await registry.prepareCommitStateRoot(
+			tx: await this.getAppRegistry().prepareCommitStateRoot(
 				opts.owner,
 				opts.namespace,
 				oldRoot,
@@ -957,14 +956,14 @@ export class Fangorn {
 	}
 
 	/**
-	 * Apps, their publisher terms, per-app membership, and the storage
-	 * subscription — an app IS a subscription: claiming one pays the fee, and
-	 * the upload gate bills every publisher's bytes to the app.
+	 * Apps, their publisher terms, per-app membership, the storage subscription,
+	 * and commits — an app IS a subscription: claiming one pays the fee, and the
+	 * upload gate bills every publisher's bytes to the app.
 	 *
-	 * `commitStateRoot` cross-calls this contract, so being a publisher of the
-	 * app is a precondition for publishing under it. Membership is by invitation:
-	 * the owner calls `addPublisher()`, then the publisher `registerForApp()`.
-	 * Without both, the commit reverts `NotRegisteredForApp`.
+	 * Commits go through this contract, so being a publisher of the app is a
+	 * precondition for publishing under it. Membership is by invitation: the
+	 * owner calls `invitePublisher()`, then the publisher `joinApp()`. Without
+	 * both, the commit reverts `NotInvited` or `NotJoined`.
 	 */
 	getAppRegistry(): AppRegistryClient {
 		return this.ctx.appRegistry;

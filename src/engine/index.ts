@@ -2,7 +2,7 @@ import { CID } from "multiformats/cid";
 import { sha256 } from "multiformats/hashes/sha2";
 import * as Digest from "multiformats/hashes/digest";
 import { type Address, type Hash, type Hex } from "viem";
-import { DataRegistryClient } from "../contracts";
+import { AppRegistryClient, DataRegistryClient } from "../contracts";
 import { MetadataStorage } from "../providers/storage/types.js";
 import {
 	Block,
@@ -225,6 +225,8 @@ export class FangornEngine {
 		private storage: MetadataStorage,
 		private metagraph: MetagraphRegistry,
 		private registryClient: DataRegistryClient,
+		// Heads are read from the DataRegistry; commits go through the AppRegistry.
+		private appRegistry: AppRegistryClient,
 	) { }
 
 	/**
@@ -593,7 +595,7 @@ export class FangornEngine {
 		}
 
 		const newRootHex = rootHexFromCid(commitCid);
-		const txHash = await this.registryClient.commitStateRoot(
+		const txHash = await this.appRegistry.commitStateRoot(
 			namespace,
 			onChainHex,
 			newRootHex,

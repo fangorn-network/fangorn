@@ -334,10 +334,8 @@ describe.skipIf(skipFork)("Fangorn registries E2E (fork)", () => {
 
     // The contracts are deployed independently and point at each other by
     // address. A redeploy that updates one address and not the other is silent
-    // until a commit reverts NotRegisteredForApp for a publisher who plainly
-    // joined, or a claim reverts NotRegisteredGlobally for one who plainly
-    // registered. Asserting the pointers here is the cheapest place to catch a
-    // half-finished deploy.
+    // until every commit reverts `Unauthorized` in the DataRegistry. Asserting
+    // the pointers here is the cheapest place to catch a half-finished deploy.
     it("registries are properly wired", async () => {
         const f = testbed.getFangorn(0);
         const data = f.getDataRegistry();
@@ -346,9 +344,7 @@ describe.skipIf(skipFork)("Fangorn registries E2E (fork)", () => {
         expect((await data.appRegistry()).toLowerCase()).toBe(
             apps.getAddress().toLowerCase(),
         );
-        // ...and back: the AppRegistry asks this DataRegistry who is a registered
-        // publisher. Unwired, it treats everyone as unregistered and no app can
-        // be claimed.
+        // ...and back: the AppRegistry forwards commits to this DataRegistry.
         expect((await apps.dataRegistry()).toLowerCase()).toBe(
             data.getAddress().toLowerCase(),
         );
@@ -362,9 +358,9 @@ describe.skipIf(skipFork)("Fangorn registries E2E (fork)", () => {
         f.setAppId(before);
     }, 60_000);
 
-    // Publishing under an app is gated on membership of that app: the
-    // DataRegistry cross-calls isRegisteredForApp inside commitStateRoot.
-    it("publishers can commit iff registered to the app", async () => {
+    // Publishing under an app is gated on membership of that app: commits go
+    // through the AppRegistry, which checks canPublish before forwarding them.
+    it("publishers can commit iff joined to the app", async () => {
         await testbed.registerApp(0);
 
         const f = testbed.getFangorn(0);
@@ -373,13 +369,12 @@ describe.skipIf(skipFork)("Fangorn registries E2E (fork)", () => {
 
         const info = await apps.joinInfo(self);
         expect(info.termsHash).not.toBe(ZERO_BYTES32);
-        expect(info.registered).toBe(true);
+        expect(info.canPublish).toBe(true);
         expect(info.acceptedTerms).toBe(info.termsHash);
         expect(needsReacceptance(info)).toBe(false);
-        expect(await apps.isRegisteredForApp(self)).toBe(true);
+        expect(await apps.canPublish(self)).toBe(true);
 
-        // And a commit under the app now lands, which is the only proof that the
-        // membership the AppRegistry reports is the one the DataRegistry reads.
+        // And a commit under the app now lands, through both contracts.
         const namespace = `member-${Date.now()}`;
         await testbed.initRepo(0, namespace);
         const res = await testbed.upload(0, namespace, { ok: true }, "gated");
@@ -388,7 +383,7 @@ describe.skipIf(skipFork)("Fangorn registries E2E (fork)", () => {
 
     // Membership is by invitation. Every other test here publishes as the app's
     // owner, who is its own first publisher and never needs one, so this is the
-    // only place the two-party path runs: a second wallet that the owner adds,
+    // only place the two-party path runs: a second wallet that the owner invites,
     // that accepts the terms, publishes, and is then read by the owner.
     it("an invited publisher joins and publishes; an uninvited one cannot", async () => {
         // A second wallet, which nobody has invited anywhere.
@@ -401,26 +396,24 @@ describe.skipIf(skipFork)("Fangorn registries E2E (fork)", () => {
         const stamp = Date.now();
 
         // Uninvited: the client refuses the join, and the chain refuses the commit.
-        expect((await apps.joinInfo(self)).status).toBe(PublisherStatus.UNREGISTERED);
-        await expect(apps.registerForApp()).rejects.toThrow(/has not been added/i);
-        await expect(
-            bed.initRepo(1, `uninvited-${stamp}`),
-        ).rejects.toThrow(/NotRegisteredForApp|revert/i);
+        expect((await apps.joinInfo(self)).status).toBe(PublisherStatus.NONE);
+        await expect(apps.joinApp()).rejects.toThrow(/has not been invited/i);
+        await expect(bed.initRepo(1, `uninvited-${stamp}`)).rejects.toThrow(/NotInvited/);
 
         // Invited is not yet a member: the publisher still has to accept the terms.
         await bed.invite(0, 1);
         expect((await apps.joinInfo(self)).status).toBe(PublisherStatus.INVITED);
-        expect(await apps.isRegisteredForApp(self)).toBe(false);
+        expect(await apps.canPublish(self)).toBe(false);
         // The guest finds the invitation without being told which app it is.
         const owner = bed.getFangorn(0).getAddress();
         expect(await guest.getInvitations()).toMatchObject([{ appId: guest.getAppId(), owner }]);
 
-        await apps.registerForApp();
+        await apps.joinApp();
         expect(await guest.getInvitations()).toEqual([]);
         const info = await apps.joinInfo(self);
         expect(info.status).toBe(PublisherStatus.ACTIVE);
         expect(info.acceptedTerms).toBe(info.termsHash);
-        expect(await apps.isRegisteredForApp(self)).toBe(true);
+        expect(await apps.canPublish(self)).toBe(true);
 
         const namespace = `invited-${stamp}`;
         await bed.initRepo(1, namespace);
@@ -435,19 +428,19 @@ describe.skipIf(skipFork)("Fangorn registries E2E (fork)", () => {
 
     // A wallet that never joined the app is not a member, and the app it did not
     // join reports so without throwing — an unclaimed app id is a legitimate read.
-    it("cannot register for unclaimed app", async () => {
+    it("cannot join an unclaimed app", async () => {
         const f = testbed.getFangorn(0);
         const apps = f.getAppRegistry();
 
         const stranger = "0x000000000000000000000000000000000000dEaD" as const;
-        expect(await apps.isRegisteredForApp(stranger)).toBe(false);
+        expect(await apps.canPublish(stranger)).toBe(false);
 
         const before = f.getAppId();
         f.setAppId(`unclaimed-${Date.now()}`);
         expect(await apps.getAppOwner()).toBe(ZERO_ADDRESS);
         // No terms means no join is possible, and the client says so before
         // spending gas on a TermsNotSet revert (PUB-4).
-        await expect(apps.registerForApp()).rejects.toThrow(/no terms/i);
+        await expect(apps.joinApp()).rejects.toThrow(/no terms/i);
         f.setAppId(before);
     }, 60_000);
 
@@ -459,21 +452,20 @@ describe.skipIf(skipFork)("Fangorn registries E2E (fork)", () => {
 
         const f = testbed.getFangorn(0);
         const apps = f.getAppRegistry();
-        const data = f.getDataRegistry();
         const self = f.getAddress();
 
-        await expect(apps.suspendApp()).rejects.toThrow(/Unauthorized/);
-        await expect(apps.reinstateApp()).rejects.toThrow(/Unauthorized/);
-        await expect(data.suspendPublisher(self)).rejects.toThrow(/Unauthorized/);
-        await expect(data.reinstateGlobal(self)).rejects.toThrow(/Unauthorized/);
+        await expect(apps.setAppSuspended(true)).rejects.toThrow(/Unauthorized/);
+        await expect(apps.setAppSuspended(false)).rejects.toThrow(/Unauthorized/);
+        await expect(apps.setGlobalSuspension(self, true)).rejects.toThrow(/Unauthorized/);
+        await expect(apps.setGlobalSuspension(self, false)).rejects.toThrow(/Unauthorized/);
 
         expect(await apps.isAppSuspended()).toBe(false);
-        expect(await data.isSuspended(self)).toBe(false);
+        expect(await apps.isGloballySuspended(self)).toBe(false);
     }, 60_000);
 
     // The storage paywall: an app IS its subscription. Claiming one pulls the
-    // fee in USDC (the client approves it first) and stamps the app's paid-at.
-    it("claiming an app stamps its subscription", async () => {
+    // fee in USDC (the client approves it first) and starts one period.
+    it("claiming an app starts its subscription", async () => {
         // A throwaway name, so the claim always happens here.
         const bed = fork.bed([PRIVATE_KEY], `sub-e2e-${Date.now().toString()}`);
         const apps = bed.getFangorn(0).getAppRegistry();
@@ -488,16 +480,17 @@ describe.skipIf(skipFork)("Fangorn registries E2E (fork)", () => {
         await bed.registerApp(0);
 
         const access = await apps.access(self);
-        expect(access.registered).toBe(true);
+        expect(access.canPublish).toBe(true);
         expect(access.owner.toLowerCase()).toBe(self.toLowerCase());
-        expect(access.paidAt).toBeGreaterThan(0n);
-        expect(await apps.subscribedAt()).toBe(access.paidAt);
+        expect(await apps.expiresAt()).toBe(access.expiresAt);
 
-        // The active window is the gate's policy, not chain state: the same
-        // paidAt is active under a wide window and expired under a zero one.
-        // Judged by block time: a fork's blocks can run ahead of this clock.
-        const now = (await fork.chain.getBlock()).timestamp;
-        expect(await apps.isActiveAt(30n * 24n * 3600n, now)).toBe(true);
-        expect(await apps.isActiveAt(0n, now)).toBe(false);
+        // One period from the claim's block, and not renewable until less than a
+        // period is left. The app's token is the owner's.
+        const { timestamp } = await fork.chain.getBlock();
+        const period = await apps.subscriptionPeriod();
+        expect(access.expiresAt).toBeGreaterThan(timestamp);
+        expect(access.expiresAt).toBeLessThanOrEqual(timestamp + period);
+        expect(await apps.isRenewable()).toBe(false);
+        await expect(apps.renewSubscription()).rejects.toThrow(/cannot be renewed/);
     }, 180_000);
 });

@@ -51,13 +51,12 @@ export default function getNetwork(name: string) {
 }
 
 export interface AppConfig {
-	// The deployed publisher_registry contract address
+	// The deployed DataRegistry (namespace heads; commits reach it through the AppRegistry)
 	dataRegistryContractAddress: Hex;
-	// The deployed app_registry contract address (apps, membership, and the
-	// per-app storage subscription)
+	// The deployed AppRegistry (apps, their subscriptions, membership, and commits)
 	appRegistryContractAddress: Hex;
 	// The deployed MembershipRegistry (time-limited, unlinkable access to an app's
-	// paid records). Zero until deployed on this network.
+	// paid records)
 	membershipRegistryContractAddress: Hex;
 	// The block the AppRegistry was deployed in. Scans of the registry's logs start here.
 	appRegistryFromBlock: bigint;
@@ -76,13 +75,12 @@ export interface AppConfig {
 // runtime via `fangorn.setAppId(...)` (defaults to `DEFAULT_APP`).
 export const FangornConfig = {
 	dataRegistryContractAddress:
-		"0x0312503913656f25c2bfDf229425aA6926ccF1Cd",
+		"0x72B5f83526F3893aF9f1eE0f32A27218EA09f8aE",
 	appRegistryContractAddress:
-		"0x57b41E334864B430db44F7FbCD8d165C56e41402",
-	// MEMBERSHIP_REGISTRY: set after scripts/deploy-membership.sh
+		"0x55e6209ea1833ceD900989a3b3b22466934E04A5",
 	membershipRegistryContractAddress:
-		"0x5054D8611111Bb9F36318eb5c3e6968646415A9D",
-	appRegistryFromBlock: 317102111n,
+		"0xDF17030Cd65435C86eb043F31DDACa99E819E347",
+	appRegistryFromBlock: 319536642n,
 	chain: arbitrumSepolia,
 	rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
 	caip2: 421614,

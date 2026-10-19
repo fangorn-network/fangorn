@@ -18,10 +18,12 @@ describe("FangornEngine.namespaceDiff", () => {
 			relation: "by",
 			targetSchema: "artist",
 		});
+		const registry = new StubRegistry();
 		engine = new FangornEngine(
 			new MemStorage(),
 			metagraph,
-			new StubRegistry().asClient(),
+			registry.asClient(),
+			registry.asAppClient(),
 		);
 	});
 
