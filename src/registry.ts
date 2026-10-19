@@ -16,7 +16,7 @@ import { prepareWrite, requireWallet, sendWrite } from "./contracts/write.js";
 // ── The registry (WHITEPAPER_1 §3.2, Definition 3.1) ─────────────────────────
 //
 // The deterministic state machine over the ordering that says what every entry
-// means: each repo's head, what each app has accepted of it, and what each app
+// means: each repo's head, which publishers each app presents, and what each app
 // has excluded. Everything the SDK knows about history comes through here; the
 // engine only knows the Merkle DAG.
 //
@@ -48,11 +48,7 @@ export interface Exclusion {
 	key?: string;
 }
 
-/**
- * One entry of a log that moved a repo's head from `parent` to `head`: a valid
- * update in the update log U, (P, s, i, h, t), or a valid acceptance in an app
- * log, where `parent` is the head the app presented before.
- */
+/** One entry of the update log U, (P, s, i, h, t): a repo's head moved from `parent` to `head`. */
 export interface UpdateEntry {
 	publisher: Address;
 	repo: string;
@@ -66,13 +62,8 @@ export interface UpdateEntry {
 	id: string;
 }
 
-/**
- * A slice of a log: every repo, one publisher's, one repo name across publishers,
- * or one repo. With `app`, the slice of that app's log (its acceptances);
- * without, of the update log.
- */
+/** A slice of the update log: every repo, one publisher's, one repo name across publishers, or one repo. */
 export interface LogFilter {
-	app?: Hex;
 	publisher?: Address;
 	repo?: string;
 }
@@ -82,20 +73,19 @@ export interface Registry {
 	epoch(): Promise<number>;
 	/** H(ρ): the committed head, or ZERO_HEAD for a repo never written. */
 	head(ref: RepoRef): Promise<Hex>;
-	/** H(A, ρ): the head app A last accepted. Exclusions don't change it. */
-	accepted(app: Hex, ref: RepoRef): Promise<Hex>;
+	/**
+	 * Does app A present `publisher`? Exactly while it provides the publisher's
+	 * storage (`canPublish`): an app presents its publishers' latest heads, less
+	 * its exclusions. ponytail: the paper's per-head acceptance (α_A), once apps
+	 * validate what they present.
+	 */
+	presents(app: Hex, publisher: Address): Promise<boolean>;
 	/** C(A, X). Odd means X is in force (Proposition 3.2). */
 	exclusionCount(app: Hex, x: Exclusion): Promise<number>;
-	/**
-	 * update(s, parent → head), as the signer, carrying an acceptance into each of
-	 * `apps`. Valid only while `parent` is the head (Theorem 3); a refused
-	 * acceptance never undoes it.
-	 */
-	update(repo: string, parent: Hex, head: Hex, apps?: Hex[]): Promise<Hash>;
+	/** update(s, parent → head), as the signer. Valid only while `parent` is the head (Theorem 3). It names no app. */
+	update(repo: string, parent: Hex, head: Hex): Promise<Hash>;
 	/** `update` as an unsigned transaction for `publisher` to sign. */
-	prepareUpdate(publisher: Address, repo: string, parent: Hex, head: Hex, apps?: Hex[]): Promise<PreparedTx>;
-	/** accept: app `app` presents the repo's current head, as the signer witnesses. */
-	accept(app: Hex, ref: RepoRef): Promise<Hash>;
+	prepareUpdate(publisher: Address, repo: string, parent: Hex, head: Hex): Promise<PreparedTx>;
 	exclude(app: Hex, x: Exclusion): Promise<Hash>;
 	restore(app: Hex, x: Exclusion): Promise<Hash>;
 	/** The entries of a log between two clock values, oldest first. */
@@ -150,15 +140,16 @@ export interface ChainRegistryConfig {
 }
 
 /**
- * The registry on the contracts: H and U in the DataRegistry, D, X and C in the
- * AppRegistry.
+ * The registry on the contracts: H and U in the DataRegistry; membership, X and C
+ * in the AppRegistry.
  *
  * Gaps against Definition 3.1, each closed by the contract spec
  * (docs/REGISTRY_SPEC.md):
  *   • the contract doesn't check the commit's epoch, nor compute the head from
  *     (e, parent, root). The client checks the parent before it sends an update;
- *   • α_A is fixed: a joined publisher accepts its own heads, the owner pulls
- *     anyone's. χ_A is the owner's say. No rule contracts, no witnesses;
+ *   • no per-head acceptance: an app presents the latest heads of the publishers
+ *     whose storage it provides (`canPublish`). χ_A is the owner's say. No rule
+ *     contracts, no witnesses;
  *   • the protocol admin's network-wide ban, which the paper doesn't have, reads
  *     as a publisher exclusion in every app;
  *   • the logs are events read through a trusted RPC: no MMR, no proofs.
@@ -191,14 +182,13 @@ export class ChainRegistry implements Registry {
 		return head;
 	}
 
-	async accepted(app: Hex, ref: RepoRef): Promise<Hex> {
-		const [, head] = await this.publicClient.readContract({
+	presents(app: Hex, publisher: Address): Promise<boolean> {
+		return this.publicClient.readContract({
 			address: this.apps,
 			abi: APP_REGISTRY_ABI,
-			functionName: "getAccepted",
-			args: [app, ref.publisher, repoId(ref.repo)],
+			functionName: "canPublish",
+			args: [app, publisher],
 		});
-		return head;
 	}
 
 	async exclusionCount(app: Hex, x: Exclusion): Promise<number> {
@@ -222,24 +212,20 @@ export class ChainRegistry implements Registry {
 		return banned ? Number(count) | 1 : Number(count);
 	}
 
-	update(repo: string, parent: Hex, head: Hex, apps: Hex[] = []): Promise<Hash> {
-		return this.write(this.data, DATA_REGISTRY_ABI, "update", [repo, parent, head, apps]);
+	update(repo: string, parent: Hex, head: Hex): Promise<Hash> {
+		return this.write(this.data, DATA_REGISTRY_ABI, "update", [repo, parent, head]);
 	}
 
-	prepareUpdate(publisher: Address, repo: string, parent: Hex, head: Hex, apps: Hex[] = []): Promise<PreparedTx> {
+	prepareUpdate(publisher: Address, repo: string, parent: Hex, head: Hex): Promise<PreparedTx> {
 		return prepareWrite(
 			this.publicClient,
 			publisher,
 			this.data,
 			DATA_REGISTRY_ABI as unknown as Abi,
 			"update",
-			[repo, parent, head, apps],
-			{ fallbackGas: 5_000_000n },
+			[repo, parent, head],
+			{ fallbackGas: 200_000n },
 		);
-	}
-
-	accept(app: Hex, ref: RepoRef): Promise<Hash> {
-		return this.write(this.apps, APP_REGISTRY_ABI, "accept", [app, ref.publisher, ref.repo]);
 	}
 
 	exclude(app: Hex, x: Exclusion): Promise<Hash> {
@@ -254,13 +240,11 @@ export class ChainRegistry implements Registry {
 		return sendWrite(this.publicClient, requireWallet(this.walletClient, fn), address, abi as Abi, fn, args);
 	}
 
-	/** The event a log slice is read from: `Accepted` for an app log, `Updated` for U. */
+	/** U's `Updated` events, narrowed on-chain by publisher and repo. */
 	private source(filter: LogFilter) {
 		const ids = filter.repo === undefined ? {} : { repo_id: repoId(filter.repo) };
 		const who = filter.publisher === undefined ? {} : { publisher: filter.publisher };
-		return filter.app === undefined
-			? { address: this.data, abi: DATA_REGISTRY_ABI, eventName: "Updated", args: { ...who, ...ids } }
-			: { address: this.apps, abi: APP_REGISTRY_ABI, eventName: "Accepted", args: { app_id: filter.app, ...who, ...ids } };
+		return { address: this.data, abi: DATA_REGISTRY_ABI, eventName: "Updated", args: { ...who, ...ids } };
 	}
 
 	async log(filter: LogFilter, from: bigint, to?: bigint): Promise<UpdateEntry[]> {
@@ -299,7 +283,7 @@ function exclusionArgs(app: Hex, x: Exclusion): readonly unknown[] {
 	return [app, x.publisher, x.repo === undefined ? ZERO : repoId(x.repo), x.key === undefined ? ZERO : repoId(x.key)];
 }
 
-/** An `Updated` or `Accepted` log; the two share the fields an entry needs. */
+/** An `Updated` log. */
 interface EntryLog {
 	args: { publisher: Address; repo: string; pos: bigint | number; parent: Hex; head: Hex };
 	blockNumber: bigint;

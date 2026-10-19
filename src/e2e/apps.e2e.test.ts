@@ -2,15 +2,14 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import type { Hex } from "viem";
-import { DATA_REGISTRY_ABI, needsReacceptance, PublisherStatus } from "../contracts/index.js";
+import { PublisherStatus } from "../contracts/index.js";
 import { appId } from "../config.js";
 import { FANGORN_APP_EXTENSION } from "../fangorn.js";
-import { ZERO_HEAD } from "../registry.js";
 import { appOf } from "../test/sdk-suite.js";
-import { chainNetwork, type ChainNetwork, skipChain, TEST_TERMS } from "../test/testbed.js";
+import { chainNetwork, type ChainNetwork, skipChain } from "../test/testbed.js";
 
 // App management on the contracts: claiming (the storage subscription),
-// invitations, terms, and an app found from nothing but its agent card.
+// accepting publishers, and an app found from nothing but its agent card.
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
@@ -23,20 +22,7 @@ describe.skipIf(skipChain)("Apps (contracts on anvil)", () => {
 		net.stop();
 	});
 
-	// Deployed independently, the two point at each other by address. A
-	// half-finished redeploy is silent until every acceptance is refused.
-	it("the registries are wired to each other", async () => {
-		const apps = (await net.raw()).getAppRegistry();
-		expect(await apps.dataRegistry()).toBe(net.config.dataRegistryContractAddress);
-		const back = await net.chain.readContract({
-			address: net.config.dataRegistryContractAddress,
-			abi: DATA_REGISTRY_ABI,
-			functionName: "appRegistry",
-		});
-		expect(back).toBe(net.config.appRegistryContractAddress);
-	}, 60_000);
-
-	it("claiming an app pays its subscription and makes the claimer its first member", async () => {
+	it("claiming an app pays its subscription and makes the claimer its first publisher", async () => {
 		const owner = await net.client("claimed");
 		const apps = owner.getAppRegistry();
 		const access = await apps.access(owner.getAddress());
@@ -44,35 +30,27 @@ describe.skipIf(skipChain)("Apps (contracts on anvil)", () => {
 		expect(access.expiresAt).toBe(await apps.expiresAt());
 		const now = (await net.chain.getBlock()).timestamp;
 		expect(access.expiresAt - now).toBeGreaterThan(29n * 24n * 3600n);
-
-		const info = await apps.joinInfo(owner.getAddress());
-		expect(info.termsHash).toBe(TEST_TERMS);
-		expect(info.acceptedTerms).toBe(info.termsHash);
-		expect(needsReacceptance(info)).toBe(false);
+		expect(await apps.status(owner.getAddress())).toBe(PublisherStatus.ACTIVE);
 	}, 60_000);
 
-	// Membership is by invitation, and it is what gets a publisher's heads accepted.
-	it("an invited publisher joins and is presented; an uninvited one is not", async () => {
-		const owner = await net.client("invites");
-		const guest = await net.raw("invites");
+	// The owner's acceptance is the whole membership, and it is what gets a publisher
+	// storage and presented.
+	it("an accepted publisher is presented; one not accepted is not", async () => {
+		const owner = await net.client("accepts");
+		const guest = await net.raw("accepts");
 		const apps = guest.getAppRegistry();
 		const self = guest.getAddress();
 
-		// Uninvited: the client refuses the join, and the app presents nothing.
-		expect((await apps.joinInfo(self)).status).toBe(PublisherStatus.NONE);
-		await expect(apps.joinApp()).rejects.toThrow(/has not been invited/i);
+		// Not accepted: the app presents nothing, and no wallet but the owner's can accept.
+		expect(await apps.status(self)).toBe(PublisherStatus.NONE);
 		await guest.initRepo("early");
-		expect(await guest.getRegistry().accepted(appOf(guest), { publisher: self, repo: "early" })).toBe(ZERO_HEAD);
+		expect(await guest.getRegistry().presents(appOf(guest), self)).toBe(false);
+		await expect(apps.acceptPublisher(self)).rejects.toThrow(/Unauthorized/);
 
-		// Invited is not yet a member, and the guest finds the invitation unprompted.
-		await owner.getAppRegistry().invitePublisher(self);
-		expect((await apps.joinInfo(self)).status).toBe(PublisherStatus.INVITED);
-		expect(await apps.canPublish(self)).toBe(false);
-		expect(await guest.getInvitations()).toMatchObject([{ appId: guest.getAppId(), owner: owner.getAddress() }]);
-
-		await apps.joinApp();
-		expect(await guest.getInvitations()).toEqual([]);
-		expect((await apps.joinInfo(self)).status).toBe(PublisherStatus.ACTIVE);
+		await owner.getAppRegistry().acceptPublisher(self);
+		expect(await apps.status(self)).toBe(PublisherStatus.ACTIVE);
+		expect(await apps.canPublish(self)).toBe(true);
+		await expect(owner.getAppRegistry().acceptPublisher(self)).rejects.toThrow(/AlreadyAccepted/);
 
 		await guest.initRepo("catalog");
 		const { payloadCid } = await guest.upload("catalog", { event: "from the guest" }, "e", "g");
@@ -80,28 +58,12 @@ describe.skipIf(skipChain)("Apps (contracts on anvil)", () => {
 		expect(contents.records.map((v) => v.cid)).toEqual([payloadCid]);
 	}, 60_000);
 
-	it("new terms stop a member's acceptances until it re-accepts them", async () => {
-		const owner = await net.client("terms");
-		const member = await net.client("terms");
-		await member.initRepo("r");
-		await owner.getAppRegistry().setAppTerms(`0x${"03".repeat(32)}`, "https://example.test/terms-v2");
-
-		const info = await member.getAppRegistry().joinInfo(member.getAddress());
-		expect(needsReacceptance(info)).toBe(true);
-		await member.upload("r", { n: 1 }, "t", "x");
-		expect((await owner.readRepo(member.getAddress(), "r")).contents.records).toEqual([]);
-
-		await member.getAppRegistry().acceptUpdatedTerms();
-		await member.upload("r", { n: 2 }, "t", "y");
-		expect((await owner.readRepo(member.getAddress(), "r")).contents.records).toHaveLength(2);
-	}, 60_000);
-
-	it("an unclaimed app has no owner and cannot be joined", async () => {
+	it("an unclaimed app has no owner and accepts nobody", async () => {
 		const f = await net.raw(`unclaimed-${String(Date.now())}`);
 		const apps = f.getAppRegistry();
 		expect(await apps.getAppOwner()).toBe(ZERO_ADDRESS);
 		expect(await apps.canPublish(f.getAddress())).toBe(false);
-		await expect(apps.joinApp()).rejects.toThrow(/no terms/i);
+		await expect(apps.acceptPublisher(f.getAddress())).rejects.toThrow(/AppNotFound/);
 	}, 60_000);
 
 	// The other half of admin.e2e.test.ts: nobody but the admin takes anything down.

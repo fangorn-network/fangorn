@@ -30,7 +30,7 @@ export { MemLedger, MemRegistry } from "./mem-registry.js";
 //   • chainNetwork  — the contracts, built from source and deployed to a fresh
 //     anvil, with storage in memory, or on Pinata when E2E_STORAGE=pinata.
 
-/** The app every client joins unless told otherwise. */
+/** The app every client is accepted into unless told otherwise. */
 export const TEST_APP = "test-app";
 
 /** What a suite needs of a network: clients on one ordering and one storage. */
@@ -40,7 +40,7 @@ export interface Network {
 	/**
 	 * A client for a fresh wallet (or `sk`) under `app`, or under no app for
 	 * `null`. On chain it is a joined member of the app: the first client of an
-	 * app claims it, and the claimer invites each later one.
+	 * app claims it, and the claimer accepts each later one.
 	 */
 	client(app?: string | null, sk?: Hex): Promise<Fangorn>;
 	/** The ordering's clock (a block number on chain). */
@@ -55,17 +55,19 @@ export function memoryNetwork(Registry: typeof MemRegistry = MemRegistry) {
 		name: "memory",
 		ledger,
 		storage,
+		/** As on chain, a client under an app is one of its members. */
 		client(app: string | null = TEST_APP, sk: Hex = generatePrivateKey(), R = Registry): Promise<Fangorn> {
-			return Promise.resolve(
-				Fangorn.create({
-					privateKey: sk,
-					appId: app ?? undefined,
-					// The ledger is this deployment, and it starts at 0.
-					config: { ...FangornConfig, appRegistryFromBlock: 0n },
-					storage: { backend: storage },
-					registry: new R(privateKeyToAccount(sk).address, ledger),
-				}),
-			);
+			const f = Fangorn.create({
+				privateKey: sk,
+				appId: app ?? undefined,
+				// The ledger is this deployment, and it starts at 0.
+				config: { ...FangornConfig, appRegistryFromBlock: 0n },
+				storage: { backend: storage },
+				registry: new R(privateKeyToAccount(sk).address, ledger),
+			});
+			const id = f.getAppId();
+			if (id) ledger.members.add(`${id}/${f.getAddress().toLowerCase()}`);
+			return Promise.resolve(f);
 		},
 		clock: () => Promise.resolve(ledger.t),
 		stop: () => undefined,
@@ -85,8 +87,6 @@ export const skipChain = !(has("anvil") && has("forge") && existsSync(CONTRACTS)
 
 /** anvil's first prefunded account: the deployer, and the protocol admin. */
 const ADMIN_KEY: Hex = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
-/** Any non-zero terms: an app with none cannot be joined. */
-export const TEST_TERMS: Hex = `0x${"02".repeat(32)}`;
 /** No contract: fees are zero, so the token is never called. */
 const NO_TOKEN: Address = "0x000000000000000000000000000000000000dEaD";
 
@@ -185,7 +185,7 @@ export async function chainNetwork() {
 		await chain.setBalance({ address: privateKeyToAccount(sk).address, value: parseEther("1") });
 		return sk;
 	};
-	/** A client and nothing more: no app claimed, joined or invited. */
+	/** A client and nothing more: no app claimed or accepted into. */
 	const raw = async (app?: string, sk?: Hex) =>
 		Fangorn.create({ privateKey: await wallet(sk), config, appId: app, storage: { backend: storage } });
 
@@ -206,11 +206,10 @@ export async function chainNetwork() {
 			if (app === null) return f;
 			const owner = owners.get(app);
 			if (!owner) {
-				await f.getAppRegistry().registerApp(TEST_TERMS, "https://example.test/terms");
+				await f.getAppRegistry().registerApp();
 				owners.set(app, f);
 			} else {
-				await owner.getAppRegistry().invitePublisher(f.getAddress());
-				await f.getAppRegistry().joinApp();
+				await owner.getAppRegistry().acceptPublisher(f.getAddress());
 			}
 			return f;
 		},

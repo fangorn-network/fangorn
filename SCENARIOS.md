@@ -47,33 +47,23 @@ The AppRegistry owns what an "app" is. Every call here is scoped to the client's
 
 | id | scenario |
 |----|----------|
-| **APP-1** | **Claim an app.** `registerApp(termsHash, uri, joinFee)` reads `subscriptionFee()`, approves exactly it in USDC when the allowance is short, and sends `[appId, termsHash, uri, joinFee, fee]` — the client's own `appId` first, and the fee it read as the cap. |
-| **APP-2** | **Claiming makes you your own first publisher.** After `registerApp`, `canPublish(owner)` is true with no second transaction. [contracts] — listed because a UI that walks every wallet through a join screen will hit `AlreadyJoined`; gate on `joinInfo().canPublish`. |
-| **APP-3** | **Publish new terms.** `setAppTerms(hash, uri)` sends `[appId, hash, uri]`. |
-| **APP-4** | **Moving the terms stops every other member.** `canPublish` is false for a publisher whose accepted hash is stale, while `statusForApp` still reads `ACTIVE`. The client must keep these distinguishable — see APP-6. |
-| **APP-5** | **Set the join fee.** `setJoinFee(fee)` sends `[appId, fee]`, in USDC base units. |
-| **APP-6** | **`needsReacceptance()` separates two different failures.** Given `status: ACTIVE`, `acceptedTerms !== termsHash` → true. Given `status: NONE` → false. These need different words and different buttons in a UI (`acceptUpdatedTerms` versus `joinApp`). |
-| **APP-7** | **`joinInfo` decodes the tuple positionally.** A 5-tuple `[hash, uri, joinFee, status, canPublish]` becomes the named struct, `status` coerced from `number` to `PublisherStatus`. Positional decoding is the thing most likely to rot silently when the contract tuple changes, so assert every field. |
-| **APP-8** | **Suspend a member.** `setPublisherSuspended(pub, bool)` sends `[appId, publisher, bool]`. Suspension is per-app: the same publisher under a different `appId` is untouched. Only joined members; never the owner. [contracts] |
+| **APP-1** | **Claim an app.** `registerApp()` reads `subscriptionFee()`, approves exactly it in USDC when the allowance is short, and sends `[appId, fee]` — the client's own `appId`, and the fee it read as the cap. |
+| **APP-2** | **Claiming makes you your own first publisher.** After `registerApp`, `canPublish(owner)` is true with no second transaction. [contracts] |
+| **APP-3** | **Accept a publisher.** `acceptPublisher(p)` sends `[appId, publisher]` and moves no fee. Only the owner; a publisher already accepted, suspended or not, reverts `AlreadyAccepted`. [contracts] |
+| **APP-8** | **Suspend a member.** `setPublisherSuspended(pub, bool)` sends `[appId, publisher, bool]`. Suspension is per-app: the same publisher under a different `appId` is untouched. Only accepted publishers; never the owner. [contracts] |
 | **APP-9** | **`getAppOwner` on an unclaimed id returns the zero address**, and the client returns it rather than throwing. "Unclaimed" is a legitimate answer for a directory page. |
 | **APP-10** | **Renew one period.** `renewSubscription()` throws before sending when `isRenewable()` is false, and otherwise sends `[tokenId, subscriptionPeriod()]` with `tokenId = BigInt(appId)`, after approving exactly the fee: the standard has no cap argument, so the allowance is the cap. |
-| **APP-11** | **Invitations can be taken back.** `invitePublisher(p)` / `revokeInvitation(p)` send `[appId, publisher]`. |
 
 ## B. Publisher level
 
-Per-app membership and the network-wide ban both live in the AppRegistry, and
-every commit goes through it to the DataRegistry.
+Per-app membership and the network-wide ban both live in the AppRegistry; commits
+go straight to the DataRegistry and name no app.
 
 | id | scenario |
 |----|----------|
-| **PUB-1** | **There is no global registration.** A wallet can claim an app, be invited to one, join and commit without any other step. The protocol admin's network-wide ban is read with `isGloballySuspended(address)`. |
-| **PUB-2** | **Join an app.** `joinApp()` reads `joinInfo` immediately before sending, passes the hash it read as the argument, approves exactly the join fee it read in USDC, and passes that fee as `max_join_fee`. No ETH value. |
-| **PUB-3** | **A terms change mid-flight is a revert, not a surprise agreement.** The hash is passed as an argument precisely so the contract reverts `TermsMismatch` rather than binding the publisher to a document they never saw. Assert the argument comes from the read, not from a caller parameter. |
-| **PUB-4** | **Refuse to join an app with no terms.** `termsHash === 0` → the client throws before sending, naming the app. The contract would revert; failing here costs no gas and says why. |
-| **PUB-5** | **Accepting moved terms is free, and separate.** A member on stale terms calls `acceptUpdatedTerms()`, which sends `[appId, appTerms()]` and no fee. `joinApp()` refuses an `ACTIVE` publisher before sending. |
-| **PUB-6** | **`prepareJoinApp` returns what the wallet must sign, in order.** A USDC `approve` of exactly the join fee when the allowance is short, then the join; the join alone when it is covered or the fee is zero. |
-| **PUB-7** | **A prepared transaction turns a simulated revert into a sentence.** Simulation rejecting with `/revert/i` → an error naming the function and the contract's reason. A non-revert RPC failure → fall back to a gas ceiling and proceed. A join behind an approval is not simulated: it would revert until the approval lands. |
-| **PUB-8** | **An update is compare-and-swap per repo, on the DataRegistry.** `update(repo, parent, head, apps)` keys the head by `(sender, repoId(repo))`; concurrent pushes to *different* repos do not contend, and each app named in `apps` gets its acceptance carried. [contracts] |
+| **PUB-1** | **There is no global registration.** A wallet can claim an app, or be accepted into one, and commit without any other step. The protocol admin's network-wide ban is read with `isGloballySuspended(address)`. |
+| **PUB-7** | **A prepared transaction turns a simulated revert into a sentence.** Simulation rejecting with `/revert/i` → an error naming the function and the contract's reason. A non-revert RPC failure → fall back to a gas ceiling and proceed. A write behind an approval is not simulated: it would revert until the approval lands. |
+| **PUB-8** | **An update is compare-and-swap per repo, on the DataRegistry.** `update(repo, parent, head)` keys the head by `(sender, repoId(repo))` and names no app; concurrent pushes to *different* repos do not contend. [contracts] |
 | **PUB-9** | **`prepareCommitStateRoot` quotes its own gas and fees.** Assert `gas` is 1.5x the estimate and `maxFeePerGas` is 2x, both hex. Leaving these to the wallet is what surfaces as "Network fee Unavailable" in MetaMask. |
 | **PUB-10** | **`repoId` / `appId` match the contract.** Pinned by `repo-id.test.ts` against a golden fixture. Do not duplicate. |
 | **PUB-11** | **An app is its storage subscription.** `registerApp()` and `renewSubscription()` send no value — the fee is pulled in USDC, so the precondition is an ERC-20 `approve`, not attached ETH. The client approves exactly the fee when the allowance is short and skips it when the fee is zero or already covered (`app-registry.test.ts`). |

@@ -4,16 +4,16 @@
 
 ## Where we are
 
-*Updated 2026-10-18: phase 2a landed as an in-place UUPS upgrade of the deployed proxies (upgrade-safe against their builds).*
+*Updated 2026-10-19: phase 2a, without per-head acceptance, written as an in-place UUPS upgrade of the deployed proxies (upgrade-safe against their builds). Not yet deployed.*
 
 - **The engine** (`src/engine/`) commits $\gamma = (e, \mathit{parent}, \mathit{root})$ over an MST, one repo per commit.
-- **`src/registry.ts`** defines `Registry` (Definition 3.1 / 3.7): `head`, `accepted`, `exclusionCount`, `update` (carrying acceptances), `accept`, `exclude`, `restore`, `log` (the update log, or with `app` that app's log), `watch`.
+- **`src/registry.ts`** defines `Registry` (Definition 3.1 / 3.7): `head`, `presents`, `exclusionCount`, `update`, `exclude`, `restore`, `log` (the update log), `watch`.
 - **`ChainRegistry`** maps it onto the contracts; **`MemRegistry`** (`src/test/mem-registry.ts`) is the paper's `Apply` in memory, the reference and the test double. One suite (`src/test/sdk-suite.ts`) runs on both.
 
 What the contracts now do:
 
-- `DataRegistry.update(repo, parent, head, apps[])`: heads keyed $(P, s)$ with positions, any address for its own repos, `Updated` carries the name in clear. Carried acceptances run after, each in a `try` with a fixed gas budget, so a refusal never undoes the update.
-- `AppRegistry.accept(app, P, repo)`: forward-only acceptance of the current head. $\alpha_A$ is fixed: a member (`canPublish`) accepts its own heads, the owner pulls anyone's. `Accepted` carries the previous head.
+- `DataRegistry.update(repo, parent, head)`: heads keyed $(P, s)$ with positions, any address for its own repos, `Updated` carries the name in clear. It names no app.
+- **No per-head acceptance yet.** An app presents the latest head of every member (`canPublish`): $\mathcal{D}(A, P, s)$ is $H(P, s)$ while $P$ is a member, and nothing otherwise. Membership is also what the app pays storage for. Per-head acceptance (below) returns once apps validate what they present.
 - `AppRegistry.exclude` / `restore`: counters $\mathcal{C}(A, X)$ for a publisher, a repo or a key, named by hash, odd while in force. $\chi_A$ is the owner's say.
 
 What is still open:
@@ -22,9 +22,8 @@ What is still open:
 | --- | --- | --- |
 | $h' = N(e, \mathit{parent}, \mathit{root})$, computed by the registry | The caller passes `head`, and only `parent` is checked | The parent and epoch guards run client-side (`FangornEngine.pushCommit`). Another client can skip them |
 | Epoch window $e(t) - W \le e \le e(t)$ | None | — |
-| The update and app logs as MMRs | Events only | No history reads, and no completeness against a light reader (Theorem 4, Prop 3.8) |
-| $\alpha_A$, $\chi_A$ as rules, with witnesses anyone may submit | Fixed: membership, or the owner | Validators can't approve heads; nobody but the owner pulls or excludes |
-| Acceptance of a past position, by log opening | Current head only | An app can't accept a head the publisher has since moved past |
+| The update and app logs as MMRs | Update log as events only; no app log | No history reads, and no completeness against a light reader (Theorem 4, Prop 3.8) |
+| $\alpha_A$, $\chi_A$ as rules, with witnesses anyone may submit | No acceptance: an app presents its members' latest heads. $\chi_A$ is the owner's | Validators can't approve heads; an app can't present a non-member, or hold a member at an older head |
 | No global powers | Global ban (read as an exclusion in every app), app takedown, UUPS upgrades | Trust the paper doesn't state. Kept on purpose while on testnet |
 | Directory lists for storage proofs (§5) | None | — |
 

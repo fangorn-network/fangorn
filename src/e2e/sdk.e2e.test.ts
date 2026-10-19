@@ -9,9 +9,9 @@ describe.skipIf(skipChain)("Fangorn SDK (contracts on anvil)", () => {
 	sdkSuite(chainNetwork, 60_000);
 });
 
-// What only the contracts decide: who may have heads accepted (α_A), and that a
-// refused acceptance never undoes the update that carried it.
-describe.skipIf(skipChain)("acceptance follows membership (contracts on anvil)", () => {
+// What only the contracts decide: which publishers an app presents. Exactly the ones
+// whose storage it provides (`canPublish`), at their latest heads.
+describe.skipIf(skipChain)("an app presents its members (contracts on anvil)", () => {
 	let net: ChainNetwork;
 	beforeAll(async () => {
 		net = await chainNetwork();
@@ -20,7 +20,7 @@ describe.skipIf(skipChain)("acceptance follows membership (contracts on anvil)",
 		net.stop();
 	});
 
-	it("a non-member's update stands, but its app presents nothing of it", async () => {
+	it("a non-member's update stands, but the app presents nothing of it", async () => {
 		await net.client("members");
 		const stranger = await net.raw("members");
 		await stranger.initRepo("notes");
@@ -28,26 +28,24 @@ describe.skipIf(skipChain)("acceptance follows membership (contracts on anvil)",
 
 		const ref = { publisher: stranger.getAddress(), repo: "notes" };
 		expect(await head(stranger, "notes")).not.toBe(ZERO_HEAD);
-		expect(await stranger.getRegistry().accepted(appOf(stranger), ref)).toBe(ZERO_HEAD);
+		expect(await stranger.getRegistry().presents(appOf(stranger), ref.publisher)).toBe(false);
 		expect((await stranger.readRepo(ref.publisher, "notes")).contents.records).toEqual([]);
 	}, 60_000);
 
-	it("a suspended member keeps what was accepted, and nothing newer is", async () => {
+	it("a suspended member drops out of the app, and comes back at its latest head", async () => {
 		const owner = await net.client("suspend");
 		const guest = await net.client("suspend");
 		await guest.initRepo("catalog");
 		await guest.upload("catalog", { n: 1 }, "t", "a");
 		await owner.getAppRegistry().setPublisherSuspended(guest.getAddress(), true);
+		expect((await owner.readRepo(guest.getAddress(), "catalog")).contents.records).toEqual([]);
+		expect(await owner.appRepos()).toEqual([]);
 
+		// Its updates still land; reinstated, the app presents the latest.
 		await guest.upload("catalog", { n: 2 }, "t", "b");
-		const presented = await owner.readRepo(guest.getAddress(), "catalog");
-		expect(presented.contents.records.map((r) => r.id)).toEqual(["a"]);
-
-		// Reinstated, its next update is accepted again, skipping what it missed.
 		await owner.getAppRegistry().setPublisherSuspended(guest.getAddress(), false);
-		await guest.upload("catalog", { n: 3 }, "t", "c");
 		const after = await owner.readRepo(guest.getAddress(), "catalog");
-		expect(after.contents.records.map((r) => r.id).sort()).toEqual(["a", "b", "c"]);
+		expect(after.contents.records.map((r) => r.id).sort()).toEqual(["a", "b"]);
 	}, 60_000);
 
 	// Apps provide storage: the gate (pinata-url-provider) bills an upload to the app

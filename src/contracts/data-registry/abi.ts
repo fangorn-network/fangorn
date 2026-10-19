@@ -10,19 +10,6 @@ export const DATA_REGISTRY_ABI = [
   },
   {
     "type": "function",
-    "name": "ACCEPT_GAS",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "UPGRADE_INTERFACE_VERSION",
     "inputs": [],
     "outputs": [
@@ -164,11 +151,6 @@ export const DATA_REGISTRY_ABI = [
         "name": "head",
         "type": "bytes32",
         "internalType": "bytes32"
-      },
-      {
-        "name": "apps",
-        "type": "bytes32[]",
-        "internalType": "bytes32[]"
       }
     ],
     "outputs": [],
@@ -310,11 +292,6 @@ export const DATA_REGISTRY_ABI = [
   {
     "type": "error",
     "name": "FailedCall",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "InsufficientGas",
     "inputs": []
   },
   {

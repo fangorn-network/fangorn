@@ -376,13 +376,12 @@ export class FangornEngine {
 	 * The commit's parent must BE the current head, not merely an ancestor of
 	 * it: then the parent chain and the registry's log are one history
 	 * (Theorem 3). Today's contract only checks the old root, so the parent is
-	 * checked here. `apps` are the apps the update carries an acceptance into.
+	 * checked here.
 	 */
 	async pushCommit(
 		publisher: Address,
 		repo: RepoName,
 		commitCid: CID,
-		apps: Hex[] = [],
 	): Promise<{ txHash: Hash; onChainTip: CID }> {
 		const head = await this.registry.head({ publisher, repo });
 		const commit = await this.getCommit(commitCid);
@@ -395,7 +394,7 @@ export class FangornEngine {
 				"stale parent: this commit's parent is not the on-chain head — rebuild it onto the current head.",
 			);
 		}
-		const txHash = await this.registry.update(repo, head, rootHexFromCid(commitCid), apps);
+		const txHash = await this.registry.update(repo, head, rootHexFromCid(commitCid));
 		return { txHash, onChainTip: commitCid };
 	}
 

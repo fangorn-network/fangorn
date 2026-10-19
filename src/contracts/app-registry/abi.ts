@@ -23,7 +23,7 @@ export const APP_REGISTRY_ABI = [
   },
   {
     "type": "function",
-    "name": "accept",
+    "name": "acceptPublisher",
     "inputs": [
       {
         "name": "app_id",
@@ -34,95 +34,10 @@ export const APP_REGISTRY_ABI = [
         "name": "publisher",
         "type": "address",
         "internalType": "address"
-      },
-      {
-        "name": "repo",
-        "type": "string",
-        "internalType": "string"
       }
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "acceptFromUpdate",
-    "inputs": [
-      {
-        "name": "app_id",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "publisher",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "repo_id",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "repo",
-        "type": "string",
-        "internalType": "string"
-      },
-      {
-        "name": "pos",
-        "type": "uint64",
-        "internalType": "uint64"
-      },
-      {
-        "name": "head",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "acceptUpdatedTerms",
-    "inputs": [
-      {
-        "name": "app_id",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "terms_hash",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "acceptedTerms",
-    "inputs": [
-      {
-        "name": "",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ],
-    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -174,44 +89,6 @@ export const APP_REGISTRY_ABI = [
   {
     "type": "function",
     "name": "appAgentUri",
-    "inputs": [
-      {
-        "name": "app_id",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "string",
-        "internalType": "string"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "appTerms",
-    "inputs": [
-      {
-        "name": "app_id",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "appTermsUri",
     "inputs": [
       {
         "name": "app_id",
@@ -417,40 +294,6 @@ export const APP_REGISTRY_ABI = [
   },
   {
     "type": "function",
-    "name": "getAccepted",
-    "inputs": [
-      {
-        "name": "app_id",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "publisher",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "repo_id",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "pos",
-        "type": "uint64",
-        "internalType": "uint64"
-      },
-      {
-        "name": "head",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "getAppOwner",
     "inputs": [
       {
@@ -536,24 +379,6 @@ export const APP_REGISTRY_ABI = [
   },
   {
     "type": "function",
-    "name": "invitePublisher",
-    "inputs": [
-      {
-        "name": "app_id",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "publisher",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
     "name": "isAppSuspended",
     "inputs": [
       {
@@ -616,48 +441,6 @@ export const APP_REGISTRY_ABI = [
   },
   {
     "type": "function",
-    "name": "joinApp",
-    "inputs": [
-      {
-        "name": "app_id",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "terms_hash",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "max_join_fee",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "joinFee",
-    "inputs": [
-      {
-        "name": "app_id",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "joinFeesOwed",
     "inputs": [
       {
@@ -671,50 +454,6 @@ export const APP_REGISTRY_ABI = [
         "name": "",
         "type": "uint256",
         "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "joinInfo",
-    "inputs": [
-      {
-        "name": "app_id",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "publisher",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "",
-        "type": "string",
-        "internalType": "string"
-      },
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "",
-        "type": "uint8",
-        "internalType": "enum AppRegistry.Status"
-      },
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
       }
     ],
     "stateMutability": "view"
@@ -774,21 +513,6 @@ export const APP_REGISTRY_ABI = [
         "internalType": "bytes32"
       },
       {
-        "name": "terms_hash",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "terms_uri",
-        "type": "string",
-        "internalType": "string"
-      },
-      {
-        "name": "join_fee",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
         "name": "max_subscription_fee",
         "type": "uint256",
         "internalType": "uint256"
@@ -838,24 +562,6 @@ export const APP_REGISTRY_ABI = [
         "name": "key_id",
         "type": "bytes32",
         "internalType": "bytes32"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "revokeInvitation",
-    "inputs": [
-      {
-        "name": "app_id",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "publisher",
-        "type": "address",
-        "internalType": "address"
       }
     ],
     "outputs": [],
@@ -963,29 +669,6 @@ export const APP_REGISTRY_ABI = [
   },
   {
     "type": "function",
-    "name": "setAppTerms",
-    "inputs": [
-      {
-        "name": "app_id",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "terms_hash",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "terms_uri",
-        "type": "string",
-        "internalType": "string"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
     "name": "setApprovalForAll",
     "inputs": [
       {
@@ -1028,24 +711,6 @@ export const APP_REGISTRY_ABI = [
         "name": "is_suspended",
         "type": "bool",
         "internalType": "bool"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "setJoinFee",
-    "inputs": [
-      {
-        "name": "app_id",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "join_fee",
-        "type": "uint256",
-        "internalType": "uint256"
       }
     ],
     "outputs": [],
@@ -1306,55 +971,6 @@ export const APP_REGISTRY_ABI = [
   },
   {
     "type": "event",
-    "name": "Accepted",
-    "inputs": [
-      {
-        "name": "app_id",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
-      },
-      {
-        "name": "publisher",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "repo_id",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
-      },
-      {
-        "name": "repo",
-        "type": "string",
-        "indexed": false,
-        "internalType": "string"
-      },
-      {
-        "name": "pos",
-        "type": "uint64",
-        "indexed": false,
-        "internalType": "uint64"
-      },
-      {
-        "name": "parent",
-        "type": "bytes32",
-        "indexed": false,
-        "internalType": "bytes32"
-      },
-      {
-        "name": "head",
-        "type": "bytes32",
-        "indexed": false,
-        "internalType": "bytes32"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
     "name": "AdminChanged",
     "inputs": [
       {
@@ -1425,31 +1041,6 @@ export const APP_REGISTRY_ABI = [
         "type": "bool",
         "indexed": false,
         "internalType": "bool"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "AppTermsChanged",
-    "inputs": [
-      {
-        "name": "app_id",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
-      },
-      {
-        "name": "terms_hash",
-        "type": "bytes32",
-        "indexed": false,
-        "internalType": "bytes32"
-      },
-      {
-        "name": "terms_uri",
-        "type": "string",
-        "indexed": false,
-        "internalType": "string"
       }
     ],
     "anonymous": false
@@ -1600,25 +1191,6 @@ export const APP_REGISTRY_ABI = [
   },
   {
     "type": "event",
-    "name": "JoinFeeChanged",
-    "inputs": [
-      {
-        "name": "app_id",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
-      },
-      {
-        "name": "join_fee",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
     "name": "JoinFeesWithdrawn",
     "inputs": [
       {
@@ -1644,7 +1216,7 @@ export const APP_REGISTRY_ABI = [
   },
   {
     "type": "event",
-    "name": "PublisherInvitationRevoked",
+    "name": "PublisherAccepted",
     "inputs": [
       {
         "name": "app_id",
@@ -1657,56 +1229,6 @@ export const APP_REGISTRY_ABI = [
         "type": "address",
         "indexed": true,
         "internalType": "address"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "PublisherInvited",
-    "inputs": [
-      {
-        "name": "app_id",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
-      },
-      {
-        "name": "publisher",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "PublisherJoined",
-    "inputs": [
-      {
-        "name": "app_id",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
-      },
-      {
-        "name": "publisher",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "terms_hash",
-        "type": "bytes32",
-        "indexed": false,
-        "internalType": "bytes32"
-      },
-      {
-        "name": "join_fee",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
       }
     ],
     "anonymous": false
@@ -1833,31 +1355,6 @@ export const APP_REGISTRY_ABI = [
   },
   {
     "type": "event",
-    "name": "UpdatedTermsAccepted",
-    "inputs": [
-      {
-        "name": "app_id",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
-      },
-      {
-        "name": "publisher",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "terms_hash",
-        "type": "bytes32",
-        "indexed": false,
-        "internalType": "bytes32"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
     "name": "Upgraded",
     "inputs": [
       {
@@ -1882,17 +1379,12 @@ export const APP_REGISTRY_ABI = [
   },
   {
     "type": "error",
+    "name": "AlreadyAccepted",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "AlreadyExcluded",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "AlreadyInvited",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "AlreadyJoined",
     "inputs": []
   },
   {
@@ -1903,11 +1395,6 @@ export const APP_REGISTRY_ABI = [
   {
     "type": "error",
     "name": "AppNotFound",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "AppSuspended",
     "inputs": []
   },
   {
@@ -2061,12 +1548,7 @@ export const APP_REGISTRY_ABI = [
   },
   {
     "type": "error",
-    "name": "JoinFeeRequired",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "JoinFeeTooHigh",
+    "name": "NotAccepted",
     "inputs": []
   },
   {
@@ -2077,16 +1559,6 @@ export const APP_REGISTRY_ABI = [
   {
     "type": "error",
     "name": "NotInitializing",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "NotInvited",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "NotJoined",
     "inputs": []
   },
   {
@@ -2106,27 +1578,12 @@ export const APP_REGISTRY_ABI = [
   },
   {
     "type": "error",
-    "name": "PublisherSuspendedApp",
-    "inputs": []
-  },
-  {
-    "type": "error",
     "name": "PublisherSuspendedGlobal",
     "inputs": []
   },
   {
     "type": "error",
     "name": "ReentrancyGuardReentrantCall",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "StaleAcceptance",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "SubscriptionExpired",
     "inputs": []
   },
   {
@@ -2142,21 +1599,6 @@ export const APP_REGISTRY_ABI = [
   {
     "type": "error",
     "name": "SubscriptionNotRenewable",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "TermsAlreadyAccepted",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "TermsMismatch",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "TermsNotSet",
     "inputs": []
   },
   {

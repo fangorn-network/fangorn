@@ -19,22 +19,11 @@ describe("MemRegistry (Definition 3.1)", () => {
 		expect(await r.head({ publisher: P, repo: "t" })).toBe(ZERO_HEAD);
 	});
 
-	it("an update is accepted into the apps it carries only", async () => {
+	it("an app presents exactly the publishers the ledger makes its members", async () => {
 		const r = new MemRegistry(P);
-		await r.update("s", ZERO_HEAD, h(1), [A]);
-		expect(await r.accepted(A, ref)).toBe(h(1));
-		expect(await r.accepted(B, ref)).toBe(ZERO_HEAD);
-	});
-
-	it("an acceptance moves forward only, and may skip positions", async () => {
-		const r = new MemRegistry(P);
-		await expect(r.accept(A, ref)).rejects.toThrow(/Stale/);
-		await r.update("s", ZERO_HEAD, h(1));
-		await r.update("s", h(1), h(2));
-		await r.accept(A, ref);
-		expect(await r.accepted(A, ref)).toBe(h(2));
-		await expect(r.accept(A, ref)).rejects.toThrow(/Stale/);
-		expect((await r.log({ app: A }, 0n)).map((e) => [e.pos, e.parent, e.head])).toEqual([[2, ZERO_HEAD, h(2)]]);
+		r.ledger.members.add(`${A}/${P}`);
+		expect(await r.presents(A, P)).toBe(true);
+		expect(await r.presents(B, P)).toBe(false);
 	});
 
 	it("exclusions alternate exclude/restore and count each change (Proposition 3.2)", async () => {

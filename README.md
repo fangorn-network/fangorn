@@ -73,57 +73,46 @@ fangorn wallet show --reveal   # also prints the PRIVATE key — it grants full 
 The private key is never printed without `--reveal`: terminal scrollback, shell
 logs and screen shares all outlive the command.
 
-### Pick an app, then join
+### Pick an app
 
-Publishing needs no app: any wallet updates its own repos. An app **presents**
-what it has accepted. A member's updates carry their own acceptance into the
-app; the owner can pull anyone's head (`registry.accept`) and withdraw data
-(`registry.exclude`). Join an app to be presented in it, and to have it pay for
-your storage.
+Publishing needs no app: any wallet updates its own repos, and an update names
+no app. **An app is sponsored storage for the publishers it accepts**: its owner
+accepts a publisher, the app pays for that publisher's uploads, and it includes
+their repos at their latest heads, less what the owner withdraws
+(`registry.exclude`).
 
 ```sh
 fangorn set-app my-app     # persists the app; --app <name-or-id> overrides per command
-fangorn app info           # owner, terms, join fee, and where you stand in it
+fangorn app info           # owner, subscription, and where you stand in it
 fangorn app claim          # claim it, if nobody owns it yet (irreversible; pays the subscription)
-fangorn app join           # or join it, once its owner has invited you
 ```
 
 The protocol admin can ban a wallet network-wide: it can't claim an app or be
-added to one, no app accepts its heads, and the SDK reads it as excluded everywhere.
+accepted into one, and no app stores or presents it.
 
 **An app is a storage subscription** (ERC-5643; the app is a token that cannot
 be transferred). `fangorn app claim` pays one period of the subscription fee in
 USDC (the client approves exactly the fee for you), and `fangorn app renew` pays
-the next once less than a period is left. An expired app accepts no heads and no
-joins until it is renewed. **Apps provide storage**: you upload relative to
+the next once less than a period is left. An expired app stores and presents nothing
+until it is renewed. **Apps provide storage**: you upload relative to
 an app, and hosted uploads (`storage: { signedUrl: {} }`) are billed to the
-client's app, which must admit you. There is no app-less hosted upload — with no
+client's app, which must have accepted you. There is no app-less hosted upload — with no
 app, bring your own Pinata (`{ pinata }`) and pin your own data. A publisher that
 pays for its own storage claims a one-member app.
 
-**Membership is by invitation.** The owner runs `fangorn app invite <address>`;
-only then can that wallet `fangorn app join`, which accepts the terms and pays
-the join fee in USDC. The owner is their own first publisher and needs neither.
-
-`fangorn app invitations` lists the apps that have invited your wallet and are
-still waiting for you to join, with each one's owner, terms and join fee. Any
-app owner can invite any wallet, so check the owner before joining.
-
-`fangorn app join` is also how you re-accept terms after the owner moves them
-(free).
+**The owner accepts publishers.** `fangorn app accept <address>` is the whole
+membership: no invitation, terms or join fee. The owner is their own first
+publisher.
 
 Owning an app comes with its own commands:
 
 ```sh
-fangorn app terms <hash> [uri]   # publish new terms — every member must accept them (free)
-fangorn app fee <usdc>           # what joining costs, e.g. 1.50
-fangorn app invite <address>     # invite a publisher
-fangorn app revoke <address>     # take back an invitation not yet accepted
+fangorn app accept <address>     # accept a publisher: the app stores and includes its data
 fangorn app suspend <address>    # suspend a member from THIS app only
 fangorn app reinstate <address>
 fangorn app renew                # pay for the next period
 fangorn app cancel               # end the subscription now, no refund
-fangorn app withdraw-fees [to]   # collect the join fees paid to your apps
+fangorn app withdraw-fees [to]   # join fees still owed from before joining was removed
 ```
 
 ### Track a namespace (git-native repo)
@@ -292,32 +281,15 @@ const fangorn = Fangorn.create({
 		},
 	},
 	config: FangornConfig, // defaults to Arbitrum Sepolia
-	appId: "my-app", // optional: no app means no acceptance carried, and reads of each publisher's own word
+	appId: "my-app", // optional for reads (no app: each publisher's latest head); hosted uploads need one
 });
 
-// Join the app to have your updates accepted into it. A non-member's update
-// still lands; the app just presents nothing of it.
-const self = fangorn.getAddress();
+// The app stores and presents your repos once its owner accepts this wallet
+// (`apps.acceptPublisher`). A non-member's update still lands; the app just
+// presents nothing of it.
 const apps = fangorn.getAppRegistry();
-
-// Throws unless the app's owner has invited this wallet (`apps.invitePublisher`).
-if (!(await apps.canPublish(self))) await apps.joinApp();
+await apps.canPublish(fangorn.getAddress());
 ```
-
-`joinInfo` is what a join screen needs, and it separates two failures a bare
-"cannot publish" conflates — never joined, versus joined before the owner moved
-the terms:
-
-```ts
-import { needsReacceptance } from "@fangorn-network/sdk";
-
-const info = await apps.joinInfo(self);
-if (needsReacceptance(info)) await apps.acceptUpdatedTerms(); // free
-```
-
-A browser wallet signs its own join: `apps.prepareJoinApp(publisher)` returns
-the unsigned transactions in order — a USDC approval of exactly the join fee,
-left out when the allowance already covers it, then the join.
 
 The storage paywall lives on the same client, because an app is its
 subscription: `apps.subscriptionFee()`, `apps.expiresAt()`,
@@ -464,36 +436,22 @@ fangorn.getAppId(); // 0x… — what the registry keys on
 ```
 
 Under an app, reads (`readRepo`, `appRepos`, `subscribe`) are what the app
-presents: its accepted heads, less its exclusions. With no app they are each
-publisher's latest heads.
+presents: its members' latest heads (`canPublish`), less its exclusions. With
+no app they are each publisher's latest heads.
 
-Apps live in the AppRegistry, and membership of one is what gets your heads
-accepted into it:
+Apps live in the AppRegistry, and membership of one is what gets your storage
+paid for and your repos presented:
 
 ```ts
 const apps = fangorn.getAppRegistry();
 
-await apps.registerApp(termsHash, termsUri, joinFee); // claim it — pays the subscription fee (USDC)
-await apps.invitePublisher(publisher); // owner: invite a publisher
-await apps.joinApp(); // publisher: join, accepting the current terms and paying the join fee (USDC)
+await apps.registerApp(); // claim it — pays the subscription fee (USDC); you are its first publisher
+await apps.acceptPublisher(publisher); // owner: accept a publisher
+await apps.setPublisherSuspended(publisher, true); // owner: suspend them from this app
 await apps.renewSubscription(); // owner: pay for the next period
-
-await fangorn.getInvitations(); // publisher: the apps waiting for this wallet to join
 ```
 
-The contract cannot list a publisher's apps, so `getInvitations` reads the
-AppRegistry's `PublisherInvited` logs from its deploy block
-(`appRegistryFromBlock` in the config) and keeps the apps whose invitation
-still stands. It asks for 10,000,000 blocks per call, which the public Arbitrum
-Sepolia RPC serves; set `FANGORN_LOG_WINDOW` for an RPC that allows fewer.
-
-Joining reads the terms hash immediately before sending and passes it as an
-argument, so the contract reverts `TermsMismatch` if the owner moved the terms
-in between. A race is a revert, never silent agreement to a document the
-publisher never saw. The join fee is read from the chain for the same reason a
-caller never supplies it: a caller can supply the wrong one.
-
-See the [CLI quickstart](#pick-an-app-then-join) for the same flow from the
+See the [CLI quickstart](#pick-an-app) for the same flow from the
 command line.
 
 ### Storage
@@ -649,7 +607,7 @@ gadget_ behind the same handle shape, so committed data doesn't change form.
 | Contract             | Address                                      | What it owns                                        |
 | -------------------- | -------------------------------------------- | --------------------------------------------------- |
 | DataRegistry         | `0x72B5f83526F3893aF9f1eE0f32A27218EA09f8aE` | Every repo's head, and the update log           |
-| AppRegistry          | `0x55e6209ea1833ceD900989a3b3b22466934E04A5` | Apps: owner, terms, membership, bans, storage subscription (ERC-5643, USDC); what each app accepts and excludes |
+| AppRegistry          | `0x55e6209ea1833ceD900989a3b3b22466934E04A5` | Apps: owner, accepted publishers, bans, storage subscription (ERC-5643, USDC); what each app excludes |
 | MembershipRegistry   | `0xDF17030Cd65435C86eb043F31DDACa99E819E347` | Time-limited, unlinkable access to an app's paid records (USDC + Semaphore) |
 
 `FangornConfig` in `src/config.ts` is the authoritative list and what the SDK
@@ -657,9 +615,8 @@ uses by default — prefer it over any address copied out of a document,
 including this table. The sources are `fangorn-network/contracts`
 (`solidity/script/Deployments.sol`); regenerate the ABIs with `pnpm abis`.
 
-An update carries acceptances: `DataRegistry.update` calls
-`AppRegistry.acceptFromUpdate` for each app it names, and `AppRegistry.accept`
-reads `DataRegistry.getHead`.
+Neither contract calls the other: an update names no app, and an app presents
+its members (`canPublish`).
 
 ---
 
@@ -694,9 +651,8 @@ Without `anvil`, `forge` or the contracts checkout the anvil suites are skipped
 no real key. Storage is in memory; `E2E_STORAGE=pinata` runs the same suites
 against Pinata (`PINATA_JWT`, `PINATA_GATEWAY`).
 
-**The live suite** only reads: that the registries point at each other, that the
-config's start block is the AppRegistry's deployment, and that the public RPC
-serves the invitation scan.
+**The live suite** only reads: that the registries point at each other, and that
+the config's start block is the AppRegistry's deployment.
 
 ---
 

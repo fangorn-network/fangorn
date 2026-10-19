@@ -54,7 +54,7 @@ export default function getNetwork(name: string) {
 export interface AppConfig {
 	// The deployed DataRegistry (every repo's head, keyed by publisher and repo)
 	dataRegistryContractAddress: Hex;
-	// The deployed AppRegistry (apps, their subscriptions, membership, acceptances and exclusions)
+	// The deployed AppRegistry (apps, their subscriptions, membership and exclusions)
 	appRegistryContractAddress: Hex;
 	// The deployed MembershipRegistry (time-limited, unlinkable access to an app's
 	// paid records)

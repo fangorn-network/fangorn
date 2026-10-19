@@ -35,10 +35,4 @@ describe("Fangorn live deployment (read-only)", () => {
 		});
 		expect(deployed).toHaveLength(1);
 	}, 60_000);
-
-	// The invitation scan asks the RPC for the registry's whole history in wide
-	// windows. An endpoint that stops serving them fails here, not for a user.
-	it("the public RPC serves the invitation scan", async () => {
-		expect(await reader.getInvitations()).toEqual([]);
-	}, 60_000);
 });

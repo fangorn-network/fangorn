@@ -141,28 +141,19 @@ export function sdkSuite(makeNetwork: () => Promise<Network>, timeout = 5_000) {
 			expect(listed.every((d) => d.repo === "catalog")).toBe(true);
 		}, timeout);
 
-		it("an update by itself changes what no app presents, until the app accepts it", async () => {
+		it("an app presents its members' repos and nobody else's; an update names no app", async () => {
 			const app = freshApp();
 			const owner = await net.client(app);
-			// Publishes under no app: its own word, presented nowhere.
+			// Publishes under no app: its own word, presented by no app.
 			const loner = await net.client(null);
 			await loner.initRepo("notes");
 			await loner.upload("notes", { n: 1 }, "t", "x");
 
-			const ref = { publisher: loner.getAddress(), repo: "notes" };
-			expect((await owner.readRepo(ref.publisher, "notes")).contents.records).toEqual([]);
+			expect((await owner.readRepo(loner.getAddress(), "notes")).contents.records).toEqual([]);
 			expect(await owner.appRepos()).toEqual([]);
+			// Under no app, a repo is its latest head.
 			const outsider = await net.client(null);
-			expect((await outsider.readRepo(ref.publisher, "notes")).contents.records).toHaveLength(1);
-
-			// The app pulls it: the owner accepts the current head.
-			await owner.getRegistry().accept(appOf(owner), ref);
-			expect((await owner.readRepo(ref.publisher, "notes")).contents.records).toHaveLength(1);
-
-			// A newer head is the publisher's until the app accepts that too.
-			await loner.upload("notes", { n: 2 }, "t", "y");
-			expect((await owner.readRepo(ref.publisher, "notes")).contents.records).toHaveLength(1);
-			expect((await outsider.readRepo(ref.publisher, "notes")).contents.records).toHaveLength(2);
+			expect((await outsider.readRepo(loner.getAddress(), "notes")).contents.records).toHaveLength(1);
 		}, timeout);
 
 		it("an excluded publisher disappears from the app's reads, and a restore brings it back", async () => {
@@ -198,17 +189,18 @@ export function sdkSuite(makeNetwork: () => Promise<Network>, timeout = 5_000) {
 			expect((await owner.readRepo(guest.getAddress(), "keep")).contents.records).toHaveLength(1);
 		}, timeout);
 
-		it("an exclusion in one app hides nothing in another that accepted the same head", async () => {
+		it("an exclusion in one app hides nothing in another that presents the same publisher", async () => {
 			const [appA, appB] = [freshApp(), freshApp()];
 			const ownerA = await net.client(appA);
 			const ownerB = await net.client(appB);
-			const guest = await net.client(appA);
+			// One wallet, a member of both: one repo, presented by two apps.
+			const sk = generatePrivateKey();
+			const guest = await net.client(appA, sk);
+			await net.client(appB, sk);
 			await guest.initRepo("catalog");
 			await guest.upload("catalog", { title: "t" }, "entry", "g");
 			const ref = { publisher: guest.getAddress(), repo: "catalog" };
 
-			// One repo, presented by two apps: B pulls what A's member published.
-			await ownerB.getRegistry().accept(appOf(ownerB), ref);
 			await ownerA.getRegistry().exclude(appOf(ownerA), { publisher: ref.publisher });
 
 			expect((await ownerA.readRepo(ref.publisher, "catalog")).contents.records).toEqual([]);

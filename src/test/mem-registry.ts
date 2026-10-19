@@ -17,39 +17,37 @@ import {
 const refKey = (r: RepoRef) => `${r.publisher.toLowerCase()}/${r.repo}`;
 const exclKey = (x: Exclusion) => `${x.publisher.toLowerCase()}/${x.repo ?? ""}/${x.key ?? ""}`;
 
-type Entry = UpdateEntry & { app?: Hex };
-
 /** One ordering and the registry state over it, shared by every signer of a MemRegistry. */
 export class MemLedger {
 	/** H: position and head */
 	heads = new Map<string, { pos: number; head: Hex }>();
-	/** D, per app */
-	acceptedHeads = new Map<string, { pos: number; head: Hex }>();
+	/** `app/publisher` for each publisher an app presents (provides storage to) */
+	members = new Set<string>();
 	/** C, per app */
 	counts = new Map<string, number>();
-	/** U, and every app log, each entry tagged with its app */
-	entries: Entry[] = [];
-	/** The clock: one tick per entry of the ordering. Carried acceptances share their update's. */
+	/** U */
+	entries: UpdateEntry[] = [];
+	/** The clock: one tick per entry of the ordering. */
 	t = 0n;
-	listeners = new Set<(entry: Entry) => void>();
+	listeners = new Set<(entry: UpdateEntry) => void>();
 
-	append(entry: Omit<Entry, "t" | "id">, tick: boolean) {
-		if (tick) this.t++;
+	append(entry: Omit<UpdateEntry, "t" | "id">) {
+		this.t++;
 		const e = { ...entry, t: this.t, id: this.entries.length.toString() };
 		this.entries.push(e);
 		for (const listener of this.listeners) listener(e);
 	}
 }
 
-const matches = (filter: LogFilter, e: Entry) =>
-	e.app === filter.app &&
+const matches = (filter: LogFilter, e: UpdateEntry) =>
 	(!filter.publisher || e.publisher.toLowerCase() === filter.publisher.toLowerCase()) &&
 	(!filter.repo || e.repo === filter.repo);
 
 /**
- * The paper's Apply, signing as `signer`. Every acceptance is valid: membership
- * (α_A) is the contracts' business. Signers that share a ledger see each other's
- * writes, like wallets on one chain.
+ * The paper's Apply, signing as `signer`. Membership is whatever the ledger is
+ * told (`members`): its rules (invites, terms, suspensions) are the contracts'
+ * business. Signers that share a ledger see each other's writes, like wallets on
+ * one chain.
  */
 export class MemRegistry implements Registry {
 	constructor(
@@ -66,40 +64,25 @@ export class MemRegistry implements Registry {
 		return Promise.resolve(this.ledger.heads.get(refKey(ref))?.head ?? ZERO_HEAD);
 	}
 
-	accepted(app: Hex, ref: RepoRef): Promise<Hex> {
-		return Promise.resolve(this.ledger.acceptedHeads.get(`${app}/${refKey(ref)}`)?.head ?? ZERO_HEAD);
+	presents(app: Hex, publisher: Address): Promise<boolean> {
+		return Promise.resolve(this.ledger.members.has(`${app}/${publisher.toLowerCase()}`));
 	}
 
 	exclusionCount(app: Hex, x: Exclusion): Promise<number> {
 		return Promise.resolve(this.ledger.counts.get(`${app}/${exclKey(x)}`) ?? 0);
 	}
 
-	async update(repo: string, parent: Hex, head: Hex, apps: Hex[] = []): Promise<Hash> {
+	async update(repo: string, parent: Hex, head: Hex): Promise<Hash> {
 		const ref = { publisher: this.signer, repo };
 		if ((await this.head(ref)) !== parent) throw new Error("StaleStateRoot");
 		const pos = (this.ledger.heads.get(refKey(ref))?.pos ?? 0) + 1;
 		this.ledger.heads.set(refKey(ref), { pos, head });
-		this.ledger.append({ publisher: this.signer, repo, pos, parent, head }, true);
-		for (const app of apps) await this.applyAccept(app, ref, false).catch(() => undefined);
+		this.ledger.append({ publisher: this.signer, repo, pos, parent, head });
 		return "0x00";
 	}
 
 	prepareUpdate(): Promise<PreparedTx> {
 		return Promise.reject(new Error("MemRegistry has no transactions to prepare"));
-	}
-
-	accept(app: Hex, ref: RepoRef): Promise<Hash> {
-		return this.applyAccept(app, ref, true);
-	}
-
-	private applyAccept(app: Hex, ref: RepoRef, tick: boolean): Promise<Hash> {
-		const current = this.ledger.heads.get(refKey(ref));
-		const key = `${app}/${refKey(ref)}`;
-		const before = this.ledger.acceptedHeads.get(key);
-		if (!current || current.pos <= (before?.pos ?? 0)) return Promise.reject(new Error("StaleAcceptance"));
-		this.ledger.acceptedHeads.set(key, current);
-		this.ledger.append({ app, publisher: ref.publisher, repo: ref.repo, pos: current.pos, parent: before?.head ?? ZERO_HEAD, head: current.head }, tick);
-		return Promise.resolve("0x00");
 	}
 
 	exclude(app: Hex, x: Exclusion): Promise<Hash> {
@@ -125,7 +108,7 @@ export class MemRegistry implements Registry {
 	}
 
 	watch(filter: LogFilter, onEntry: (entry: UpdateEntry) => void): () => void {
-		const listener = (e: Entry) => {
+		const listener = (e: UpdateEntry) => {
 			if (matches(filter, e)) onEntry(e);
 		};
 		this.ledger.listeners.add(listener);

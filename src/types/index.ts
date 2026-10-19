@@ -8,11 +8,11 @@ export interface FangornContext {
     walletClient: WalletClient;
     publicClient: PublicClient;
     metadataStorage: MetadataStorage | undefined;
-    /** Heads, acceptances, exclusions and logs (WHITEPAPER_1 §3.2). */
+    /** Heads, membership, exclusions and logs (WHITEPAPER_1 §3.2). */
     registry: Registry;
     /**
      * The app this client reads and publishes under (the paper's context). Unset,
-     * reads are each publisher's own word and updates carry no acceptance.
+     * reads are each publisher's latest head, and hosted uploads are refused.
      */
     appId: Hex | undefined;
 }
