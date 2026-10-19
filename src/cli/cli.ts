@@ -1123,23 +1123,6 @@ appAdminCmd
 		}
 	});
 
-// Kept so existing scripts and docs keep working; `app claim` is the real one.
-program
-	.command("register-app", { hidden: true })
-	.description("Deprecated alias for `fangorn app claim`")
-	.action(() => {
-		console.error("`register-app` is now `fangorn app claim`.");
-		process.exit(1);
-	});
-
-program
-	.command("register", { hidden: true })
-	.description("Removed: there is no publisher registration. Use `fangorn app join`")
-	.action(() => {
-		console.error("There is no publisher registration any more. Join an app with `fangorn app join`.");
-		process.exit(1);
-	});
-
 // ─── wallet ───────────────────────────────────────────────────────────────────
 
 program
