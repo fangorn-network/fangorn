@@ -889,15 +889,6 @@ appCmd
 		}
 	});
 
-// Kept so existing scripts get a pointer instead of "unknown command".
-appCmd
-	.command("add", { hidden: true })
-	.description("Renamed: `fangorn app invite`")
-	.action(() => {
-		console.error("`app add` is now `fangorn app invite`.");
-		process.exit(1);
-	});
-
 appCmd
 	.command("revoke")
 	.description("Take back an invitation the publisher has not accepted yet (owner only)")
