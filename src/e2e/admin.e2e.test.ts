@@ -40,17 +40,17 @@ describe.skipIf(skipChain)("Protocol admin (contracts on anvil)", () => {
 		await guest.initRepo(repo);
 		await guest.upload(repo, { n: 1 }, "t", "a");
 
-		await admin.getAppRegistry().suspendApp();
-		expect(await apps.isRegisteredForApp(owner.getAddress())).toBe(false);
-		expect(await apps.isRegisteredForApp(guest.getAddress())).toBe(false);
+		await admin.getAppRegistry().setAppSuspended(true);
+		expect(await apps.canPublish(owner.getAddress())).toBe(false);
+		expect(await apps.canPublish(guest.getAddress())).toBe(false);
 		const info = await apps.joinInfo(guest.getAddress());
-		expect(info).toMatchObject({ appSuspended: true, registered: false, status: PublisherStatus.ACTIVE });
+		expect(info).toMatchObject({ appSuspended: true, canPublish: false, status: PublisherStatus.ACTIVE });
 
 		// The guest's own repo moves on; the app presents what it had.
 		await guest.upload(repo, { n: 2 }, "t", "b");
 		expect(await presented(owner, guest, repo)).toEqual(["a"]);
 
-		await admin.getAppRegistry().reinstateApp();
+		await admin.getAppRegistry().setAppSuspended(false);
 		await guest.upload(repo, { n: 3 }, "t", "c");
 		expect(await presented(owner, guest, repo)).toEqual(["a", "b", "c"]);
 	}, 60_000);
@@ -62,8 +62,8 @@ describe.skipIf(skipChain)("Protocol admin (contracts on anvil)", () => {
 		await guest.initRepo(repo);
 		await guest.upload(repo, { n: 1 }, "t", "a");
 
-		await admin.getAppRegistry().setBanned(guest.getAddress(), true);
-		expect(await guest.getAppRegistry().isBanned(guest.getAddress())).toBe(true);
+		await admin.getAppRegistry().setGlobalSuspension(guest.getAddress(), true);
+		expect(await guest.getAppRegistry().isGloballySuspended(guest.getAddress())).toBe(true);
 		expect(await presented(owner, guest, repo)).toEqual([]);
 		expect(await owner.appRepos({ owner: guest.getAddress() })).toEqual([]);
 
@@ -78,9 +78,32 @@ describe.skipIf(skipChain)("Protocol admin (contracts on anvil)", () => {
 		await owner.upload(repo, { n: 1 }, "t", "o");
 		expect(await presented(owner, owner, repo)).toEqual(["o"]);
 
-		await admin.getAppRegistry().setBanned(guest.getAddress(), false);
+		await admin.getAppRegistry().setGlobalSuspension(guest.getAddress(), false);
 		expect(await presented(owner, guest, repo)).toEqual(["a"]);
 		await guest.upload(repo, { n: 2 }, "t", "b");
 		expect(await presented(owner, guest, repo)).toEqual(["a", "b"]);
+	}, 60_000);
+
+	// Time, not the admin: a lapsed subscription stops acceptances like a takedown,
+	// and renewing resumes them. Last, since the warp ages every app on this anvil.
+	it("an expired app accepts no heads until it is renewed", async () => {
+		const apps = owner.getAppRegistry();
+		const repo = "expiry";
+		await guest.initRepo(repo);
+		await guest.upload(repo, { n: 1 }, "t", "a");
+
+		const expiresAt = await apps.expiresAt();
+		const { timestamp } = await net.chain.getBlock();
+		await net.chain.increaseTime({ seconds: Number(expiresAt - timestamp) });
+		await net.chain.mine({ blocks: 1 });
+
+		expect(await apps.canPublish(guest.getAddress())).toBe(false);
+		await guest.upload(repo, { n: 2 }, "t", "b");
+		expect(await presented(owner, guest, repo)).toEqual(["a"]);
+
+		await apps.renewSubscription();
+		expect(await apps.expiresAt()).toBeGreaterThan(expiresAt);
+		await guest.upload(repo, { n: 3 }, "t", "c");
+		expect(await presented(owner, guest, repo)).toEqual(["a", "b", "c"]);
 	}, 60_000);
 });

@@ -919,8 +919,8 @@ export class Fangorn {
 	/**
 	 * App management: claiming an app (its storage subscription), terms,
 	 * invitations and membership, the agent card, and the protocol admin's powers.
-	 * Membership is by invitation: the owner calls `addPublisher()`, then the
-	 * publisher `registerForApp()`. A member's updates carry their own acceptance
+	 * Membership is by invitation: the owner calls `invitePublisher()`, then the
+	 * publisher `joinApp()`. A member's updates carry their own acceptance
 	 * into the app, and its uploads may bill the app's subscription.
 	 */
 	getAppRegistry(): AppRegistryClient {

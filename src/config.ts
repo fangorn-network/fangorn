@@ -52,13 +52,12 @@ export default function getNetwork(name: string) {
 }
 
 export interface AppConfig {
-	// The deployed publisher_registry contract address
+	// The deployed DataRegistry (every repo's head, keyed by publisher and repo)
 	dataRegistryContractAddress: Hex;
-	// The deployed app_registry contract address (apps, membership, and the
-	// per-app storage subscription)
+	// The deployed AppRegistry (apps, their subscriptions, membership, acceptances and exclusions)
 	appRegistryContractAddress: Hex;
 	// The deployed MembershipRegistry (time-limited, unlinkable access to an app's
-	// paid records). Zero until deployed on this network.
+	// paid records)
 	membershipRegistryContractAddress: Hex;
 	// The block the AppRegistry was deployed in. Scans of the registry's logs start here.
 	appRegistryFromBlock: bigint;

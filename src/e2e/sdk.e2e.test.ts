@@ -37,14 +37,14 @@ describe.skipIf(skipChain)("acceptance follows membership (contracts on anvil)",
 		const guest = await net.client("suspend");
 		await guest.initRepo("catalog");
 		await guest.upload("catalog", { n: 1 }, "t", "a");
-		await owner.getAppRegistry().suspendForApp(guest.getAddress());
+		await owner.getAppRegistry().setPublisherSuspended(guest.getAddress(), true);
 
 		await guest.upload("catalog", { n: 2 }, "t", "b");
 		const presented = await owner.readRepo(guest.getAddress(), "catalog");
 		expect(presented.contents.records.map((r) => r.id)).toEqual(["a"]);
 
 		// Reinstated, its next update is accepted again, skipping what it missed.
-		await owner.getAppRegistry().reinstateForApp(guest.getAddress());
+		await owner.getAppRegistry().setPublisherSuspended(guest.getAddress(), false);
 		await guest.upload("catalog", { n: 3 }, "t", "c");
 		const after = await owner.readRepo(guest.getAddress(), "catalog");
 		expect(after.contents.records.map((r) => r.id).sort()).toEqual(["a", "b", "c"]);

@@ -9,9 +9,9 @@ import {
 	type WalletClient,
 } from "viem";
 
-import { APP_REGISTRY_ABI, DATA_REGISTRY_ABI, prepareTx, type PreparedTx, repoId } from "./contracts/index.js";
+import { APP_REGISTRY_ABI, DATA_REGISTRY_ABI, type PreparedTx, repoId } from "./contracts/index.js";
 import { getLogsInWindows } from "./contracts/logs.js";
-import { requireWallet, sendWrite } from "./contracts/write.js";
+import { prepareWrite, requireWallet, sendWrite } from "./contracts/write.js";
 
 // ── The registry (WHITEPAPER_1 §3.2, Definition 3.1) ─────────────────────────
 //
@@ -227,12 +227,15 @@ export class ChainRegistry implements Registry {
 	}
 
 	prepareUpdate(publisher: Address, repo: string, parent: Hex, head: Hex, apps: Hex[] = []): Promise<PreparedTx> {
-		return prepareTx(this.publicClient, publisher, this.data, DATA_REGISTRY_ABI as unknown as Abi, "update", [
-			repo,
-			parent,
-			head,
-			apps,
-		]);
+		return prepareWrite(
+			this.publicClient,
+			publisher,
+			this.data,
+			DATA_REGISTRY_ABI as unknown as Abi,
+			"update",
+			[repo, parent, head, apps],
+			{ fallbackGas: 5_000_000n },
+		);
 	}
 
 	accept(app: Hex, ref: RepoRef): Promise<Hash> {

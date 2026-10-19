@@ -92,8 +92,8 @@ a manifest can be served from anywhere: a CDN, IPFS, a gist, a Telegram message.
 
 | Field | Source | Verified by |
 |---|---|---|
-| `app.*` | `AppRegistry` | `appTerms(appId) == termsHash`; publisher `isRegisteredForApp` |
-| `publisher` | `StateCommitted` event | the event's `owner` at `blockNumber` |
+| `app.*` | `AppRegistry` | `appTerms(appId) == termsHash`; publisher `canPublish` |
+| `publisher` | `Updated` event | the event's `publisher` at `blockNumber` |
 | `source.commitCid`, `root` | on-chain registry tip | read the tip for `(publisher, namespace)` |
 | `embedding.*`, `recipe` | inside the commit | resolve `commitCid`, compare |
 | `cdn.shards[].sha256` | the bake | hash the bytes after download |

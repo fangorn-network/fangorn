@@ -209,8 +209,8 @@ export async function chainNetwork() {
 				await f.getAppRegistry().registerApp(TEST_TERMS, "https://example.test/terms");
 				owners.set(app, f);
 			} else {
-				await owner.getAppRegistry().addPublisher(f.getAddress());
-				await f.getAppRegistry().registerForApp();
+				await owner.getAppRegistry().invitePublisher(f.getAddress());
+				await f.getAppRegistry().joinApp();
 			}
 			return f;
 		},

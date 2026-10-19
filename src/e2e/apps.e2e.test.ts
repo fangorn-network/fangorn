@@ -59,18 +59,18 @@ describe.skipIf(skipChain)("Apps (contracts on anvil)", () => {
 		const self = guest.getAddress();
 
 		// Uninvited: the client refuses the join, and the app presents nothing.
-		expect((await apps.joinInfo(self)).status).toBe(PublisherStatus.UNREGISTERED);
-		await expect(apps.registerForApp()).rejects.toThrow(/has not been added/i);
+		expect((await apps.joinInfo(self)).status).toBe(PublisherStatus.NONE);
+		await expect(apps.joinApp()).rejects.toThrow(/has not been invited/i);
 		await guest.initRepo("early");
 		expect(await guest.getRegistry().accepted(appOf(guest), { publisher: self, repo: "early" })).toBe(ZERO_HEAD);
 
 		// Invited is not yet a member, and the guest finds the invitation unprompted.
-		await owner.getAppRegistry().addPublisher(self);
+		await owner.getAppRegistry().invitePublisher(self);
 		expect((await apps.joinInfo(self)).status).toBe(PublisherStatus.INVITED);
-		expect(await apps.isRegisteredForApp(self)).toBe(false);
+		expect(await apps.canPublish(self)).toBe(false);
 		expect(await guest.getInvitations()).toMatchObject([{ appId: guest.getAppId(), owner: owner.getAddress() }]);
 
-		await apps.registerForApp();
+		await apps.joinApp();
 		expect(await guest.getInvitations()).toEqual([]);
 		expect((await apps.joinInfo(self)).status).toBe(PublisherStatus.ACTIVE);
 
@@ -91,7 +91,7 @@ describe.skipIf(skipChain)("Apps (contracts on anvil)", () => {
 		await member.upload("r", { n: 1 }, "t", "x");
 		expect((await owner.readRepo(member.getAddress(), "r")).contents.records).toEqual([]);
 
-		await member.getAppRegistry().registerForApp();
+		await member.getAppRegistry().acceptUpdatedTerms();
 		await member.upload("r", { n: 2 }, "t", "y");
 		expect((await owner.readRepo(member.getAddress(), "r")).contents.records).toHaveLength(2);
 	}, 60_000);
@@ -100,18 +100,18 @@ describe.skipIf(skipChain)("Apps (contracts on anvil)", () => {
 		const f = await net.raw(`unclaimed-${String(Date.now())}`);
 		const apps = f.getAppRegistry();
 		expect(await apps.getAppOwner()).toBe(ZERO_ADDRESS);
-		expect(await apps.isRegisteredForApp(f.getAddress())).toBe(false);
-		await expect(apps.registerForApp()).rejects.toThrow(/no terms/i);
+		expect(await apps.canPublish(f.getAddress())).toBe(false);
+		await expect(apps.joinApp()).rejects.toThrow(/no terms/i);
 	}, 60_000);
 
 	// The other half of admin.e2e.test.ts: nobody but the admin takes anything down.
 	it("only the protocol admin can suspend an app or ban a wallet", async () => {
 		const owner = await net.client("not-admin");
 		const apps = owner.getAppRegistry();
-		await expect(apps.suspendApp()).rejects.toThrow(/Unauthorized/);
-		await expect(apps.setBanned(owner.getAddress(), true)).rejects.toThrow(/Unauthorized/);
+		await expect(apps.setAppSuspended(true)).rejects.toThrow(/Unauthorized/);
+		await expect(apps.setGlobalSuspension(owner.getAddress(), true)).rejects.toThrow(/Unauthorized/);
 		expect(await apps.isAppSuspended()).toBe(false);
-		expect(await apps.isBanned(owner.getAddress())).toBe(false);
+		expect(await apps.isGloballySuspended(owner.getAddress())).toBe(false);
 	}, 60_000);
 });
 
@@ -180,7 +180,7 @@ describe.skipIf(skipChain)("App as agent (contracts on anvil)", () => {
 		expect(mine.map((l) => [l.appId, l.agentUri, l.transactionHash])).toEqual([[appId(name), cardUrl, bindTx]]);
 		expect(await apps.getAppAgentLogs({ fromBlock })).toContainEqual(mine[0]);
 		// The card is not the terms: binding it drops nobody.
-		expect(await apps.isRegisteredForApp(owner.getAddress())).toBe(true);
+		expect(await apps.canPublish(owner.getAddress())).toBe(true);
 
 		await owner.initRepo(REPO);
 		await owner.upload(REPO, { title: "hello from the app" }, "entry");

@@ -4,7 +4,9 @@ import { intro, outro, text, spinner, confirm } from "@clack/prompts";
 import {
 	createPublicClient,
 	formatEther,
+	formatUnits,
 	http,
+	parseUnits,
 	type Address,
 	type Hex,
 } from "viem";
@@ -410,32 +412,40 @@ program
 
 // ─── app membership ───────────────────────────────────────────────────────────
 //
-// Publishing needs no app; being presented in one needs membership. A member's
-// updates carry their own acceptance into the app, and a non-member's land but
-// are presented nowhere. `fangorn app info` shows where you stand.
+// Publishing is gated by app membership. Commits go through the AppRegistry,
+// which refuses one from a wallet that has not joined the app, with the reason
+// (`NotInvited`, `NotJoined`, ...). `fangorn app info` shows where you stand.
 //
-// The protocol admin's network-wide ban lives in the AppRegistry: a banned
-// wallet cannot claim an app or be added to one, so it cannot come back through
-// an app.
-//
-// Membership is by invitation: the app's owner runs `fangorn app add <address>`,
+// Membership is by invitation: the app's owner runs `fangorn app invite <address>`,
 // and only then can that wallet `fangorn app join`. An app is also a storage
-// subscription — `app claim` pays the fee, `app renew` pays it again.
+// subscription (ERC-5643) — `app claim` pays the first period, `app renew` the
+// next; once it expires, the app takes no commits or joins until renewed.
+
+/** Fees are USDC, which has 6 decimals; the contracts count in its base units. */
+const USDC_DECIMALS = 6;
+
+function formatUsdc(amount: bigint): string {
+	return `${formatUnits(amount, USDC_DECIMALS)} USDC`;
+}
 
 /** The status word for a publisher in one app, and whether they can publish. */
-function membershipLine(info: AppJoinInfo): string {
-	// An admin takedown outranks everything below: it makes `registered` false for
-	// the app's own owner, and telling them to join would be a lie.
+function membershipLine(info: AppJoinInfo, expired: boolean): string {
+	// A takedown or a lapsed subscription outranks everything below: either makes
+	// `canPublish` false for the app's own owner, and telling them to join would be a lie.
 	if (info.appSuspended)
 		return "the whole app is suspended by the protocol admin — nobody can publish under it";
-	if (info.registered) return "joined";
+	if (expired)
+		return "the app's subscription has expired — nobody can publish or join until its owner runs `fangorn app renew`";
+	if (info.canPublish) return "joined";
 	if (needsReacceptance(info))
-		return "terms changed since you joined — run `fangorn app join` to re-accept (free)";
+		return "terms changed since you joined — run `fangorn app join` to accept them (free)";
 	if (info.status === PublisherStatus.SUSPENDED)
 		return "suspended from this app by its owner";
 	if (info.status === PublisherStatus.INVITED)
-		return "added by the owner — run `fangorn app join` to accept the terms";
-	return "not a publisher here — ask the app's owner to add you (`fangorn app add <address>`)";
+		return "invited by the owner — run `fangorn app join` to accept the terms";
+	if (info.status === PublisherStatus.ACTIVE)
+		return "joined, but suspended network-wide by the protocol admin";
+	return "not a publisher here — ask the app's owner to invite you (`fangorn app invite <address>`)";
 }
 
 const appCmd = program
@@ -452,17 +462,17 @@ appCmd
 			const apps = fangorn.getAppRegistry();
 			const s = spinner();
 
-			s.start("Reading registries...");
-			const [owner, info, suspendedGlobally] = await Promise.all([
-				apps.getAppOwner(),
+			s.start("Reading registry...");
+			const [{ owner, expiresAt }, info, suspendedGlobally] = await Promise.all([
+				apps.access(self),
 				apps.joinInfo(self),
-				apps.isBanned(self),
+				apps.isGloballySuspended(self),
 			]);
-			const expiresAt = owner === ZERO_ADDRESS ? 0n : await apps.expiresAt();
 			s.stop();
+			const expired = expiresAt <= BigInt(Math.floor(Date.now() / 1000));
 
 			console.log(`App:        ${currentAppName()}`);
-			console.log(`App id:     ${currentAppId()}`);
+			console.log(`App id:     ${apps.getAppId()}`);
 
 			if (owner === ZERO_ADDRESS) {
 				console.log(`Owner:      (unclaimed — \`fangorn app claim\` takes it)`);
@@ -472,9 +482,11 @@ appCmd
 				);
 				console.log(`Terms:      ${info.termsHash}`);
 				if (info.termsUri) console.log(`Terms uri:  ${info.termsUri}`);
-				console.log(`Join fee:   ${info.fee.toString()} USDC base units`);
+				console.log(`Join fee:   ${formatUsdc(info.joinFee)}`);
 				console.log(
-					`Subscribed: ${expiresAt === 0n ? "cancelled" : `until ${new Date(Number(expiresAt) * 1000).toISOString()}`}`,
+					expiresAt === 0n
+						? `Expires:    cancelled — \`fangorn app renew\` starts a new period`
+						: `Expires:    ${new Date(Number(expiresAt) * 1000).toISOString()}${expired ? "  (EXPIRED)" : ""}`,
 				);
 			}
 
@@ -484,7 +496,7 @@ appCmd
 			console.log(`\nWallet:     ${self}`);
 			if (suspendedGlobally)
 				console.log(`Network:      SUSPENDED by the protocol admin — cannot claim, join or publish`);
-			console.log(`This app:     ${owner === ZERO_ADDRESS ? "n/a (unclaimed)" : membershipLine(info)}`);
+			console.log(`This app:     ${owner === ZERO_ADDRESS ? "n/a (unclaimed)" : membershipLine(info, expired)}`);
 			process.exit(0);
 		} catch (err) {
 			console.error("Failed:", (err as Error).message);
@@ -500,8 +512,8 @@ appCmd
 		"32-byte hash of your terms document (default: a placeholder you should replace)",
 	)
 	.option("--terms-uri <uri>", "Where the terms document lives", "")
-	.option("--fee <usdc>", "What joining this app costs, in USDC base units", "0")
-	.action(async (opts: { termsHash?: string; termsUri: string; fee: string }) => {
+	.option("--join-fee <usdc>", "What joining this app costs, in USDC (e.g. 1.50)", "0")
+	.action(async (opts: { termsHash?: string; termsUri: string; joinFee: string }) => {
 		try {
 			const self = getAccount().address;
 			const fangorn = getFangorn();
@@ -511,7 +523,7 @@ appCmd
 			s.start("Checking app ownership...");
 			const [owner, suspendedGlobally] = await Promise.all([
 				registry.getAppOwner(),
-				registry.isBanned(self),
+				registry.isGloballySuspended(self),
 			]);
 			s.stop();
 
@@ -520,8 +532,8 @@ appCmd
 				const mine = owner.toLowerCase() === self.toLowerCase();
 				console.log(
 					mine
-						? `Already claimed by you: ${currentAppId()}`
-						: `App ${currentAppId()} is already owned by ${owner}. Pick another name with \`fangorn set-app\`, or ask its owner to add you.`,
+						? `Already claimed by you: ${registry.getAppId()}`
+						: `App ${registry.getAppId()} is already owned by ${owner}. Pick another name with \`fangorn set-app\`, or ask its owner to invite you.`,
 				);
 				process.exit(mine ? 0 : 1);
 			}
@@ -539,12 +551,12 @@ appCmd
 			// Claiming an app is subscribing: the fee is pulled in USDC, and the
 			// client approves it first.
 			const subscriptionFee = await registry.subscriptionFee();
-			console.log(`Subscription fee: ${subscriptionFee.toString()} USDC base units`);
+			console.log(`Subscription fee: ${formatUsdc(subscriptionFee)}`);
 			s.start("Claiming app...");
 			const txHash = await registry.registerApp(
 				termsHash,
 				opts.termsUri,
-				BigInt(opts.fee),
+				parseUnits(opts.joinFee, USDC_DECIMALS),
 			);
 			s.stop();
 
@@ -559,7 +571,7 @@ appCmd
 					`\nanyone who joined against the placeholder must then re-accept.`,
 				);
 			}
-			console.log(`\nClaiming makes you your own first publisher. Add others with \`fangorn app add <address>\`.`);
+			console.log(`\nClaiming makes you your own first publisher. Invite others with \`fangorn app invite <address>\`.`);
 			process.exit(0);
 		} catch (err) {
 			console.error("Failed:", (err as Error).message);
@@ -580,8 +592,8 @@ appCmd
 			const info = await registry.joinInfo(self);
 			s.stop();
 
-			if (info.registered) {
-				console.log(`Already joined ${currentAppId()} as ${self}`);
+			if (info.canPublish) {
+				console.log(`Already joined ${registry.getAppId()} as ${self}`);
 				process.exit(0);
 			}
 			// A zero terms hash means the app was never claimed (or its owner never
@@ -600,10 +612,10 @@ appCmd
 				);
 				process.exit(1);
 			}
-			if (info.status === PublisherStatus.UNREGISTERED) {
+			if (info.status === PublisherStatus.NONE) {
 				console.error(
-					`${self} has not been added to this app — joining will revert.` +
-					`\nAsk its owner to run \`fangorn app add ${self}\`.`,
+					`${self} has not been invited to this app — joining will revert.` +
+					`\nAsk its owner to run \`fangorn app invite ${self}\`.`,
 				);
 				process.exit(1);
 			}
@@ -618,10 +630,12 @@ appCmd
 			// pending join and land as agreement to something else.
 			console.log(`Terms:     ${info.termsHash}`);
 			if (info.termsUri) console.log(`Terms uri: ${info.termsUri}`);
-			console.log(`Join fee:  ${info.fee.toString()} USDC base units`);
+			// A member on old terms accepts the new ones for free; only a first join pays.
+			const reaccept = needsReacceptance(info);
+			if (!reaccept) console.log(`Join fee:  ${formatUsdc(info.joinFee)}`);
 
 			const ok = await confirm({
-				message: needsReacceptance(info)
+				message: reaccept
 					? "The terms changed since you joined. Accept the new ones?"
 					: "Accept these terms and join?",
 			});
@@ -629,7 +643,9 @@ appCmd
 			if (!ok) process.exit(0);
 
 			s.start("Joining app...");
-			const txHash = await registry.registerForApp();
+			const txHash = reaccept
+				? await registry.acceptUpdatedTerms()
+				: await registry.joinApp();
 			s.stop();
 
 			console.log(`Joined: ${currentAppId()}`);
@@ -652,7 +668,7 @@ appCmd
 			// Moving the terms drops every publisher back to "must accept again".
 			const ok = await confirm({
 				message:
-					"New terms unregister every publisher until they re-accept (free). Continue?",
+					"New terms stop every member from publishing until they accept them (free, `fangorn app join`). Continue?",
 			});
 			handleCancel(ok);
 			if (!ok) process.exit(0);
@@ -672,15 +688,16 @@ appCmd
 
 appCmd
 	.command("fee")
-	.description("Set what joining your app costs, in USDC base units (owner only)")
-	.argument("<amount>", "Join fee in USDC base units")
-	.action(async (wei: string) => {
+	.description("Set what joining your app costs, in USDC (owner only)")
+	.argument("<usdc>", "Join fee in USDC, e.g. 1.50")
+	.action(async (amount: string) => {
 		try {
+			const joinFee = parseUnits(amount, USDC_DECIMALS);
 			const s = spinner();
 			s.start("Setting join fee...");
-			const txHash = await getFangorn().getAppRegistry().setAppFee(BigInt(wei));
+			const txHash = await getFangorn().getAppRegistry().setJoinFee(joinFee);
 			s.stop();
-			console.log(`Join fee: ${wei} USDC base units`);
+			console.log(`Join fee: ${formatUsdc(joinFee)}`);
 			console.log(`Tx:       ${txHash}`);
 			process.exit(0);
 		} catch (err) {
@@ -814,7 +831,7 @@ appCmd
 
 appCmd
 	.command("invitations")
-	.description("List the apps that have added this wallet and are waiting for it to join")
+	.description("List the apps that have invited this wallet and are waiting for it to join")
 	.action(async () => {
 		try {
 			const s = spinner();
@@ -831,12 +848,12 @@ appCmd
 				console.log(`Owner:      ${invitation.owner}`);
 				console.log(`Terms:      ${invitation.termsHash}`);
 				if (invitation.termsUri) console.log(`Terms uri:  ${invitation.termsUri}`);
-				console.log(`Join fee:   ${invitation.fee.toString()} USDC base units`);
+				console.log(`Join fee:   ${formatUsdc(invitation.joinFee)}`);
 				if (invitation.agentUri) console.log(`Agent card: ${invitation.agentUri}`);
 				console.log("");
 			}
-			// Any app owner can add any registered wallet, so this list is not vetted.
-			console.log("Anyone who owns an app can add you. Check the owner before you join.");
+			// Any app owner can invite any wallet, so this list is not vetted.
+			console.log("Anyone who owns an app can invite you. Check the owner before you join.");
 			console.log("To join one: `fangorn set-app <app id>`, then `fangorn app join`.");
 			process.exit(0);
 		} catch (err) {
@@ -846,32 +863,30 @@ appCmd
 	});
 
 appCmd
-	.command("add")
-	.description("Add a publisher to your app (owner only); they then run `app join`")
+	.command("invite")
+	.description("Invite a publisher to your app (owner only); they then run `app join`")
 	.argument("<publisher>", "Publisher address")
 	.action(async (publisher: string) => {
 		try {
-			const fangorn = getFangorn();
+			const registry = getFangorn().getAppRegistry();
 			const s = spinner();
-			// The contract refuses to add a wallet the protocol admin has banned.
+			// The contract refuses to invite a wallet the protocol admin has banned.
 			s.start("Checking publisher standing...");
-			const suspended = await fangorn.getAppRegistry().isBanned(publisher as Address);
+			const suspended = await registry.isGloballySuspended(publisher as Address);
 			s.stop();
 			if (suspended) {
 				console.error(
-					`${publisher} is suspended by the protocol admin — adding them will revert.`,
+					`${publisher} is suspended by the protocol admin — inviting them will revert.`,
 				);
 				process.exit(1);
 			}
 
-			s.start("Adding publisher...");
-			const txHash = await fangorn
-				.getAppRegistry()
-				.addPublisher(publisher as Address);
+			s.start("Inviting publisher...");
+			const txHash = await registry.invitePublisher(publisher as Address);
 			s.stop();
 			// An invitation: they still accept the terms (and pay the join fee).
-			console.log(`Added: ${publisher}`);
-			console.log(`Tx:    ${txHash}`);
+			console.log(`Invited: ${publisher}`);
+			console.log(`Tx:      ${txHash}`);
 			console.log(`\nThey can publish once they run \`fangorn app join\`.`);
 			process.exit(0);
 		} catch (err) {
@@ -881,16 +896,18 @@ appCmd
 	});
 
 appCmd
-	.command("renew")
-	.description("Renew your app's storage subscription (owner only)")
-	.action(async () => {
+	.command("revoke")
+	.description("Take back an invitation the publisher has not accepted yet (owner only)")
+	.argument("<publisher>", "Publisher address")
+	.action(async (publisher: string) => {
 		try {
-			const registry = getFangorn().getAppRegistry();
 			const s = spinner();
-			s.start("Renewing subscription...");
-			const txHash = await registry.renewApp();
+			s.start("Revoking invitation...");
+			const txHash = await getFangorn()
+				.getAppRegistry()
+				.revokeInvitation(publisher as Address);
 			s.stop();
-			console.log(`Renewed: ${currentAppId()}`);
+			console.log(`Revoked: ${publisher}`);
 			console.log(`Tx:      ${txHash}`);
 			process.exit(0);
 		} catch (err) {
@@ -900,8 +917,79 @@ appCmd
 	});
 
 appCmd
+	.command("renew")
+	.description("Pay for one more period of your app's subscription (owner only)")
+	.action(async () => {
+		try {
+			const registry = getFangorn().getAppRegistry();
+			const s = spinner();
+			s.start("Renewing subscription...");
+			const txHash = await registry.renewSubscription();
+			const expiresAt = await registry.expiresAt();
+			s.stop();
+			console.log(`Renewed: ${registry.getAppId()}`);
+			console.log(`Expires: ${new Date(Number(expiresAt) * 1000).toISOString()}`);
+			console.log(`Tx:      ${txHash}`);
+			process.exit(0);
+		} catch (err) {
+			console.error("Failed:", (err as Error).message);
+			process.exit(1);
+		}
+	});
+
+appCmd
+	.command("cancel")
+	.description("End your app's subscription now, without refund (owner only)")
+	.action(async () => {
+		try {
+			const registry = getFangorn().getAppRegistry();
+			const ok = await confirm({
+				message: `Cancel ${registry.getAppId()}'s subscription? Nothing is refunded, and the app takes no commits or joins until renewed.`,
+			});
+			handleCancel(ok);
+			if (!ok) process.exit(0);
+
+			const s = spinner();
+			s.start("Cancelling subscription...");
+			const txHash = await registry.cancelSubscription();
+			s.stop();
+			console.log(`Cancelled: ${registry.getAppId()}`);
+			console.log(`Tx:        ${txHash}`);
+			process.exit(0);
+		} catch (err) {
+			console.error("Failed:", (err as Error).message);
+			process.exit(1);
+		}
+	});
+
+appCmd
+	.command("withdraw-fees")
+	.description("Withdraw the join fees paid to all your apps (owner only)")
+	.argument("[to]", "Where to send them; defaults to this wallet")
+	.action(async (to: string | undefined) => {
+		try {
+			const registry = getFangorn().getAppRegistry();
+			const owed = await registry.joinFeesOwed();
+			if (owed === 0n) {
+				console.log("No join fees to withdraw.");
+				process.exit(0);
+			}
+			const s = spinner();
+			s.start(`Withdrawing ${formatUsdc(owed)}...`);
+			const txHash = await registry.withdrawJoinFees(to as Address | undefined);
+			s.stop();
+			console.log(`Withdrawn: ${formatUsdc(owed)}`);
+			console.log(`Tx:        ${txHash}`);
+			process.exit(0);
+		} catch (err) {
+			console.error("Failed:", (err as Error).message);
+			process.exit(1);
+		}
+	});
+
+appCmd
 	.command("suspend")
-	.description("Eject a publisher from your app (owner only)")
+	.description("Suspend a member from your app (owner only)")
 	.argument("<publisher>", "Publisher address")
 	.action(async (publisher: string) => {
 		try {
@@ -909,7 +997,7 @@ appCmd
 			s.start("Suspending publisher...");
 			const txHash = await getFangorn()
 				.getAppRegistry()
-				.suspendForApp(publisher as Address);
+				.setPublisherSuspended(publisher as Address, true);
 			s.stop();
 			// Per-app only: their global standing and other apps are untouched.
 			console.log(`Suspended: ${publisher}`);
@@ -931,7 +1019,7 @@ appCmd
 			s.start("Reinstating publisher...");
 			const txHash = await getFangorn()
 				.getAppRegistry()
-				.reinstateForApp(publisher as Address);
+				.setPublisherSuspended(publisher as Address, false);
 			s.stop();
 			console.log(`Reinstated: ${publisher}`);
 			console.log(`Tx:         ${txHash}`);
@@ -975,14 +1063,14 @@ appAdminCmd
 			const registry = await requireAdmin();
 
 			const ok = await confirm({
-				message: `Suspend the whole app ${currentAppId()}? Every publisher, including its owner, stops being registered.`,
+				message: `Suspend the whole app ${registry.getAppId()}? Every publisher, including its owner, stops being able to publish.`,
 			});
 			handleCancel(ok);
 			if (!ok) process.exit(0);
 
 			const s = spinner();
 			s.start("Suspending app...");
-			const txHash = await registry.suspendApp();
+			const txHash = await registry.setAppSuspended(true);
 			s.stop();
 			console.log(`Suspended: ${currentAppId()}`);
 			console.log(`Tx:        ${txHash}`);
@@ -1004,7 +1092,7 @@ appAdminCmd
 			const registry = await requireAdmin();
 			const s = spinner();
 			s.start("Reinstating app...");
-			const txHash = await registry.reinstateApp();
+			const txHash = await registry.setAppSuspended(false);
 			s.stop();
 			console.log(`Reinstated: ${currentAppId()}`);
 			console.log(`Tx:         ${txHash}`);
@@ -1039,23 +1127,6 @@ appAdminCmd
 			console.error("Failed:", (err as Error).message);
 			process.exit(1);
 		}
-	});
-
-// Kept so existing scripts and docs keep working; `app claim` is the real one.
-program
-	.command("register-app", { hidden: true })
-	.description("Deprecated alias for `fangorn app claim`")
-	.action(() => {
-		console.error("`register-app` is now `fangorn app claim`.");
-		process.exit(1);
-	});
-
-program
-	.command("register", { hidden: true })
-	.description("Removed: there is no publisher registration. Use `fangorn app join`")
-	.action(() => {
-		console.error("There is no publisher registration any more. Join an app with `fangorn app join`.");
-		process.exit(1);
 	});
 
 // ─── wallet ───────────────────────────────────────────────────────────────────
