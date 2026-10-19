@@ -448,7 +448,7 @@ appCmd
 			const expired = expiresAt <= BigInt(Math.floor(Date.now() / 1000));
 
 			console.log(`App:        ${currentAppName()}`);
-			console.log(`App id:     ${apps.getAppId()}`);
+			console.log(`App id:     ${apps.getAppId() ?? ""}`);
 
 			if (owner === ZERO_ADDRESS) {
 				console.log(`Owner:      (unclaimed — \`fangorn app claim\` takes it)`);
@@ -501,8 +501,8 @@ appCmd
 				const mine = owner.toLowerCase() === self.toLowerCase();
 				console.log(
 					mine
-						? `Already claimed by you: ${registry.getAppId()}`
-						: `App ${registry.getAppId()} is already owned by ${owner}. Pick another name with \`fangorn set-app\`, or ask its owner to accept you.`,
+						? `Already claimed by you: ${registry.getAppId() ?? ""}`
+						: `App ${registry.getAppId() ?? ""} is already owned by ${owner}. Pick another name with \`fangorn set-app\`, or ask its owner to accept you.`,
 				);
 				process.exit(mine ? 0 : 1);
 			}
@@ -702,7 +702,7 @@ appCmd
 			const txHash = await registry.renewSubscription();
 			const expiresAt = await registry.expiresAt();
 			s.stop();
-			console.log(`Renewed: ${registry.getAppId()}`);
+			console.log(`Renewed: ${registry.getAppId() ?? ""}`);
 			console.log(`Expires: ${new Date(Number(expiresAt) * 1000).toISOString()}`);
 			console.log(`Tx:      ${txHash}`);
 			process.exit(0);
@@ -719,7 +719,7 @@ appCmd
 		try {
 			const registry = getFangorn().getAppRegistry();
 			const ok = await confirm({
-				message: `Cancel ${registry.getAppId()}'s subscription? Nothing is refunded, and the app takes no commits or joins until renewed.`,
+				message: `Cancel ${registry.getAppId() ?? ""}'s subscription? Nothing is refunded, and the app takes no commits or joins until renewed.`,
 			});
 			handleCancel(ok);
 			if (!ok) process.exit(0);
@@ -728,7 +728,7 @@ appCmd
 			s.start("Cancelling subscription...");
 			const txHash = await registry.cancelSubscription();
 			s.stop();
-			console.log(`Cancelled: ${registry.getAppId()}`);
+			console.log(`Cancelled: ${registry.getAppId() ?? ""}`);
 			console.log(`Tx:        ${txHash}`);
 			process.exit(0);
 		} catch (err) {
@@ -838,7 +838,7 @@ appAdminCmd
 			const registry = await requireAdmin();
 
 			const ok = await confirm({
-				message: `Suspend the whole app ${registry.getAppId()}? Every publisher, including its owner, stops being able to publish.`,
+				message: `Suspend the whole app ${registry.getAppId() ?? ""}? Every publisher, including its owner, stops being able to publish.`,
 			});
 			handleCancel(ok);
 			if (!ok) process.exit(0);
