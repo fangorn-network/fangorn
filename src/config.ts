@@ -8,9 +8,6 @@ export function appId(name: string): Hex {
 	return keccak256(toHex(name));
 }
 
-/** The app the protocol's deployer claims (Deploy.s.sol). Never a client default. */
-export const DEFAULT_APP = "fangorn";
-
 /**
  * Blank input means "not set", never an app called "". Returns the trimmed value,
  * or undefined when it is missing or only whitespace, so it can sit on the left of

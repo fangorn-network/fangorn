@@ -23,7 +23,7 @@ import "dotenv/config";
 
 import { Fangorn } from "../fangorn.js";
 import { handleCancel } from "./index.js";
-import { AppConfig, DEFAULT_APP, FangornConfig, nonBlank, toAppId } from "../config.js";
+import { AppConfig, FangornConfig, nonBlank, toAppId } from "../config.js";
 import { StorageConfig } from "../types/index.js";
 import { PublisherStatus } from "../contracts/index.js";
 
@@ -187,7 +187,7 @@ function appFlag(): string | undefined {
  */
 function currentAppName(): string {
 	const name = appFlag() ?? loadConfig().appId;
-	if (!name) throw new Error(`no app chosen: run \`fangorn set-app <name>\` or pass --app (the protocol's own is "${DEFAULT_APP}")`);
+	if (!name) throw new Error("no app chosen: run `fangorn set-app <name>` or pass --app");
 	return name;
 }
 
