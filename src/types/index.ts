@@ -21,13 +21,13 @@ export type StorageConfig =
     // Bring your own Pinata JWT + gateway.
     | { pinata: { jwt: string; gateway: string } }
     // No JWT: prove wallet ownership to the presigned-URL worker and upload via
-    // the short-lived URLs it issues; read from a public IPFS gateway. The worker
-    // bills `sponsor` (an app name or id that admits this wallet), defaulting to
-    // the client's app; with neither, only its free tier applies. A publisher
-    // that pays for its own storage claims a one-member app and sponsors itself.
+    // the short-lived URLs it issues; read from a public IPFS gateway. Apps
+    // provide storage: uploads are billed to the client's app, which must admit
+    // this wallet, and a client with no app cannot upload this way. A publisher
+    // that pays for its own storage claims a one-member app.
     // `workerUrl` defaults to the hosted pinata-url-provider, `gateway` to
     // config.ipfsGateway.
-    | { signedUrl: { workerUrl?: string; gateway?: string; sponsor?: string } }
+    | { signedUrl: { workerUrl?: string; gateway?: string } }
     // Any other backend, e.g. an in-memory one for tests.
     | { backend: MetadataStorage };
 

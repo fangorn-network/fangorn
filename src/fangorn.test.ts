@@ -3,8 +3,8 @@ import type { Hex } from "viem";
 import { Fangorn } from "./fangorn.js";
 import { appId as toAppId } from "./config.js";
 
-// Signed-url uploads name the app that sponsors them: the configured sponsor,
-// else the client's app, else none (the worker's free tier).
+// Apps provide storage: signed-url uploads are billed to the client's app, and a
+// client with no app cannot upload that way at all.
 
 const WORKER = "https://worker.example/";
 const KEY = ("0x" + "11".repeat(32)) as Hex;
@@ -36,13 +36,13 @@ async function uploadAndCaptureAppIds(fangorn: Fangorn): Promise<(Hex | undefine
 }
 
 describe("Fangorn app scope → signed-url uploads", () => {
-	const create = (appId?: string, sponsor?: string) =>
-		Fangorn.create({ privateKey: KEY, appId, storage: { signedUrl: { workerUrl: WORKER, sponsor } } });
+	const create = (appId?: string) =>
+		Fangorn.create({ privateKey: KEY, appId, storage: { signedUrl: { workerUrl: WORKER } } });
 
-	it("names no app when there is none: no default app", async () => {
+	it("refuses to upload with no app: no default app, and no app-less storage", async () => {
 		const fangorn = create();
 		expect(fangorn.getAppId()).toBeUndefined();
-		expect(await uploadAndCaptureAppIds(fangorn)).toEqual([undefined, undefined]);
+		await expect(uploadAndCaptureAppIds(fangorn)).rejects.toThrow(/billed to an app/);
 	});
 
 	it("treats a blank app id as no app, not as an app called \"\"", async () => {
@@ -50,7 +50,7 @@ describe("Fangorn app scope → signed-url uploads", () => {
 		// valid-looking id for an app nobody owns, so it must not reach the worker.
 		const fangorn = create("  ");
 		expect(fangorn.getAppId()).toBeUndefined();
-		expect(await uploadAndCaptureAppIds(fangorn)).toEqual([undefined, undefined]);
+		await expect(uploadAndCaptureAppIds(fangorn)).rejects.toThrow(/billed to an app/);
 	});
 
 	it("sends the client's app once one is named, including via setAppId", async () => {
@@ -59,10 +59,5 @@ describe("Fangorn app scope → signed-url uploads", () => {
 
 		fangorn.setAppId("other-app");
 		expect(await uploadAndCaptureAppIds(fangorn)).toEqual([toAppId("other-app"), toAppId("other-app")]);
-	});
-
-	it("bills the sponsor over the client's app", async () => {
-		const fangorn = create("reader-app", "my-storage");
-		expect(await uploadAndCaptureAppIds(fangorn)).toEqual([toAppId("my-storage"), toAppId("my-storage")]);
 	});
 });

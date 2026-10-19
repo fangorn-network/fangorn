@@ -112,15 +112,13 @@ function resolveStorage(
 	if ("pinata" in storage)
 		return new PinataBackend(storage.pinata.jwt, storage.pinata.gateway);
 	if ("signedUrl" in storage) {
-		// Storage is the publisher's to arrange: its own Pinata, or the hosted
-		// worker billing a sponsor app that admits it. A publisher that pays for
-		// itself owns a one-member app and names it here.
-		const sponsor = nonBlank(storage.signedUrl.sponsor);
+		// Apps provide storage: the hosted worker bills the client's app. Without
+		// one, a publisher brings its own Pinata (or any backend) and pins itself.
 		return new SignedUrlBackend(
 			storage.signedUrl.workerUrl,
 			walletSigner(walletClient),
 			storage.signedUrl.gateway ?? config.ipfsGateway,
-			() => (sponsor ? toAppId(sponsor) : getAppId()),
+			getAppId,
 		);
 	}
 	throw new Error(

@@ -50,12 +50,12 @@ describe.skipIf(skipChain)("acceptance follows membership (contracts on anvil)",
 		expect(after.contents.records.map((r) => r.id).sort()).toEqual(["a", "b", "c"]);
 	}, 60_000);
 
-	// The storage gate (pinata-url-provider) bills an upload to the sponsor app
+	// Apps provide storage: the gate (pinata-url-provider) bills an upload to the app
 	// exactly when `access(app, publisher).canPublish` holds.
-	it("an app sponsors its members' storage, and nobody else's", async () => {
-		const owner = await net.client("sponsor");
-		const member = await net.client("sponsor");
-		const stranger = await net.raw("sponsor");
+	it("an app provides its members' storage, and nobody else's", async () => {
+		const owner = await net.client("storage");
+		const member = await net.client("storage");
+		const stranger = await net.raw("storage");
 		const apps = owner.getAppRegistry();
 
 		expect((await apps.access(owner.getAddress())).canPublish).toBe(true);

@@ -95,10 +95,11 @@ added to one, no app accepts its heads, and the SDK reads it as excluded everywh
 be transferred). `fangorn app claim` pays one period of the subscription fee in
 USDC (the client approves exactly the fee for you), and `fangorn app renew` pays
 the next once less than a period is left. An expired app accepts no heads and no
-joins until it is renewed. Hosted uploads are billed to a **sponsor app** that admits you
-(`storage: { signedUrl: { sponsor } }`, defaulting to the client's app); with
-none, the worker's free tier applies. A publisher that pays for its own storage
-claims a one-member app and sponsors itself.
+joins until it is renewed. **Apps provide storage**: you upload relative to
+an app, and hosted uploads (`storage: { signedUrl: {} }`) are billed to the
+client's app, which must admit you. There is no app-less hosted upload — with no
+app, bring your own Pinata (`{ pinata }`) and pin your own data. A publisher that
+pays for its own storage claims a one-member app.
 
 **Membership is by invitation.** The owner runs `fangorn app invite <address>`;
 only then can that wallet `fangorn app join`, which accepts the terms and pays
