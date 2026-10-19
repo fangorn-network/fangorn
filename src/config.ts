@@ -1,5 +1,5 @@
 import { Chain, Hex, keccak256, toHex } from "viem";
-import { arbitrumSepolia } from "viem/chains";
+import { arbitrumSepolia, baseSepolia } from "viem/chains";
 
 /**
  * Derive an app id from a human-readable name (keccak256(hex(name)).
@@ -26,26 +26,6 @@ export function toAppId(nameOrId: string): Hex {
 	const name = nameOrId.trim();
 	if (!name) throw new Error("App name or id must not be blank.");
 	return /^0x[0-9a-fA-F]{64}$/.test(name) ? (name as Hex) : appId(name);
-}
-
-/**
- * The networks supported by Fangorn currently
- */
-export const SupportedNetworks = {
-	ArbitrumSepolia: {
-		name: "arbitrumSepolia",
-		chain: arbitrumSepolia,
-	}
-};
-
-/**
- * Get the network based on the string name
- * @param name "arbitrumSepolia" is the only one supported right now 
- * @returns The corresponding network if it is supported, otherwise an error
- */
-export default function getNetwork(name: string) {
-	if (name === SupportedNetworks.ArbitrumSepolia.name) return arbitrumSepolia;
-	throw new Error(`Chain ${name} is not supported`);
 }
 
 export interface AppConfig {
@@ -84,3 +64,35 @@ export const FangornConfig = {
 	caip2: 421614,
 	ipfsGateway: 'https://ipfs.io'
 } satisfies AppConfig
+
+export const BaseSepoliaConfig = {
+	dataRegistryContractAddress:
+		"0xE9183f768865dd2Cde5f1B71F8446F0Cd798ebe0",
+	appRegistryContractAddress:
+		"0x0D3e98399df41b558048Cdd7D71723c37A3A9D6F",
+	membershipRegistryContractAddress:
+		"0x0e96C012b5c53622EcDAA82F342E31C2623A04f5",
+	appRegistryFromBlock: 48340483n,
+	chain: baseSepolia,
+	rpcUrl: "https://sepolia.base.org",
+	caip2: 84532,
+	ipfsGateway: 'https://ipfs.io'
+} satisfies AppConfig
+
+/**
+ * The networks supported by Fangorn, by the name `CHAIN_NAME` takes.
+ */
+export const SupportedNetworks: Record<string, AppConfig> = {
+	arbitrumSepolia: FangornConfig,
+	baseSepolia: BaseSepoliaConfig,
+};
+
+/**
+ * Get a network's deployment by name ("arbitrumSepolia" or "baseSepolia").
+ * @returns The corresponding config if it is supported, otherwise an error
+ */
+export default function getNetwork(name: string): AppConfig {
+	const config = SupportedNetworks[name] as AppConfig | undefined;
+	if (!config) throw new Error(`Chain ${name} is not supported. Use one of: ${Object.keys(SupportedNetworks).join(", ")}`);
+	return config;
+}

@@ -56,7 +56,7 @@ You can also configure via environment variables (these take precedence over the
 ETH_PRIVATE_KEY=0x...
 PINATA_JWT=...
 PINATA_GATEWAY=https://your-gateway.mypinata.cloud
-CHAIN_NAME=arbitrumSepolia
+CHAIN_NAME=arbitrumSepolia   # or baseSepolia
 ACCESS_WORKER_URL=https://access-worker.your-subdomain.workers.dev   # optional (sealed fields)
 SIGNED_URL_WORKER_URL=https://pinata-url-provider.your-subdomain.workers.dev   # optional
 ```
@@ -598,7 +598,18 @@ gadget_ behind the same handle shape, so committed data doesn't change form.
 | AppRegistry          | `0x55e6209ea1833ceD900989a3b3b22466934E04A5` | Apps: owner, accepted publishers, bans, storage subscription (ERC-5643, USDC); what each app excludes |
 | MembershipRegistry   | `0xDF17030Cd65435C86eb043F31DDACa99E819E347` | Time-limited, unlinkable access to an app's paid records (USDC + Semaphore) |
 
-`FangornConfig` in `src/config.ts` is the authoritative list and what the SDK
+### Base Sepolia
+
+| Contract             | Address                                      |
+| -------------------- | -------------------------------------------- |
+| DataRegistry         | `0xE9183f768865dd2Cde5f1B71F8446F0Cd798ebe0` |
+| AppRegistry          | `0x0D3e98399df41b558048Cdd7D71723c37A3A9D6F` |
+| MembershipRegistry   | `0x0e96C012b5c53622EcDAA82F342E31C2623A04f5` |
+
+Use it from the SDK with `Fangorn.create({ config: BaseSepoliaConfig, ... })`, or
+from the CLI with `CHAIN_NAME=baseSepolia` (or pick it in `fangorn init`).
+
+`FangornConfig` (Arbitrum Sepolia) and `BaseSepoliaConfig` in `src/config.ts` are the authoritative list and what the SDK
 uses by default — prefer it over any address copied out of a document,
 including this table. The sources are `fangorn-network/contracts`
 (`solidity/script/Deployments.sol`); regenerate the ABIs with `pnpm abis`.

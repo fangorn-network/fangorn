@@ -22,8 +22,8 @@ import { homedir } from "os";
 import "dotenv/config";
 
 import { Fangorn } from "../fangorn.js";
-import { handleCancel } from "./index.js";
-import { AppConfig, FangornConfig, nonBlank, toAppId } from "../config.js";
+import { handleCancel, selectChain } from "./index.js";
+import getNetwork, { AppConfig, nonBlank, toAppId } from "../config.js";
 import { StorageConfig } from "../types/index.js";
 import { PublisherStatus } from "../contracts/index.js";
 
@@ -97,12 +97,15 @@ function loadConfig(): Config {
 	// Docker/CI) falls through to the stored app instead of overriding it with an
 	// app called "".
 	const envAppId = nonBlank(process.env.FANGORN_APP_ID);
+	const envChain = nonBlank(process.env.CHAIN_NAME);
 
 	if (existsSync(CONFIG_PATH)) {
 		const stored = readStoredConfig();
+		// ponytail: configs written before Base support stored the label "Arbitrum Sepolia"
+		const storedChain = stored.chainName === "Arbitrum Sepolia" ? "arbitrumSepolia" : stored.chainName;
 		_config = {
 			privateKey: stored.privateKey,
-			cfg: FangornConfig,
+			cfg: getNetwork(envChain ?? storedChain),
 			appId: envAppId ?? nonBlank(stored.appId),
 			pinataJwt: stored.pinataJwt,
 			pinataGateway: stored.pinataGateway,
@@ -124,7 +127,7 @@ function loadConfig(): Config {
 
 		_config = {
 			privateKey: privateKey as Hex,
-			cfg: FangornConfig,
+			cfg: getNetwork(envChain ?? "arbitrumSepolia"),
 			appId: envAppId,
 			pinataJwt: pinataJwt ?? "",
 			pinataGateway: pinataGateway ?? "",
@@ -289,6 +292,8 @@ program
 	.action(async () => {
 		intro("Fangorn Setup");
 
+		const chainName = await selectChain();
+
 		const privateKey = await text({
 			message: "Wallet private key (stored locally, never transmitted):",
 			placeholder: "0x...",
@@ -332,7 +337,7 @@ program
 
 		writeStoredConfig({
 			privateKey: privateKey as Hex,
-			chainName: "Arbitrum Sepolia",
+			chainName,
 			pinataJwt: pinataJwt as string,
 			pinataGateway: pinataGateway as string,
 			accessWorkerUrl: accessWorkerUrl as string,
@@ -610,9 +615,12 @@ appCmd
 					const sdk = new SDK({
 						chainId: cfg.cfg.caip2,
 						rpcUrl: cfg.cfg.rpcUrl,
-						subgraphUrl: ERC8004_SUBGRAPH,
-						registryOverrides: { [cfg.cfg.caip2]: ERC8004_ARBITRUM_SEPOLIA },
-						subgraphOverrides: { [cfg.cfg.caip2]: ERC8004_SUBGRAPH },
+						// agent0-sdk ships Base Sepolia's registries itself.
+						...(cfg.cfg.caip2 === 421614 && {
+							subgraphUrl: ERC8004_SUBGRAPH,
+							registryOverrides: { [cfg.cfg.caip2]: ERC8004_ARBITRUM_SEPOLIA },
+							subgraphOverrides: { [cfg.cfg.caip2]: ERC8004_SUBGRAPH },
+						}),
 						ipfs: "pinata",
 						pinataJwt: cfg.pinataJwt,
 						privateKey: cfg.privateKey,
