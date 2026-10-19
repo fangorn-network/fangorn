@@ -22,7 +22,7 @@ function cardWith(params: Record<string, unknown>) {
                         appRegistry: FangornConfig.appRegistryContractAddress,
                         appId: APP,
                         fromBlock: "123",
-                        namespaces: ["catalog"],
+                        repos: ["catalog"],
                         ...params,
                     },
                 },
@@ -52,16 +52,21 @@ describe("discoverApp", () => {
 
         const found = await f.discoverApp(CARD_URL);
 
-        expect(found).toEqual({ card, appId: APP, fromBlock: 123n, namespaces: ["catalog"] });
+        expect(found).toEqual({ card, appId: APP, fromBlock: 123n, repos: ["catalog"] });
         // The binding is read for the card's app, not the client's own...
         expect(agentUri).toHaveBeenCalledWith(APP);
         // ...and the client's app is left alone.
         expect(f.getAppId()).toBe(appBefore);
     });
 
-    it("defaults namespaces to empty", async () => {
-        const { f } = setup(cardWith({ namespaces: undefined }));
-        expect((await f.discoverApp(CARD_URL)).namespaces).toEqual([]);
+    it("defaults repos to empty", async () => {
+        const { f } = setup(cardWith({ repos: undefined }));
+        expect((await f.discoverApp(CARD_URL)).repos).toEqual([]);
+    });
+
+    it("reads repos from a card published with the old `namespaces` field", async () => {
+        const { f } = setup(cardWith({ repos: undefined, namespaces: ["catalog"] }));
+        expect((await f.discoverApp(CARD_URL)).repos).toEqual(["catalog"]);
     });
 
     it("accepts a registry address in any case", async () => {
@@ -88,8 +93,8 @@ describe("discoverApp", () => {
         ["fromBlock a number", { fromBlock: 123 }, /fromBlock/],
         ["fromBlock negative", { fromBlock: "-1" }, /fromBlock/],
         ["fromBlock hex", { fromBlock: "0x10" }, /fromBlock/],
-        ["namespaces not a list", { namespaces: "catalog" }, /namespaces/],
-        ["namespaces not strings", { namespaces: ["ok", 7] }, /namespaces/],
+        ["repos not a list", { repos: "catalog" }, /repos/],
+        ["repos not strings", { repos: ["ok", 7] }, /repos/],
     ])("rejects a malformed extension: %s", async (_, params, error) => {
         const { f, agentUri } = setup(cardWith(params));
         await expect(f.discoverApp(CARD_URL)).rejects.toThrow(error);

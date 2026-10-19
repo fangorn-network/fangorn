@@ -8,6 +8,7 @@ export function appId(name: string): Hex {
 	return keccak256(toHex(name));
 }
 
+/** The app the protocol's deployer claims (Deploy.s.sol). Never a client default. */
 export const DEFAULT_APP = "fangorn";
 
 /**
@@ -71,18 +72,17 @@ export interface AppConfig {
 	ipfsGateway: string;
 }
 
-// Network/deployment settings only
-// set with `Fangorn.create({ appId })` and switchable at
-// runtime via `fangorn.setAppId(...)` (defaults to `DEFAULT_APP`).
+// Network/deployment settings only. The app is per client:
+// `Fangorn.create({ appId })`, switchable with `fangorn.setAppId(...)`.
+// Addresses are the proxies in contracts/solidity/script/Deployments.sol.
 export const FangornConfig = {
 	dataRegistryContractAddress:
-		"0x0312503913656f25c2bfDf229425aA6926ccF1Cd",
+		"0x72B5f83526F3893aF9f1eE0f32A27218EA09f8aE",
 	appRegistryContractAddress:
-		"0x57b41E334864B430db44F7FbCD8d165C56e41402",
-	// MEMBERSHIP_REGISTRY: set after scripts/deploy-membership.sh
+		"0x55e6209ea1833ceD900989a3b3b22466934E04A5",
 	membershipRegistryContractAddress:
-		"0x5054D8611111Bb9F36318eb5c3e6968646415A9D",
-	appRegistryFromBlock: 317102111n,
+		"0xDF17030Cd65435C86eb043F31DDACa99E819E347",
+	appRegistryFromBlock: 319536642n,
 	chain: arbitrumSepolia,
 	rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
 	caip2: 421614,

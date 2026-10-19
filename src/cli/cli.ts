@@ -63,10 +63,10 @@ interface Config {
 	signedUrlWorkerUrl: string;
 }
 
-/** JSON commit input: a namespace's vertices and (optionally) the edges between them. */
+/** JSON commit input: records to put and record ids to delete. */
 interface CommitFile {
-	vertices: { id: string; tag: string; payload: Record<string, unknown> }[];
-	edges?: { rel: string; from: string; to: string }[];
+	records?: { id?: string; type: string; payload: Record<string, unknown> }[];
+	deletes?: string[];
 }
 
 // ─── Global config (credentials) ────────────────────────────────────────────────
@@ -172,7 +172,6 @@ function getFangorn(): Fangorn {
 	_fangorn = Fangorn.create({
 		privateKey: cfg.privateKey,
 		storage,
-		domain: "localhost",
 		config: cfg.cfg,
 		// `--app` (global option) wins over the stored app for this invocation.
 		appId: appFlag() ?? cfg.appId,
@@ -186,10 +185,17 @@ function appFlag(): string | undefined {
 }
 
 /**
- * The currently configured app name
+ * The currently configured app name. App commands need one: there is no default
+ * app, since publishing and reading need none.
  */
 function currentAppName(): string {
-	return appFlag() ?? loadConfig().appId ?? DEFAULT_APP;
+	const name = appFlag() ?? loadConfig().appId;
+	if (!name) throw new Error(`no app chosen: run \`fangorn set-app <name>\` or pass --app (the protocol's own is "${DEFAULT_APP}")`);
+	return name;
+}
+
+function currentAppId(): Hex {
+	return toAppId(currentAppName());
 }
 
 // ─── Local repo (working-directory ref) ─────────────────────────────────────────
@@ -404,14 +410,13 @@ program
 
 // ─── app membership ───────────────────────────────────────────────────────────
 //
-// Publishing is gated by app membership (AppRegistry.registerForApp()). `commitStateRoot` cross-calls
-// the AppRegistry, so a wallet that has not joined the app gets
-// `NotRegisteredForApp` at push time. `fangorn app info`
-// shows where you stand.
+// Publishing needs no app; being presented in one needs membership. A member's
+// updates carry their own acceptance into the app, and a non-member's land but
+// are presented nowhere. `fangorn app info` shows where you stand.
 //
-// The DataRegistry only keeps the protocol admin's network-wide ban. The
-// AppRegistry asks it before letting a wallet claim an app or be added to one,
-// so a banned wallet cannot come back through an app.
+// The protocol admin's network-wide ban lives in the AppRegistry: a banned
+// wallet cannot claim an app or be added to one, so it cannot come back through
+// an app.
 //
 // Membership is by invitation: the app's owner runs `fangorn app add <address>`,
 // and only then can that wallet `fangorn app join`. An app is also a storage
@@ -445,20 +450,19 @@ appCmd
 			const self = getAccount().address;
 			const fangorn = getFangorn();
 			const apps = fangorn.getAppRegistry();
-			const data = fangorn.getDataRegistry();
 			const s = spinner();
 
 			s.start("Reading registries...");
-			const [owner, info, suspendedGlobally, paidAt] = await Promise.all([
+			const [owner, info, suspendedGlobally] = await Promise.all([
 				apps.getAppOwner(),
 				apps.joinInfo(self),
-				data.isSuspended(self),
-				apps.subscribedAt(),
+				apps.isBanned(self),
 			]);
+			const expiresAt = owner === ZERO_ADDRESS ? 0n : await apps.expiresAt();
 			s.stop();
 
 			console.log(`App:        ${currentAppName()}`);
-			console.log(`App id:     ${apps.getAppId()}`);
+			console.log(`App id:     ${currentAppId()}`);
 
 			if (owner === ZERO_ADDRESS) {
 				console.log(`Owner:      (unclaimed — \`fangorn app claim\` takes it)`);
@@ -468,10 +472,10 @@ appCmd
 				);
 				console.log(`Terms:      ${info.termsHash}`);
 				if (info.termsUri) console.log(`Terms uri:  ${info.termsUri}`);
-				console.log(`Join fee:   ${info.fee.toString()} wei`);
-				// The contract stores when, not whether it is still active: the
-				// window is the upload gate's policy.
-				console.log(`Subscribed: last paid ${new Date(Number(paidAt) * 1000).toISOString()}`);
+				console.log(`Join fee:   ${info.fee.toString()} USDC base units`);
+				console.log(
+					`Subscribed: ${expiresAt === 0n ? "cancelled" : `until ${new Date(Number(expiresAt) * 1000).toISOString()}`}`,
+				);
 			}
 
 			if (info.appSuspended)
@@ -496,7 +500,7 @@ appCmd
 		"32-byte hash of your terms document (default: a placeholder you should replace)",
 	)
 	.option("--terms-uri <uri>", "Where the terms document lives", "")
-	.option("--fee <wei>", "What joining this app costs, in wei", "0")
+	.option("--fee <usdc>", "What joining this app costs, in USDC base units", "0")
 	.action(async (opts: { termsHash?: string; termsUri: string; fee: string }) => {
 		try {
 			const self = getAccount().address;
@@ -507,7 +511,7 @@ appCmd
 			s.start("Checking app ownership...");
 			const [owner, suspendedGlobally] = await Promise.all([
 				registry.getAppOwner(),
-				fangorn.getDataRegistry().isSuspended(self),
+				registry.isBanned(self),
 			]);
 			s.stop();
 
@@ -516,8 +520,8 @@ appCmd
 				const mine = owner.toLowerCase() === self.toLowerCase();
 				console.log(
 					mine
-						? `Already claimed by you: ${registry.getAppId()}`
-						: `App ${registry.getAppId()} is already owned by ${owner}. Pick another name with \`fangorn set-app\`, or ask its owner to add you.`,
+						? `Already claimed by you: ${currentAppId()}`
+						: `App ${currentAppId()} is already owned by ${owner}. Pick another name with \`fangorn set-app\`, or ask its owner to add you.`,
 				);
 				process.exit(mine ? 0 : 1);
 			}
@@ -545,7 +549,7 @@ appCmd
 			s.stop();
 
 			console.log(`App:    ${currentAppName()}`);
-			console.log(`App id: ${registry.getAppId()}`);
+			console.log(`App id: ${currentAppId()}`);
 			console.log(`Owner:  ${self}`);
 			console.log(`Terms:  ${termsHash}`);
 			console.log(`Tx:     ${txHash}`);
@@ -577,7 +581,7 @@ appCmd
 			s.stop();
 
 			if (info.registered) {
-				console.log(`Already joined ${registry.getAppId()} as ${self}`);
+				console.log(`Already joined ${currentAppId()} as ${self}`);
 				process.exit(0);
 			}
 			// A zero terms hash means the app was never claimed (or its owner never
@@ -585,7 +589,7 @@ appCmd
 			// only after the user had already confirmed.
 			if (info.termsHash === ZERO_HASH) {
 				console.error(
-					`App ${registry.getAppId()} has published no terms — it cannot be joined.` +
+					`App ${currentAppId()} has published no terms — it cannot be joined.` +
 					`\nIf it is unclaimed, \`fangorn app claim\` takes it; otherwise its owner must set terms.`,
 				);
 				process.exit(1);
@@ -605,7 +609,7 @@ appCmd
 			}
 			if (info.appSuspended) {
 				console.error(
-					`App ${registry.getAppId()} has been suspended by the protocol admin — joining will revert.`,
+					`App ${currentAppId()} has been suspended by the protocol admin — joining will revert.`,
 				);
 				process.exit(1);
 			}
@@ -614,7 +618,7 @@ appCmd
 			// pending join and land as agreement to something else.
 			console.log(`Terms:     ${info.termsHash}`);
 			if (info.termsUri) console.log(`Terms uri: ${info.termsUri}`);
-			console.log(`Join fee:  ${info.fee.toString()} wei`);
+			console.log(`Join fee:  ${info.fee.toString()} USDC base units`);
 
 			const ok = await confirm({
 				message: needsReacceptance(info)
@@ -628,7 +632,7 @@ appCmd
 			const txHash = await registry.registerForApp();
 			s.stop();
 
-			console.log(`Joined: ${registry.getAppId()}`);
+			console.log(`Joined: ${currentAppId()}`);
 			console.log(`Tx:     ${txHash}`);
 			process.exit(0);
 		} catch (err) {
@@ -668,15 +672,15 @@ appCmd
 
 appCmd
 	.command("fee")
-	.description("Set what joining your app costs, in wei (owner only)")
-	.argument("<wei>", "Join fee in wei")
+	.description("Set what joining your app costs, in USDC base units (owner only)")
+	.argument("<amount>", "Join fee in USDC base units")
 	.action(async (wei: string) => {
 		try {
 			const s = spinner();
 			s.start("Setting join fee...");
 			const txHash = await getFangorn().getAppRegistry().setAppFee(BigInt(wei));
 			s.stop();
-			console.log(`Join fee: ${wei} wei`);
+			console.log(`Join fee: ${wei} USDC base units`);
 			console.log(`Tx:       ${txHash}`);
 			process.exit(0);
 		} catch (err) {
@@ -827,7 +831,7 @@ appCmd
 				console.log(`Owner:      ${invitation.owner}`);
 				console.log(`Terms:      ${invitation.termsHash}`);
 				if (invitation.termsUri) console.log(`Terms uri:  ${invitation.termsUri}`);
-				console.log(`Join fee:   ${invitation.fee.toString()} wei`);
+				console.log(`Join fee:   ${invitation.fee.toString()} USDC base units`);
 				if (invitation.agentUri) console.log(`Agent card: ${invitation.agentUri}`);
 				console.log("");
 			}
@@ -851,7 +855,7 @@ appCmd
 			const s = spinner();
 			// The contract refuses to add a wallet the protocol admin has banned.
 			s.start("Checking publisher standing...");
-			const suspended = await fangorn.getDataRegistry().isSuspended(publisher as Address);
+			const suspended = await fangorn.getAppRegistry().isBanned(publisher as Address);
 			s.stop();
 			if (suspended) {
 				console.error(
@@ -886,7 +890,7 @@ appCmd
 			s.start("Renewing subscription...");
 			const txHash = await registry.renewApp();
 			s.stop();
-			console.log(`Renewed: ${registry.getAppId()}`);
+			console.log(`Renewed: ${currentAppId()}`);
 			console.log(`Tx:      ${txHash}`);
 			process.exit(0);
 		} catch (err) {
@@ -971,7 +975,7 @@ appAdminCmd
 			const registry = await requireAdmin();
 
 			const ok = await confirm({
-				message: `Suspend the whole app ${registry.getAppId()}? Every publisher, including its owner, stops being registered.`,
+				message: `Suspend the whole app ${currentAppId()}? Every publisher, including its owner, stops being registered.`,
 			});
 			handleCancel(ok);
 			if (!ok) process.exit(0);
@@ -980,7 +984,7 @@ appAdminCmd
 			s.start("Suspending app...");
 			const txHash = await registry.suspendApp();
 			s.stop();
-			console.log(`Suspended: ${registry.getAppId()}`);
+			console.log(`Suspended: ${currentAppId()}`);
 			console.log(`Tx:        ${txHash}`);
 			console.log(
 				`\nMemberships are kept — \`fangorn app admin reinstate\` restores them as they were.`,
@@ -1002,7 +1006,7 @@ appAdminCmd
 			s.start("Reinstating app...");
 			const txHash = await registry.reinstateApp();
 			s.stop();
-			console.log(`Reinstated: ${registry.getAppId()}`);
+			console.log(`Reinstated: ${currentAppId()}`);
 			console.log(`Tx:         ${txHash}`);
 			process.exit(0);
 		} catch (err) {
@@ -1025,7 +1029,7 @@ appAdminCmd
 				registry.isAppSuspended(),
 			]);
 			s.stop();
-			console.log(`App id:    ${registry.getAppId()}`);
+			console.log(`App id:    ${currentAppId()}`);
 			console.log(
 				`Admin:     ${admin}${admin.toLowerCase() === self.toLowerCase() ? "  (you)" : ""}`,
 			);
@@ -1136,11 +1140,11 @@ repoCmd
 program
 	.command("commit")
 	.description(
-		"Snapshot a namespace's vertices/edges into a new local commit (does not push)",
+		"Put/delete a namespace's records in a new local commit (does not push)",
 	)
 	.argument(
 		"<file>",
-		'JSON file: {"vertices":[{"id","tag","payload"}],"edges":[{"rel","from","to"}]}',
+		'JSON file: {"records":[{"id","type","payload"}],"deletes":["id"]}',
 	)
 	.requiredOption("-m, --message <msg>", "Commit message")
 	.option(
@@ -1152,8 +1156,10 @@ program
 			try {
 				if (!existsSync(file)) throw new Error(`file not found: ${file}`);
 				const data = JSON.parse(readFileSync(file, "utf-8")) as CommitFile;
-				if (!Array.isArray(data.vertices) || data.vertices.length === 0) {
-					throw new Error(`${file} must contain a non-empty "vertices" array`);
+				const records = data.records ?? [];
+				const deletes = data.deletes ?? [];
+				if (!Array.isArray(records) || !Array.isArray(deletes) || records.length + deletes.length === 0) {
+					throw new Error(`${file} must contain a non-empty "records" or "deletes" array`);
 				}
 
 				const repo = LocalRepo.open();
@@ -1166,9 +1172,9 @@ program
 						: "Committing (initial)...",
 				);
 				const result = await fangorn.commit({
-					namespace: repo.namespace(),
-					vertices: data.vertices,
-					edges: data.edges ?? [],
+					repo: repo.namespace(),
+					records,
+					deletes,
 					parent,
 					message: options.message,
 					replace: options.replace,
@@ -1177,10 +1183,10 @@ program
 				repo.setHead(result.commitCid);
 
 				console.log(`Commit:  ${result.commitCid}`);
-				console.log(`Parent:  ${result.parents[0] ?? "(root)"}`);
+				console.log(`Parent:  ${result.parent ?? "(root)"}`);
 				console.log(`Tree:    ${result.root}`);
 				console.log(
-					`Staged:  ${data.vertices.length.toString()} vertice(s) / ${(data.edges ?? []).length.toString()} edge(s)`,
+					`Staged:  ${records.length.toString()} put(s) / ${deletes.length.toString()} delete(s)`,
 				);
 				console.log(`Message: ${options.message}`);
 				console.log(
@@ -1199,8 +1205,7 @@ program
 	.description(
 		"Settle the local tip commit as the on-chain state root (the permissioned step)",
 	)
-	.option("--force", "Push even if it does not fast-forward the on-chain tip")
-	.action(async (options: { force?: boolean }) => {
+	.action(async () => {
 		try {
 			const repo = LocalRepo.open();
 			const head = repo.head();
@@ -1212,7 +1217,6 @@ program
 			const { txHash, onChainTip } = await fangorn.push(
 				repo.namespace(),
 				head,
-				{ force: options.force },
 			);
 			s.stop();
 
@@ -1275,7 +1279,7 @@ program
 
 			for await (const c of fangorn.log(head, options.max)) {
 				console.log(`commit ${c.cid}`);
-				console.log(`Date:   ${new Date(c.timestamp).toISOString()}`);
+				console.log(`Epoch:  ${c.epoch.toString()}`);
 				console.log(`Tree:   ${c.root}`);
 				console.log(`\n    ${c.message}\n`);
 			}
@@ -1299,10 +1303,8 @@ program
 
 			const diff = await fangorn.show(target);
 			console.log(`commit ${target}`);
-			console.log(`Date:    ${new Date(diff.timestamp).toISOString()}`);
-			console.log(
-				`Parents: ${diff.parents.length ? diff.parents.join(", ") : "(root)"}`,
-			);
+			console.log(`Epoch:   ${diff.epoch.toString()}`);
+			console.log(`Parent:  ${diff.parent ?? "(root)"}`);
 			console.log(`Tree:    ${diff.root}`);
 			console.log(`\n    ${diff.message}\n`);
 			console.log(
@@ -1465,13 +1467,13 @@ program
 				// narrow it back down. Without it the filter is one exact publisher+subspace.
 				const stream = options.all
 					? fangorn.subscribeApp({
-						namespace,
+						repo: namespace,
 						owner,
 						fromBlock,
 						signal: controller.signal,
 					})
 					: fangorn.subscribe({
-						namespace: namespace ?? "",
+						repo: namespace ?? "",
 						owner,
 						fromBlock,
 						signal: controller.signal,
@@ -1495,7 +1497,7 @@ program
 program
 	.command("read")
 	.description(
-		"List every vertex and edge committed under a namespace, as JSON",
+		"List every record committed under a namespace, as JSON",
 	)
 	.argument("[namespace]", "Namespace name (default: current repo)")
 	.option(
@@ -1522,15 +1524,14 @@ program
 
 				const [head, contents] = await Promise.all([
 					fangorn.onChainTip(owner, namespace),
-					fangorn.engine.listNamespace(namespace, owner),
+					fangorn.engine.listRepo(owner, namespace),
 				]);
 
 				const out = {
 					owner,
 					namespace,
 					head,
-					vertices: contents.vertices,
-					edges: contents.edges,
+					records: contents.records,
 				};
 				// write() to a pipe is async: a payload past the OS pipe buffer (~64 KiB on
 				// Linux) drains AFTER this returns, so exiting immediately truncates the

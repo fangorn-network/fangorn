@@ -13,7 +13,7 @@ const SELF = "0x00000000000000000000000000000000000000cc" as Address;
 const APP = ("0x" + "ab".repeat(32)) as Hex;
 const TERMS = ("0x" + "11".repeat(32)) as Hex;
 
-function client(opts: { fee: bigint; allowance: bigint; status?: PublisherStatus; paidAt?: bigint }) {
+function client(opts: { fee: bigint; allowance: bigint; status?: PublisherStatus }) {
 	const writes: string[] = [];
 	const publicClient = {
 		readContract: ({ functionName }: { functionName: string }) =>
@@ -22,7 +22,7 @@ function client(opts: { fee: bigint; allowance: bigint; status?: PublisherStatus
 					subscriptionFee: opts.fee,
 					usdc: USDC,
 					allowance: opts.allowance,
-					subscribedAt: opts.paidAt ?? 0n,
+					subscriptionPeriod: 30n,
 					joinInfo: [TERMS, "", 0n, opts.status ?? PublisherStatus.UNREGISTERED, false],
 				}[functionName],
 			),
@@ -51,7 +51,7 @@ describe("AppRegistryClient subscription + invitation", () => {
 	it("skips the approve when the allowance covers it, or the fee is zero", async () => {
 		const covered = client({ fee: 5n, allowance: 5n });
 		await covered.apps.renewApp();
-		expect(covered.writes).toEqual(["renewApp@registry"]);
+		expect(covered.writes).toEqual(["renewSubscription@registry"]);
 
 		const free = client({ fee: 0n, allowance: 0n });
 		await free.apps.registerApp(TERMS, "");
@@ -65,27 +65,7 @@ describe("AppRegistryClient subscription + invitation", () => {
 
 		const invited = client({ fee: 0n, allowance: 0n, status: PublisherStatus.INVITED });
 		await invited.apps.registerForApp();
-		expect(invited.writes).toEqual(["registerForApp@registry"]);
-	});
-});
-
-// The window is measured from the last payment. A clock that reads before that
-// payment (zero, for one) must not make a lapsed app look active.
-describe("AppRegistryClient.isActiveAt", () => {
-	const WINDOW = 100n;
-	const active = (paidAt: bigint, now: bigint) =>
-		client({ fee: 0n, allowance: 0n, paidAt }).apps.isActiveAt(WINDOW, now);
-
-	it("is active from the payment until the window closes", async () => {
-		expect(await active(1000n, 1000n)).toBe(true);
-		expect(await active(1000n, 1099n)).toBe(true);
-		expect(await active(1000n, 1100n)).toBe(false);
-	});
-
-	it("is not active for an unclaimed app, or at a time before the payment", async () => {
-		expect(await active(0n, 50n)).toBe(false);
-		expect(await active(1000n, 0n)).toBe(false);
-		expect(await active(1000n, 999n)).toBe(false);
+		expect(invited.writes).toEqual(["joinApp@registry"]);
 	});
 });
 

@@ -75,8 +75,11 @@ logs and screen shares all outlive the command.
 
 ### Pick an app, then join
 
-Publishing takes membership or ownership of an app. `commitStateRoot` cross-calls `isRegisteredForApp`, so a wallet
-that has not joined the app gets `NotRegisteredForApp` at push time.
+Publishing needs no app: any wallet updates its own repos. An app **presents**
+what it has accepted. A member's updates carry their own acceptance into the
+app; the owner can pull anyone's head (`registry.accept`) and withdraw data
+(`registry.exclude`). Join an app to be presented in it, and to have it pay for
+your storage.
 
 ```sh
 fangorn set-app my-app     # persists the app; --app <name-or-id> overrides per command
@@ -85,13 +88,15 @@ fangorn app claim          # claim it, if nobody owns it yet (irreversible; pays
 fangorn app join           # or join it, once its owner has added you
 ```
 
-The DataRegistry keeps one thing about a wallet: whether the protocol admin has
-banned it network-wide. The AppRegistry asks before letting a wallet claim an app
-or be added to one, so a banned wallet can do neither, and cannot commit.
+The protocol admin can ban a wallet network-wide: it can't claim an app or be
+added to one, no app accepts its heads, and the SDK reads it as excluded everywhere.
 
 **An app is a storage subscription.** `fangorn app claim` pulls the subscription
 fee in USDC (the client approves it for you) and `fangorn app renew` pays it
-again. Hosted uploads are billed to the app, so nobody publishes outside one.
+again. Hosted uploads are billed to a **sponsor app** that admits you
+(`storage: { signedUrl: { sponsor } }`, defaulting to the client's app); with
+none, the worker's free tier applies. A publisher that pays for its own storage
+claims a one-member app and sponsors itself.
 
 **Membership is by invitation.** The owner runs `fangorn app add <address>`;
 only then can that wallet `fangorn app join`, which accepts the terms and pays
@@ -279,12 +284,11 @@ const fangorn = Fangorn.create({
 		},
 	},
 	config: FangornConfig, // defaults to Arbitrum Sepolia
-	appId: "my-app", // defaults to "fangorn"
-	domain: "localhost",
+	appId: "my-app", // optional: no app means no acceptance carried, and reads of each publisher's own word
 });
 
-// Join the app once before committing. `commitStateRoot` cross-calls the
-// AppRegistry, so skipping it surfaces as a revert at push time rather than here.
+// Join the app to have your updates accepted into it. A non-member's update
+// still lands; the app just presents nothing of it.
 const self = fangorn.getAddress();
 const apps = fangorn.getAppRegistry();
 
@@ -304,10 +308,9 @@ if (needsReacceptance(info)) await apps.registerForApp(); // free re-accept
 ```
 
 The storage paywall lives on the same client, because an app is its
-subscription: `apps.subscriptionFee()`, `apps.subscribedAt()`, `apps.renewApp()`,
-and `apps.access(publisher)` — the `{ registered, owner, paidAt }` the upload
-gate reads. The contract stores only when the app last paid; `apps.isActiveAt(window)`
-applies a window you pass in.
+subscription: `apps.subscriptionFee()`, `apps.expiresAt()`, `apps.renewApp()`,
+and `apps.access(publisher)` — the `{ canPublish, owner, expiresAt }` the upload
+gate reads. The contract enforces the expiry.
 
 `fangorn.getMembershipRegistry()` (consumer access to an app's paid records)
 hangs off the same object. It takes the app id per call, so `setAppId`
@@ -446,13 +449,12 @@ fangorn.setAppId("my-other-app"); // by name, or by 32-byte app id
 fangorn.getAppId(); // 0x… — what the registry keys on
 ```
 
-`setAppId` re-scopes the DataRegistry and AppRegistry clients **together**. They
-must never disagree: a DataRegistry pointed at one app while the AppRegistry
-answers for another checks membership against the wrong market, and it surfaces
-as a revert at commit time, far from the mistake.
+Under an app, reads (`readRepo`, `appRepos`, `subscribe`) are what the app
+presents: its accepted heads, less its exclusions. With no app they are each
+publisher's latest heads.
 
-Apps live in the AppRegistry, and membership of one is a precondition for
-publishing under it:
+Apps live in the AppRegistry, and membership of one is what gets your heads
+accepted into it:
 
 ```ts
 const apps = fangorn.getAppRegistry();
@@ -632,17 +634,18 @@ gadget_ behind the same handle shape, so committed data doesn't change form.
 
 | Contract             | Address                                      | What it owns                                        |
 | -------------------- | -------------------------------------------- | --------------------------------------------------- |
-| DataRegistry         | `0x3b0cf19bef492500401e4d74e6fa29a56d0cc67b` | Namespace state roots; global publisher standing    |
-| AppRegistry          | `0xcc92f3d827df33be7323eef28e67a509034f5a59` | Apps: owner, terms, membership, storage subscription (USDC) |
-| MembershipRegistry   | not yet deployed                             | Time-limited, unlinkable access to an app's paid records (USDC + Semaphore) |
+| DataRegistry         | `0x72B5f83526F3893aF9f1eE0f32A27218EA09f8aE` | Every repo's head, and the update log           |
+| AppRegistry          | `0x55e6209ea1833ceD900989a3b3b22466934E04A5` | Apps: owner, terms, membership, storage subscription (USDC); what each app accepts and excludes |
+| MembershipRegistry   | `0xDF17030Cd65435C86eb043F31DDACa99E819E347` | Time-limited, unlinkable access to an app's paid records (USDC + Semaphore) |
 
 `FangornConfig` in `src/config.ts` is the authoritative list and what the SDK
-uses by default — these contracts have been redeployed more than once, so prefer
-the config over any address copied out of a document, including this table.
+uses by default — prefer it over any address copied out of a document,
+including this table. The sources are `fangorn-network/contracts`
+(`solidity/script/Deployments.sol`); regenerate the ABIs with `pnpm abis`.
 
-The two point at each other: `DataRegistry.commitStateRoot` cross-calls
-`AppRegistry.isRegisteredForApp`, and `AppRegistry.registerApp` / `addPublisher`
-cross-call `DataRegistry.suspended`.
+An update carries acceptances: `DataRegistry.update` calls
+`AppRegistry.acceptFromUpdate` for each app it names, and `AppRegistry.accept`
+reads `DataRegistry.getHead`.
 
 ---
 
@@ -656,45 +659,30 @@ pnpm test
 
 ### E2E Tests
 
-The end-to-end suite runs the storage and on-chain flows against a local fork
-of Arbitrum Sepolia, so nothing is left on the real chain. The fork starts as a
-copy of the chain, so the tests still run the deployed contracts' code.
+The SDK suite (`src/test/sdk-suite.ts`) runs twice: in memory with the unit
+tests, and against the contracts, built from source in a sibling checkout of
+`fangorn-network/contracts` (`FANGORN_CONTRACTS_DIR` to point elsewhere) and
+deployed to a fresh `anvil`. Nothing touches a real chain.
 
 ```sh
-cp env.example .env
 pnpm test:e2e
 ```
 
-| File                        | Runs against                 | Needs                    |
-| --------------------------- | ---------------------------- | ------------------------ |
-| `src/e2e.test.ts`           | a local fork                 | `anvil`, Pinata          |
-| `src/app-agent.e2e.test.ts` | a local fork                 | `anvil`, Pinata          |
-| `src/admin.e2e.test.ts`     | a local fork                 | `anvil`                  |
-| `src/live.e2e.test.ts`      | Arbitrum Sepolia, read-only  | nothing                  |
+| File                           | Runs against                 | Needs                    |
+| ------------------------------ | ---------------------------- | ------------------------ |
+| `src/e2e/sdk.e2e.test.ts`      | the contracts on anvil       | `anvil`, `forge`         |
+| `src/e2e/apps.e2e.test.ts`     | the contracts on anvil       | `anvil`, `forge`         |
+| `src/e2e/admin.e2e.test.ts`    | the contracts on anvil       | `anvil`, `forge`         |
+| `src/e2e/live.e2e.test.ts`     | Arbitrum Sepolia, read-only  | nothing                  |
 
-**The fork suites** start `anvil` ([Foundry](https://getfoundry.sh)) as a fork of
-Arbitrum Sepolia. The contracts and their state are the deployed ones; the
-wallets are generated and given gas on the fork, and everything the tests claim,
-register and commit is gone when it stops. Without `anvil` they are skipped (in
-CI they fail). The admin suite hands the admin role to a key it generates on the
-fork, so the real admin key is never needed.
-
-**Pinata.** Uploads go to the real Pinata account (`PINATA_JWT`,
-`PINATA_GATEWAY`). Every file a run uploads is unpinned when its test file
-finishes (`cleanUp` in `src/test/testbed.ts`, which notes Pinata's id for each
-upload as it happens). A file that was already pinned before the run is never
-removed.
+Without `anvil`, `forge` or the contracts checkout the anvil suites are skipped
+(in CI they fail). The deployer is the protocol admin, so the admin suite needs
+no real key. Storage is in memory; `E2E_STORAGE=pinata` runs the same suites
+against Pinata (`PINATA_JWT`, `PINATA_GATEWAY`).
 
 **The live suite** only reads: that the registries point at each other, that the
 config's start block is the AppRegistry's deployment, and that the public RPC
 serves the invitation scan.
-
-```sh
-pnpm test:live
-pnpm test:admin
-```
-
-The whole suite runs from `.github/workflows/e2e.yaml` on `main`, with the two Pinata variables stored as secrets of the `sepolia-e2e` environment.
 
 ---
 

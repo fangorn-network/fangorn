@@ -4,7 +4,7 @@ import type {
 	RawBlock,
 	StorageMeta,
 } from "../providers/storage/types.js";
-import type { DataRegistryClient } from "../contracts/index.js";
+import { MemRegistry } from "../test/mem-registry.js";
 import { CID } from "multiformats/cid";
 
 export const ZERO_BYTES32 =
@@ -12,7 +12,7 @@ export const ZERO_BYTES32 =
 
 /** The raw 32-byte root hex a commit CID settles to on-chain (bare sha256 digest). */
 export const rootHex = (commitCid: CID) =>
-	`0x${Buffer.from(commitCid.multihash.digest).toString("hex")}`;
+	`0x${Buffer.from(commitCid.multihash.digest).toString("hex")}` as const;
 
 /**
  * In-memory MetadataStorage: individually-pinned blocks + opaque files, with
@@ -73,27 +73,7 @@ export class MemStorage implements MetadataStorage {
 	}
 }
 
-/**
- * Registry stub holding one head per namespace in memory (enough for the
- * engine) — mirroring the contract, where each namespace is its own timeline.
- */
-export class StubRegistry {
-	heads = new Map<string, Hex>();
-
-	getNamespaceHead(_publisher: string, namespace: string): Promise<Hex> {
-		return Promise.resolve(this.heads.get(namespace) ?? (ZERO_BYTES32 as Hex));
-	}
-
-	commitStateRoot(
-		namespace: string,
-		_oldRoot: Hex,
-		newRoot: Hex,
-	): Promise<Hex> {
-		this.heads.set(namespace, newRoot);
-		return Promise.resolve("0xdeadbeef" as Hex);
-	}
-
-	asClient(): DataRegistryClient {
-		return this as unknown as DataRegistryClient;
-	}
-}
+/** The paper's registry in memory, signing as PUBLISHER. */
+export const PUBLISHER = "0x0000000000000000000000000000000000000001" as Hex;
+export const APP: Hex = `0x${"a".repeat(64)}`;
+export const newRegistry = () => new MemRegistry(PUBLISHER);

@@ -1,23 +1,26 @@
-import type { NamespaceChange } from "./fangorn.js";
+import type { RepoChange } from "./fangorn.js";
 
 /**
  * One shared app-wide commit stream, fanned out to many consumers.
  *
  * `subscribeApp` opens a fresh RPC watch per call. A server that subscribes per
- * connection × per tracked namespace opens N×M pollers for what is the *same*
+ * connection × per tracked repo opens N×M pollers for what is the *same*
  * app-level topic filter. This opens exactly one, ref-counted: it starts with
  * the first listener and stops with the last. Consumers filter in memory — the
  * events are already narrowed to the app on-chain.
+ *
+ * Not a lens (WHITEPAPER_1 §3.4): a lens computes a view over the stream, this
+ * only shares the stream. fangorn-md's server fans it out to its connections.
  */
 export class AppFeed {
 	private readonly listeners = new Set<{
-		onChange: (change: NamespaceChange) => void;
+		onChange: (change: RepoChange) => void;
 		onError?: (err: Error) => void;
 	}>();
 	private abort: AbortController | null = null;
 
 	constructor(
-		private readonly open: (signal: AbortSignal) => AsyncGenerator<NamespaceChange>,
+		private readonly open: (signal: AbortSignal) => AsyncGenerator<RepoChange>,
 		/** Delay before reopening the watch after it fails or ends. */
 		private readonly restartDelayMs = 2_000,
 	) {}
@@ -32,7 +35,7 @@ export class AppFeed {
 	 * unsubscribe function; the feed stops once the last listener leaves.
 	 */
 	on(
-		onChange: (change: NamespaceChange) => void,
+		onChange: (change: RepoChange) => void,
 		onError?: (err: Error) => void,
 	): () => void {
 		const listener = { onChange, onError };
