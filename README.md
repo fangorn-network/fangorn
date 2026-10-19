@@ -1,23 +1,23 @@
 # Fangorn SDK
 
-The Fangorn SDK is a lightweight "git for knowledge graphs" protocol, enabling version control and distribution of *metagraphs* organized into applications and namespaces. 
+The Fangorn SDK is a lightweight "git for data" protocol: publishers version *repos* of records in IPFS and move each repo's head on-chain, and *apps* sponsor storage for the publishers they accept.
 
-It lets you treat IPFS as a hierarchical data store for app-level storage with published "terms", conditions, and validation logic that publishers must adhere to. Data is published under a *namespace* in a *registered application*, **`app : publisher : namespace`**. Each namespace has its own on-chain state root (the digest of a commit block wrapping a native IPLD DAG) owned by the *publisher* who passed the app's validation logic. Updating a namespace root is a compare-and-swap operation (i.e. a git ref update).
+A **repo** belongs to its publisher, keyed **`publisher : repo`**. Its state is a map of **records** (`{ id, type, payload }`, content-addressed), and its head is the digest of the latest commit block. Any wallet can update its own repos; updating a head is a compare-and-swap on the parent (i.e. a git ref update), and an update names no app.
 
-Each namespace's state is represented by a **metagraph**, $G = (V, E, L)$ where $V$=**vertices** (a JSON payload tagged by a free-form schema id) and $E$=**edges** (a labeled relation between two vertices, as native IPLD links), $L$=**labels** (the allowed labels in any edge).
+An **app** is sponsored storage. Its owner accepts publishers; an accepted publisher uploads with the app's storage, and the app presents that publisher's repos at their latest heads.
 
 **Version Control**
 
-Datasets are versioned like git. Each update is a **commit** that points at its parent (previous graph state) and at a single **CAR file** (a packfile) holding only the blocks that were introduced in the commit. The onchain data registry stores the root of the latest commit, with full history living in IPFS. Full history is reconstructible from the onchain root (head) of a namespace without an indexer required. 
+Repos are versioned like git. Each update is a **commit** that points at its parent (previous state) and at a single **CAR file** (a packfile) holding only the blocks that were introduced in the commit. The on-chain data registry stores the head of each repo, with full history living in IPFS. Full history is reconstructible from the on-chain head without an indexer.
 
-- `commit` (local) builds the graph in memory and persists it in two uploads, one CAR (the graph data) + one small commit block.
-- `push` (remote) updates the onchain root to the latest staged commit
+- `commit` (local) builds the new state in memory and persists it in two uploads, one CAR (the data) + one small commit block.
+- `push` (remote) moves the on-chain head to the latest staged commit
 
-> Since the metagraph edges are native IPLD links, the DAG (directed acyclic graph) is easily 'diffable' and verifiable from the root stored onchain, though it is not easily queryable (see: [quickbeam](https://github.com/fangorn-network/quickbeam))
+> Since commits and records are native IPLD links, the DAG (directed acyclic graph) is easily 'diffable' and verifiable from the head stored on-chain, though it is not easily queryable (see: [quickbeam](https://github.com/fangorn-network/quickbeam))
 
 **Storage**
 
-Metagraphs are stored in IPFS. The SDK currently expects Pinata to be used to ensure data availability, which will be relaxed in the future.
+Repos are stored in IPFS. The SDK currently expects Pinata to be used to ensure data availability, which will be relaxed in the future.
 
 #### What it is not
 
@@ -115,49 +115,45 @@ fangorn app cancel               # end the subscription now, no refund
 fangorn app withdraw-fees [to]   # join fees still owed from before joining was removed
 ```
 
-### Track a namespace (git-native repo)
+### Track a repo
 
-A **namespace** is an entry in your on-chain root map. `repo init` allocates it and starts tracking it in a local `.fangorn/` pointer file (just a HEAD ref — there is no local object store; commit objects and their CARs live in IPFS).
+`repo init` creates the repo with an empty first commit, pushes it, and starts tracking it in a local `.fangorn/` pointer file (just a HEAD ref — there is no local object store; commit objects and their CARs live in IPFS).
 
 ```sh
-# Allocate a namespace on-chain (no-op if it already exists) and track it here
+# Create the repo on-chain (no-op if it already exists) and track it here
 fangorn repo init rusty-anchor
 ```
 
 ### Commit → push
 
-`commit` snapshots a namespace's vertices/edges into a new commit (one CAR upload to IPFS, advances your local HEAD) — it does **not** touch the chain. `push` fast-forwards the on-chain state root to your local tip: the single permissioned step.
+`commit` puts and deletes a repo's records in a new commit (one CAR upload to IPFS, advances your local HEAD) — it does **not** touch the chain. `push` fast-forwards the on-chain head to your local tip.
 
 ```sh
-# Snapshot graph data into a new local commit — does NOT push
-fangorn commit graph.json -m "initial import"
+# Stage records into a new local commit — does NOT push
+fangorn commit records.json -m "initial import"
 
 # Settle the local tip on-chain (permission + fast-forward checked here)
 fangorn push
 fangorn push --force        # push even if it doesn't fast-forward the on-chain tip
 ```
 
-`graph.json` is a JSON file of vertices and (optionally) the edges between them. Edges reference vertices by their local `id`:
+`records.json` lists the records to put (an `id` is generated when omitted, and an existing `id` is overwritten) and the ids to delete:
 
 ```json
 {
-	"vertices": [
-		{
-			"id": "t1",
-			"tag": "track",
-			"payload": { "title": "Locura", "artist": "Alice" }
-		},
-		{ "id": "a1", "tag": "artist", "payload": { "name": "Alice" } }
+	"records": [
+		{ "id": "t1", "type": "track", "payload": { "title": "Locura", "artist": "Alice" } },
+		{ "id": "a1", "type": "artist", "payload": { "name": "Alice" } }
 	],
-	"edges": [{ "rel": "performed_by", "from": "t1", "to": "a1" }]
+	"deletes": ["t0"]
 }
 ```
 
-Each commit records its parent, so history is real and walkable. By default a commit is **additive** (the staged graph joins the namespace's existing contents); pass `--replace` for snapshot semantics, where the file _is_ the namespace's new state and anything omitted is removed — earlier history is retained either way. Blocks are content-addressed, so unchanged data is reused byte-for-byte across commits and never re-uploaded.
+Each commit records its parent, so history is real and walkable. By default a commit is **additive** (the staged records join the repo's existing contents); pass `--replace` for snapshot semantics, where the file _is_ the repo's new state and anything omitted is removed — earlier history is retained either way. Blocks are content-addressed, so unchanged records are reused byte-for-byte across commits and never re-uploaded.
 
-### Graph Builders
+### Builders
 
-Turning your source data into vertices and edges is application logic, but the SDK ships a small **harness** for the common "a directory of files → a graph" case, exported from the package root:
+Turning your source data into records is application logic, but the SDK ships a small **harness** for the common "a directory of files → records" case, exported from the package root:
 
 ```ts
 import { buildAssetGraph, extractMarkdownLinks } from "@fangorn-network/sdk";
@@ -165,7 +161,7 @@ import { buildAssetGraph, extractMarkdownLinks } from "@fangorn-network/sdk";
 // One processor per file extension. Return the vertex tag/payload and the
 // ids this file links to; buildAssetGraph wires the edges (rel: "links"),
 // dropping self-links and links to files that don't exist.
-const { vertices, edges } = buildAssetGraph("./docs", {
+const { vertices } = buildAssetGraph("./docs", {
 	processors: {
 		".md": (file) => ({
 			tag: "note",
@@ -176,14 +172,13 @@ const { vertices, edges } = buildAssetGraph("./docs", {
 });
 
 await fangorn.commit({
-	namespace: "rusty-anchor",
+	repo: "rusty-anchor",
 	message: "import docs",
-	vertices,
-	edges,
+	records: vertices.map((v) => ({ id: v.id, type: v.tag, payload: v.payload })),
 });
 ```
 
-Each vertex `id` is the filename without extension. For anything that isn't "files in a folder," build the `{ vertices, edges }` arrays yourself and pass them straight to `commit` / `uploadBatch` — the harness is a convenience, not a requirement.
+Each `id` is the filename without extension. The harness also returns the links between files as `edges`; records have no edges, so keep links you need in the payload. For anything that isn't "files in a folder," build the records yourself and pass them straight to `commit` / `uploadBatch` — the harness is a convenience, not a requirement.
 
 ### Inspect
 
@@ -194,14 +189,14 @@ fangorn log -n 5            # limit
 fangorn show                # the tip commit + what it changed vs its parent
 fangorn show <commitCid>    # a specific commit
 
-# List every vertex and edge committed under a namespace, as JSON
-fangorn read                          # defaults to the current repo's namespace + owner
+# List every record in a repo, as JSON
+fangorn read                          # defaults to the current repo + owner
 fangorn read rusty-anchor --owner 0x... --pretty
 ```
 
 ### Clone
 
-Reconstruct tracking of a published namespace from its on-chain tip alone. History and contents are then fetched on demand from IPFS.
+Reconstruct tracking of a published repo from its on-chain head alone. History and contents are then fetched on demand from IPFS.
 
 ```sh
 fangorn clone <owner> rusty-anchor
@@ -210,52 +205,51 @@ fangorn clone <owner> rusty-anchor --dir ./somewhere
 
 ### Subscribe (light client)
 
-Watch a namespace for on-chain updates and stream the diffs — **no subgraph, no
-indexer**. Each `app:publisher:namespace` triple is its own timeline, and the
-registry indexes all three parts, so this watches exactly that timeline's
-`StateCommitted` event (read straight from the RPC node) and, for each new root,
-diffs the namespace's link sets against the previous root.
-Only pushes that actually changed the namespace are emitted. Each push's
+Watch a repo for on-chain updates and stream the diffs — **no subgraph, no
+indexer**. Each `publisher:repo` pair is its own timeline, and the registry's
+`Updated` event indexes both, so this reads exactly that timeline straight from
+the RPC node and, for each new head, diffs the repo's records against the
+previous one. Under an app, only what the app presents is emitted. Each push's
 blocks arrive as one CAR download, resolved from IPFS on demand.
 
 ```sh
-# Watch the current repo's namespace; each change is one JSON line on stdout.
+# Watch the current repo; each change is one JSON line on stdout.
 fangorn subscribe
 
-# Watch any publisher's namespace explicitly.
+# Watch any publisher's repo explicitly.
 fangorn subscribe rusty-anchor --owner 0x...
 
 # Feed an embeddings/index builder directly.
 fangorn subscribe rusty-anchor --owner 0x... | my-index-builder
 ```
 
-Each emitted line is a namespace change:
+Each emitted line is a repo change:
 
 ```jsonc
 {
-	"namespace": "rusty-anchor",
+	"repo": "rusty-anchor",
 	"owner": "0x...",
-	"commitCid": "bafy...", // the new on-chain tip
+	"commitCid": "bafy...", // the new on-chain head
+	"oldRoot": "0x...",
+	"newRoot": "0x...",
 	"blockNumber": "12345678", // persist this to resume
-	"addedVertices": [
-		{ "cid": "bafy...", "schemaId": "track", "payload": { "title": "Locura" } },
+	"puts": [
+		{ "id": "t1", "cid": "bafy...", "type": "track", "payload": { "title": "Locura" } },
 	],
-	"addedEdges": [
-		{ "sourceCid": "bafy...", "relation": "by", "targetCid": "bafy..." },
-	],
-	"removedVertexCids": ["bafy..."],
-	"removedEdges": [],
+	"deletes": ["t0"],
 }
 ```
 
+`fangorn subscribe --all` watches the whole app instead (every presented publisher and repo); a repo name or `--owner` narrows it.
+
 **Resumability.** The last processed block is saved to
-`.fangorn/subscribe-<owner>-<namespace>.json` after each change, so restarting
+`.fangorn/subscribe-<owner>-<repo>.json` after each change, so restarting
 replays only what you missed (via `eth_getLogs`) before going live. Override or
 reset:
 
 ```sh
 fangorn subscribe --from-block 12000000   # replay from a specific block
-fangorn subscribe --from-start            # replay the namespace's full history
+fangorn subscribe --from-start            # replay the repo's full history
 ```
 
 Without a saved cursor, subscribe starts **live from the current tip** — seed
@@ -302,45 +296,42 @@ has passed.
 hangs off the same object. It takes the app id per call, so `setAppId`
 deliberately leaves it alone.
 
-### Namespaces & the git-native flow
+### Repos & the git-native flow
 
-`initRepo` allocates a namespace on-chain (idempotent). Then split building from settling:
-`commit` writes a commit object locally (durable in IPFS, HEAD not yet on-chain), and
-`push` fast-forwards the on-chain root to it.
+`initRepo` creates a repo with an empty first commit (idempotent). Then split building from settling:
+`commit` writes a commit object (durable in IPFS, HEAD not yet on-chain), and
+`push` fast-forwards the on-chain head to it.
 
 ```ts
-// Allocate the namespace (no-op if it already exists)
+// Create the repo (no-op if it already exists)
 await fangorn.initRepo("rusty-anchor");
+let tip = await fangorn.onChainTip(fangorn.getAddress(), "rusty-anchor");
 
-// First commit — no parent
 const c1 = await fangorn.commit({
-	namespace: "rusty-anchor",
+	repo: "rusty-anchor",
+	parent: tip!,
 	message: "initial import",
-	vertices: [
-		{ id: "t1", tag: "track", payload: { title: "Locura", artist: "Alice" } },
-		{ id: "a1", tag: "artist", payload: { name: "Alice" } },
+	records: [
+		{ id: "t1", type: "track", payload: { title: "Locura", artist: "Alice" } },
+		{ id: "a1", type: "artist", payload: { name: "Alice" } },
 	],
-	edges: [{ rel: "performed_by", from: "t1", to: "a1" }],
 });
-
-// Settle it on-chain (fast-forward from "no tip yet")
 await fangorn.push("rusty-anchor", c1.commitCid);
 
 // A follow-up commit builds on the previous one
 const c2 = await fangorn.commit({
-	namespace: "rusty-anchor",
+	repo: "rusty-anchor",
 	parent: c1.commitCid,
-	message: "add another track",
-	vertices: [
-		{ id: "t2", tag: "track", payload: { title: "Otra", artist: "Alice" } },
-	],
+	message: "add a track, drop the artist",
+	records: [{ id: "t2", type: "track", payload: { title: "Otra", artist: "Alice" } }],
+	deletes: ["a1"],
 });
-await fangorn.push("rusty-anchor", c2.commitCid); // refuses unless it fast-forwards the on-chain tip (pass { force: true } to override)
+await fangorn.push("rusty-anchor", c2.commitCid); // the chain rejects it unless the parent is the current head
 ```
 
 ### History, diff & read
 
-Walk history from the on-chain tip (IPFS only, no indexer), and read the current namespace contents:
+Walk history from the on-chain tip (IPFS only, no indexer), and read the current contents:
 
 ```ts
 const tip = await fangorn.onChainTip(fangorn.getAddress(), "rusty-anchor");
@@ -350,37 +341,34 @@ for await (const c of fangorn.log(tip!)) {
 	console.log(c.cid, c.message);
 }
 
-// What a commit changed vs. its first parent (namespaced vertex/edge entries added/removed)
+// What a commit changed vs. its parent ({ puts, deletes })
 const diff = await fangorn.show(tip!);
 
-// Every vertex and edge currently committed under a namespace
-const contents = await fangorn.inspectNamespace("rusty-anchor");
-// contents.vertices: { cid, schemaId, payload }[]   contents.edges: { sourceCid, relation, targetCid }[]
-```
+// Every record currently in one of your repos
+const { records } = await fangorn.inspectRepo("rusty-anchor"); // { id, cid, type, payload }[]
 
-> The fast-forward check in `push` is enforced client-side against the on-chain
-> head in this release; on-chain write-authorization lands in a later slice.
+// Someone else's repo, as this client's app presents it
+const { tip: head, contents } = await fangorn.readRepo("0x...", "rusty-anchor");
+```
 
 ### Immediate-write helpers
 
-For the common "stage and settle in one shot" case, `upload` (one vertex) and `uploadBatch`
-(many vertices + edges) run the whole commit-and-push atomically:
+For the common "stage and settle in one shot" case, `upload` (one record) and `uploadBatch`
+(many records, plus deletes) run the whole commit-and-push atomically:
 
 ```ts
 await fangorn.upload("rusty-anchor", { title: "Locura" }, "track");
 
 await fangorn.uploadBatch(
 	"rusty-anchor",
-	[{ id: "t1", tag: "track", payload: { title: "Locura" } }],
-	[
-		/* edges */
-	],
+	[{ id: "t1", type: "track", payload: { title: "Locura" } }],
+	["t0"], // ids to delete
 );
 ```
 
 ### Subscribe (light client)
 
-`subscribe` is an async generator over namespace-scoped changes. It optionally
+`subscribe` is an async generator over one repo's changes. It optionally
 replays from a block cursor (`fromBlock`) and then watches live until the
 `AbortSignal` fires. Each change carries `blockNumber` — persist it to resume.
 
@@ -388,41 +376,41 @@ replays from a block cursor (`fromBlock`) and then watches live until the
 const controller = new AbortController();
 
 for await (const change of fangorn.subscribe({
-	namespace: "rusty-anchor",
+	repo: "rusty-anchor",
 	owner: "0x...", // defaults to your own address
 	fromBlock: savedCursor, // omit to start live from the current tip
 	signal: controller.signal,
 })) {
-	for (const v of change.addedVertices) index.upsert(v.cid, v.payload);
-	for (const cid of change.removedVertexCids) index.remove(cid);
+	for (const r of change.puts) index.upsert(r.id, r.payload);
+	for (const id of change.deletes) index.remove(id);
 	persistCursor(change.blockNumber);
 }
 ```
 
 The pure diff primitive is also exposed on the engine —
-`engine.namespaceDiff(oldRootHex, newRootHex, namespace)` — if you want to diff
+`engine.repoDiff(oldRootHex, newRootHex)` — if you want to diff
 two arbitrary roots without watching.
 
 ### Subscribe to a whole app
 
-Namespaces are hierarchical: every commit lands under `app:publisher:namespace`,
-and each triple is its own on-chain timeline. Two publishers — or one publisher's
-two namespaces — never contend for the same compare-and-swap.
+Every update lands under `publisher:repo`, and each pair is its own on-chain
+timeline. Two publishers — or one publisher's two repos — never contend for the
+same compare-and-swap.
 
-The registry indexes all three parts, so an app-wide feed is one topic filter
-rather than a per-publisher fan-out. `subscribeApp` yields the same
-`NamespaceChange` values as `subscribe`, from every publisher in the app:
+`subscribeApp` yields the same `RepoChange` values as `subscribe`, from every
+publisher the app presents, less its exclusions. With no app it is every update
+by anyone:
 
 ```ts
-// Everything published under this app, by anyone
+// Everything the app presents
 for await (const change of fangorn.subscribeApp({
 	signal: controller.signal,
 })) {
-	console.log(change.owner, change.namespace, change.addedVertices.length);
+	console.log(change.owner, change.repo, change.puts.length);
 }
 
-// Narrow it: every publisher's "reviews" namespace, or one publisher's whole app footprint
-fangorn.subscribeApp({ namespace: "reviews" });
+// Narrow it: every publisher's "reviews" repo, or one publisher's whole footprint
+fangorn.subscribeApp({ repo: "reviews" });
 fangorn.subscribeApp({ owner: "0x..." });
 ```
 
@@ -467,7 +455,7 @@ The backend never needs to understand IPLD — any blob store can implement the
 ## Encryption & gadgets
 
 Not every field belongs in public IPFS. Fangorn lets you **seal** a value and commit
-only an opaque reference to it, keeping the graph — its shape, its edges, its
+only an opaque reference to it, keeping the repo — its records, their ids and types, their
 addressability — fully public while the payload stays closed.
 
 A **gadget** names _how_ a value is sealed and _under what condition_ it opens. Two
@@ -481,7 +469,7 @@ ship today, both exported from the package root (`@fangorn-network/sdk`):
 Every key is bound to a 32-byte **`resourceId`**, which doubles as the Settlement
 Registry key. The same secret cannot cross-open a different resource, and changing
 _who can read_ means re-sealing under a new gadget/`resourceId` and committing a
-vertex that points at the new bytes.
+record that points at the new bytes.
 
 ### `self-hkdf-v1` — fully private
 
@@ -517,7 +505,7 @@ await fangorn.upload(
 	"secret-msg",
 );
 
-// later, after `read` / `inspectNamespace` hands the payload back:
+// later, after `read` / `inspectRepo` hands the payload back:
 const plaintext = unsealSelf(
 	hexToBytes(stored.ciphertext),
 	ownSecret,
@@ -549,7 +537,7 @@ const handle = await encryptAndUpload({
 ```
 
 The handle is what you commit in place of the plaintext value — the engine treats it
-as an ordinary opaque object in the vertex payload:
+as an ordinary opaque object in the record payload:
 
 ```jsonc
 {
@@ -662,9 +650,8 @@ the config's start block is the AppRegistry's deployment.
 - The SDK covers the **app owner** half of the membership rail (`setPlan`, plus the reads and the relayed `join`/`claim`). The **buyer** half — Semaphore identity, the ERC-3009 authorization, membership proofs — lives in [`@fangorn-network/fetch`](https://github.com/fangorn-network/x402f), which relays both writes through a facilitator so the buyer needs no gas. This package deliberately carries no proving dependency.
 - `fangorn subscribe` is the event stream, not the storage paywall — that is `fangorn app claim` / `fangorn app renew`.
 - `worker-usdc-v1` trusts the access worker with the unsealing key. A TEE- or threshold-backed replacement would ship as a new gadget, and the on-chain gadget registry (`gadget → resolver`) is still future work.
-- Vertex/edge schema validation is client-side only — no on-chain enforcement.
-- Push authorization is client-side in this release; on-chain write policies and non-fast-forward rejection are planned.
-- Reads target one publisher's namespace at a time; cross-publisher discovery is a higher layer.
+- Record schema validation is client-side only — no on-chain enforcement.
+- An app presents each accepted publisher's latest head; the data itself is unverified, so accept publishers you trust.
 
 ---
 
