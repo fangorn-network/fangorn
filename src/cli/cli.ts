@@ -551,6 +551,20 @@ const ERC8004_ARBITRUM_SEPOLIA = {
 const ERC8004_SUBGRAPH =
 	"https://api.studio.thegraph.com/query/1742225/erc-8004-arbitrum-sepolia/version/latest";
 
+// A public RPC behind a load balancer can hand the next transaction the nonce of one that just
+// confirmed on another node: "replacement transaction underpriced". Sent again a moment later,
+// it gets the right one. Only nonce errors are retried; anything else is an answer.
+async function retryNonce<T>(f: () => Promise<T>, tries = 4): Promise<T> {
+	for (let i = 0; ; i++) {
+		try {
+			return await f();
+		} catch (e) {
+			if (i >= tries - 1 || !/underpriced|nonce too low|nonce has already been used|already known/i.test((e as Error).message)) throw e;
+			await new Promise((ok) => setTimeout(ok, 3000 * (i + 1)));
+		}
+	}
+}
+
 appCmd
 	.command("agent")
 	.description(
@@ -565,8 +579,12 @@ appCmd
 		"--skip-register",
 		"Only set agent_uri on-chain — for a gateway already registered with ERC-8004",
 	)
+	.option(
+		"--update <agentId>",
+		"Update an agent already registered (e.g. 84532:10323) from the card as it is now: a new registration file, pointed to by setAgentURI; mints nothing",
+	)
 	.action(
-		async (cardUrl: string | undefined, opts: { mcp?: string; skipRegister?: boolean }) => {
+		async (cardUrl: string | undefined, opts: { mcp?: string; skipRegister?: boolean; update?: string }) => {
 			try {
 				const cfg = loadConfig();
 				const url =
@@ -626,7 +644,9 @@ appCmd
 						privateKey: cfg.privateKey,
 					});
 
-					const agent = sdk.createAgent(card.name, card.description);
+					// The same agent either way, built from the card; an update keeps its id and owner.
+					const agent = opts.update ? await sdk.loadAgent(opts.update) : sdk.createAgent(card.name, card.description);
+					if (opts.update) agent.updateInfo(card.name, card.description);
 					s.start("Indexing skills and capabilities from the card");
 					await agent.setA2A(url);
 					if (opts.mcp) await agent.setMCP(opts.mcp);
@@ -645,16 +665,25 @@ appCmd
 					);
 					agent.setActive(true);
 
-					s.start("Registering with the ERC-8004 identity registry");
-					const tx = await agent.registerIPFS();
+					// On a loaded agent, registerIPFS re-pins the file and calls setAgentURI.
+					s.start(opts.update ? `Updating ERC-8004 agent ${opts.update}` : "Registering with the ERC-8004 identity registry");
+					// Retried only as an update: a first registration mints before it sets the URI,
+					// and running it again after a failed second step would mint another agent.
+					const tx = await (opts.update ? retryNonce(() => agent.registerIPFS()) : agent.registerIPFS());
 					const { result } = await tx.waitConfirmed();
 					s.stop();
 					agentId = String(result.agentId);
 				}
 
-				s.start("Pointing the app at its card");
-				const txHash = await getFangorn().getAppRegistry().setAppAgentUri(url);
-				s.stop();
+				// An update leaves a binding that already points here alone: no transaction for nothing.
+				const apps = getFangorn().getAppRegistry();
+				const bound = opts.update ? await apps.appAgentUri().catch(() => "") : "";
+				let txHash = "(already bound)";
+				if (bound !== url) {
+					s.start("Pointing the app at its card");
+					txHash = await retryNonce(() => apps.setAppAgentUri(url));
+					s.stop();
+				}
 
 				if (agentId) console.log(`Agent ID:  ${agentId}`);
 				console.log(`Card:      ${url}`);
