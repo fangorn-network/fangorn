@@ -5,7 +5,7 @@ import { BaseSepoliaConfig, FangornConfig } from "../config.js";
 
 const spans = async (from: bigint, to: bigint, window?: bigint) => {
 	const calls: [bigint, bigint][] = [];
-	await getLogsInWindows({} as PublicClient, from, to, async (a, b) => (calls.push([a, b]), []), window);
+	await getLogsInWindows({} as PublicClient, from, to, (a, b) => (calls.push([a, b]), []), window);
 	return calls;
 };
 
