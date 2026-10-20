@@ -137,6 +137,7 @@ export interface ChainRegistryConfig {
 	dataRegistryContractAddress: Address;
 	appRegistryContractAddress: Address;
 	// TODO: membership registry?
+	logWindow?: bigint;
 }
 
 /**
@@ -157,6 +158,7 @@ export interface ChainRegistryConfig {
 export class ChainRegistry implements Registry {
 	private readonly data: Address;
 	private readonly apps: Address;
+	private readonly logWindow?: bigint;
 
 	constructor(
 		config: ChainRegistryConfig,
@@ -165,6 +167,7 @@ export class ChainRegistry implements Registry {
 	) {
 		this.data = config.dataRegistryContractAddress;
 		this.apps = config.appRegistryContractAddress;
+		this.logWindow = config.logWindow;
 	}
 
 	async epoch(): Promise<number> {
@@ -250,6 +253,7 @@ export class ChainRegistry implements Registry {
 	async log(filter: LogFilter, from: bigint, to?: bigint): Promise<UpdateEntry[]> {
 		const logs = await getLogsInWindows(this.publicClient, from, to, (fromBlock, toBlock) =>
 			this.publicClient.getContractEvents({ ...this.source(filter), fromBlock, toBlock, strict: true } as never),
+			this.logWindow,
 		);
 		// Windows arrive oldest first, but order within a window is the node's choice.
 		return (logs as unknown as EntryLog[])

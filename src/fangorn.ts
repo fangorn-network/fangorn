@@ -924,6 +924,7 @@ export class Fangorn {
 			this.ctx.appId,
 			this.ctx.publicClient,
 			this.ctx.walletClient,
+			this.ctx.config.logWindow,
 		);
 		return this._apps;
 	}

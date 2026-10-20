@@ -609,6 +609,11 @@ gadget_ behind the same handle shape, so committed data doesn't change form.
 Use it from the SDK with `Fangorn.create({ config: BaseSepoliaConfig, ... })`, or
 from the CLI with `CHAIN_NAME=baseSepolia` (or pick it in `fangorn init`).
 
+Its default RPC is `base-sepolia-rpc.publicnode.com`, not `sepolia.base.org`: the
+official endpoint caps `eth_getLogs` at 200 blocks, too narrow to scan the registry's
+history. Each config's `logWindow` is the most blocks one log query spans on its RPC
+(Base 10,000, Arbitrum 100,000); `FANGORN_LOG_WINDOW` overrides it for a private RPC.
+
 `FangornConfig` (Arbitrum Sepolia) and `BaseSepoliaConfig` in `src/config.ts` are the authoritative list and what the SDK
 uses by default — prefer it over any address copied out of a document,
 including this table. The sources are `fangorn-network/contracts`

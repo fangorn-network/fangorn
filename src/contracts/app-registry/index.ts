@@ -54,6 +54,8 @@ export class AppRegistryClient {
         private appId: Hex | undefined,
         private publicClient: PublicClient,
         private walletClient: WalletClient,
+        // The network's `AppConfig.logWindow`: the most blocks one getLogs may span.
+        private logWindow?: bigint,
     ) { }
 
     getAppId(): Hex | undefined {
@@ -278,6 +280,7 @@ export class AppRegistryClient {
                 toBlock: to,
                 strict: true,
             }),
+            this.logWindow,
         );
         return logs.map((log) => ({
             appId: log.args.app_id,

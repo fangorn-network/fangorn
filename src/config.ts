@@ -46,6 +46,9 @@ export interface AppConfig {
 	caip2: number;
 	// A public IPFS gateway that we can read from
 	ipfsGateway: string;
+	// The most blocks one eth_getLogs call may span on `rpcUrl` (default 1000).
+	// `FANGORN_LOG_WINDOW` overrides it, for a private RPC.
+	logWindow?: bigint;
 }
 
 // Network/deployment settings only. The app is per client:
@@ -62,7 +65,10 @@ export const FangornConfig = {
 	chain: arbitrumSepolia,
 	rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
 	caip2: 421614,
-	ipfsGateway: 'https://ipfs.io'
+	ipfsGateway: 'https://ipfs.io',
+	// Every scan here is filtered by address; the public RPC served 1M-block ranges
+	// of those when measured (2026-10-20).
+	logWindow: 100_000n,
 } satisfies AppConfig
 
 export const BaseSepoliaConfig = {
@@ -74,9 +80,13 @@ export const BaseSepoliaConfig = {
 		"0x0e96C012b5c53622EcDAA82F342E31C2623A04f5",
 	appRegistryFromBlock: 48340483n,
 	chain: baseSepolia,
-	rpcUrl: "https://sepolia.base.org",
+	// Not sepolia.base.org: it caps eth_getLogs at 200 blocks, and Base makes 43,200
+	// a day, so a scan of the registry's history would be hundreds of calls per day
+	// of it. This one caps ranges at 50,000 blocks (measured 2026-10-20).
+	rpcUrl: "https://base-sepolia-rpc.publicnode.com",
 	caip2: 84532,
-	ipfsGateway: 'https://ipfs.io'
+	ipfsGateway: 'https://ipfs.io',
+	logWindow: 10_000n,
 } satisfies AppConfig
 
 /**
