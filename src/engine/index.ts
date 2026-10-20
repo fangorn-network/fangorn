@@ -42,11 +42,6 @@ export interface StoredRecord {
 	payload: Record<string, unknown>;
 }
 
-export interface RecordSchema {
-	type: RecordType;
-	requiredFields: string[];
-}
-
 /** A decoded commit, γ = (e, parent, root) plus its repo name, message and CAR (see CommitBlock). */
 export type CommitObject = CommitBlock;
 
@@ -60,27 +55,6 @@ export interface RepoDiff {
 	puts: StoredRecord[];
 	/** Ids of records that are gone. */
 	deletes: string[];
-}
-
-/**
- * Per-repo record schemas. Types without a registered schema are
- * accepted as-is (permissive by default); register one to require fields.
- */
-export class SchemaRegistry {
-	private schemas = new Map<string, RecordSchema>();
-
-	public register(repo: RepoName, schema: RecordSchema): void {
-		this.schemas.set(`${repo}|${schema.type}`, schema);
-	}
-
-	public validate(
-		repo: RepoName,
-		type: RecordType,
-		payload: Record<string, unknown>,
-	): boolean {
-		const schema = this.schemas.get(`${repo}|${type}`);
-		return !schema || schema.requiredFields.every((field) => field in payload);
-	}
 }
 
 const ZERO_BYTES32 = ZERO_HEAD;
@@ -166,7 +140,6 @@ export class FangornEngine {
 
 	constructor(
 		private storage: MetadataStorage,
-		private schemas: SchemaRegistry,
 		private registry: Registry,
 	) { }
 
@@ -322,11 +295,6 @@ export class FangornEngine {
 			const id = r.id ?? randomUUID();
 			assertValidRecordId(id);
 			if (id in recordCids) throw new Error(`record id ${id} staged twice`);
-			if (!this.schemas.validate(repo, r.type, r.payload)) {
-				throw new Error(
-					`Schema violation for record type [${r.type}] in repo [${repo}]`,
-				);
-			}
 			const block = await encodeBlock({
 				id,
 				type: r.type,

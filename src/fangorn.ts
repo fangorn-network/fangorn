@@ -28,7 +28,6 @@ import {
 	RepoDiff,
 	RecordInput,
 	rootHexFromCid,
-	SchemaRegistry,
 } from "./engine/index.js";
 import {
 	AppRegistryClient,
@@ -148,8 +147,6 @@ export class Fangorn {
 
 	private _engine: FangornEngine | null = null;
 
-	private readonly _schemas = new SchemaRegistry();
-
 	private _feed: AppFeed | null = null;
 
 	private _apps: AppRegistryClient | null = null;
@@ -178,15 +175,9 @@ export class Fangorn {
 
 		this._engine ??= new FangornEngine(
 			this.ctx.metadataStorage,
-			this._schemas,
 			this.ctx.registry,
 		);
 		return this._engine;
-	}
-
-	/** Per-repo record schemas. Unregistered types are accepted as-is. */
-	get schemas(): SchemaRegistry {
-		return this._schemas;
 	}
 
 	/**

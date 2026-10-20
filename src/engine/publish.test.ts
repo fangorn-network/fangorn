@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
 	FangornEngine,
-	SchemaRegistry,
 	MAX_REPO_NAME_LENGTH,
 	type RecordInput,
 } from "./index.js";
@@ -53,7 +52,7 @@ function robinhoodRecords(T: number): RecordInput[] {
 
 function newEngine(storage = new MemStorage(), registry = newRegistry()) {
 	return {
-		engine: new FangornEngine(storage, new SchemaRegistry(), registry),
+		engine: new FangornEngine(storage, registry),
 		storage,
 		registry,
 	};
@@ -236,7 +235,7 @@ describe("publish scalability & cost", () => {
 	it("publishes into a max-length repo", async () => {
 		const { storage } = newEngine();
 		const ns = "n".repeat(MAX_REPO_NAME_LENGTH);
-		const e2 = new FangornEngine(storage, new SchemaRegistry(), newRegistry());
+		const e2 = new FangornEngine(storage, newRegistry());
 		const { commitCid } = await e2.createCommit({
 			repo: ns,
 			base: null,

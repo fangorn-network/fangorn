@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { FangornEngine, SchemaRegistry } from "./index.js";
+import { FangornEngine } from "./index.js";
 import { MemStorage, PUBLISHER, newRegistry, rootHex } from "./test-helpers.js";
 import { ZERO_HEAD, epochOf } from "../registry.js";
 
@@ -11,7 +11,7 @@ const rec = (i: number) => ({ id: "0", type: "rec", payload: { i } });
 function setup() {
 	const registry = newRegistry();
 	registry.now = () => 7 * 3600 + 5;
-	const engine = new FangornEngine(new MemStorage(), new SchemaRegistry(), registry);
+	const engine = new FangornEngine(new MemStorage(), registry);
 	return { registry, engine };
 }
 

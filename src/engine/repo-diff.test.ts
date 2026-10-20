@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { CID } from "multiformats/cid";
-import { FangornEngine, SchemaRegistry, type RecordInput } from "./index.js";
+import { FangornEngine, type RecordInput } from "./index.js";
 import { buildMst, encodeBlock, lookupMst, readMst, type MstNode } from "./records.js";
 import { MemStorage, newRegistry, rootHex } from "./test-helpers.js";
 
@@ -8,13 +8,10 @@ const NS = "songs";
 
 describe("FangornEngine records", () => {
 	let engine: FangornEngine;
-	let schemas: SchemaRegistry;
 
 	beforeEach(() => {
-		schemas = new SchemaRegistry();
 		engine = new FangornEngine(
 			new MemStorage(),
-			schemas,
 			newRegistry(),
 		);
 	});
@@ -101,9 +98,7 @@ describe("FangornEngine records", () => {
 		).rejects.toThrow(/another repo/);
 	});
 
-	it("enforces registered schemas and rejects bad or duplicate ids", async () => {
-		schemas.register(NS, { type: "track", requiredFields: ["title"] });
-		await expect(commit(null, [{ id: "t1", type: "track", payload: {} }])).rejects.toThrow(/Schema violation/);
+	it("rejects bad or duplicate ids", async () => {
 		await expect(commit(null, [{ id: "has space", type: "x", payload: {} }])).rejects.toThrow(/invalid record id/);
 		await expect(
 			commit(null, [
