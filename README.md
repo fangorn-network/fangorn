@@ -57,7 +57,6 @@ ETH_PRIVATE_KEY=0x...
 PINATA_JWT=...
 PINATA_GATEWAY=https://your-gateway.mypinata.cloud
 CHAIN_NAME=arbitrumSepolia   # or baseSepolia
-ACCESS_WORKER_URL=https://access-worker.your-subdomain.workers.dev   # optional (sealed fields)
 SIGNED_URL_WORKER_URL=https://pinata-url-provider.your-subdomain.workers.dev   # optional
 ```
 
@@ -112,6 +111,7 @@ fangorn app suspend <address>    # suspend a member from THIS app only
 fangorn app reinstate <address>
 fangorn app renew                # pay for the next period
 fangorn app cancel               # end the subscription now, no refund
+fangorn app agent --access-worker <url>   # register the worker's agent card with ERC-8004 (or pass a card URL)
 fangorn app withdraw-fees [to]   # join fees still owed from before joining was removed
 ```
 

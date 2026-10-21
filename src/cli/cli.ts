@@ -27,7 +27,7 @@ import { handleCancel, selectChain } from "./index.js";
 import getNetwork, { AppConfig, nonBlank, toAppId } from "../config.js";
 import { StorageConfig } from "../types/index.js";
 import { PublisherStatus } from "../contracts/index.js";
-import { mcpTools, mintAgent, parseAgentId, registrationFile, setAgentFile, type AgentCard } from "./erc8004.js";
+import { agentCardUrl, mcpTools, mintAgent, parseAgentId, registrationFile, setAgentFile, type AgentCard } from "./erc8004.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -36,10 +36,6 @@ interface StoredConfig {
 	chainName: string;
 	pinataJwt: string;
 	pinataGateway: string;
-	// Gates access to content (does this user meet the access requirements).
-	// Optional — unset means no access-gating worker is configured. Also absent
-	// from configs written before these two workers were split apart.
-	accessWorkerUrl?: string;
 	// The pinata-url-provider worker that distributes presigned upload URLs.
 	// Required only when uploading via signed URLs (no own Pinata JWT).
 	signedUrlWorkerUrl?: string;
@@ -58,7 +54,6 @@ interface Config {
 	appId?: string;
 	pinataJwt: string;
 	pinataGateway: string;
-	accessWorkerUrl: string;
 	signedUrlWorkerUrl: string;
 }
 
@@ -93,7 +88,6 @@ function loadConfig(): Config {
 	const privateKey = process.env.ETH_PRIVATE_KEY;
 	const pinataJwt = process.env.PINATA_JWT;
 	const pinataGateway = process.env.PINATA_GATEWAY;
-	const accessWorkerUrl = process.env.ACCESS_WORKER_URL;
 	const signedUrlWorkerUrl = process.env.SIGNED_URL_WORKER_URL;
 	// Blank counts as unset, so an exported-but-empty FANGORN_APP_ID (common in
 	// Docker/CI) falls through to the stored app instead of overriding it with an
@@ -111,7 +105,6 @@ function loadConfig(): Config {
 			appId: envAppId ?? nonBlank(stored.appId),
 			pinataJwt: stored.pinataJwt,
 			pinataGateway: stored.pinataGateway,
-			accessWorkerUrl: stored.accessWorkerUrl ?? "",
 			signedUrlWorkerUrl: stored.signedUrlWorkerUrl ?? "",
 		};
 		return _config;
@@ -133,7 +126,6 @@ function loadConfig(): Config {
 			appId: envAppId,
 			pinataJwt: pinataJwt ?? "",
 			pinataGateway: pinataGateway ?? "",
-			accessWorkerUrl: accessWorkerUrl ?? "",
 			signedUrlWorkerUrl: signedUrlWorkerUrl ?? "",
 		};
 
@@ -320,14 +312,6 @@ program
 		});
 		handleCancel(pinataGateway);
 
-		// Access-gating worker: checks whether this user meets the requirements to
-		// access content. Optional — leave blank if you don't gate access.
-		const accessWorkerUrl = await text({
-			message: "Access-gating worker URL (optional):",
-			placeholder: "https://access-worker.your-subdomain.workers.dev",
-		});
-		handleCancel(accessWorkerUrl);
-
 		// Presigned-URL worker (pinata-url-provider): issues short-lived Pinata
 		// upload URLs. Optional — blank uses the hosted default, so no JWT is
 		// needed to upload via signed URLs.
@@ -342,7 +326,6 @@ program
 			chainName,
 			pinataJwt: pinataJwt as string,
 			pinataGateway: pinataGateway as string,
-			accessWorkerUrl: accessWorkerUrl as string,
 			signedUrlWorkerUrl: signedUrlWorkerUrl as string,
 			// Keep whatever `set-app` chose; re-running init shouldn't silently
 			// move the user back to the default app.
@@ -564,8 +547,9 @@ appCmd
 	)
 	.argument(
 		"[cardUrl]",
-		"The agent card URL; defaults to the configured access worker's /.well-known/agent-card.json",
+		"The agent card URL; or pass --access-worker to use its /.well-known/agent-card.json",
 	)
+	.option("--access-worker <url>", "The access worker serving the agent card")
 	.option("--mcp <url>", "An MCP endpoint to index alongside the card")
 	.option(
 		"--skip-register",
@@ -576,23 +560,13 @@ appCmd
 		"Update an agent already registered (e.g. 84532:10323) from the card as it is now: a new registration file, pointed to by setAgentURI; mints nothing",
 	)
 	.action(
-		async (cardUrl: string | undefined, opts: { mcp?: string; skipRegister?: boolean; update?: string }) => {
+		async (cardUrl: string | undefined, opts: { accessWorker?: string; mcp?: string; skipRegister?: boolean; update?: string }) => {
 			try {
 				const cfg = loadConfig();
-				const url =
-					cardUrl ??
-					(cfg.accessWorkerUrl
-						? `${cfg.accessWorkerUrl.replace(/\/$/, "")}/.well-known/agent-card.json`
-						: undefined);
-				if (!url) {
-					throw new Error(
-						"No card URL. Pass one, or set an access worker URL with `fangorn init`.",
-					);
-				}
+				const url = agentCardUrl(cardUrl, opts.accessWorker);
 
-				// Fetched rather than prompted: the card is the source of truth for the
-				// agent's name, description and skills. A card that is not reachable now
-				// cannot be registered.
+				// try to fetch the agent card from the URL
+				// if it DNE, return an error
 				const s = spinner();
 				s.start(`Reading ${url}`);
 				const res = await fetch(url);

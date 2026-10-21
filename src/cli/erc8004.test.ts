@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { parseAgentId, registrationFile } from "./erc8004.js";
+import { agentCardUrl, parseAgentId, registrationFile } from "./erc8004.js";
 
 describe("erc8004", () => {
+	it("resolves the card from a URL or an access worker", () => {
+		expect(agentCardUrl("https://a.example/card.json", "https://w.example")).toBe("https://a.example/card.json");
+		expect(agentCardUrl(undefined, "https://w.example/")).toBe("https://w.example/.well-known/agent-card.json");
+		expect(() => agentCardUrl()).toThrow("--access-worker");
+	});
+
 	it("writes the file agent0-sdk wrote (Tarot, 84532:10313, as pinned)", () => {
 		const card = {
 			name: "Tarot",

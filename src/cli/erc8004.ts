@@ -48,6 +48,13 @@ interface Service {
 }
 
 /** An MCP server's tool names, from `tools/list`; undefined when it does not answer (indexing is best effort). */
+/** The card to register: the URL given, else the access worker's well-known card. */
+export function agentCardUrl(cardUrl?: string, accessWorker?: string): string {
+	if (cardUrl) return cardUrl;
+	if (!accessWorker) throw new Error("No card URL. Pass one, or pass --access-worker <url>.");
+	return `${accessWorker.replace(/\/$/, "")}/.well-known/agent-card.json`;
+}
+
 export async function mcpTools(
 	endpoint: string,
 ): Promise<string[] | undefined> {
