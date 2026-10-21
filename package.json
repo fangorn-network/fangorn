@@ -1,7 +1,7 @@
 {
 	"name": "@fangorn-network/sdk",
-	"version": "2026.10.20-dev",
-	"description": "Git for knowledge graphs",
+	"version": "2026.10.21-dev",
+	"description": "decentralized, verifiable and platformless content management framework",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/fangorn-network/fangorn.git"
