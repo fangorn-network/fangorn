@@ -3,6 +3,7 @@ import { Command } from "commander";
 import { intro, outro, text, spinner, confirm } from "@clack/prompts";
 import {
 	createPublicClient,
+	createWalletClient,
 	formatEther,
 	formatUnits,
 	http,
@@ -26,6 +27,7 @@ import { handleCancel, selectChain } from "./index.js";
 import getNetwork, { AppConfig, nonBlank, toAppId } from "../config.js";
 import { StorageConfig } from "../types/index.js";
 import { PublisherStatus } from "../contracts/index.js";
+import { mcpTools, mintAgent, parseAgentId, registrationFile, setAgentFile, type AgentCard } from "./erc8004.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -541,16 +543,6 @@ appCmd
 		}
 	});
 
-// ERC-8004 registry addresses on Arbitrum Sepolia, carried over from the
-// ArbitrumOpenHouse branch where this flow last worked. agent0-sdk needs them
-// because it does not ship 421614 itself; drop the override the day it does.
-const ERC8004_ARBITRUM_SEPOLIA = {
-	IDENTITY: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
-	REPUTATION: "0x8004B663056A597Dffe9eCcC1965A193B7388713",
-};
-const ERC8004_SUBGRAPH =
-	"https://api.studio.thegraph.com/query/1742225/erc-8004-arbitrum-sepolia/version/latest";
-
 // A public RPC behind a load balancer can hand the next transaction the nonce of one that just
 // confirmed on another node: "replacement transaction underpriced". Sent again a moment later,
 // it gets the right one. Only nonce errors are retried; anything else is an answer.
@@ -599,8 +591,8 @@ appCmd
 				}
 
 				// Fetched rather than prompted: the card is the source of truth for the
-				// agent's name and description, and agent0-sdk's setA2A will fetch it
-				// again anyway. A card that is not reachable now cannot be registered.
+				// agent's name, description and skills. A card that is not reachable now
+				// cannot be registered.
 				const s = spinner();
 				s.start(`Reading ${url}`);
 				const res = await fetch(url);
@@ -608,11 +600,7 @@ appCmd
 					s.stop();
 					throw new Error(`card at ${url} returned ${String(res.status)}`);
 				}
-				const card = (await res.json()) as {
-					name?: string;
-					description?: string;
-					skills?: { tags?: string[] }[];
-				};
+				const card = (await res.json()) as Partial<AgentCard>;
 				s.stop(`Card: ${card.name ?? "(unnamed)"}`);
 				if (!card.name || !card.description) {
 					throw new Error("card is missing `name` or `description`");
@@ -625,54 +613,44 @@ appCmd
 							"ERC-8004 registration pins the registration file to IPFS — set PINATA_JWT, or pass --skip-register.",
 						);
 					}
-					// Imported here, not at module scope: agent0-sdk pulls a full in-process
-					// IPFS node (helia + kubo-rpc-client), and nothing outside this command
-					// should pay for it — least of all the access worker, which depends on
-					// this package and bundles for workerd.
-					const { SDK } = await import("agent0-sdk");
-					const sdk = new SDK({
-						chainId: cfg.cfg.caip2,
-						rpcUrl: cfg.cfg.rpcUrl,
-						// agent0-sdk ships Base Sepolia's registries itself.
-						...(cfg.cfg.caip2 === 421614 && {
-							subgraphUrl: ERC8004_SUBGRAPH,
-							registryOverrides: { [cfg.cfg.caip2]: ERC8004_ARBITRUM_SEPOLIA },
-							subgraphOverrides: { [cfg.cfg.caip2]: ERC8004_SUBGRAPH },
-						}),
-						ipfs: "pinata",
+					const c = {
+						chain: cfg.cfg.chain,
+						publicClient: createPublicClient({ chain: cfg.cfg.chain, transport: http(cfg.cfg.rpcUrl) }),
+						walletClient: createWalletClient({ account: getAccount(), chain: cfg.cfg.chain, transport: http(cfg.cfg.rpcUrl) }),
 						pinataJwt: cfg.pinataJwt,
-						privateKey: cfg.privateKey,
-					});
-
-					// The same agent either way, built from the card; an update keeps its id and owner.
-					const agent = opts.update ? await sdk.loadAgent(opts.update) : sdk.createAgent(card.name, card.description);
-					if (opts.update) agent.updateInfo(card.name, card.description);
+					};
+					const chainId = cfg.cfg.caip2;
+					const named = { ...card, name: card.name, description: card.description };
 					s.start("Indexing skills and capabilities from the card");
-					await agent.setA2A(url);
-					if (opts.mcp) await agent.setMCP(opts.mcp);
+					const mcp = opts.mcp ? { endpoint: opts.mcp, tools: await mcpTools(opts.mcp) } : undefined;
 					s.stop();
+					const file = (id: bigint) => registrationFile({ cardUrl: url, card: named, chainId, agentId: id, mcp });
 
-					// Reputation only. Crypto-economic needs a bond nobody has posted, and
-					// TEE attestation would be a lie: the gateway is a Cloudflare Worker,
-					// which has no enclave to attest with.
-					agent.setTrust(true, false, false);
-					// Read off the card rather than assumed: an agent that advertises x402
-					// against free endpoints sends payers down a rail that is not there.
-					// The card grows an `x402`-tagged skill the day a paywall is actually
-					// baked, and this flips with it.
-					agent.setX402Support(
-						card.skills?.some((sk) => sk.tags?.includes("x402")) ?? false,
-					);
-					agent.setActive(true);
-
-					// On a loaded agent, registerIPFS re-pins the file and calls setAgentURI.
-					s.start(opts.update ? `Updating ERC-8004 agent ${opts.update}` : "Registering with the ERC-8004 identity registry");
-					// Retried only as an update: a first registration mints before it sets the URI,
-					// and running it again after a failed second step would mint another agent.
-					const tx = await (opts.update ? retryNonce(() => agent.registerIPFS()) : agent.registerIPFS());
-					const { result } = await tx.waitConfirmed();
-					s.stop();
-					agentId = String(result.agentId);
+					if (opts.update) {
+						// The same agent, from the card as it is now: a new file, pointed to by
+						// setAgentURI. Its id and owner stay.
+						const id = parseAgentId(opts.update, chainId);
+						s.start(`Updating ERC-8004 agent ${opts.update}`);
+						await retryNonce(() => setAgentFile(c, id, file(id)));
+						s.stop();
+						agentId = `${String(chainId)}:${String(id)}`;
+					} else {
+						// Not retried: run again, the mint would make a second agent.
+						s.start("Registering with the ERC-8004 identity registry");
+						const id = await mintAgent(c);
+						agentId = `${String(chainId)}:${String(id)}`;
+						s.message(`Minted ${agentId}; pinning its registration file`);
+						try {
+							await retryNonce(() => setAgentFile(c, id, file(id)));
+						} catch (e) {
+							s.stop();
+							throw new Error(
+								`agent ${agentId} was minted but its registration file was not set (${(e as Error).message}). ` +
+								`Finish it with: fangorn app agent ${url} --update ${agentId}`,
+							);
+						}
+						s.stop();
+					}
 				}
 
 				// An update leaves a binding that already points here alone: no transaction for nothing.
