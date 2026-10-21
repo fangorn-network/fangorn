@@ -1,149 +1,70 @@
+import { randomUUID } from "crypto";
 import { CID } from "multiformats/cid";
 import { sha256 } from "multiformats/hashes/sha2";
 import * as Digest from "multiformats/hashes/digest";
 import { type Address, type Hash, type Hex } from "viem";
-import { AppRegistryClient, DataRegistryClient } from "../contracts";
+import { type Registry, ZERO_HEAD } from "../registry.js";
 import { MetadataStorage } from "../providers/storage/types.js";
 import {
 	Block,
 	CommitBlock,
-	EdgeBlock,
-	NamespaceTree,
-	RootMap,
-	VertexBlock,
-	buildPages,
+	RecordBlock,
+	assertBlockMatches,
+	assertValidRecordId,
+	buildMst,
 	decodeBlock,
 	encodeBlock,
-	readPages,
-} from "./graph.js";
+	lookupMst,
+	readMst,
+} from "./records.js";
 import { packCar, readCar } from "./car.js";
 
-export type SchemaID = string;
-export type RelationLabel = string;
-export type NamespaceID = string;
+export type { Ref } from "./records.js";
 
-export interface Vertex {
-	schemaId: SchemaID;
+export type RecordType = string;
+export type RepoName = string;
+
+/** A staged (typed) record */
+export interface RecordInput {
+	// a unique id for the record; randomly assigned on publish if empty
+	id?: string;
+	// the type of the record (for (de)serialization of the payload)
+	type: RecordType;
 	payload: Record<string, unknown>;
 }
 
-export interface Edge {
-	sourceCid: string;
-	relation: RelationLabel;
-	targetCid: string;
+/** A published record */
+export interface StoredRecord {
+	id: string;
+	// the content identifier of the record (bafy...)
+	cid: string;
+	type: RecordType;
+	payload: Record<string, unknown>;
 }
 
-export interface VertexSchema {
-	id: SchemaID;
-	requiredFields: string[];
+/** A decoded commit, γ = (e, parent, root) plus its repo name, message and CAR (see CommitBlock). */
+export type CommitObject = CommitBlock;
+
+export interface RepoContents {
+	records: StoredRecord[];
 }
 
-export interface EdgeSchema {
-	sourceSchema: SchemaID;
-	relation: RelationLabel;
-	targetSchema: SchemaID;
+/** Net change to a repo between two roots. */
+export interface RepoDiff {
+	/** Records that are new, or whose content changed (same id, new cid). */
+	puts: StoredRecord[];
+	/** Ids of records that are gone. */
+	deletes: string[];
 }
 
-/** A decoded commit — the git-like history object the on-chain digest points at. */
-export interface CommitObject {
-	/** Link to the publisher's root map (namespace → tree). */
-	root: CID;
-	parents: CID[];
-	timestamp: number;
-	message: string;
-	/** Opaque storage URI of the CAR file holding the blocks this commit introduced. */
-	car: string;
-}
-
-export interface NamespaceContents {
-	vertices: {
-		cid: string;
-		schemaId: SchemaID;
-		payload: Record<string, unknown>;
-	}[];
-	edges: Edge[];
-}
-
-/** Namespace diff between a namespace's state graph */
-export interface NamespaceDiff {
-	// vertices that were added to the graph
-	addedVertices: NamespaceContents["vertices"];
-	// edges that were added to the graph
-	addedEdges: Edge[];
-	// CIDs of vertices that were removed from the grap
-	removedVertexCids: string[];
-	// edges that were removed from the graph
-	removedEdges: Edge[];
-}
+const ZERO_BYTES32 = ZERO_HEAD;
 
 /**
- * The Metagraph registry is a class for building and validating knowledge graphs 
- * 
- * The vertices each represent a unique piece of data, while the edges
- * represent the relationships that connect them into a graph. 
- * 
- */
-export class MetagraphRegistry {
-	private vertexSchemas = new Map<string, VertexSchema>();
-	private edgeSchemas = new Set<string>();
-
-	public registerVertex(namespace: NamespaceID, schema: VertexSchema): void {
-		this.vertexSchemas.set(`${namespace}|${schema.id}`, schema);
-	}
-
-	public hasVertexSchema(namespace: NamespaceID, schemaId: SchemaID): boolean {
-		return this.vertexSchemas.has(`${namespace}|${schemaId}`);
-	}
-
-	public registerEdge(namespace: NamespaceID, rule: EdgeSchema): void {
-		this.edgeSchemas.add(
-			`${namespace}|${rule.sourceSchema}|${rule.relation}|${rule.targetSchema}`,
-		);
-	}
-
-	public hasEdgeSchema(
-		namespace: NamespaceID,
-		sourceSchema: SchemaID,
-		relation: RelationLabel,
-		targetSchema: SchemaID,
-	): boolean {
-		return this.edgeSchemas.has(
-			`${namespace}|${sourceSchema}|${relation}|${targetSchema}`,
-		);
-	}
-
-	public validateVertex(
-		namespace: NamespaceID,
-		schemaId: SchemaID,
-		payload: Record<string, unknown>,
-	): boolean {
-		const schema = this.vertexSchemas.get(`${namespace}|${schemaId}`);
-		if (!schema) return false;
-		return schema.requiredFields.every((field) => field in payload);
-	}
-
-	public validateEdge(
-		namespace: NamespaceID,
-		sourceSchema: SchemaID,
-		relation: RelationLabel,
-		targetSchema: SchemaID,
-	): boolean {
-		return this.edgeSchemas.has(
-			`${namespace}|${sourceSchema}|${relation}|${targetSchema}`,
-		);
-	}
-}
-
-// TODO: this should be moved to a constants file.
-const ZERO_BYTES32 =
-	"0x0000000000000000000000000000000000000000000000000000000000000000";
-
-/**
- * Upper bound on a namespace name's length. Namespaces are keys of the root
- * map block, so this is just a sanity bound keeping that block small and
+ * Upper bound on a repo name's length. The name is stored in every commit
+ * block, so this is just a sanity bound keeping that block small and
  * rejecting garbage input early.
  */
-export const MAX_NAMESPACE_LENGTH = 256;
+export const MAX_REPO_NAME_LENGTH = 256;
 
 /**
  * The root of the graph, committed to IPFS, as hex
@@ -152,64 +73,60 @@ export function rootHexFromCid(commitCid: CID): Hex {
 	return `0x${Buffer.from(commitCid.multihash.digest).toString("hex")}`;
 }
 
-/** Namespaces must be non-empty strings whose length does not exceed MAX_NAMESPACE_LENGTH */
-export function assertValidNamespace(namespace: NamespaceID): void {
-	if (typeof namespace !== "string" || namespace.length === 0) {
-		throw new Error("namespace must be a non-empty string");
+/** Repos must be non-empty strings whose length does not exceed MAX_REPO_NAME_LENGTH */
+export function assertValidRepoName(repo: RepoName): void {
+	if (typeof repo !== "string" || repo.length === 0) {
+		throw new Error("repo must be a non-empty string");
 	}
-	if (namespace.length > MAX_NAMESPACE_LENGTH) {
+	if (repo.length > MAX_REPO_NAME_LENGTH) {
 		throw new Error(
-			`namespace exceeds the maximum length of ${MAX_NAMESPACE_LENGTH.toString()} characters ` +
-			`(got ${namespace.length.toString()}).`,
+			`repo exceeds the maximum length of ${MAX_REPO_NAME_LENGTH.toString()} characters ` +
+			`(got ${repo.length.toString()}).`,
 		);
 	}
 }
 
-/** One line of a commit's diff against its first parent. */
+/** One line of a commit's diff against its parent. */
 export interface CommitDiff {
 	message: string;
-	parents: string[];
-	timestamp: number;
+	parent: string | null;
+	epoch: number;
+	repo: string;
 	root: string;
-	/** namespaced entries (`<ns>/v/<cid>`, `<ns>/e/<cid>`) new vs. the parent. */
+	/** `<ns>/<id>` of records new vs. the parent. */
 	added: string[];
-	/** namespaced entries present in the parent but gone in this commit. */
+	/** `<ns>/<id>` of records whose content changed. */
+	updated: string[];
+	/** `<ns>/<id>` of records present in the parent but gone in this commit. */
 	removed: string[];
 }
 
-/** Input to `createCommit`: a graph staged under one namespace. */
+/** Input to `createCommit`: puts and deletes, by record id, under one repo. */
 export interface CreateCommitOptions {
-	namespace: NamespaceID;
+	repo: RepoName;
 	/** Parent commit this builds on (local HEAD or on-chain tip), or null for a root commit. */
 	base: CID | null;
-	/** Vertices keyed by a caller-local id, so edges can reference them. */
-	vertices: {
-		id: string;
-		schemaId: SchemaID;
-		payload: Record<string, unknown>;
-	}[];
-	/**
-	 * Edges between vertices. Endpoints are local ids of vertices staged in
-	 * this same call, or full CIDs of vertices committed earlier (CIDs are
-	 * content-addressed and stable across commits).
-	 */
-	edges: { relation: RelationLabel; from: string; to: string }[];
+	/** Records to put. A put replaces any record with the same id. */
+	records: RecordInput[];
+	/** Ids of records to remove. Applied before `records`. */
+	deletes?: string[];
 	message: string;
 	/**
-	 * When true, the staged graph REPLACES the namespace's previous contents
-	 * (a snapshot commit — anything omitted is removed). Default is additive:
-	 * new state = parent state ∪ staged.
+	 * When true, the staged records REPLACE the repo's previous contents
+	 * (a snapshot commit — anything omitted is removed). Default: puts and
+	 * deletes apply on top of the parent state.
 	 */
+	// TODO: needed?
 	replace?: boolean;
 }
 
-/** The links (namespace contents) behind one commit's view of a namespace. */
-interface TreeLinks {
-	vertexLinks: CID[];
-	edgeLinks: CID[];
-	/** Page + tree block CIDs, for delta computation. */
-	structureCids: Set<string>;
+/** One repo's state at a commit: id → record CID, plus its MST node CIDs. */
+interface RepoState {
+	state: Map<string, CID>;
+	nodeCids: Set<string>;
 }
+
+const EMPTY_STATE: RepoState = { state: new Map(), nodeCids: new Set() };
 
 export class FangornEngine {
 	/**
@@ -223,10 +140,7 @@ export class FangornEngine {
 
 	constructor(
 		private storage: MetadataStorage,
-		private metagraph: MetagraphRegistry,
-		private registryClient: DataRegistryClient,
-		// Heads are read from the DataRegistry; commits go through the AppRegistry.
-		private appRegistry: AppRegistryClient,
+		private registry: Registry,
 	) { }
 
 	/**
@@ -258,28 +172,22 @@ export class FangornEngine {
 		let bytes = this.cache.get(key);
 		if (!bytes) {
 			bytes = await this.storage.getRawBlock(key);
+			assertBlockMatches(commitCid, bytes);
 			this.cache.set(key, bytes);
 		}
 
-		// the decoded dag-cbor block
-		const decoded = decodeBlock<{
-			root?: unknown;
-			parents?: unknown[];
-			timestamp?: number;
-			message?: string;
-			car?: string;
-			pailRoot?: unknown;
-		}>(bytes);
-		if (decoded.pailRoot !== undefined) {
+		const decoded = decodeBlock<Partial<CommitBlock>>(bytes);
+		if (typeof decoded.epoch !== "number" || typeof decoded.repo !== "string") {
 			throw new Error(
-				`commit ${key} predates the v2 data layer (pail-era). ` +
+				`commit ${key} predates the (e, parent, root) commit format. ` +
 				"Reset the on-chain head (`fangorn reset`) and re-publish.",
 			);
 		}
 		return {
+			epoch: decoded.epoch,
+			parent: decoded.parent ? CID.parse(String(decoded.parent)) : null,
 			root: CID.parse(String(decoded.root)),
-			parents: (decoded.parents ?? []).map((p) => CID.parse(String(p))),
-			timestamp: decoded.timestamp ?? 0,
+			repo: decoded.repo,
 			message: decoded.message ?? "",
 			car: decoded.car ?? "",
 		};
@@ -311,7 +219,7 @@ export class FangornEngine {
 				const found = this.cache.get(key);
 				if (found) return found;
 			}
-			cursor = commit.parents.length ? commit.parents[0] : null;
+			cursor = commit.parent;
 		}
 		throw new Error(`Block payload missing for key: ${key}`);
 	}
@@ -322,235 +230,101 @@ export class FangornEngine {
 
 	// ── Commit-object layer ──────────────────────────────────────────────────
 	//
-	// The on-chain head is a *commit* CID digest. A commit wraps the root map
-	// plus its parents and message, so the whole history is walkable from that
-	// single trusted pointer.
+	// The on-chain head is a *commit* CID digest. A commit names its parent and
+	// its state root, so the whole history is walkable from that one pointer.
 
 	/**
-	 * Reconstruct the current on-chain head of one publisher's namespace as a
-	 * commit CID, or null if none. Each namespace is its own on-chain timeline,
-	 * so this is per-(publisher, namespace) rather than per-publisher.
+	 * Reconstruct the current on-chain head of one publisher's repo as a
+	 * commit CID, or null if none. Each repo is its own on-chain timeline,
+	 * so this is per-(publisher, repo) rather than per-publisher.
 	 */
 	async resolveHeadCommit(
 		publisher: Address,
-		namespace: NamespaceID,
+		repo: RepoName,
 	): Promise<CID | null> {
-		const currentHead = await this.registryClient.getNamespaceHead(
-			publisher,
-			namespace,
-		);
+		const currentHead = await this.registry.head({ publisher, repo });
 		if (currentHead === ZERO_BYTES32) return null;
 		return this.hexToRootCid(currentHead);
 	}
 
-	/** Decode the root map behind a commit. */
-	private async rootMapAt(commitCid: CID): Promise<RootMap> {
-		const commit = await this.getCommit(commitCid);
-		const raw = decodeBlock<Record<string, unknown>>(
-			await this.getBlock(commit.root, commitCid),
-		);
-		const rootMap: RootMap = {};
-		for (const [ns, link] of Object.entries(raw))
-			rootMap[ns] = CID.parse(String(link));
-		return rootMap;
-	}
-
 	/**
-	 * Which namespace a commit belongs to, read from its root map.
-	 *
-	 * Each namespace is its own on-chain timeline, so a commit's root map carries
-	 * exactly one entry — which is how an app-wide subscriber recovers the
-	 * namespace *name* from a stream that only carries `keccak256(name)`. A commit
-	 * with several entries predates per-namespace timelines and can't be
-	 * attributed to one.
+	 * Which repo a commit belongs to. Events carry only `keccak256(name)`, so
+	 * this is how an app-wide subscriber recovers the name.
 	 */
-	async namespaceOf(rootHex: Hex): Promise<NamespaceID> {
-		const names = Object.keys(await this.rootMapAt(this.hexToRootCid(rootHex)));
-		if (names.length !== 1) {
-			throw new Error(
-				`commit ${rootHex} spans ${names.length.toString()} namespaces; expected exactly one`,
-			);
-		}
-		return names[0];
+	async repoOf(rootHex: Hex): Promise<RepoName> {
+		return (await this.getCommit(this.hexToRootCid(rootHex))).repo;
 	}
 
-	/** The full vertex/edge link sets one commit records for `namespace`. */
-	private async treeLinksAt(
-		commitCid: CID,
-		namespace: NamespaceID,
-	): Promise<TreeLinks> {
-		const rootMap = await this.rootMapAt(commitCid);
-		if (!(namespace in rootMap))
-			return { vertexLinks: [], edgeLinks: [], structureCids: new Set() };
-		const treeLink = rootMap[namespace];
-
-		const tree = decodeBlock<NamespaceTree>(
-			await this.getBlock(treeLink, commitCid),
-		);
-		const get = (cid: CID) => this.getBlock(cid, commitCid);
-		const vertexLinks = (
-			await readPages(
-				tree.vertices.map((c) => CID.parse(String(c))),
-				get,
-			)
-		).map((c) => CID.parse(String(c)));
-		const edgeLinks = (
-			await readPages(
-				tree.edges.map((c) => CID.parse(String(c))),
-				get,
-			)
-		).map((c) => CID.parse(String(c)));
-		const structureCids = new Set<string>([
-			treeLink.toString(),
-			...tree.vertices.map(String),
-			...tree.edges.map(String),
-		]);
-		return { vertexLinks, edgeLinks, structureCids };
+	/** The record state a commit holds. */
+	private async stateAt(commitCid: CID): Promise<RepoState> {
+		const commit = await this.getCommit(commitCid);
+		return readMst(commit.root, (cid) => this.getBlock(cid, commitCid));
 	}
 
 	/**
-	 * TODO: revisit the storage model
-	 * 		Q: what if CAR is not supported?
-	 * 
 	 * Build a new commit on top of `base` — entirely in memory, then persisted
 	 * as exactly TWO uploads: one CAR file holding every block this commit
 	 * introduced (git's packfile), and the small commit block itself (stored
 	 * individually so the on-chain digest resolves without any index).
 	 *
-	 * The new namespace state is the parent state plus the staged graph;
-	 * unchanged blocks are shared byte-for-byte with ancestors and are NOT
+	 * Unchanged records and MST nodes re-derive their old CIDs and are NOT
 	 * re-uploaded. Does not touch the chain — `pushCommit` settles it.
 	 */
 	async createCommit(opts: CreateCommitOptions): Promise<{
 		commitCid: CID;
 		root: CID;
-		vertexCids: Record<string, string>;
+		/** id → record CID for every record staged (including generated ids). */
+		recordCids: Record<string, string>;
 	}> {
-		assertValidNamespace(opts.namespace);
-		const { namespace, base } = opts;
+		assertValidRepoName(opts.repo);
+		const { repo, base } = opts;
 
-		// Parent state for this namespace (empty for a root commit / new namespace).
-		const rootMap: RootMap = base ? await this.rootMapAt(base) : {};
-		const old: TreeLinks = base
-			? await this.treeLinksAt(base, namespace)
-			: { vertexLinks: [], edgeLinks: [], structureCids: new Set() };
-		const oldVertexSet = new Set(old.vertexLinks.map(String));
-		const oldEdgeSet = new Set(old.edgeLinks.map(String));
+		// Parent state (empty for a root commit / new repo).
+		if (base && (await this.getCommit(base)).repo !== repo) {
+			throw new Error(`commit ${base.toString()} belongs to another repo than ${repo}`);
+		}
+		const old = base ? await this.stateAt(base) : EMPTY_STATE;
+		const oldRecordCids = new Set([...old.state.values()].map(String));
 
-		// Stage vertices: encode each block; only blocks unseen at the parent
-		// join the CAR delta. In replace mode the staged set IS the new state
-		// (omitted entries are removed); the parent sets still gate the delta —
-		// a re-staged unchanged block re-derives its old CID and isn't re-uploaded.
+		const state = opts.replace ? new Map<string, CID>() : new Map(old.state);
+		for (const id of opts.deletes ?? []) state.delete(id);
+
 		const carBlocks: Block[] = [];
-		const vertexCids: Record<string, string> = {};
-		const idInfo = new Map<string, { cid: CID; tag: SchemaID }>();
-		const vertexLinks = opts.replace ? [] : [...old.vertexLinks];
-		const newVertexSet = new Set(vertexLinks.map(String));
-		for (const v of opts.vertices) {
-			if (!this.metagraph.validateVertex(namespace, v.schemaId, v.payload)) {
-				throw new Error(
-					`Schema violation for vertex type [${v.schemaId}] in namespace [${namespace}]`,
-				);
-			}
+		const recordCids: Record<string, string> = {};
+		for (const r of opts.records) {
+			const id = r.id ?? randomUUID();
+			assertValidRecordId(id);
+			if (id in recordCids) throw new Error(`record id ${id} staged twice`);
 			const block = await encodeBlock({
-				schemaId: v.schemaId,
-				payload: v.payload,
-			} satisfies VertexBlock);
-			idInfo.set(v.id, { cid: block.cid, tag: v.schemaId });
-			vertexCids[v.id] = block.cid.toString();
-			const key = block.cid.toString();
-			if (!newVertexSet.has(key)) {
-				newVertexSet.add(key);
-				vertexLinks.push(block.cid);
-				// blocks already present at the parent never re-upload
-				if (!oldVertexSet.has(key)) carBlocks.push(block);
-			}
+				id,
+				type: r.type,
+				payload: r.payload,
+			} satisfies RecordBlock);
+			state.set(id, block.cid);
+			recordCids[id] = block.cid.toString();
+			// a record unchanged since the parent is already stored
+			if (!oldRecordCids.has(block.cid.toString())) carBlocks.push(block);
 		}
 
-		// Stage edges: endpoints resolve to vertices staged in this same call
-		// (by local id) or to already-committed vertices (by full CID).
-		const resolveEndpoint = (
-			ref: string,
-		): { cid: CID; tag: SchemaID | null } => {
-			const info = idInfo.get(ref);
-			if (info) return info;
-			try {
-				return { cid: CID.parse(ref), tag: null };
-			} catch {
-				throw new Error(
-					`edge references unknown local id (or invalid CID): ${ref}`,
-				);
-			}
-		};
-		const edgeLinks = opts.replace ? [] : [...old.edgeLinks];
-		const newEdgeSet = new Set(edgeLinks.map(String));
-		for (const e of opts.edges) {
-			const source = resolveEndpoint(e.from);
-			const target = resolveEndpoint(e.to);
-			// Schema rules only apply when both endpoint tags are known — a
-			// CID-referenced endpoint's tag lives in an earlier commit.
-			if (
-				source.tag &&
-				target.tag &&
-				!this.metagraph.validateEdge(
-					namespace,
-					source.tag,
-					e.relation,
-					target.tag,
-				)
-			) {
-				throw new Error(
-					`Invalid structural link relation [${e.relation}] in namespace [${namespace}]`,
-				);
-			}
-			const block = await encodeBlock({
-				source: source.cid,
-				relation: e.relation,
-				target: target.cid,
-			} satisfies EdgeBlock);
-			const key = block.cid.toString();
-			if (!newEdgeSet.has(key)) {
-				newEdgeSet.add(key);
-				edgeLinks.push(block.cid);
-				if (!oldEdgeSet.has(key)) carBlocks.push(block);
-			}
+		// Rebuild the tree; only nodes on changed paths have new CIDs.
+		const mst = await buildMst(state);
+		for (const node of mst.nodes) {
+			if (!old.nodeCids.has(node.cid.toString())) carBlocks.push(node);
 		}
-
-		// Rebuild the namespace tree. Pages are deterministic over the sorted
-		// link set, so untouched pages re-derive their old CID and drop out of
-		// the delta.
-		const { pages: vertexPages, pageLinks: vertexPageLinks } =
-			await buildPages(vertexLinks);
-		const { pages: edgePages, pageLinks: edgePageLinks } =
-			await buildPages(edgeLinks);
-		for (const page of [...vertexPages, ...edgePages]) {
-			if (!old.structureCids.has(page.cid.toString())) carBlocks.push(page);
-		}
-		const treeBlock = await encodeBlock({
-			vertices: vertexPageLinks,
-			edges: edgePageLinks,
-		} satisfies NamespaceTree);
-		if (!old.structureCids.has(treeBlock.cid.toString()))
-			carBlocks.push(treeBlock);
-
-		const rootBlock = await encodeBlock({
-			...rootMap,
-			[namespace]: treeBlock.cid,
-		});
-		carBlocks.push(rootBlock);
 
 		// Persist: one CAR upload for the delta, then the commit block naming it.
 		for (const block of carBlocks) this.putLocal(block);
-		const carBytes = await packCar(rootBlock.cid, carBlocks);
+		const carBytes = await packCar(mst.root, carBlocks);
 		const carUri = await this.storage.putFile(
 			carBytes,
-			`${rootBlock.cid.toString()}.car`,
+			`${mst.root.toString()}.car`,
 		);
 
 		const commitObj: CommitBlock = {
-			root: rootBlock.cid,
-			parents: base ? [base] : [],
-			timestamp: Date.now(),
+			epoch: await this.registry.epoch(),
+			parent: base,
+			root: mst.root,
+			repo,
 			message: opts.message,
 			car: carUri,
 		};
@@ -559,51 +333,40 @@ export class FangornEngine {
 		this.putLocal(commitBlock);
 		this.loadedCars.add(commitBlock.cid.toString());
 
-		return { commitCid: commitBlock.cid, root: rootBlock.cid, vertexCids };
+		return { commitCid: commitBlock.cid, root: mst.root, recordCids };
 	}
 
 	/**
-	 * Settle a local commit as the on-chain head of one namespace — the
-	 * permissioned, git `push` step. The commit and its CAR are already durable
-	 * in storage (createCommit uploads them), so this is just the compare-and-swap
-	 * against the current head. Unless `force`, the on-chain head must be an
-	 * ancestor of `commitCid` (fast-forward only).
+	 * Settle a local commit as the on-chain head of one repo — the `update` of
+	 * WHITEPAPER_1 §3.2. The commit and its CAR are already durable in storage
+	 * (createCommit uploads them), so this is just the compare-and-swap.
+	 *
+	 * The commit's parent must BE the current head, not merely an ancestor of
+	 * it: then the parent chain and the registry's log are one history
+	 * (Theorem 3). Today's contract only checks the old root, so the parent is
+	 * checked here.
 	 */
 	async pushCommit(
 		publisher: Address,
-		namespace: NamespaceID,
+		repo: RepoName,
 		commitCid: CID,
-		opts?: { force?: boolean },
 	): Promise<{ txHash: Hash; onChainTip: CID }> {
-		const onChainHex = await this.registryClient.getNamespaceHead(
-			publisher,
-			namespace,
-		);
-		const onChainCommit =
-			onChainHex === ZERO_BYTES32 ? null : this.hexToRootCid(onChainHex);
-
-		if (
-			!opts?.force &&
-			onChainCommit &&
-			onChainCommit.toString() !== commitCid.toString()
-		) {
-			if (!(await this.isAncestor(onChainCommit, commitCid))) {
-				throw new Error(
-					"non-fast-forward: the on-chain tip is not an ancestor of this commit — clone/rebuild onto the current tip, or push with force.",
-				);
-			}
+		const head = await this.registry.head({ publisher, repo });
+		const commit = await this.getCommit(commitCid);
+		const parentHex = commit.parent ? rootHexFromCid(commit.parent) : ZERO_BYTES32;
+		if (commit.repo !== repo) {
+			throw new Error(`commit ${commitCid.toString()} is a commit of ${commit.repo}, not ${repo}`);
 		}
-
-		const newRootHex = rootHexFromCid(commitCid);
-		const txHash = await this.appRegistry.commitStateRoot(
-			namespace,
-			onChainHex,
-			newRootHex,
-		);
+		if (parentHex !== head) {
+			throw new Error(
+				"stale parent: this commit's parent is not the on-chain head — rebuild it onto the current head.",
+			);
+		}
+		const txHash = await this.registry.update(repo, head, rootHexFromCid(commitCid));
 		return { txHash, onChainTip: commitCid };
 	}
 
-	/** Walk the first-parent chain from `tip` toward the root, newest first. */
+	/** Walk the parent chain from `tip` toward the root, newest first. */
 	async *walkParents(
 		tip: CID,
 		max?: number,
@@ -612,17 +375,8 @@ export class FangornEngine {
 		for (let n = 0; cursor && (max === undefined || n < max); n++) {
 			const commit = await this.getCommit(cursor);
 			yield { cid: cursor, commit };
-			cursor = commit.parents.length ? commit.parents[0] : null;
+			cursor = commit.parent;
 		}
-	}
-
-	/** True if `ancestor` appears on the first-parent chain of `tip`. */
-	private async isAncestor(ancestor: CID, tip: CID): Promise<boolean> {
-		const target = ancestor.toString();
-		for await (const { cid } of this.walkParents(tip)) {
-			if (cid.toString() === target) return true;
-		}
-		return false;
 	}
 
 	/** The commit CID string a raw on-chain root hex points at. */
@@ -635,45 +389,34 @@ export class FangornEngine {
 		return rootHexFromCid(CID.parse(commitCid));
 	}
 
-	/** Decode a vertex block into the public read shape. */
-	private async decodeVertex(
+	/** Decode a record block, checking it is filed under its own id. */
+	private async decodeRecord(
+		id: string,
 		link: CID,
 		hint: CID,
-	): Promise<NamespaceContents["vertices"][number]> {
-		const decoded = decodeBlock<VertexBlock>(await this.getBlock(link, hint));
-		return {
-			cid: link.toString(),
-			schemaId: decoded.schemaId,
-			payload: decoded.payload,
-		};
-	}
-
-	/** Decode an edge block into the public read shape. */
-	private async decodeEdge(link: CID, hint: CID): Promise<Edge> {
-		const decoded = decodeBlock<EdgeBlock>(await this.getBlock(link, hint));
-		return {
-			sourceCid: String(decoded.source),
-			relation: decoded.relation,
-			targetCid: String(decoded.target),
-		};
+	): Promise<StoredRecord> {
+		const r = decodeBlock<RecordBlock>(await this.getBlock(link, hint));
+		if (r.id !== id) {
+			throw new Error(`record ${link.toString()} has id ${r.id}, filed under ${id}`);
+		}
+		return { id, cid: link.toString(), type: r.type, payload: r.payload };
 	}
 
 	/**
-	 * Net change to a single namespace between two on-chain roots — the core of
-	 * the subscription light-client. Namespace trees are explicit link sets, so
-	 * the diff is a plain set difference; only blocks that actually changed are
-	 * decoded (each side resolves through its own commit's CAR chain).
+	 * Net change to a single repo between two on-chain roots — the core of
+	 * the subscription light-client. A plain comparison of the two id → CID
+	 * maps; only records that actually changed are decoded.
 	 *
 	 * Diffing root-to-root (rather than walking commits) is deliberately robust:
 	 * it yields the correct net delta even across a force-push / non-fast-forward
-	 * reorg — exactly what an index builder needs (which vertices to (re)embed,
-	 * which to evict).
+	 * reorg — exactly what an index builder needs (what to (re)embed, what to evict).
+	 * ponytail: reads both whole trees; skip subtrees with equal CIDs if diffs
+	 * of large repos get slow.
 	 */
-	async namespaceDiff(
+	async repoDiff(
 		oldRootHex: string | null,
 		newRootHex: string,
-		namespace: NamespaceID,
-	): Promise<NamespaceDiff> {
+	): Promise<RepoDiff> {
 		// A zero new root is a reset/tombstone-all: the after-state is empty and its
 		// commit block (hexToRootCid(ZERO) = bafyreiaaaa…) is never stored, so it must
 		// NOT be fetched — mirror the oldRoot ZERO_BYTES32 guard just below.
@@ -684,153 +427,91 @@ export class FangornEngine {
 				? this.hexToRootCid(oldRootHex)
 				: null;
 
-		const after = newCommit
-			? await this.treeLinksAt(newCommit, namespace)
-			: { vertexLinks: [] as CID[], edgeLinks: [] as CID[] };
-		const before = oldCommit
-			? await this.treeLinksAt(oldCommit, namespace)
-			: { vertexLinks: [] as CID[], edgeLinks: [] as CID[] };
+		const after = newCommit ? (await this.stateAt(newCommit)).state : new Map<string, CID>();
+		const before = oldCommit ? (await this.stateAt(oldCommit)).state : new Map<string, CID>();
 
-		const beforeV = new Set(before.vertexLinks.map(String));
-		const beforeE = new Set(before.edgeLinks.map(String));
-		const afterV = new Set(after.vertexLinks.map(String));
-		const afterE = new Set(after.edgeLinks.map(String));
-
-		const addedVertices: NamespaceContents["vertices"] = [];
-		const addedEdges: Edge[] = [];
-
-		// 1. Guard upfront to satisfy the compiler and ensure runtime safety
-		if (after.vertexLinks.length > 0 || after.edgeLinks.length > 0) {
-			if (!newCommit) {
-				throw new Error("Missing commit context required to decode graph changes");
-			}
-
-			// TypeScript now safely knows newCommit is non-null for the rest of this block
-			for (const link of after.vertexLinks) {
-				if (!beforeV.has(link.toString())) {
-					addedVertices.push(await this.decodeVertex(link, newCommit));
-				}
-			}
-
-			for (const link of after.edgeLinks) {
-				if (!beforeE.has(link.toString())) {
-					addedEdges.push(await this.decodeEdge(link, newCommit));
-				}
+		const puts: StoredRecord[] = [];
+		if (newCommit) {
+			for (const [id, cid] of after) {
+				if (before.get(id)?.toString() !== cid.toString())
+					puts.push(await this.decodeRecord(id, cid, newCommit));
 			}
 		}
-
-		const removedVertexCids = before.vertexLinks
-			.map(String)
-			.filter((c) => !afterV.has(c));
-		const removedEdges: Edge[] = [];
-		if (oldCommit) {
-			// removed entries can only exist when there was an old root
-			for (const link of before.edgeLinks) {
-				if (!afterE.has(link.toString()))
-					removedEdges.push(await this.decodeEdge(link, oldCommit));
-			}
-		}
-
-		return { addedVertices, addedEdges, removedVertexCids, removedEdges };
+		const deletes = [...before.keys()].filter((id) => !after.has(id));
+		return { puts, deletes };
 	}
 
-	/** Diff a commit against its first parent, across every namespace. */
+	/** Diff a commit against its parent. */
 	async diffCommit(commitCid: CID): Promise<CommitDiff> {
 		const commit = await this.getCommit(commitCid);
-		const parent = commit.parents.length ? commit.parents[0] : null;
-
-		const childRoot = await this.rootMapAt(commitCid);
-		const parentRoot = parent ? await this.rootMapAt(parent) : {};
+		const ns = commit.repo;
+		const child = (await this.stateAt(commitCid)).state;
+		const par = commit.parent ? (await this.stateAt(commit.parent)).state : new Map<string, CID>();
 
 		const added: string[] = [];
+		const updated: string[] = [];
 		const removed: string[] = [];
-		const namespaces = new Set([
-			...Object.keys(childRoot),
-			...Object.keys(parentRoot),
-		]);
-		for (const ns of namespaces) {
-			const inParent = ns in parentRoot;
-			const inChild = ns in childRoot;
-			// Unchanged tree link ⇒ identical namespace contents; skip the page walk.
-			if (
-				inParent &&
-				inChild &&
-				String(parentRoot[ns]) === String(childRoot[ns])
-			)
-				continue;
-
-			const child = inChild
-				? await this.treeLinksAt(commitCid, ns)
-				: { vertexLinks: [] as CID[], edgeLinks: [] as CID[] };
-			const par =
-				parent && inParent
-					? await this.treeLinksAt(parent, ns)
-					: { vertexLinks: [] as CID[], edgeLinks: [] as CID[] };
-
-			const parV = new Set(par.vertexLinks.map(String));
-			const parE = new Set(par.edgeLinks.map(String));
-			const childV = new Set(child.vertexLinks.map(String));
-			const childE = new Set(child.edgeLinks.map(String));
-
-			for (const c of childV) if (!parV.has(c)) added.push(`${ns}/v/${c}`);
-			for (const c of childE) if (!parE.has(c)) added.push(`${ns}/e/${c}`);
-			for (const c of parV) if (!childV.has(c)) removed.push(`${ns}/v/${c}`);
-			for (const c of parE) if (!childE.has(c)) removed.push(`${ns}/e/${c}`);
+		for (const [id, cid] of child) {
+			const prev = par.get(id);
+			if (!prev) added.push(`${ns}/${id}`);
+			else if (prev.toString() !== cid.toString()) updated.push(`${ns}/${id}`);
 		}
+		for (const id of par.keys()) if (!child.has(id)) removed.push(`${ns}/${id}`);
 
 		return {
 			message: commit.message,
-			parents: commit.parents.map((c) => c.toString()),
-			timestamp: commit.timestamp,
+			parent: commit.parent?.toString() ?? null,
+			epoch: commit.epoch,
+			repo: ns,
 			root: commit.root.toString(),
 			added: added.sort(),
+			updated: updated.sort(),
 			removed: removed.sort(),
 		};
 	}
 
-	/** check if the namespace already exists (head resolves) */
-	async namespaceExists(
-		namespace: NamespaceID,
+	/** check if the repo already exists (head resolves) */
+	async repoExists(
 		publisher: Address,
+		repo: RepoName,
 	): Promise<boolean> {
-		const head = await this.resolveHeadCommit(publisher, namespace);
-		if (!head) return false;
-		const rootMap = await this.rootMapAt(head);
-		return namespace in rootMap;
+		return (await this.resolveHeadCommit(publisher, repo)) !== null;
 	}
 
-	/** Lists every vertex and edge currently committed under a namespace, resolved from the on-chain root. */
-	async listNamespace(
-		namespace: NamespaceID,
+	/** Lists every record currently committed under a repo, resolved from the on-chain root. */
+	async listRepo(
 		publisher: Address,
-	): Promise<NamespaceContents> {
-		const head = await this.resolveHeadCommit(publisher, namespace);
-		if (!head) return { vertices: [], edges: [] };
+		repo: RepoName,
+	): Promise<RepoContents> {
+		return this.listAt(await this.resolveHeadCommit(publisher, repo));
+	}
 
-		const { vertexLinks, edgeLinks } = await this.treeLinksAt(head, namespace);
-		const vertices: NamespaceContents["vertices"] = [];
-		for (const link of vertexLinks)
-			vertices.push(await this.decodeVertex(link, head));
-		const edges: Edge[] = [];
-		for (const link of edgeLinks) edges.push(await this.decodeEdge(link, head));
-		return { vertices, edges };
+	/** Every record in the state a commit holds; none for no commit. */
+	async listAt(head: CID | null): Promise<RepoContents> {
+		if (!head) return { records: [] };
+		const { state } = await this.stateAt(head);
+		const records: StoredRecord[] = [];
+		for (const [id, cid] of state)
+			records.push(await this.decodeRecord(id, cid, head));
+		return { records };
 	}
 
 	/**
-	 * Fetch a single vertex by CID, resolving through the publisher's commit
-	 * CAR chain (vertex blocks are not individually pinned — they live inside
-	 * commit CARs).
+	 * Fetch the current version of one record by id — one MST path from the
+	 * on-chain root, then the record block. Null if the repo has no such id.
 	 */
-	async readVertex(
-		cid: string,
+	async readRecord(
 		publisher: Address,
-		namespace: NamespaceID,
-	): Promise<NamespaceContents["vertices"][number]> {
-		const head = await this.resolveHeadCommit(publisher, namespace);
+		repo: RepoName,
+		id: string,
+	): Promise<StoredRecord | null> {
+		const head = await this.resolveHeadCommit(publisher, repo);
 		if (!head)
 			throw new Error(
-				`publisher ${publisher} has no on-chain commits in namespace ${namespace}`,
+				`publisher ${publisher} has no on-chain commits in repo ${repo}`,
 			);
-		return this.decodeVertex(CID.parse(cid), head);
+		const get = (cid: CID) => this.getBlock(cid, head);
+		const cid = await lookupMst((await this.getCommit(head)).root, id, get);
+		return cid ? this.decodeRecord(id, cid, head) : null;
 	}
 }

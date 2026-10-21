@@ -5,22 +5,18 @@ import { nonBlank } from "../config.js";
  * Run `fetch` over [fromBlock, toBlock] in consecutive block windows and
  * concatenate the results, oldest window first.
  *
- * RPC providers limit how many blocks one `eth_getLogs` call can cover. The
- * public Arbitrum Sepolia endpoint rejects anything past a couple of thousand
- * blocks with a bare "internal server errror". So a single wide-range call fails
- * outright, and whatever depends on it (a catch-up, a directory listing) fails
- * with it. Tune the window with `FANGORN_LOG_WINDOW`; a private RPC will take far
- * more.
- *
- * `defaultWindow` is for a query the endpoint is known to serve over a wider
- * range. `FANGORN_LOG_WINDOW` still overrides it.
+ * RPC providers limit how many blocks one `eth_getLogs` call can cover (the
+ * Base Sepolia one 50,000, sepolia.base.org 200), and a call past the limit fails
+ * outright, taking whatever depends on it (a catch-up, a directory listing) with
+ * it. Each network's config says what its RPC takes (`AppConfig.logWindow`, passed
+ * here as `defaultWindow`); `FANGORN_LOG_WINDOW` overrides it, for a private RPC.
  */
 export async function getLogsInWindows<T>(
     publicClient: PublicClient,
     fromBlock: bigint,
     toBlock: bigint | undefined,
     fetch: (fromBlock: bigint, toBlock: bigint) => Promise<T[]>,
-    defaultWindow = 1000n,
+    defaultWindow: bigint | undefined = 1000n,
 ): Promise<T[]> {
     // `process` is absent in a browser, where only the default applies.
     const tuned = typeof process !== "undefined" ? nonBlank(process.env.FANGORN_LOG_WINDOW) : undefined;

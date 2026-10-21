@@ -48,11 +48,12 @@ export interface SignedUrlSigner {
  * JWT-only operations (server-side metadata queries / deletes) are unavailable
  * here. Switch to a PinataBackend they're needed.
  *
- * Every upload is billed to an app's storage subscription. Each request carries
- * the client's app id (the worker assumes the default app when none is sent),
- * the signer must be one of that app's publishers, and the pins are filed under
- * a per-app group. The id is read per request so a later `setAppId` takes
- * effect immediately.
+ * Apps provide storage: every upload is billed to the client's app, whose
+ * subscription pays for it. Each request carries the app id, the signer must be
+ * one of that app's publishers, and the pins are filed under the app's group.
+ * There is no app-less upload: with no app this refuses before contacting the
+ * worker. The id is read per request so a later `setAppId` takes effect
+ * immediately.
  */
 export class SignedUrlBackend implements MetadataStorage {
 	private readonly workerUrl: string;
@@ -62,7 +63,7 @@ export class SignedUrlBackend implements MetadataStorage {
 		private readonly signer: SignedUrlSigner,
 		private readonly gateway: string,
 		/** The client's current app id, read per upload (see setAppId). */
-		private readonly appId?: () => Hex | undefined,
+		private readonly appId: () => Hex | undefined,
 	) {
 		// Blank/whitespace (e.g. an unset CLI field) falls back to the default —
 		// so `??` alone won't do, it wouldn't catch "".
@@ -77,7 +78,13 @@ export class SignedUrlBackend implements MetadataStorage {
 		const address = this.signer.address;
 		// Which app's subscription pays for this upload. Sent on both requests so the
 		// worker can reject a bad id before the SDK signs anything.
-		const appId = this.appId?.();
+		const appId = this.appId();
+		if (!appId) {
+			throw new Error(
+				"signed-url uploads are billed to an app: pass `appId` to Fangorn.create() or call setAppId(), " +
+					"or bring your own storage ({ pinata } or { backend })",
+			);
+		}
 
 		// 1) Ask for the challenge to sign, declaring the upload size up front so
 		// the worker mints a presigned URL scoped to exactly this many bytes. The

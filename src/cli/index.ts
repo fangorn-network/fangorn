@@ -4,7 +4,7 @@ import getNetwork from "../config";
 export * from "./cli.js";
 
 export const getChain = (chainStr: string) => {
-	return getNetwork(chainStr);
+	return getNetwork(chainStr).chain;
 };
 
 export const handleCancel = (value: unknown) => {
@@ -18,11 +18,11 @@ export const selectChain = async () => {
 		message: "Pick your chain.",
 		options: [
 			{ value: "arbitrumSepolia", label: "Arbitrum Sepolia" },
-			// { value: "baseSepolia", label: "Base Sepolia" },
+			{ value: "baseSepolia", label: "Base Sepolia" },
 		],
 	});
 	handleCancel(chainChoice);
-	return getNetwork(chainChoice.toString());
+	return chainChoice.toString();
 };
 
 export function parseGadgetArg(raw: string): { type: string; args: string[] } {

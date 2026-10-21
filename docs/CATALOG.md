@@ -1,7 +1,7 @@
 # Catalog manifests
 
 A **catalog** is one mountable thing: a namespace, at one commit, baked into
-shards, governed by an app's terms, priced, and placed in a named embedding
+shards, included by an app, priced, and placed in a named embedding
 space. `c3`, `audius`, `places`, a publisher's own library — same object.
 
 A **catalog manifest** is the file a client reads to mount it. It is not a new
@@ -30,9 +30,7 @@ a manifest can be served from anywhere: a CDN, IPFS, a gist, a Telegram message.
 
   // ── governance: who publishes this, under whose rules ──────────────
   "app": {
-    "appId":     "0x9f2c…",                 // AppRegistry
-    "termsHash": "0x4a01…",                 // what publishers accepted
-    "termsUri":  "ipfs://bafy…"
+    "appId":     "0x9f2c…"                  // AppRegistry
   },
   "publisher": "0x8Ab1…",                   // the wallet that pushed the commit
 
@@ -92,8 +90,8 @@ a manifest can be served from anywhere: a CDN, IPFS, a gist, a Telegram message.
 
 | Field | Source | Verified by |
 |---|---|---|
-| `app.*` | `AppRegistry` | `appTerms(appId) == termsHash`; publisher `canPublish` |
-| `publisher` | `StateCommitted` event | the event's `owner` at `blockNumber` |
+| `app.*` | `AppRegistry` | publisher `canPublish(appId)` |
+| `publisher` | `Updated` event | the event's `publisher` at `blockNumber` |
 | `source.commitCid`, `root` | on-chain registry tip | read the tip for `(publisher, namespace)` |
 | `embedding.*`, `recipe` | inside the commit | resolve `commitCid`, compare |
 | `cdn.shards[].sha256` | the bake | hash the bytes after download |

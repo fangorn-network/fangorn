@@ -9,7 +9,7 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import { CID } from "multiformats/cid";
 
-import { AppConfig, DEFAULT_APP, FangornConfig, nonBlank, toAppId } from "./config.js";
+import { AppConfig, FangornConfig, nonBlank, toAppId } from "./config.js";
 import {
 	FangornContext,
 	FangornCreateOptions,
@@ -22,53 +22,60 @@ import {
 	SignedUrlSigner,
 } from "./providers/storage/signed-url.js";
 import {
-	assertValidNamespace,
+	assertValidRepoName,
 	FangornEngine,
-	MetagraphRegistry,
-	NamespaceContents,
-	NamespaceDiff,
+	RepoContents,
+	RepoDiff,
+	RecordInput,
 	rootHexFromCid,
 } from "./engine/index.js";
 import {
-	AppInvitation,
 	AppRegistryClient,
-	CommitFilter,
-	DataRegistryClient,
 	PreparedTx,
 	MembershipRegistryClient,
-	StateCommittedLog,
-	subspaceId,
 } from "./contracts/index.js";
+import {
+	ChainRegistry,
+	LogFilter,
+	Registry,
+	RepoRef,
+	UpdateEntry,
+	ZERO_HEAD,
+	repoExcluded,
+} from "./registry.js";
 import { AppFeed } from "./feed.js";
 
-const ZERO_BYTES32: Hex =
-	"0x0000000000000000000000000000000000000000000000000000000000000000";
+const ZERO_BYTES32 = ZERO_HEAD;
 
-// max number namespaces held in the cache at once
+// max number repos held in the cache at once
 const NS_CACHE_MAX = 256;
 
-// represents a namespace diff (i.e. what changed between two commits)
-export interface NamespaceChange extends NamespaceDiff {
-	namespace: string;
+// represents a repo diff (i.e. what changed between two commits)
+export interface RepoChange extends RepoDiff {
+	repo: string;
 	owner: Hex;
 	// The commit CID (NEW on-chain tip)
 	commitCid: string;
-	// the root of the old state of the namespace
+	// the root of the old state of the repo
 	oldRoot: Hex;
-	// the root of the new (updated) state of the namespace
+	// the root of the new (updated) state of the repo
 	newRoot: Hex;
 	// when the new root was minted onchain
 	blockNumber: bigint;
 }
 
 export interface SubscribeOptions {
-	namespace: string;
-	/** Publisher whose namespace to watch (defaults to this wallet's address). */
+	repo: string;
+	/**
+	 * Under an app, the stream follows what the app presents (its members' updates,
+	 * less exclusions); with no app, every update the publisher commits.
+	 */
+	/** Publisher whose repo to watch (defaults to this wallet's address). */
 	owner?: Hex;
 	/**
 	 * Replay `StateCommitted` events from this block before going live (the resume
 	 * cursor). Omit to start live from the current chain tip — seed initial state
-	 * separately via `inspectNamespace`.
+	 * separately via `inspectRepo`.
 	 */
 	fromBlock?: bigint;
 	/** Poll interval (ms) for the live watch over an HTTP transport. */
@@ -95,21 +102,25 @@ function resolveStorage(
 	walletClient: WalletClient,
 	config: AppConfig,
 	// Read per upload, not captured: `setAppId` must reach uploads already
-	// configured, or they would keep billing the previous app's subscription.
-	getAppId: () => Hex,
+	// configured, or they would keep billing the previous app.
+	getAppId: () => Hex | undefined,
 ): MetadataStorage | undefined {
 	if (!storage) return undefined;
+	if ("backend" in storage) return storage.backend;
 	if ("pinata" in storage)
 		return new PinataBackend(storage.pinata.jwt, storage.pinata.gateway);
-	if ("signedUrl" in storage)
+	if ("signedUrl" in storage) {
+		// Apps provide storage: the hosted worker bills the client's app. Without
+		// one, a publisher brings its own Pinata (or any backend) and pins itself.
 		return new SignedUrlBackend(
 			storage.signedUrl.workerUrl,
 			walletSigner(walletClient),
 			storage.signedUrl.gateway ?? config.ipfsGateway,
 			getAppId,
 		);
+	}
 	throw new Error(
-		`Invalid storage config: must be { pinata: … } or { signedUrl: … }, got ${JSON.stringify(storage)}`,
+		`Invalid storage config: must be { pinata: … }, { signedUrl: … } or { backend: … }, got ${JSON.stringify(storage)}`,
 	);
 }
 
@@ -136,17 +147,19 @@ export class Fangorn {
 
 	private _engine: FangornEngine | null = null;
 
-	private readonly _metagraph = new MetagraphRegistry();
-
 	private _feed: AppFeed | null = null;
 
+	private _apps: AppRegistryClient | null = null;
+
+	private _membership: MembershipRegistryClient | null = null;
+
 	/** 
-	 * The namespace cache
+	 * The repo cache
 	 * Insertion order = LRU order
 	 */
 	private readonly nsCache = new Map<
 		string,
-		{ tip: string | null; contents: NamespaceContents }
+		{ tip: string | null; contents: RepoContents }
 	>();
 
 	private constructor(ctx: FangornContext) {
@@ -162,15 +175,9 @@ export class Fangorn {
 
 		this._engine ??= new FangornEngine(
 			this.ctx.metadataStorage,
-			this._metagraph,
-			this.ctx.dataRegistry,
-			this.ctx.appRegistry,
+			this.ctx.registry,
 		);
 		return this._engine;
-	}
-
-	get metagraph(): MetagraphRegistry {
-		return this._metagraph;
 	}
 
 	/**
@@ -184,166 +191,87 @@ export class Fangorn {
 			throw new Error("Either privateKey or walletClient must be provided");
 		}
 
-		const resolvedConfig = options.config ?? FangornConfig;
+		const config = options.config ?? FangornConfig;
 
 		const walletClient =
 			options.walletClient ??
 			createWalletClient({
 				account: privateKeyToAccount(options.privateKey ?? "0x0"),
-				chain: resolvedConfig.chain,
-				transport: http(resolvedConfig.rpcUrl),
+				chain: config.chain,
+				transport: http(config.rpcUrl),
 			});
 
-		const domain = options.domain ?? new URL(resolvedConfig.rpcUrl).hostname;
-
 		const publicClient = createPublicClient({
-			transport: http(resolvedConfig.rpcUrl),
+			chain: config.chain,
+			transport: http(config.rpcUrl),
 		}) as PublicClient;
 
 		// Blank is "no app chosen", not an app called "". An empty FANGORN_APP_ID
-		// or `--app ""` must not silently re-scope the registries or the billing.
+		// or `--app ""` must not silently scope reads or billing to keccak("").
 		const chosenApp = nonBlank(options.appId);
-		const appId = toAppId(chosenApp ?? DEFAULT_APP);
-		const dataRegistry = new DataRegistryClient(
-			resolvedConfig.dataRegistryContractAddress,
-			appId,
-			publicClient,
-		);
-		
-		const appRegistry = new AppRegistryClient(
-			resolvedConfig.appRegistryContractAddress,
-			appId,
-			publicClient,
-			walletClient,
-		);
-
-		const membershipRegistry = new MembershipRegistryClient(
-			resolvedConfig.membershipRegistryContractAddress,
-			publicClient,
-			walletClient,
-		);
 
 		const ctx: FangornContext = {
+			config,
 			walletClient,
-			// Every upload is billed to the app it lands in, so the worker is
-			// always told which one — the DEFAULT_APP fallback included.
-			metadataStorage: resolveStorage(
-				options.storage,
-				walletClient,
-				resolvedConfig,
-				() => dataRegistry.getAppId(),
-			),
-			domain,
-			dataRegistry: dataRegistry,
-			appRegistry,
-			membershipRegistry,
-			config: resolvedConfig,
+			publicClient,
+			appId: chosenApp ? toAppId(chosenApp) : undefined,
+			metadataStorage: undefined,
+			registry: options.registry ?? new ChainRegistry(config, publicClient, walletClient),
 		};
-
+		ctx.metadataStorage = resolveStorage(options.storage, walletClient, config, () => ctx.appId);
 		return new Fangorn(ctx);
 	}
 
 	/**
-	 * Resets a namespace's onchain state root to zero.
-	 * TODO: also unpin all data
-	 * Use at your own risk.
-	*/ 
-	async reset(namespace: string) {
-		const currentRoot = await this.getDataRegistry().getNamespaceHead(
-			this.getAddress(),
-			namespace,
-		);
-		await this.getAppRegistry().commitStateRoot(namespace, currentRoot, ZERO_BYTES32);
-	}
-
-	/**
-	 * TODO: this isn't really needed here, it's cosmetic
-	 * instead, what if we moved this to a new paradigm where...
-	 * 
-	 * each app registers as an ERC-8004 agent with  the validation registry
-	 * pointing to these rules essentially?
-	 * 
-	 * 
-	 * Register permissive (no required fields) schemas for every tag/relation a
-	 * staged graph uses, unless the caller has already registered stricter rules
-	 * via `this.metagraph` directly — schema ids are free-form tags by default.
+	 * Empties a repo: one commit of the empty state on top of the head. History
+	 * stays (a head never goes back to zero), and so do the old records: the new
+	 * head still names them as history.
 	 */
-	private registerPermissiveSchemas(
-		repoName: string,
-		vertices: { id: string; tag: string; payload: unknown }[],
-		edges: { rel: string; from: string; to: string }[],
-	): void {
-		const tagOf = new Map<string, string>();
-		for (const v of vertices) {
-			tagOf.set(v.id, v.tag);
-			if (!this.metagraph.hasVertexSchema(repoName, v.tag)) {
-				this.metagraph.registerVertex(repoName, {
-					id: v.tag,
-					requiredFields: [],
-				});
-			}
-		}
-		for (const e of edges) {
-			const sourceTag = tagOf.get(e.from);
-			const targetTag = tagOf.get(e.to);
-			// createCommit reports the missing id
-			if (!sourceTag || !targetTag) continue;
-			if (
-				!this.metagraph.hasEdgeSchema(repoName, sourceTag, e.rel, targetTag)
-			) {
-				this.metagraph.registerEdge(repoName, {
-					sourceSchema: sourceTag,
-					relation: e.rel,
-					targetSchema: targetTag,
-				});
-			}
-		}
+	async reset(repo: string) {
+		const publisher = this.getAddress();
+		const head = await this.engine.resolveHeadCommit(publisher, repo);
+		const { commitCid } = await this.createCommit({
+			repo,
+			base: head,
+			records: [],
+			message: `Reset ${repo}`,
+			replace: true,
+		});
+		return this.engine.pushCommit(publisher, repo, commitCid);
 	}
 
-	/** Stage a graph into one commit on top of `base` (engine shapes adapted from CLI shapes). */
+	/** Stage records into one commit on top of `base`. */
 	private createCommit(opts: {
-		namespace: string;
+		repo: string;
 		base: CID | null;
-		vertices: { id: string; tag: string; payload: unknown }[];
-		edges: { rel: string; from: string; to: string }[];
+		records: { id?: string; type: string; payload: unknown }[];
+		deletes?: string[];
 		message: string;
 		replace?: boolean;
 	}) {
-		this.registerPermissiveSchemas(opts.namespace, opts.vertices, opts.edges);
 		return this.engine.createCommit({
-			namespace: opts.namespace,
-			base: opts.base,
-			vertices: opts.vertices.map((v) => {
-				// Safely ensure payload conforms to Record<string, unknown>
-				const safePayload = (v.payload && typeof v.payload === "object" && !Array.isArray(v.payload))
-					? (v.payload as Record<string, unknown>)
-					: { value: v.payload }; // fallback structure for primitives or arrays
-
-				return {
-					id: v.id,
-					schemaId: v.tag,
-					payload: safePayload,
-				};
-			}),
-			edges: opts.edges.map((e) => ({
-				relation: e.rel,
-				from: e.from,
-				to: e.to,
+			...opts,
+			// Payloads are objects (field names → values); wrap anything else.
+			records: opts.records.map((r) => ({
+				id: r.id,
+				type: r.type,
+				payload:
+					r.payload && typeof r.payload === "object" && !Array.isArray(r.payload)
+						? (r.payload as Record<string, unknown>)
+						: { value: r.payload },
 			})),
-			message: opts.message,
-			replace: opts.replace,
 		});
 	}
 
 	/**
-	 * Allocates a namespace in the publisher's root map. 
-	 * A no-op (no on-chain tx) if the namespace is already initialized.
+	 * Allocates a repo in the publisher's root map. 
+	 * A no-op (no on-chain tx) if the repo is already initialized.
 	 */
 	async initRepo(repoName: string) {
-		assertValidNamespace(repoName);
+		assertValidRepoName(repoName);
 		const publisher = this.getAddress();
 
-		if (await this.engine.namespaceExists(repoName, publisher)) {
+		if (await this.engine.repoExists(publisher, repoName)) {
 			return {
 				cid: undefined,
 				commitCid: undefined,
@@ -353,13 +281,12 @@ export class Fangorn {
 		}
 
 		// Continue the publisher's on-chain history with a commit that adds the
-		// namespace (as an empty tree) to the root map.
+		// repo (as an empty tree) to the root map.
 		const head = await this.engine.resolveHeadCommit(publisher, repoName);
 		const { commitCid } = await this.createCommit({
-			namespace: repoName,
+			repo: repoName,
 			base: head,
-			vertices: [],
-			edges: [],
+			records: [],
 			message: `Initialize repository workspace: ${repoName}`,
 		});
 		const { txHash } = await this.engine.pushCommit(
@@ -377,9 +304,10 @@ export class Fangorn {
 	}
 
 	/**
-	 * Stage one vertex and settle it on-chain in a single shot.
+	 * Put one record and settle it on-chain in a single shot. `id` defaults to
+	 * a random one, so repeated calls add records; pass an id to update one.
 	 */
-	async upload(repoName: string, payload: unknown, schemaId: string) {
+	async upload(repoName: string, payload: unknown, type: string, id?: string) {
 		const publisher = this.getAddress();
 		const head = await this.engine.resolveHeadCommit(publisher, repoName);
 		// can't upload to a zero-state chain.
@@ -389,12 +317,11 @@ export class Fangorn {
 			);
 		}
 
-		const { commitCid, vertexCids } = await this.createCommit({
-			namespace: repoName,
+		const { commitCid, recordCids } = await this.createCommit({
+			repo: repoName,
 			base: head,
-			vertices: [{ id: "v0", tag: schemaId, payload }],
-			edges: [],
-			message: `Upload to namespace ${repoName} under schema ${schemaId}`,
+			records: [{ id, type, payload }],
+			message: `Upload to repo ${repoName} as type ${type}`,
 		});
 		const { txHash } = await this.engine.pushCommit(
 			publisher,
@@ -402,27 +329,29 @@ export class Fangorn {
 			commitCid,
 		);
 
+		const [[recordId, payloadCid]] = Object.entries(recordCids);
 		return {
-			payloadCid: vertexCids.v0,
+			id: recordId,
+			payloadCid,
 			commitCid: commitCid.toString(),
 			txHash,
 		};
 	}
 
 	/**
-	 * Stages many vertices (and optionally edges between them) under one publisher
-	 * root, instead of one tx per vertex. The whole graph is built in memory and
-	 * persisted as ONE CAR upload plus one commit block, then settled in a single
-	 * fast-forward tx. Edges reference vertices by the caller-supplied local `id`.
+	 * Puts many records (and deletes some, by id) under one repo in a
+	 * single commit, instead of one tx per record. Built in memory and persisted
+	 * as ONE CAR upload plus one commit block, then settled in a single
+	 * fast-forward tx. Relations are records too: give them `src`/`dst` `Ref`s.
 	 */
 	async uploadBatch(
 		repoName: string,
-		vertices: { id: string; tag: string; payload: unknown }[],
-		edges: { rel: string; from: string; to: string }[] = [],
+		records: RecordInput[],
+		deletes: string[] = [],
 	) {
-		assertValidNamespace(repoName);
-		if (vertices.length === 0 && edges.length === 0) {
-			throw new Error("uploadBatch requires at least one vertex or edge");
+		assertValidRepoName(repoName);
+		if (records.length === 0 && deletes.length === 0) {
+			throw new Error("uploadBatch requires at least one record or delete");
 		}
 
 		const publisher = this.getAddress();
@@ -433,12 +362,12 @@ export class Fangorn {
 			);
 		}
 
-		const { commitCid, vertexCids } = await this.createCommit({
-			namespace: repoName,
+		const { commitCid, recordCids } = await this.createCommit({
+			repo: repoName,
 			base: head,
-			vertices,
-			edges,
-			message: `Batch upload to namespace ${repoName}`,
+			records,
+			deletes,
+			message: `Batch upload to repo ${repoName}`,
 		});
 
 		const { txHash } = await this.engine.pushCommit(
@@ -450,7 +379,7 @@ export class Fangorn {
 		return {
 			commitCid: commitCid.toString(),
 			txHash,
-			vertexCids,
+			recordCids,
 		};
 	}
 
@@ -462,42 +391,42 @@ export class Fangorn {
 	// on-chain head to a local commit (the permissioned ref update).
 
 	/**
-	 * Build a new commit (no on-chain tx) that stages vertices/edges into
-	 * `namespace` on top of `parent` (a commit CID string, or undefined for a
+	 * Build a new commit (no on-chain tx) that puts/deletes records in
+	 * `repo` on top of `parent` (a commit CID string, or undefined for a
 	 * root commit). The commit and its CAR are uploaded to storage, so a later
 	 * `push` — even in a separate process — can settle it.
 	 */
 	async commit(opts: {
-		namespace: string;
-		vertices?: { id: string; tag: string; payload: unknown }[];
-		edges?: { rel: string; from: string; to: string }[];
+		repo: string;
+		records?: RecordInput[];
+		deletes?: string[];
 		parent?: string;
 		message: string;
-		/** Snapshot semantics: the staged graph replaces the namespace's previous contents. */
+		/** Snapshot semantics: the staged records replace the repo's previous contents. */
 		replace?: boolean;
 	}): Promise<{
 		commitCid: string;
-		parents: string[];
+		parent: string | null;
 		root: string;
-		vertexCids: Record<string, string>;
+		recordCids: Record<string, string>;
 	}> {
-		assertValidNamespace(opts.namespace);
+		assertValidRepoName(opts.repo);
 		const parentCid = opts.parent ? CID.parse(opts.parent) : null;
 
-		const { commitCid, root, vertexCids } = await this.createCommit({
-			namespace: opts.namespace,
+		const { commitCid, root, recordCids } = await this.createCommit({
+			repo: opts.repo,
 			base: parentCid,
-			vertices: opts.vertices ?? [],
-			edges: opts.edges ?? [],
+			records: opts.records ?? [],
+			deletes: opts.deletes,
 			message: opts.message,
 			replace: opts.replace,
 		});
 
 		return {
 			commitCid: commitCid.toString(),
-			parents: parentCid ? [parentCid.toString()] : [],
+			parent: parentCid?.toString() ?? null,
 			root: root.toString(),
-			vertexCids,
+			recordCids,
 		};
 	}
 
@@ -517,32 +446,32 @@ export class Fangorn {
 	async prepareCommit(opts: {
 		/** The publisher whose head advances — NOT this client's service wallet. */
 		owner: Hex;
-		namespace: string;
-		vertices?: { id: string; tag: string; payload: unknown }[];
-		edges?: { rel: string; from: string; to: string }[];
+		repo: string;
+		records?: RecordInput[];
+		deletes?: string[];
 		message: string;
-		/** Snapshot semantics: the staged graph replaces the namespace's contents. */
+		/** Snapshot semantics: the staged records replace the repo's contents. */
 		replace?: boolean;
 	}): Promise<{
 		commitCid: string;
 		oldRoot: Hex;
 		newRoot: Hex;
-		staged: { vertices: number; edges: number };
+		staged: { records: number; deletes: number };
 		tx: PreparedTx;
-		vertexCids: Record<string, string>;
+		recordCids: Record<string, string>;
 	}> {
-		assertValidNamespace(opts.namespace);
-		const registry = this.getDataRegistry();
+		assertValidRepoName(opts.repo);
+		const registry = this.ctx.registry;
 
-		const oldRoot = await registry.getNamespaceHead(opts.owner, opts.namespace);
-		const { commitCid, vertexCids } = await this.createCommit({
-			namespace: opts.namespace,
+		const oldRoot = await registry.head({ publisher: opts.owner, repo: opts.repo });
+		const { commitCid, recordCids } = await this.createCommit({
+			repo: opts.repo,
 			base:
 				oldRoot === ZERO_BYTES32
 					? null
 					: CID.parse(this.engine.commitCidFromRootHex(oldRoot)),
-			vertices: opts.vertices ?? [],
-			edges: opts.edges ?? [],
+			records: opts.records ?? [],
+			deletes: opts.deletes,
 			message: opts.message,
 			replace: opts.replace,
 		});
@@ -553,74 +482,75 @@ export class Fangorn {
 			oldRoot,
 			newRoot,
 			staged: {
-				vertices: opts.vertices?.length ?? 0,
-				edges: opts.edges?.length ?? 0,
+				records: opts.records?.length ?? 0,
+				deletes: opts.deletes?.length ?? 0,
 			},
-			tx: await this.getAppRegistry().prepareCommitStateRoot(
+			tx: await registry.prepareUpdate(
 				opts.owner,
-				opts.namespace,
+				opts.repo,
 				oldRoot,
 				newRoot,
 			),
-			vertexCids,
+			recordCids,
 		};
 	}
 
 	/**
-	 * Settle a local commit as the on-chain head of `namespace` (fast-forward
-	 * unless `force`). Each namespace has its own timeline, so pushes to
-	 * different namespaces never contend for the same compare-and-swap.
+	 * Settle a local commit as the on-chain head of `repo`. Its parent must be
+	 * the current head (see `FangornEngine.pushCommit`). Each repo has its own
+	 * timeline, so pushes to different repos never contend.
 	 */
 	async push(
-		namespace: string,
+		repo: string,
 		commitCid: string,
-		opts?: { force?: boolean },
 	): Promise<{ txHash: string; onChainTip: string }> {
 		const { txHash, onChainTip } = await this.engine.pushCommit(
 			this.getAddress(),
-			namespace,
+			repo,
 			CID.parse(commitCid),
-			opts,
 		);
 		return { txHash, onChainTip: onChainTip.toString() };
 	}
 
-	/** The owner's current on-chain tip for a namespace, or null if they have none. */
-	async onChainTip(owner: Hex, namespace: string): Promise<string | null> {
-		const cid = await this.engine.resolveHeadCommit(owner, namespace);
+	/** The owner's current on-chain tip for a repo, or null if they have none. */
+	async onChainTip(owner: Hex, repo: string): Promise<string | null> {
+		const cid = await this.engine.resolveHeadCommit(owner, repo);
 		return cid ? cid.toString() : null;
 	}
 
 	/**
-	 * A publisher's namespace contents, cached against its on-chain tip.
+	 * A publisher's repo as this client presents it, cached against its tip:
+	 * the publisher's latest head, or, under an app, nothing unless the app
+	 * presents the publisher (provides its storage) and excludes neither it nor
+	 * the repo.
 	 *
-	 * Reading a namespace walks the pail tree from the root — many sequential
-	 * gateway fetches. The tip is one cheap contract read and only moves on
-	 * publish, so it doubles as the cache key: no TTL to tune, no invalidation
-	 * to remember after a settle, and never stale.
+	 * Reading a repo walks its whole record tree from the root. The tip is one
+	 * cheap contract read and only moves on publish, so it doubles as the cache
+	 * key: no TTL to tune, no invalidation to remember after a settle, and never
+	 * stale.
 	 *
-	 * LRU-bounded so an always-on process can't accumulate every namespace it
+	 * LRU-bounded so an always-on process can't accumulate every repo it
 	 * ever touched. The durable copy is on-chain — an evicted entry re-walks.
 	 * ponytail: fixed entry count, not byte-aware; switch to a size budget if a
-	 * few huge namespaces blow memory before the count cap bites.
+	 * few huge repos blow memory before the count cap bites.
 	 */
-	async readNamespace(
+	async readRepo(
 		owner: Hex,
-		namespace: string,
-	): Promise<{ tip: string | null; contents: NamespaceContents }> {
-		const key = `${owner.toLowerCase()}/${namespace}`;
-		const tip = await this.onChainTip(owner, namespace);
+		repo: string,
+	): Promise<{ tip: string | null; contents: RepoContents }> {
+		const key = `${owner.toLowerCase()}/${repo}`;
+		const tip = await this.presentedTip({ publisher: owner, repo });
 
 		const hit = this.nsCache.get(key);
 		if (hit?.tip === tip) {
-			this.nsCache.delete(key); // promote to MRU
+			this.nsCache.delete(key); // TODO: promote to MRU?
 			this.nsCache.set(key, hit);
 			return hit;
 		}
 
 		const entry = {
 			tip,
-			contents: await this.engine.listNamespace(namespace, owner),
+			contents: await this.engine.listAt(tip ? CID.parse(tip) : null),
 		};
 		this.nsCache.delete(key);
 		this.nsCache.set(key, entry);
@@ -631,44 +561,57 @@ export class Fangorn {
 		return entry;
 	}
 
+	/** The commit this client presents of a repo, or null for none (see `readRepo`). */
+	private async presentedTip(ref: RepoRef): Promise<string | null> {
+		const app = this.ctx.appId;
+		const registry = this.ctx.registry;
+		if (app && !(await this.presentsRepo(app, ref))) return null;
+		const head = await registry.head(ref);
+		return head === ZERO_BYTES32 ? null : this.engine.commitCidFromRootHex(head);
+	}
+
+	/** Does `app` present `ref`: it presents the publisher, and excludes neither it nor the repo? */
+	private async presentsRepo(app: Hex, ref: RepoRef): Promise<boolean> {
+		const registry = this.ctx.registry;
+		const [presents, excluded] = await Promise.all([
+			registry.presents(app, ref.publisher),
+			repoExcluded(registry, app, ref),
+		]);
+		return presents && !excluded;
+	}
+
 	/**
-	 * Every (publisher, namespace) pair that has ever committed under this app,
-	 * at its latest root — the app's directory, from ONE `getLogs`.
+	 * Every (publisher, repo) this client's app presents, at its latest head, less
+	 * what it excludes — the app's directory, from ONE `getLogs` over the update
+	 * log, kept to the publishers the app presents.
 	 *
-	 * This is what cross-publisher discovery looks like now: the registry already
-	 * indexes `app_id`, so the commit log IS the index. No per-publisher fan-out,
-	 * no separate registration sweep, no central list — and unlike a publisher
-	 * roster it only surfaces publishers with actual content.
-	 *
-	 * Namespaces come back as `subspaceId` (the hash), not the name, because the
-	 * event never carries the name — recovering it costs one content fetch per
-	 * entry. Pass `namespace` when you know the name you're after (the usual
-	 * case: an app with one well-known namespace) and the filter is applied
-	 * on-chain instead.
+	 * ponytail: reads every publisher's updates and drops non-members, so it costs
+	 * what the network writes, not what the app holds. Filter on-chain by the
+	 * app's members (a `publisher` topic list) once that is too slow.
+	 * Narrow it with `repo` (every publisher's `docs`) or `owner`, filtered on-chain.
 	 */
-	async appNamespaces(
-		opts: { namespace?: string; owner?: Hex; fromBlock?: bigint } = {},
-	): Promise<
-		{ owner: Hex; subspaceId: Hex; root: Hex; blockNumber: bigint }[]
-	> {
-		const logs = await this.getDataRegistry().getStateCommittedLogs(
-			{ publisher: opts.owner, namespace: opts.namespace },
-			opts.fromBlock ?? 0n,
+	async appRepos(
+		opts: { repo?: string; owner?: Hex; fromBlock?: bigint } = {},
+	): Promise<{ owner: Hex; repo: string; root: Hex; blockNumber: bigint }[]> {
+		const app = this.requireApp("appRepos");
+		const registry = this.ctx.registry;
+		const entries = await registry.log(
+			{ publisher: opts.owner, repo: opts.repo },
+			opts.fromBlock ?? this.ctx.config.appRegistryFromBlock,
 		);
-		// Logs arrive oldest-first, so last write per timeline wins.
-		const latest = new Map<
-			Hex,
-			{ owner: Hex; subspaceId: Hex; root: Hex; blockNumber: bigint }
-		>();
-		for (const log of logs) {
-			latest.set(log.namespaceKey, {
-				owner: log.publisher,
-				subspaceId: log.subspaceId,
-				root: log.newRoot,
-				blockNumber: log.blockNumber,
+		// Entries arrive oldest-first, so the last update per repo wins.
+		const latest = new Map<string, { owner: Hex; repo: string; root: Hex; blockNumber: bigint }>();
+		for (const e of entries) {
+			latest.set(`${e.publisher.toLowerCase()}/${e.repo}`, {
+				owner: e.publisher,
+				repo: e.repo,
+				root: e.head,
+				blockNumber: e.t,
 			});
 		}
-		return [...latest.values()];
+		const all = [...latest.values()];
+		const kept = await Promise.all(all.map((d) => this.presentsRepo(app, { publisher: d.owner, repo: d.repo })));
+		return all.filter((_, i) => kept[i]);
 	}
 
 	/**
@@ -686,7 +629,7 @@ export class Fangorn {
 		card: AgentCard;
 		appId: Hex;
 		fromBlock: bigint;
-		namespaces: string[];
+		repos: string[];
 	}> {
 		const res = await fetch(cardUrl, { signal: AbortSignal.timeout(10_000) });
 		if (!res.ok) throw new Error(`agent card ${cardUrl}: HTTP ${String(res.status)}`);
@@ -701,9 +644,10 @@ export class Fangorn {
 		if (typeof p.fromBlock !== "string" || !/^\d+$/.test(p.fromBlock)) {
 			throw new Error(`agent card ${cardUrl}: fromBlock is not a decimal block number`);
 		}
-		const namespaces = p.namespaces ?? [];
-		if (!Array.isArray(namespaces) || !namespaces.every((n) => typeof n === "string")) {
-			throw new Error(`agent card ${cardUrl}: namespaces is not a list of strings`);
+		// `namespaces` is the field's name on cards published before the rename.
+		const repos = p.repos ?? p.namespaces ?? [];
+		if (!Array.isArray(repos) || !repos.every((n) => typeof n === "string")) {
+			throw new Error(`agent card ${cardUrl}: repos is not a list of strings`);
 		}
 		// Checked before the binding: a card from another deployment would
 		// otherwise fail as "not bound", which sends the reader looking for a forgery.
@@ -725,7 +669,7 @@ export class Fangorn {
 				`agent card ${cardUrl} is not bound to app ${appId}: its on-chain agent_uri is ${bound ? `"${bound}"` : "unset"}`,
 			);
 		}
-		return { card, appId, fromBlock: BigInt(p.fromBlock), namespaces };
+		return { card, appId, fromBlock: BigInt(p.fromBlock), repos };
 	}
 
 	/**
@@ -746,8 +690,8 @@ export class Fangorn {
 		max?: number,
 	): AsyncGenerator<{
 		cid: string;
-		parents: string[];
-		timestamp: number;
+		parent: string | null;
+		epoch: number;
 		message: string;
 		root: string;
 	}> {
@@ -757,81 +701,83 @@ export class Fangorn {
 		)) {
 			yield {
 				cid: cid.toString(),
-				parents: commit.parents.map((c) => c.toString()),
-				timestamp: commit.timestamp,
+				parent: commit.parent?.toString() ?? null,
+				epoch: commit.epoch,
 				message: commit.message,
 				root: commit.root.toString(),
 			};
 		}
 	}
 
-	/** Show a commit and what it changed vs. its first parent. */
+	/** Show a commit and what it changed vs. its parent. */
 	async show(commitCid: string) {
 		return this.engine.diffCommit(CID.parse(commitCid));
 	}
 
 	/**
-	 * Lists every vertex and edge currently committed under a namespace, resolved
+	 * Lists every record currently committed under a repo, resolved
 	 * from the publisher's on-chain root — useful for verifying what actually
 	 * made it into the repository, as opposed to what a given call staged.
 	 */
-	async inspectNamespace(repoName: string): Promise<NamespaceContents> {
-		return this.engine.listNamespace(repoName, this.getAddress());
+	async inspectRepo(repoName: string): Promise<RepoContents> {
+		return this.engine.listRepo(this.getAddress(), repoName);
 	}
 
 	// ── Subscription: a light client over the app's commit stream ──────────────
 	//
-	// Each `app:publisher:namespace` triple is its own on-chain timeline, and the
-	// registry indexes all three parts of it, so a subscription is just a topic
-	// filter: one namespace (`{ owner, namespace }`), one publisher across the
-	// app (`{ owner }`), or the whole app (`{}` — see `subscribeApp`). For each
-	// commit we diff the namespace's link sets against the previous root and emit
+	// Each `publisher:repo` pair is its own on-chain timeline, and the registry
+	// indexes both parts of it, so a subscription is a topic filter: one repo
+	// (`{ owner, repo }`), one publisher (`{ owner }`), or every repo (`{}` — see
+	// `subscribeApp`), kept to what this client's app presents. For each
+	// commit we diff the repo's record map against the previous root and emit
 	// only when that slice actually changed. Reads logs straight from the RPC node
 	// and resolves diffs from content-addressed storage (one CAR download per
 	// push): no subgraph, no indexer.
 
 	/**
-	 * Stream changes to one publisher's namespace. Optionally replays from
+	 * Stream changes to one publisher's repo. Optionally replays from
 	 * `fromBlock` first (resume cursor), then watches live until the `signal`
 	 * aborts. Each yielded change carries `blockNumber` — persist it to resume
 	 * exactly where you left off.
 	 */
-	subscribe(opts: SubscribeOptions): AsyncGenerator<NamespaceChange> {
+	subscribe(opts: SubscribeOptions): AsyncGenerator<RepoChange> {
 		return this.streamCommits(
-			{ publisher: opts.owner ?? this.getAddress(), namespace: opts.namespace },
+			{ publisher: opts.owner ?? this.getAddress(), repo: opts.repo },
 			opts,
 		);
 	}
 
 	/**
-	 * Stream changes across the *whole app* — every publisher, every namespace.
-	 * The app-level feed: one topic filter on `app_id`, no per-publisher fan-out
-	 * and no global root to keep in sync. Narrow it with `namespace` (every
-	 * publisher's `docs`) or `owner` (one publisher's whole app footprint).
+	 * Stream changes across the *whole app* — every repo of every publisher it
+	 * presents, less its exclusions. Narrow it with `repo` (every publisher's `docs`) or
+	 * `owner` (one publisher's whole app footprint). With no app, every update by
+	 * anyone: a firehose.
 	 */
 	subscribeApp(
-		opts: Omit<SubscribeOptions, "namespace"> & { namespace?: string } = {},
-	): AsyncGenerator<NamespaceChange> {
+		opts: Omit<SubscribeOptions, "repo"> & { repo?: string } = {},
+	): AsyncGenerator<RepoChange> {
 		return this.streamCommits(
-			{ publisher: opts.owner, namespace: opts.namespace },
+			{ publisher: opts.owner, repo: opts.repo },
 			opts,
 		);
 	}
 
 	/** Shared catch-up-then-live loop behind `subscribe` and `subscribeApp`. */
 	private async *streamCommits(
-		filter: CommitFilter,
-		opts: Omit<SubscribeOptions, "namespace" | "owner">,
-	): AsyncGenerator<NamespaceChange> {
-		const registry = this.getDataRegistry();
+		filter: LogFilter,
+		opts: Omit<SubscribeOptions, "repo" | "owner">,
+	): AsyncGenerator<RepoChange> {
+		const registry = this.ctx.registry;
 
 		// Dedupe across the catch-up (getLogs) and live (watch) paths, which can
 		// overlap around the current tip.
 		const seen = new Set<string>();
+		// The last head yielded per repo, to diff across a dropped entry.
+		const lastHead = new Map<string, Hex>();
 
 		// Live events buffer here from the moment we subscribe, so nothing emitted
 		// during catch-up is lost.
-		const buffer: StateCommittedLog[] = [];
+		const buffer: UpdateEntry[] = [];
 		let wake: (() => void) | null = null;
 
 		// Grouping out-of-band state changes into an object so TypeScript's
@@ -847,7 +793,7 @@ export class Fangorn {
 			w?.();
 		};
 
-		const unwatch = registry.watchStateCommitted(
+		const unwatch = registry.watch(
 			filter,
 			(log) => {
 				buffer.push(log);
@@ -868,13 +814,10 @@ export class Fangorn {
 
 		try {
 			if (opts.fromBlock !== undefined) {
-				for (const log of await registry.getStateCommittedLogs(
-					filter,
-					opts.fromBlock,
-				)) {
-					if (seen.has(log.logId)) continue;
-					seen.add(log.logId);
-					const change = await this.toNamespaceChange(log);
+				for (const log of await registry.log(filter, opts.fromBlock)) {
+					if (seen.has(log.id)) continue;
+					seen.add(log.id);
+					const change = await this.toRepoChange(log, lastHead);
 					if (change) yield change;
 				}
 			}
@@ -894,9 +837,9 @@ export class Fangorn {
 				const log = buffer.shift();
 				if (!log) continue; // Safe fallback guard replacing forbidden '!' assertion
 
-				if (seen.has(log.logId)) continue;
-				seen.add(log.logId);
-				const change = await this.toNamespaceChange(log);
+				if (seen.has(log.id)) continue;
+				seen.add(log.id);
+				const change = await this.toRepoChange(log, lastHead);
 				if (change) yield change;
 			}
 		} finally {
@@ -906,43 +849,47 @@ export class Fangorn {
 	}
 
 	/**
-	 * Resolve a raw `StateCommitted` log into a namespace change, or null if the
-	 * namespace slice was untouched.
+	 * Resolve a log entry into a repo change, or null if nothing presented
+	 * changed: the repo slice was untouched, or the app excludes it.
 	 *
-	 * The event carries `keccak256(namespace)`, never the name, so the name comes
-	 * from the commit's own root map — and must hash back to the subspace the
-	 * commit was published into, or the publisher settled a commit for one
-	 * namespace against another's timeline.
+	 * The commit itself names its repo, which must be the one the entry was
+	 * logged under, or the publisher settled a commit for one repo against
+	 * another's timeline.
+	 *
+	 * The diff runs from the last head this stream saw for the repo, not from
+	 * the entry's parent. If an entry was dropped (an RPC that left out a log),
+	 * the two differ, and diffing from the entry's parent would skip what the
+	 * dropped entry changed.
 	 */
-	private async toNamespaceChange(
-		log: StateCommittedLog,
-	): Promise<NamespaceChange | null> {
-		const namespace = await this.engine.namespaceOf(log.newRoot);
-		if (subspaceId(namespace) !== log.subspaceId) {
+	private async toRepoChange(
+		log: UpdateEntry,
+		lastHead: Map<string, Hex>,
+	): Promise<RepoChange | null> {
+		const declared = await this.engine.repoOf(log.head);
+		if (declared !== log.repo) {
 			throw new Error(
-				`commit ${log.newRoot} declares namespace "${namespace}", which does not match the subspace it was committed to (${log.subspaceId})`,
+				`commit ${log.head} declares repo "${declared}", which does not match the repo it was committed to ("${log.repo}")`,
 			);
 		}
+		const ref = { publisher: log.publisher, repo: log.repo };
+		if (this.ctx.appId && !(await this.presentsRepo(this.ctx.appId, ref))) return null;
 
-		const diff = await this.engine.namespaceDiff(
-			log.oldRoot === ZERO_BYTES32 ? null : log.oldRoot,
-			log.newRoot,
-			namespace,
+		const key = `${log.publisher.toLowerCase()}/${log.repo}`;
+		const oldRoot = lastHead.get(key) ?? log.parent;
+		lastHead.set(key, log.head);
+		const diff = await this.engine.repoDiff(
+			oldRoot === ZERO_BYTES32 ? null : oldRoot,
+			log.head,
 		);
-		const touched =
-			diff.addedVertices.length ||
-			diff.removedVertexCids.length ||
-			diff.addedEdges.length ||
-			diff.removedEdges.length;
-		if (!touched) return null;
+		if (!diff.puts.length && !diff.deletes.length) return null;
 
 		return {
-			namespace,
+			repo: log.repo,
 			owner: log.publisher,
-			commitCid: this.engine.commitCidFromRootHex(log.newRoot),
-			oldRoot: log.oldRoot,
-			newRoot: log.newRoot,
-			blockNumber: log.blockNumber,
+			commitCid: this.engine.commitCidFromRootHex(log.head),
+			oldRoot,
+			newRoot: log.head,
+			blockNumber: log.t,
 			...diff,
 		};
 	}
@@ -951,62 +898,61 @@ export class Fangorn {
 		return this.ctx.config;
 	}
 
-	getDataRegistry(): DataRegistryClient {
-		return this.ctx.dataRegistry;
+	/** Heads, membership, exclusions and logs: the registry of WHITEPAPER_1 §3.2. */
+	getRegistry(): Registry {
+		return this.ctx.registry;
 	}
 
 	/**
-	 * Apps, their publisher terms, per-app membership, the storage subscription,
-	 * and commits — an app IS a subscription: claiming one pays the fee, and the
-	 * upload gate bills every publisher's bytes to the app.
-	 *
-	 * Commits go through this contract, so being a publisher of the app is a
-	 * precondition for publishing under it. Membership is by invitation: the
-	 * owner calls `invitePublisher()`, then the publisher `joinApp()`. Without
-	 * both, the commit reverts `NotInvited` or `NotJoined`.
+	 * App management: claiming an app (its storage subscription), terms,
+	 * invitations and membership, the agent card, and the protocol admin's powers.
+	 * The owner accepts a publisher (`acceptPublisher()`); from then its uploads
+	 * bill the app's subscription, and the app presents its repos.
 	 */
 	getAppRegistry(): AppRegistryClient {
-		return this.ctx.appRegistry;
+		this._apps ??= new AppRegistryClient(
+			this.ctx.config.appRegistryContractAddress,
+			this.ctx.appId,
+			this.ctx.publicClient,
+			this.ctx.walletClient,
+			this.ctx.config.logWindow,
+		);
+		return this._apps;
 	}
 
 	getMembershipRegistry(): MembershipRegistryClient {
-		return this.ctx.membershipRegistry;
-	}
-	
-	/**
-	 * The apps that have invited `publisher` (this wallet by default) and are
-	 * waiting for them to join. Read from the AppRegistry's logs since its
-	 * deployment. See `AppRegistryClient.getInvitations`.
-	 */
-	getInvitations(publisher: Hex = this.getAddress()): Promise<AppInvitation[]> {
-		return this.ctx.appRegistry.getInvitations(publisher, {
-			fromBlock: this.ctx.config.appRegistryFromBlock,
-		});
+		this._membership ??= new MembershipRegistryClient(
+			this.ctx.config.membershipRegistryContractAddress,
+			this.ctx.publicClient,
+			this.ctx.walletClient,
+		);
+		return this._membership;
 	}
 
-	/** The app (global namespace) this client publishes and reads under. */
-	getAppId(): Hex {
-		return this.ctx.dataRegistry.getAppId();
+	/** The app this client reads and publishes under, or undefined for none. */
+	getAppId(): Hex | undefined {
+		return this.ctx.appId;
+	}
+
+	private requireApp(what: string): Hex {
+		if (!this.ctx.appId) throw new Error(`${what} needs an app: pass \`appId\` to Fangorn.create() or call setAppId()`);
+		return this.ctx.appId;
 	}
 
 	/**
 	 * Point this client at a different app — by name (`"my-app"`) or by app id —
-	 * without rebuilding it. The app id prefixes every namespace key, so every
-	 * read, publish and subscription after this call lands in the new app.
+	 * or at none, without rebuilding it. Every read, publish and subscription
+	 * after this call is in the new context.
 	 *
-	 * Namespace reads are dropped from the cache (its keys are app-agnostic) and
+	 * Repo reads are dropped from the cache (its keys are app-agnostic) and
 	 * the shared `appFeed` is released: a feed watches one app's commit stream, so
 	 * the next `appFeed()` opens a fresh subscription. Generators already running
 	 * from `subscribe`/`subscribeApp` keep their original filter until aborted.
 	 */
-	setAppId(nameOrId: string): void {
-		// BOTH clients, always. A DataRegistry pointed at one app while the
-		// AppRegistry answers for another means membership is checked against the
-		// wrong market — and the failure is a revert at commit time, long after
-		// the mismatch was introduced.
-		const appId = toAppId(nameOrId);
-		this.ctx.dataRegistry.setAppId(appId);
-		this.ctx.appRegistry.setAppId(appId);
+	setAppId(nameOrId: string | undefined): void {
+		const chosen = nonBlank(nameOrId);
+		this.ctx.appId = chosen ? toAppId(chosen) : undefined;
+		this._apps?.setAppId(this.ctx.appId);
 		this.nsCache.clear();
 		this._feed = null;
 	}
@@ -1030,7 +976,7 @@ export class Fangorn {
 			storage,
 			this.ctx.walletClient,
 			this.ctx.config,
-			() => this.ctx.dataRegistry.getAppId(),
+			() => this.ctx.appId,
 		);
 		this._engine = null;
 	}

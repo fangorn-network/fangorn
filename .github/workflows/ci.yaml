@@ -31,16 +31,24 @@ jobs:
       - if: always()
         uses: codecov/codecov-action@v3
   admin_fork:
-    # The protocol admin suite, against a local fork of the deployed contracts.
-    # It generates its own admin key on the fork and needs no secrets, so it can
-    # run on every pull request.
+    # The protocol admin suite, against the contracts built from source and
+    # deployed on a fresh anvil. It needs no secrets, so it can run on every
+    # pull request.
     name: Admin (fork)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: fangorn-network/contracts
+          path: contracts
+          submodules: recursive
+          persist-credentials: false
       - uses: ./.github/actions/prepare
       - uses: foundry-rs/foundry-toolchain@v1
       - run: pnpm test:admin
+        env:
+          FANGORN_CONTRACTS_DIR: ${{ github.workspace }}/contracts/solidity
   live_reads:
     # Read-only checks of the deployed contracts and the public RPC. No secrets.
     name: Live reads (Arbitrum Sepolia)

@@ -1,5 +1,5 @@
 import { Chain, Hex, keccak256, toHex } from "viem";
-import { arbitrumSepolia } from "viem/chains";
+import { arbitrumSepolia, baseSepolia } from "viem/chains";
 
 /**
  * Derive an app id from a human-readable name (keccak256(hex(name)).
@@ -7,8 +7,6 @@ import { arbitrumSepolia } from "viem/chains";
 export function appId(name: string): Hex {
 	return keccak256(toHex(name));
 }
-
-export const DEFAULT_APP = "fangorn";
 
 /**
  * Blank input means "not set", never an app called "". Returns the trimmed value,
@@ -30,30 +28,10 @@ export function toAppId(nameOrId: string): Hex {
 	return /^0x[0-9a-fA-F]{64}$/.test(name) ? (name as Hex) : appId(name);
 }
 
-/**
- * The networks supported by Fangorn currently
- */
-export const SupportedNetworks = {
-	ArbitrumSepolia: {
-		name: "arbitrumSepolia",
-		chain: arbitrumSepolia,
-	}
-};
-
-/**
- * Get the network based on the string name
- * @param name "arbitrumSepolia" is the only one supported right now 
- * @returns The corresponding network if it is supported, otherwise an error
- */
-export default function getNetwork(name: string) {
-	if (name === SupportedNetworks.ArbitrumSepolia.name) return arbitrumSepolia;
-	throw new Error(`Chain ${name} is not supported`);
-}
-
 export interface AppConfig {
-	// The deployed DataRegistry (namespace heads; commits reach it through the AppRegistry)
+	// The deployed DataRegistry (every repo's head, keyed by publisher and repo)
 	dataRegistryContractAddress: Hex;
-	// The deployed AppRegistry (apps, their subscriptions, membership, and commits)
+	// The deployed AppRegistry (apps, their subscriptions, membership and exclusions)
 	appRegistryContractAddress: Hex;
 	// The deployed MembershipRegistry (time-limited, unlinkable access to an app's
 	// paid records)
@@ -68,11 +46,14 @@ export interface AppConfig {
 	caip2: number;
 	// A public IPFS gateway that we can read from
 	ipfsGateway: string;
+	// The most blocks one eth_getLogs call may span on `rpcUrl` (default 1000).
+	// `FANGORN_LOG_WINDOW` overrides it, for a private RPC.
+	logWindow?: bigint;
 }
 
-// Network/deployment settings only
-// set with `Fangorn.create({ appId })` and switchable at
-// runtime via `fangorn.setAppId(...)` (defaults to `DEFAULT_APP`).
+// Network/deployment settings only. The app is per client:
+// `Fangorn.create({ appId })`, switchable with `fangorn.setAppId(...)`.
+// Addresses are the proxies in contracts/solidity/script/Deployments.sol.
 export const FangornConfig = {
 	dataRegistryContractAddress:
 		"0x72B5f83526F3893aF9f1eE0f32A27218EA09f8aE",
@@ -84,5 +65,44 @@ export const FangornConfig = {
 	chain: arbitrumSepolia,
 	rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
 	caip2: 421614,
-	ipfsGateway: 'https://ipfs.io'
+	ipfsGateway: 'https://ipfs.io',
+	// Every scan here is filtered by address; the public RPC served 1M-block ranges
+	// of those when measured (2026-10-20).
+	logWindow: 100_000n,
 } satisfies AppConfig
+
+export const BaseSepoliaConfig = {
+	dataRegistryContractAddress:
+		"0xE9183f768865dd2Cde5f1B71F8446F0Cd798ebe0",
+	appRegistryContractAddress:
+		"0x0D3e98399df41b558048Cdd7D71723c37A3A9D6F",
+	membershipRegistryContractAddress:
+		"0x0e96C012b5c53622EcDAA82F342E31C2623A04f5",
+	appRegistryFromBlock: 48340483n,
+	chain: baseSepolia,
+	// Not sepolia.base.org: it caps eth_getLogs at 200 blocks, and Base makes 43,200
+	// a day, so a scan of the registry's history would be hundreds of calls per day
+	// of it. This one caps ranges at 50,000 blocks (measured 2026-10-20).
+	rpcUrl: "https://base-sepolia-rpc.publicnode.com",
+	caip2: 84532,
+	ipfsGateway: 'https://ipfs.io',
+	logWindow: 10_000n,
+} satisfies AppConfig
+
+/**
+ * The networks supported by Fangorn, by the name `CHAIN_NAME` takes.
+ */
+export const SupportedNetworks: Record<string, AppConfig> = {
+	arbitrumSepolia: FangornConfig,
+	baseSepolia: BaseSepoliaConfig,
+};
+
+/**
+ * Get a network's deployment by name ("arbitrumSepolia" or "baseSepolia").
+ * @returns The corresponding config if it is supported, otherwise an error
+ */
+export default function getNetwork(name: string): AppConfig {
+	const config = SupportedNetworks[name] as AppConfig | undefined;
+	if (!config) throw new Error(`Chain ${name} is not supported. Use one of: ${Object.keys(SupportedNetworks).join(", ")}`);
+	return config;
+}

@@ -1,20 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { AppFeed } from "./feed.js";
-import type { NamespaceChange } from "./fangorn.js";
+import type { RepoChange } from "./fangorn.js";
 
-const change = (namespace: string) => ({ namespace }) as NamespaceChange;
+const change = (repo: string) => ({ repo }) as RepoChange;
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 /** A feed whose source is driven by hand, so tests don't wait on a clock. */
 function manualFeed() {
-	let push!: (c: NamespaceChange) => void;
+	let push!: (c: RepoChange) => void;
 	let fail!: (err: Error) => void;
 	let opened = 0;
 	const feed = new AppFeed(async function* (signal) {
 		opened += 1;
 		// Grouped in an object so TypeScript doesn't narrow these to their
 		// values at loop entry — they're set from outside the generator.
-		const state = { queue: [] as NamespaceChange[], error: null as Error | null };
+		const state = { queue: [] as RepoChange[], error: null as Error | null };
 		let wake: (() => void) | null = null;
 		push = (c) => {
 			state.queue.push(c);
@@ -52,8 +52,8 @@ describe("AppFeed", () => {
 		const { feed, push, opened } = manualFeed();
 		const a: string[] = [];
 		const b: string[] = [];
-		feed.on((c) => a.push(c.namespace));
-		feed.on((c) => b.push(c.namespace));
+		feed.on((c) => a.push(c.repo));
+		feed.on((c) => b.push(c.repo));
 
 		push("docs");
 		await tick();
@@ -68,10 +68,10 @@ describe("AppFeed", () => {
 		const seen: string[] = [];
 		const alsoSeen: string[] = [];
 		const off1 = feed.on((c) => {
-			seen.push(c.namespace);
+			seen.push(c.repo);
 		});
 		const off2 = feed.on((c) => {
-			alsoSeen.push(c.namespace);
+			alsoSeen.push(c.repo);
 		});
 
 		off1();
@@ -94,7 +94,7 @@ describe("AppFeed", () => {
 			},
 			(err) => errors.push(err.message),
 		);
-		feed.on((c) => survivor.push(c.namespace));
+		feed.on((c) => survivor.push(c.repo));
 
 		push("docs");
 		push("notes");
@@ -109,7 +109,7 @@ describe("AppFeed", () => {
 		const errors: string[] = [];
 		const seen: string[] = [];
 		feed.on(
-			(c) => seen.push(c.namespace),
+			(c) => seen.push(c.repo),
 			(err) => errors.push(err.message),
 		);
 

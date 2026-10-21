@@ -1,6 +1,6 @@
 import { CarWriter, CarReader } from "@ipld/car";
 import { CID } from "multiformats/cid";
-import type { Block } from "./graph.js";
+import { assertBlockMatches, type Block } from "./records.js";
 
 // CAR (de)serialization for commit deltas. A commit's CAR is treated as an
 // OPAQUE FILE by the storage backend — we never rely on the backend indexing
@@ -35,13 +35,15 @@ export async function packCar(
 	return buf;
 }
 
-/** Decode CAR bytes back into blocks. */
+/** Decode CAR bytes back into blocks, each checked against its CID (the host is untrusted). */
 export async function readCar(bytes: Uint8Array): Promise<Block[]> {
 	const reader = await CarReader.fromBytes(bytes);
 	const blocks: Block[] = [];
 	for await (const { cid, bytes: blockBytes } of reader.blocks()) {
 		// @ipld/car may carry its own multiformats build; normalize to ours.
-		blocks.push({ cid: CID.parse(cid.toString()), bytes: blockBytes });
+		const ours = CID.parse(cid.toString());
+		assertBlockMatches(ours, blockBytes);
+		blocks.push({ cid: ours, bytes: blockBytes });
 	}
 	return blocks;
 }
