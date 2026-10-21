@@ -1,0 +1,89 @@
+{
+	"name": "@fangorn-network/sdk",
+	"version": "2026.10.21-dev",
+	"description": "decentralized, verifiable and platformless content management framework",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/fangorn-network/fangorn.git"
+	},
+	"bin": {
+		"fangorn": "lib/cli/cli.js"
+	},
+	"license": "MIT",
+	"type": "module",
+	"main": "lib/index.js",
+	"files": [
+		"lib/"
+	],
+	"scripts": {
+		"build": "tsdown",
+		"format": "prettier . --write",
+		"lint": "eslint . --max-warnings 0",
+		"prepare": "husky",
+		"test": "dotenvx run -f .env -- vitest run",
+		"test:e2e": "dotenvx run -f .env -- vitest run --config vitest.e2e.config.ts",
+		"test:admin": "vitest run --config vitest.e2e.config.ts src/e2e/admin.e2e.test.ts",
+		"test:live": "vitest run --config vitest.e2e.config.ts src/e2e/live.e2e.test.ts",
+		"abis": "scripts/gen-abis.sh",
+		"tsc": "tsc",
+		"deploy": "dotenvx run -f .env -- tsx deploy.ts",
+		"setup:embeddings": "dotenvx run -f .env -- tsx src/test/setup-embeddings-testdata.ts",
+		"cleanup:embeddings": "dotenvx run -f .env -- tsx src/test/cleanup-embeddings-testdata.ts",
+		"prepare:cli": "npm run build",
+		"fangorn": "dotenvx run -f .env -- node dist/src/cli/cli.js"
+	},
+	"lint-staged": {
+		"*": "prettier --ignore-unknown --write"
+	},
+	"devDependencies": {
+		"@dotenvx/dotenvx": "^1.51.1",
+		"@eslint/js": "9.39.1",
+		"@noble/ciphers": "^1.3.0",
+		"@noble/curves": "^1.2.0",
+		"@types/node": "24.10.1",
+		"@vitest/coverage-v8": "4.0.15",
+		"@vitest/eslint-plugin": "1.5.1",
+		"eslint": "9.39.1",
+		"husky": "9.1.7",
+		"lint-staged": "16.2.7",
+		"prettier": "3.7.3",
+		"tsdown": "0.16.8",
+		"tsx": "^4.21.0",
+		"typescript": "5.8.3",
+		"typescript-eslint": "8.48.1",
+		"vitest": "^4.0.18"
+	},
+	"packageManager": "pnpm@10.4.0",
+	"engines": {
+		"node": ">=20.19.0"
+	},
+	"dependencies": {
+		"@clack/prompts": "^1.0.1",
+		"@ipld/car": "^5.4.6",
+		"@ipld/dag-cbor": "^10.0.1",
+		"@ipld/unixfs": "^3.0.0",
+		"@noble/ciphers": "^1.3.0",
+		"@noble/curves": "^1.9.7",
+		"@noble/hashes": "^2.2.0",
+		"commander": "^14.0.3",
+		"dotenv": "^17.2.3",
+		"multiformats": "^14.0.0",
+		"pinata": "^2.5.2",
+		"solc": "^0.8.28",
+		"viem": "^2.47.1"
+	},
+	"overrides": {
+		"viem": "$viem"
+	},
+	"pnpm": {
+		"overrides": {
+			"write-file-atomic": "7.0.0"
+		},
+		"peerDependencyRules": {
+			"allowedVersions": {
+				"viem": ">=2.38.3",
+				"ethers": ">=5.7.2"
+			}
+		}
+	}
+}
