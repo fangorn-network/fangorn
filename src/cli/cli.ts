@@ -609,7 +609,7 @@ appCmd
 						s.stop();
 						agentId = `${String(chainId)}:${String(id)}`;
 					} else {
-						// Not retried: run again, the mint would make a second agent.
+						// run again (not retry since the mint would make a second agent) 
 						s.start("Registering with the ERC-8004 identity registry");
 						const id = await mintAgent(c);
 						agentId = `${String(chainId)}:${String(id)}`;

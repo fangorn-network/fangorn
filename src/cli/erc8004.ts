@@ -1,14 +1,10 @@
-// ERC-8004 registration for `fangorn app agent`: a registration file pinned to
-// IPFS, and the identity registry's `register` and `setAgentURI`.
-//
-// Written here rather than through agent0-sdk, which carries a full in-process
-// IPFS node (helia, libp2p, react-native: ~365 MB) for what is one JSON upload
-// and two transactions. The file is agent0-sdk's format field for field, so the
+// ERC-8004 registration for `fangorn app agent`. 
+// It builds a registration file that gets pinned to IPFS, 
+// and handles the identity registry's `register` and `setAgentURI` functions.
+// 
+// The file is identitcal agent0-sdk's format, so the
 // agents it minted and the ones minted here read the same to 8004scan.
 //
-// ponytail: the card's securitySchemes/security and an MCP server's prompts and
-// resources are not indexed; no Fangorn card or server has them. Add them to
-// registrationFile the day one does.
 
 import {
 	parseAbi,
@@ -21,9 +17,11 @@ import {
 } from "viem";
 import { PinataSDK } from "pinata";
 
-/** The ERC-8004 identity registry, by chain id. The same address on every testnet Fangorn runs on. */
+/** The ERC-8004 identity registry by chain id */
 export const IDENTITY_REGISTRY: Record<number, Address> = {
+	// Base Sepolia
 	84532: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+	// Arbitrum Sepolia (TODO: remove?)
 	421614: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
 };
 
@@ -47,8 +45,16 @@ interface Service {
 	mcpTools?: string[];
 }
 
-/** An MCP server's tool names, from `tools/list`; undefined when it does not answer (indexing is best effort). */
-/** The card to register: the URL given, else the access worker's well-known card. */
+/**
+ * Get the agent card URL based on the access worker if defined, else return the carUrl
+ * Both params are optional, but at least one must be defined.
+ * 
+ * Agent cards must live at accessWorker/.well-known/agent-card.json
+ * 
+ * @param cardUrl The cardUrl (passthrough when defined)
+ * @param accessWorker The (optional) access worker url 
+ * @returns 
+ */
 export function agentCardUrl(cardUrl?: string, accessWorker?: string): string {
 	if (cardUrl) return cardUrl;
 	if (!accessWorker) throw new Error("No card URL. Pass one, or pass --access-worker <url>.");
@@ -70,7 +76,7 @@ export async function mcpTools(
 		});
 		if (!res.ok) return undefined;
 		const text = await res.text();
-		// A streamable-HTTP server may answer as one SSE event.
+		// streamable-HTTP server => could be a single SSE event
 		const body =
 			text
 				.split("\n")
@@ -89,8 +95,9 @@ export async function mcpTools(
 }
 
 /**
- * The registration file. It names its own agent id, so a first registration
- * mints with no URI, then pins this and sets it.
+ * Build a registration file 
+ * Since it desfines its own agent id, 
+ * first registration mints without an agent URI and must be set retroactively.
  */
 export function registrationFile(opts: {
 	cardUrl: string;
@@ -134,13 +141,10 @@ export function registrationFile(opts: {
 				agentRegistry: `eip155:${String(chainId)}:${IDENTITY_REGISTRY[chainId]}`,
 			},
 		],
-		// Reputation only. Crypto-economic needs a bond nobody has posted, and TEE
-		// attestation would be a lie: the gateway is a Cloudflare Worker, which has
-		// no enclave to attest with.
+		// Reputation only, no TEE support
 		supportedTrust: ["reputation"],
 		active: true,
-		// Read off the card rather than assumed: an agent that advertises x402
-		// against free endpoints sends payers down a rail that is not there.
+		// only set x402 support true if the card says so
 		x402Support:
 			card.skills?.some(
 				(s) => Array.isArray(s.tags) && s.tags.includes("x402"),
