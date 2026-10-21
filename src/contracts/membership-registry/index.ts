@@ -65,7 +65,7 @@ export const membershipTokenId = (appId: Hex, holder: Address): bigint =>
  *
  * The app owner's half is here (`setPlan`), with the reads every gate needs
  * (`canRead`, `planOf`, `currentEpoch`) and the two relayed writes (`join`, `claim`),
- * which take what a buyer signed and proved, so anyone may submit them; Barliman does.
+ * which take what a buyer signed and proved, so anyone may submit them.
  *
  * The buyer's half (Semaphore identity, stealth holder, the payment signature, the
  * group from `Joined` logs, the proof) lives in `@fangorn-network/fetch`: this SDK
