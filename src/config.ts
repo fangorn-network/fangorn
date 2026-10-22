@@ -49,12 +49,15 @@ export interface AppConfig {
 	// The most blocks one eth_getLogs call may span on `rpcUrl` (default 1000).
 	// `FANGORN_LOG_WINDOW` overrides it, for a private RPC.
 	logWindow?: bigint;
+	// The hosted upload worker gated on this deployment's AppRegistry. Hosted uploads
+	// (`storage: { signedUrl: {} }`) go through it unless given a `workerUrl`.
+	signedUrlWorker?: string;
 }
 
 // Network/deployment settings only. The app is per client:
 // `Fangorn.create({ appId })`, switchable with `fangorn.setAppId(...)`.
 // Addresses are the proxies in contracts/solidity/script/Deployments.sol.
-export const FangornConfig = {
+export const ArbitrumSepoliaConfig = {
 	dataRegistryContractAddress:
 		"0x72B5f83526F3893aF9f1eE0f32A27218EA09f8aE",
 	appRegistryContractAddress:
@@ -69,6 +72,7 @@ export const FangornConfig = {
 	// Every scan here is filtered by address; the public RPC served 1M-block ranges
 	// of those when measured (2026-10-20).
 	logWindow: 100_000n,
+	signedUrlWorker: "https://pinata-url-provider.fangorn-0be.workers.dev",
 } satisfies AppConfig
 
 export const BaseSepoliaConfig = {
@@ -87,13 +91,23 @@ export const BaseSepoliaConfig = {
 	caip2: 84532,
 	ipfsGateway: 'https://ipfs.io',
 	logWindow: 10_000n,
+	// Its own worker: the Arbitrum one gates on Arbitrum's AppRegistry, so a Base
+	// app's publishers would be refused there.
+	signedUrlWorker: "https://pinata-url-provider-base.fangorn-0be.workers.dev",
 } satisfies AppConfig
+
+/**
+ * The default network: what `Fangorn.create` uses without a `config`, and the CLI
+ * without `CHAIN_NAME`. Base Sepolia, which runs the contracts this SDK's ABIs are
+ * built from.
+ */
+export const FangornConfig = BaseSepoliaConfig;
 
 /**
  * The networks supported by Fangorn, by the name `CHAIN_NAME` takes.
  */
 export const SupportedNetworks: Record<string, AppConfig> = {
-	arbitrumSepolia: FangornConfig,
+	arbitrumSepolia: ArbitrumSepoliaConfig,
 	baseSepolia: BaseSepoliaConfig,
 };
 

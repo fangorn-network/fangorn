@@ -51,7 +51,7 @@ jobs:
           FANGORN_CONTRACTS_DIR: ${{ github.workspace }}/contracts/solidity
   live_reads:
     # Read-only checks of the deployed contracts and the public RPC. No secrets.
-    name: Live reads (Arbitrum Sepolia)
+    name: Live reads (Base Sepolia)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

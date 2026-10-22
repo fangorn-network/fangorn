@@ -122,7 +122,7 @@ function loadConfig(): Config {
 
 		_config = {
 			privateKey: privateKey as Hex,
-			cfg: getNetwork(envChain ?? "arbitrumSepolia"),
+			cfg: getNetwork(envChain ?? "baseSepolia"),
 			appId: envAppId,
 			pinataJwt: pinataJwt ?? "",
 			pinataGateway: pinataGateway ?? "",

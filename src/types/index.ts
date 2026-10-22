@@ -25,8 +25,8 @@ export type StorageConfig =
     // provide storage: uploads are billed to the client's app, which must admit
     // this wallet, and a client with no app cannot upload this way. A publisher
     // that pays for its own storage claims a one-member app.
-    // `workerUrl` defaults to the hosted pinata-url-provider, `gateway` to
-    // config.ipfsGateway.
+    // `workerUrl` defaults to the network's hosted worker (config.signedUrlWorker),
+    // `gateway` to config.ipfsGateway.
     | { signedUrl: { workerUrl?: string; gateway?: string } }
     // Any other backend, e.g. an in-memory one for tests.
     | { backend: MetadataStorage };

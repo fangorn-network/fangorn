@@ -17,8 +17,8 @@ export const selectChain = async () => {
 	const chainChoice = await select({
 		message: "Pick your chain.",
 		options: [
-			{ value: "arbitrumSepolia", label: "Arbitrum Sepolia" },
 			{ value: "baseSepolia", label: "Base Sepolia" },
+			{ value: "arbitrumSepolia", label: "Arbitrum Sepolia" },
 		],
 	});
 	handleCancel(chainChoice);

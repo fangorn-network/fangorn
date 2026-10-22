@@ -14,6 +14,7 @@ import {
 	walletActions,
 } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+import { foundry } from "viem/chains";
 import { Fangorn } from "../fangorn.js";
 import { type AppConfig, FangornConfig } from "../config.js";
 import { APP_REGISTRY_ABI, DATA_REGISTRY_ABI } from "../contracts/index.js";
@@ -135,7 +136,10 @@ export async function chainNetwork() {
 	if (build.status !== 0) throw new Error(`forge build failed in ${CONTRACTS}`);
 
 	const { rpcUrl, anvil } = await startAnvil(FangornConfig.chain.id);
-	const chain = createTestClient({ mode: "anvil", chain: FangornConfig.chain, transport: http(rpcUrl) })
+	// The default network's id on a plain chain: Base's OP Stack formatters make this
+	// function's inferred type too large for the .d.ts build (TS7056), and anvil
+	// needs only the id.
+	const chain = createTestClient({ mode: "anvil", chain: { ...foundry, id: FangornConfig.chain.id }, transport: http(rpcUrl) })
 		.extend(publicActions)
 		.extend(walletActions);
 	const admin = privateKeyToAccount(ADMIN_KEY);
