@@ -3,7 +3,6 @@ import { Command } from "commander";
 import { intro, outro, text, spinner, confirm } from "@clack/prompts";
 import {
 	createPublicClient,
-	createWalletClient,
 	formatEther,
 	formatUnits,
 	http,
@@ -27,7 +26,7 @@ import { handleCancel, selectChain } from "./index.js";
 import getNetwork, { AppConfig, nonBlank, toAppId } from "../config.js";
 import { StorageConfig } from "../types/index.js";
 import { PublisherStatus } from "../contracts/index.js";
-import { agentCardUrl, mcpTools, mintAgent, parseAgentId, registrationFile, setAgentFile, type AgentCard } from "./erc8004.js";
+import { agentCardUrl, parseAgentId } from "../erc8004.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -526,20 +525,6 @@ appCmd
 		}
 	});
 
-// A public RPC behind a load balancer can hand the next transaction the nonce of one that just
-// confirmed on another node: "replacement transaction underpriced". Sent again a moment later,
-// it gets the right one. Only nonce errors are retried; anything else is an answer.
-async function retryNonce<T>(f: () => Promise<T>, tries = 4): Promise<T> {
-	for (let i = 0; ; i++) {
-		try {
-			return await f();
-		} catch (e) {
-			if (i >= tries - 1 || !/underpriced|nonce too low|nonce has already been used|already known/i.test((e as Error).message)) throw e;
-			await new Promise((ok) => setTimeout(ok, 3000 * (i + 1)));
-		}
-	}
-}
-
 appCmd
 	.command("agent")
 	.description(
@@ -565,77 +550,25 @@ appCmd
 				const cfg = loadConfig();
 				const url = agentCardUrl(cardUrl, opts.accessWorker);
 
-				// try to fetch the agent card from the URL
-				// if it DNE, return an error
 				const s = spinner();
-				s.start(`Reading ${url}`);
-				const res = await fetch(url);
-				if (!res.ok) {
+				// The storage the CLI is configured with pins the registration file: its Pinata
+				// JWT, or signed URLs billed to the app.
+				const chainId = cfg.cfg.caip2;
+				const update = opts.update ? parseAgentId(opts.update, chainId) : undefined;
+				s.start(opts.skipRegister ? "Pointing the app at its card" : update !== undefined ? `Updating ERC-8004 agent ${opts.update ?? ""}` : "Registering with the ERC-8004 identity registry");
+				let result: Awaited<ReturnType<Fangorn["registerAgent"]>>;
+				try {
+					result = await getFangorn().registerAgent(url, { mcp: opts.mcp, update, skipRegister: opts.skipRegister });
+				} catch (e) {
 					s.stop();
-					throw new Error(`card at ${url} returned ${String(res.status)}`);
+					const minted = (e as { agentId?: bigint }).agentId;
+					throw minted !== undefined
+						? new Error(`${(e as Error).message.replace(/; finish it with .*/, "")}. Finish it with: fangorn app agent ${url} --update ${String(chainId)}:${String(minted)}`)
+						: e;
 				}
-				const card = (await res.json()) as Partial<AgentCard>;
-				s.stop(`Card: ${card.name ?? "(unnamed)"}`);
-				if (!card.name || !card.description) {
-					throw new Error("card is missing `name` or `description`");
-				}
-
-				let agentId: string | undefined;
-				if (!opts.skipRegister) {
-					if (!cfg.pinataJwt) {
-						throw new Error(
-							"ERC-8004 registration pins the registration file to IPFS — set PINATA_JWT, or pass --skip-register.",
-						);
-					}
-					const c = {
-						chain: cfg.cfg.chain,
-						publicClient: createPublicClient({ chain: cfg.cfg.chain, transport: http(cfg.cfg.rpcUrl) }),
-						walletClient: createWalletClient({ account: getAccount(), chain: cfg.cfg.chain, transport: http(cfg.cfg.rpcUrl) }),
-						pinataJwt: cfg.pinataJwt,
-					};
-					const chainId = cfg.cfg.caip2;
-					const named = { ...card, name: card.name, description: card.description };
-					s.start("Indexing skills and capabilities from the card");
-					const mcp = opts.mcp ? { endpoint: opts.mcp, tools: await mcpTools(opts.mcp) } : undefined;
-					s.stop();
-					const file = (id: bigint) => registrationFile({ cardUrl: url, card: named, chainId, agentId: id, mcp });
-
-					if (opts.update) {
-						// The same agent, from the card as it is now: a new file, pointed to by
-						// setAgentURI. Its id and owner stay.
-						const id = parseAgentId(opts.update, chainId);
-						s.start(`Updating ERC-8004 agent ${opts.update}`);
-						await retryNonce(() => setAgentFile(c, id, file(id)));
-						s.stop();
-						agentId = `${String(chainId)}:${String(id)}`;
-					} else {
-						// run again (not retry since the mint would make a second agent) 
-						s.start("Registering with the ERC-8004 identity registry");
-						const id = await mintAgent(c);
-						agentId = `${String(chainId)}:${String(id)}`;
-						s.message(`Minted ${agentId}; pinning its registration file`);
-						try {
-							await retryNonce(() => setAgentFile(c, id, file(id)));
-						} catch (e) {
-							s.stop();
-							throw new Error(
-								`agent ${agentId} was minted but its registration file was not set (${(e as Error).message}). ` +
-								`Finish it with: fangorn app agent ${url} --update ${agentId}`,
-							);
-						}
-						s.stop();
-					}
-				}
-
-				// An update leaves a binding that already points here alone: no transaction for nothing.
-				const apps = getFangorn().getAppRegistry();
-				const bound = opts.update ? await apps.appAgentUri().catch(() => "") : "";
-				let txHash = "(already bound)";
-				if (bound !== url) {
-					s.start("Pointing the app at its card");
-					txHash = await retryNonce(() => apps.setAppAgentUri(url));
-					s.stop();
-				}
+				s.stop();
+				const agentId = result.agentId !== undefined ? `${String(chainId)}:${String(result.agentId)}` : undefined;
+				const txHash = result.txHash ?? "(already bound)";
 
 				if (agentId) console.log(`Agent ID:  ${agentId}`);
 				console.log(`Card:      ${url}`);

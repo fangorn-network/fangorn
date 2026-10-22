@@ -2,6 +2,7 @@ import {
 	createPublicClient,
 	createWalletClient,
 	http,
+	type Hash,
 	type Hex,
 	type PublicClient,
 	type WalletClient,
@@ -16,6 +17,7 @@ import {
 	StorageConfig,
 } from "./types/index.js";
 import { MetadataStorage } from "./providers/storage/types.js";
+import { mcpTools, mintAgent, registrationFile, retryNonce, setAgentFile, type AgentCard as Erc8004Card } from "./erc8004.js";
 import { PinataBackend } from "./providers/storage/pinata.js";
 import {
 	SignedUrlBackend,
@@ -929,6 +931,57 @@ export class Fangorn {
 			this.ctx.walletClient,
 		);
 		return this._membership;
+	}
+
+	/**
+	 * Register the app as an ERC-8004 agent from its card, and point the app at the card
+	 * (owner only). The registration file is pinned with this client's storage, so a
+	 * browser wallet on signed-URL storage needs no Pinata JWT.
+	 *
+	 * `update` re-files an agent already minted (its token id) from the card as it is
+	 * now, minting nothing. `skipRegister` only binds the card. A binding that already
+	 * points at `cardUrl` is left alone.
+	 */
+	async registerAgent(
+		cardUrl: string,
+		opts: { mcp?: string; update?: bigint; skipRegister?: boolean } = {},
+	): Promise<{ card: Erc8004Card; agentId?: bigint; txHash?: Hash }> {
+		const res = await fetch(cardUrl);
+		if (!res.ok) throw new Error(`card at ${cardUrl} returned ${String(res.status)}`);
+		const card = (await res.json()) as Partial<Erc8004Card>;
+		if (!card.name || !card.description) throw new Error("card is missing `name` or `description`");
+		const named = { ...card, name: card.name, description: card.description };
+
+		let agentId: bigint | undefined;
+		if (!opts.skipRegister) {
+			const c = { chain: this.ctx.config.chain, publicClient: this.ctx.publicClient, walletClient: this.ctx.walletClient, storage: this.getStorage() };
+			const chainId = this.ctx.config.caip2;
+			const mcp = opts.mcp ? { endpoint: opts.mcp, tools: await mcpTools(opts.mcp) } : undefined;
+			const file = (id: bigint) => registrationFile({ cardUrl, card: named, chainId, agentId: id, mcp });
+			const { update } = opts;
+			if (update !== undefined) {
+				agentId = update;
+				await retryNonce(() => setAgentFile(c, update, file(update)));
+			} else {
+				// Not retried: a second mint would make a second agent.
+				const id = await mintAgent(c);
+				agentId = id;
+				try {
+					await retryNonce(() => setAgentFile(c, id, file(id)));
+				} catch (e) {
+					throw Object.assign(
+						new Error(`agent ${String(chainId)}:${String(agentId)} was minted but its registration file was not set (${(e as Error).message}); ` +
+							`finish it with registerAgent(cardUrl, { update: ${String(agentId)}n })`),
+						{ agentId },
+					);
+				}
+			}
+		}
+
+		const apps = this.getAppRegistry();
+		if ((await apps.appAgentUri().catch(() => "")) === cardUrl) return { card: named, agentId };
+		const txHash = await retryNonce(() => apps.setAppAgentUri(cardUrl));
+		return { card: named, agentId, txHash };
 	}
 
 	/** The app this client reads and publishes under, or undefined for none. */

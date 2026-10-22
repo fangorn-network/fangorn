@@ -1,5 +1,6 @@
-// ERC-8004 registration for `fangorn app agent`. 
-// It builds a registration file that gets pinned to IPFS, 
+// ERC-8004 registration (Fangorn.registerAgent, `fangorn app agent`).
+// It builds a registration file, pins it with the client's storage (a Pinata JWT,
+// or signed URLs billed to the app, so a browser wallet can do it too),
 // and handles the identity registry's `register` and `setAgentURI` functions.
 // 
 // The file is identitcal agent0-sdk's format, so the
@@ -15,7 +16,7 @@ import {
 	type PublicClient,
 	type WalletClient,
 } from "viem";
-import { PinataSDK } from "pinata";
+import type { MetadataStorage } from "./providers/storage/types.js";
 
 /** The ERC-8004 identity registry by chain id */
 export const IDENTITY_REGISTRY: Record<number, Address> = {
@@ -172,16 +173,21 @@ export interface Erc8004Clients {
 	chain: Chain;
 	publicClient: PublicClient;
 	walletClient: WalletClient;
-	pinataJwt: string;
+	storage: Pick<MetadataStorage, "put">;
 }
 
-async function pin(jwt: string, data: unknown): Promise<string> {
-	const file = new File(
-		[JSON.stringify(data, null, 2)],
-		"agent-registration.json",
-		{ type: "application/json" },
-	);
-	return (await new PinataSDK({ pinataJwt: jwt }).upload.public.file(file)).cid;
+// A public RPC behind a load balancer can hand the next transaction the nonce of one that just
+// confirmed on another node: "replacement transaction underpriced". Sent again a moment later,
+// it gets the right one. Only nonce errors are retried; anything else is an answer.
+export async function retryNonce<T>(f: () => Promise<T>, tries = 4): Promise<T> {
+	for (let i = 0; ; i++) {
+		try {
+			return await f();
+		} catch (e) {
+			if (i >= tries - 1 || !/underpriced|nonce too low|nonce has already been used|already known/i.test((e as Error).message)) throw e;
+			await new Promise((ok) => setTimeout(ok, 3000 * (i + 1)));
+		}
+	}
 }
 
 function registry(chain: Chain): Address {
@@ -199,7 +205,7 @@ export async function setAgentFile(
 	agentId: bigint,
 	file: unknown,
 ): Promise<Hex> {
-	const cid = await pin(c.pinataJwt, file);
+	const cid = await c.storage.put(file, { name: "agent-registration.json" });
 	const hash = await c.walletClient.writeContract({
 		address: registry(c.chain),
 		abi: ABI,
