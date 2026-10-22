@@ -49,6 +49,9 @@ export interface AppConfig {
 	// The most blocks one eth_getLogs call may span on `rpcUrl` (default 1000).
 	// `FANGORN_LOG_WINDOW` overrides it, for a private RPC.
 	logWindow?: bigint;
+	// The hosted upload worker gated on this deployment's AppRegistry. Hosted uploads
+	// (`storage: { signedUrl: {} }`) go through it unless given a `workerUrl`.
+	signedUrlWorker?: string;
 }
 
 // Network/deployment settings only. The app is per client:
@@ -69,6 +72,7 @@ export const FangornConfig = {
 	// Every scan here is filtered by address; the public RPC served 1M-block ranges
 	// of those when measured (2026-10-20).
 	logWindow: 100_000n,
+	signedUrlWorker: "https://pinata-url-provider.fangorn-0be.workers.dev",
 } satisfies AppConfig
 
 export const BaseSepoliaConfig = {
@@ -87,6 +91,9 @@ export const BaseSepoliaConfig = {
 	caip2: 84532,
 	ipfsGateway: 'https://ipfs.io',
 	logWindow: 10_000n,
+	// Its own worker: the Arbitrum one gates on Arbitrum's AppRegistry, so a Base
+	// app's publishers would be refused there.
+	signedUrlWorker: "https://pinata-url-provider-base.fangorn-0be.workers.dev",
 } satisfies AppConfig
 
 /**

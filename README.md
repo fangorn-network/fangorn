@@ -57,7 +57,7 @@ ETH_PRIVATE_KEY=0x...
 PINATA_JWT=...
 PINATA_GATEWAY=https://your-gateway.mypinata.cloud
 CHAIN_NAME=arbitrumSepolia   # or baseSepolia
-SIGNED_URL_WORKER_URL=https://pinata-url-provider.your-subdomain.workers.dev   # optional
+SIGNED_URL_WORKER_URL=https://pinata-url-provider.your-subdomain.workers.dev   # optional; defaults to the network's hosted worker
 ```
 
 > The **access worker** and the **presigned-URL worker** are two different services: the first gates reads of sealed fields, the second hands out Pinata upload URLs. Don't conflate them.
@@ -94,8 +94,8 @@ be transferred). `fangorn app claim` pays one period of the subscription fee in
 USDC (the client approves exactly the fee for you), and `fangorn app renew` pays
 the next once less than a period is left. An expired app stores and presents nothing
 until it is renewed. **Apps provide storage**: you upload relative to
-an app, and hosted uploads (`storage: { signedUrl: {} }`) are billed to the
-client's app, which must have accepted you. There is no app-less hosted upload — with no
+an app, and hosted uploads (`storage: { signedUrl: {} }`, through the network's
+hosted worker, `config.signedUrlWorker`) are billed to the client's app, which must have accepted you. There is no app-less hosted upload — with no
 app, bring your own Pinata (`{ pinata }`) and pin your own data. A publisher that
 pays for its own storage claims a one-member app.
 
