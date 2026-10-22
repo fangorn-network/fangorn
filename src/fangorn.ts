@@ -114,8 +114,10 @@ function resolveStorage(
 	if ("signedUrl" in storage) {
 		// Apps provide storage: the hosted worker bills the client's app. Without
 		// one, a publisher brings its own Pinata (or any backend) and pins itself.
+		// Each network has its own worker, gated on its own AppRegistry. Blank (an
+		// unset CLI field) counts as unset.
 		return new SignedUrlBackend(
-			storage.signedUrl.workerUrl,
+			nonBlank(storage.signedUrl.workerUrl) ?? config.signedUrlWorker,
 			walletSigner(walletClient),
 			storage.signedUrl.gateway ?? config.ipfsGateway,
 			getAppId,

@@ -56,8 +56,8 @@ You can also configure via environment variables (these take precedence over the
 ETH_PRIVATE_KEY=0x...
 PINATA_JWT=...
 PINATA_GATEWAY=https://your-gateway.mypinata.cloud
-CHAIN_NAME=arbitrumSepolia   # or baseSepolia
-SIGNED_URL_WORKER_URL=https://pinata-url-provider.your-subdomain.workers.dev   # optional
+CHAIN_NAME=baseSepolia   # the default; or arbitrumSepolia
+SIGNED_URL_WORKER_URL=https://pinata-url-provider.your-subdomain.workers.dev   # optional; defaults to the network's hosted worker
 ```
 
 > The **access worker** and the **presigned-URL worker** are two different services: the first gates reads of sealed fields, the second hands out Pinata upload URLs. Don't conflate them.
@@ -94,8 +94,8 @@ be transferred). `fangorn app claim` pays one period of the subscription fee in
 USDC (the client approves exactly the fee for you), and `fangorn app renew` pays
 the next once less than a period is left. An expired app stores and presents nothing
 until it is renewed. **Apps provide storage**: you upload relative to
-an app, and hosted uploads (`storage: { signedUrl: {} }`) are billed to the
-client's app, which must have accepted you. There is no app-less hosted upload — with no
+an app, and hosted uploads (`storage: { signedUrl: {} }`, through the network's
+hosted worker, `config.signedUrlWorker`) are billed to the client's app, which must have accepted you. There is no app-less hosted upload — with no
 app, bring your own Pinata (`{ pinata }`) and pin your own data. A publisher that
 pays for its own storage claims a one-member app.
 
@@ -274,7 +274,7 @@ const fangorn = Fangorn.create({
 			gateway: process.env.PINATA_GATEWAY!,
 		},
 	},
-	config: FangornConfig, // defaults to Arbitrum Sepolia
+	config: FangornConfig, // the default, Base Sepolia; or ArbitrumSepoliaConfig
 	appId: "my-app", // optional for reads (no app: each publisher's latest head); hosted uploads need one
 });
 
@@ -590,32 +590,35 @@ gadget_ behind the same handle shape, so committed data doesn't change form.
 
 ## Contracts
 
-### Arbitrum Sepolia
+### Base Sepolia (the default)
 
 | Contract             | Address                                      | What it owns                                        |
 | -------------------- | -------------------------------------------- | --------------------------------------------------- |
-| DataRegistry         | `0x72B5f83526F3893aF9f1eE0f32A27218EA09f8aE` | Every repo's head, and the update log           |
-| AppRegistry          | `0x55e6209ea1833ceD900989a3b3b22466934E04A5` | Apps: owner, accepted publishers, bans, storage subscription (ERC-5643, USDC); what each app excludes |
-| MembershipRegistry   | `0xDF17030Cd65435C86eb043F31DDACa99E819E347` | Time-limited, unlinkable access to an app's paid records (USDC + Semaphore) |
+| DataRegistry         | `0xE9183f768865dd2Cde5f1B71F8446F0Cd798ebe0` | Every repo's head, and the update log           |
+| AppRegistry          | `0x0D3e98399df41b558048Cdd7D71723c37A3A9D6F` | Apps: owner, accepted publishers, bans, storage subscription (ERC-5643, USDC); what each app excludes |
+| MembershipRegistry   | `0x0e96C012b5c53622EcDAA82F342E31C2623A04f5` | Time-limited, unlinkable access to an app's paid records (USDC + Semaphore) |
 
-### Base Sepolia
+`Fangorn.create` uses it when given no `config`, and the CLI when `CHAIN_NAME` is unset.
+
+### Arbitrum Sepolia
 
 | Contract             | Address                                      |
 | -------------------- | -------------------------------------------- |
-| DataRegistry         | `0xE9183f768865dd2Cde5f1B71F8446F0Cd798ebe0` |
-| AppRegistry          | `0x0D3e98399df41b558048Cdd7D71723c37A3A9D6F` |
-| MembershipRegistry   | `0x0e96C012b5c53622EcDAA82F342E31C2623A04f5` |
+| DataRegistry         | `0x72B5f83526F3893aF9f1eE0f32A27218EA09f8aE` |
+| AppRegistry          | `0x55e6209ea1833ceD900989a3b3b22466934E04A5` |
+| MembershipRegistry   | `0xDF17030Cd65435C86eb043F31DDACa99E819E347` |
 
-Use it from the SDK with `Fangorn.create({ config: BaseSepoliaConfig, ... })`, or
-from the CLI with `CHAIN_NAME=baseSepolia` (or pick it in `fangorn init`).
+Still runs an older version of the contracts, which this SDK's ABIs do not match.
+Select it with `Fangorn.create({ config: ArbitrumSepoliaConfig, ... })`, or from the
+CLI with `CHAIN_NAME=arbitrumSepolia` (or pick it in `fangorn init`).
 
 Its default RPC is `base-sepolia-rpc.publicnode.com`, not `sepolia.base.org`: the
 official endpoint caps `eth_getLogs` at 200 blocks, too narrow to scan the registry's
 history. Each config's `logWindow` is the most blocks one log query spans on its RPC
 (Base 10,000, Arbitrum 100,000); `FANGORN_LOG_WINDOW` overrides it for a private RPC.
 
-`FangornConfig` (Arbitrum Sepolia) and `BaseSepoliaConfig` in `src/config.ts` are the authoritative list and what the SDK
-uses by default — prefer it over any address copied out of a document,
+`BaseSepoliaConfig` (also exported as `FangornConfig`, the default) and `ArbitrumSepoliaConfig` in `src/config.ts` are the authoritative list and what the SDK
+uses — prefer it over any address copied out of a document,
 including this table. The sources are `fangorn-network/contracts`
 (`solidity/script/Deployments.sol`); regenerate the ABIs with `pnpm abis`.
 
@@ -648,7 +651,7 @@ pnpm test:e2e
 | `src/e2e/sdk.e2e.test.ts`      | the contracts on anvil       | `anvil`, `forge`         |
 | `src/e2e/apps.e2e.test.ts`     | the contracts on anvil       | `anvil`, `forge`         |
 | `src/e2e/admin.e2e.test.ts`    | the contracts on anvil       | `anvil`, `forge`         |
-| `src/e2e/live.e2e.test.ts`     | Arbitrum Sepolia, read-only  | nothing                  |
+| `src/e2e/live.e2e.test.ts`     | Base Sepolia, read-only      | nothing                  |
 
 Without `anvil`, `forge` or the contracts checkout the anvil suites are skipped
 (in CI they fail). The deployer is the protocol admin, so the admin suite needs

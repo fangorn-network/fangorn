@@ -1,14 +1,14 @@
 import { Hex } from "viem";
+import { FangornConfig } from "../../config.js";
 import { MetadataStorage, RawBlock, StorageMeta } from "./types.js";
 import { serialize, fetchRawByCid, withUploadRetry } from "./utils.js";
 
 /**
- * The hosted pinata-url-provider worker. Used when no worker URL is supplied, so
- * callers can upload via signed URLs with zero configuration. Point at your own
- * deployment by passing a workerUrl.
+ * The hosted worker for the default network (Base Sepolia). Used when neither
+ * a worker URL nor the network's config names one. `Fangorn.create` passes the
+ * config's `signedUrlWorker`, so a Base client reaches Base's worker.
  */
-export const DEFAULT_SIGNED_URL_WORKER =
-	"https://pinata-url-provider.fangorn-0be.workers.dev";
+export const DEFAULT_SIGNED_URL_WORKER = FangornConfig.signedUrlWorker;
 
 interface WorkerResponse {
 	ok?: boolean;
