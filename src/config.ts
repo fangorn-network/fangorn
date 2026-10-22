@@ -57,7 +57,7 @@ export interface AppConfig {
 // Network/deployment settings only. The app is per client:
 // `Fangorn.create({ appId })`, switchable with `fangorn.setAppId(...)`.
 // Addresses are the proxies in contracts/solidity/script/Deployments.sol.
-export const FangornConfig = {
+export const ArbitrumSepoliaConfig = {
 	dataRegistryContractAddress:
 		"0x72B5f83526F3893aF9f1eE0f32A27218EA09f8aE",
 	appRegistryContractAddress:
@@ -97,10 +97,17 @@ export const BaseSepoliaConfig = {
 } satisfies AppConfig
 
 /**
+ * The default network: what `Fangorn.create` uses without a `config`, and the CLI
+ * without `CHAIN_NAME`. Base Sepolia, which runs the contracts this SDK's ABIs are
+ * built from.
+ */
+export const FangornConfig = BaseSepoliaConfig;
+
+/**
  * The networks supported by Fangorn, by the name `CHAIN_NAME` takes.
  */
 export const SupportedNetworks: Record<string, AppConfig> = {
-	arbitrumSepolia: FangornConfig,
+	arbitrumSepolia: ArbitrumSepoliaConfig,
 	baseSepolia: BaseSepoliaConfig,
 };
 

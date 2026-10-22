@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import type { Hex } from "viem";
 import { Fangorn } from "./fangorn.js";
-import { appId as toAppId, BaseSepoliaConfig, FangornConfig } from "./config.js";
+import { appId as toAppId, ArbitrumSepoliaConfig, BaseSepoliaConfig } from "./config.js";
 
 // Apps provide storage: signed-url uploads are billed to the client's app, and a
 // client with no app cannot upload that way at all.
@@ -63,20 +63,25 @@ describe("Fangorn app scope → signed-url uploads", () => {
 });
 
 describe("signed-url uploads → the network's hosted worker", () => {
-	const create = (config: typeof FangornConfig | typeof BaseSepoliaConfig, workerUrl?: string) =>
+	const create = (config: typeof ArbitrumSepoliaConfig | typeof BaseSepoliaConfig, workerUrl?: string) =>
 		Fangorn.create({ privateKey: KEY, appId: "my-app", config, storage: { signedUrl: { workerUrl } } });
 
 	it("uses each network's own worker when none is given", async () => {
 		// Each worker gates on its own network's AppRegistry: a Base app sent to the
 		// Arbitrum worker would be refused.
-		expect(BaseSepoliaConfig.signedUrlWorker).not.toBe(FangornConfig.signedUrlWorker);
-		for (const config of [BaseSepoliaConfig, FangornConfig]) {
+		expect(BaseSepoliaConfig.signedUrlWorker).not.toBe(ArbitrumSepoliaConfig.signedUrlWorker);
+		for (const config of [BaseSepoliaConfig, ArbitrumSepoliaConfig]) {
 			expect(await uploadAndCaptureAppIds(create(config), config.signedUrlWorker)).toHaveLength(2);
 		}
 	});
 
 	it("treats a blank workerUrl (an unset CLI field) as unset", async () => {
 		expect(await uploadAndCaptureAppIds(create(BaseSepoliaConfig, " "), BaseSepoliaConfig.signedUrlWorker)).toHaveLength(2);
+	});
+
+	it("defaults to Base Sepolia and its worker", async () => {
+		const fangorn = Fangorn.create({ privateKey: KEY, appId: "my-app", storage: { signedUrl: {} } });
+		expect(await uploadAndCaptureAppIds(fangorn, BaseSepoliaConfig.signedUrlWorker)).toHaveLength(2);
 	});
 
 	it("prefers an explicit workerUrl", async () => {

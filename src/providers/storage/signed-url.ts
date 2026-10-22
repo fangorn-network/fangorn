@@ -4,7 +4,7 @@ import { MetadataStorage, RawBlock, StorageMeta } from "./types.js";
 import { serialize, fetchRawByCid, withUploadRetry } from "./utils.js";
 
 /**
- * The hosted worker for the default network (Arbitrum Sepolia). Used when neither
+ * The hosted worker for the default network (Base Sepolia). Used when neither
  * a worker URL nor the network's config names one. `Fangorn.create` passes the
  * config's `signedUrlWorker`, so a Base client reaches Base's worker.
  */
