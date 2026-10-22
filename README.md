@@ -1,6 +1,6 @@
 # Fangorn SDK
 
-The Fangorn SDK is a lightweight "git for data" protocol: publishers version *repos* of records in IPFS and move each repo's head on-chain, and *apps* sponsor storage for the publishers they accept.
+The Fangorn SDK is a decentralized "git for data" protocol. It follows an app <> publisher paradigm. An "app" is synonymous with gauranteed data availability and a 'view' of its underlying data. For publishers, it lets you cryptographically commit to to a version controlled "repo", which is data stored as a Merkle search tree in IPFS. Published data exists independently of an app, and apps emerge on top of data that they sponsor (pin).
 
 A **repo** belongs to its publisher, keyed **`publisher : repo`**. Its state is a map of **records** (`{ id, type, payload }`, content-addressed), and its head is the digest of the latest commit block. Any wallet can update its own repos; updating a head is a compare-and-swap on the parent (i.e. a git ref update), and an update names no app.
 
@@ -57,7 +57,6 @@ ETH_PRIVATE_KEY=0x...
 PINATA_JWT=...
 PINATA_GATEWAY=https://your-gateway.mypinata.cloud
 CHAIN_NAME=arbitrumSepolia   # or baseSepolia
-ACCESS_WORKER_URL=https://access-worker.your-subdomain.workers.dev   # optional (sealed fields)
 SIGNED_URL_WORKER_URL=https://pinata-url-provider.your-subdomain.workers.dev   # optional
 ```
 
@@ -112,6 +111,7 @@ fangorn app suspend <address>    # suspend a member from THIS app only
 fangorn app reinstate <address>
 fangorn app renew                # pay for the next period
 fangorn app cancel               # end the subscription now, no refund
+fangorn app agent --access-worker <url>   # register the worker's agent card with ERC-8004 (or pass a card URL)
 fangorn app withdraw-fees [to]   # join fees still owed from before joining was removed
 ```
 
