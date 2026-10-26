@@ -116,8 +116,15 @@ function resolveStorage(
 		// one, a publisher brings its own Pinata (or any backend) and pins itself.
 		// Each network has its own worker, gated on its own AppRegistry. Blank (an
 		// unset CLI field) counts as unset.
+		const workerUrl = nonBlank(storage.signedUrl.workerUrl) ?? nonBlank(config.signedUrlWorker);
+		// Not the backend's default: that's another network's worker, which would refuse this app.
+		if (!workerUrl) {
+			throw new Error(
+				`no hosted upload worker on chain ${config.caip2.toString()}: pass storage.signedUrl.workerUrl, or bring your own storage ({ pinata } or { backend })`,
+			);
+		}
 		return new SignedUrlBackend(
-			nonBlank(storage.signedUrl.workerUrl) ?? config.signedUrlWorker,
+			workerUrl,
 			walletSigner(walletClient),
 			storage.signedUrl.gateway ?? config.ipfsGateway,
 			getAppId,

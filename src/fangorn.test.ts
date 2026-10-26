@@ -66,13 +66,15 @@ describe("signed-url uploads → the network's hosted worker", () => {
 	const create = (config: typeof ArbitrumSepoliaConfig | typeof BaseSepoliaConfig, workerUrl?: string) =>
 		Fangorn.create({ privateKey: KEY, appId: "my-app", config, storage: { signedUrl: { workerUrl } } });
 
-	it("uses each network's own worker when none is given", async () => {
-		// Each worker gates on its own network's AppRegistry: a Base app sent to the
-		// Arbitrum worker would be refused.
-		expect(BaseSepoliaConfig.signedUrlWorker).not.toBe(ArbitrumSepoliaConfig.signedUrlWorker);
-		for (const config of [BaseSepoliaConfig, ArbitrumSepoliaConfig]) {
-			expect(await uploadAndCaptureAppIds(create(config), config.signedUrlWorker)).toHaveLength(2);
-		}
+	it("uses the network's own worker when none is given", async () => {
+		expect(await uploadAndCaptureAppIds(create(BaseSepoliaConfig), BaseSepoliaConfig.signedUrlWorker)).toHaveLength(2);
+	});
+
+	it("refuses hosted uploads on a network with no worker, not falling back to another network's", () => {
+		// Each worker gates on its own network's AppRegistry: an Arbitrum app sent to
+		// the Base worker would be refused.
+		expect(() => create(ArbitrumSepoliaConfig)).toThrow(/no hosted upload worker/);
+		expect(() => create(ArbitrumSepoliaConfig, WORKER)).not.toThrow();
 	});
 
 	it("treats a blank workerUrl (an unset CLI field) as unset", async () => {
