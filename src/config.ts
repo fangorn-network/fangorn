@@ -72,7 +72,7 @@ export const ArbitrumSepoliaConfig = {
 	// Every scan here is filtered by address; the public RPC served 1M-block ranges
 	// of those when measured (2026-10-20).
 	logWindow: 100_000n,
-	signedUrlWorker: "https://pinata-url-provider.fangorn-0be.workers.dev",
+	// note: no hosted worker here on purpose
 } satisfies AppConfig
 
 export const BaseSepoliaConfig = {
@@ -90,10 +90,10 @@ export const BaseSepoliaConfig = {
 	rpcUrl: "https://base-sepolia-rpc.publicnode.com",
 	caip2: 84532,
 	ipfsGateway: 'https://ipfs.io',
-	logWindow: 10_000n,
+	logWindow: 1_000n,
 	// Its own worker: the Arbitrum one gates on Arbitrum's AppRegistry, so a Base
 	// app's publishers would be refused there.
-	signedUrlWorker: "https://pinata-url-provider-base.fangorn-0be.workers.dev",
+	signedUrlWorker: "https://base-sepolia.storage-worker.fangorn.network",
 } satisfies AppConfig
 
 /**

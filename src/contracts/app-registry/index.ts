@@ -186,6 +186,34 @@ export class AppRegistryClient {
         return this.read("getAppOwner", [appId]);
     }
 
+    // ── Listing apps ─────────────────────────────────────────────────────────
+    // The contract keeps every claimed app id, oldest first, so listing apps is a
+    // read, not a log scan. Expired and suspended apps are listed too.
+
+    /** How many apps have been claimed. */
+    async appCount(): Promise<bigint> {
+        return this.read("appCount", []);
+    }
+
+    /** Up to `limit` app ids from position `offset`, oldest first; fewer past the end. */
+    async appsPage(offset: bigint, limit: bigint): Promise<readonly Hex[]> {
+        return this.read("appsPage", [offset, limit]);
+    }
+
+    /**
+     * Every claimed app id, oldest first.
+     * ponytail: one eth_call for all of them; page with `appsPage` once the list
+     * outgrows the RPC's eth_call gas cap (tens of thousands of apps).
+     */
+    async allApps(): Promise<readonly Hex[]> {
+        return this.appsPage(0n, await this.appCount());
+    }
+
+    /** The app ids `owner` claimed, oldest first. */
+    async appsOf(owner: Address): Promise<readonly Hex[]> {
+        return this.read("appsOf", [owner]);
+    }
+
     /**
      * Point this app at its ERC-8004 agent card.
      *
@@ -259,9 +287,9 @@ export class AppRegistryClient {
      * `AppAgentChanged` events, oldest first. The last one for an app is its
      * current card; an empty `agentUri` means the owner unset it.
      *
-     * Leave `appId` out to list every app that has ever set a card. The chain is
-     * the directory: one windowed log scan, no indexer and no registry namespace.
-     * `fromBlock` is required because scanning from genesis on an L2 costs
+     * Leave `appId` out to list every app that has ever set a card. To list apps,
+     * use `allApps` or `appsOf`, which are one read each; this is a windowed log
+     * scan, for a card's history. `fromBlock` is required because scanning from genesis on an L2 costs
      * hundreds of thousands of RPC calls. Pass the AppRegistry's deploy block, or
      * a block you know to be before the app's registration.
      */

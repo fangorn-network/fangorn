@@ -96,7 +96,6 @@ function loadConfig(): Config {
 
 	if (existsSync(CONFIG_PATH)) {
 		const stored = readStoredConfig();
-		// ponytail: configs written before Base support stored the label "Arbitrum Sepolia"
 		const storedChain = stored.chainName === "Arbitrum Sepolia" ? "arbitrumSepolia" : stored.chainName;
 		_config = {
 			privateKey: stored.privateKey,

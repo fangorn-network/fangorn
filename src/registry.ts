@@ -211,7 +211,6 @@ export class ChainRegistry implements Registry {
 					})
 				: false,
 		]);
-		// ponytail: a ban forces the parity odd; a counter that counts it needs the spec's contract
 		return banned ? Number(count) | 1 : Number(count);
 	}
 

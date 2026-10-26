@@ -107,6 +107,19 @@ export const APP_REGISTRY_ABI = [
   },
   {
     "type": "function",
+    "name": "appCount",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "approve",
     "inputs": [
       {
@@ -122,6 +135,49 @@ export const APP_REGISTRY_ABI = [
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "appsOf",
+    "inputs": [
+      {
+        "name": "owner",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32[]",
+        "internalType": "bytes32[]"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "appsPage",
+    "inputs": [
+      {
+        "name": "offset",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "limit",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "page",
+        "type": "bytes32[]",
+        "internalType": "bytes32[]"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -372,6 +428,19 @@ export const APP_REGISTRY_ABI = [
         "name": "subscriptionPeriod_",
         "type": "uint64",
         "internalType": "uint64"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "initializeV2",
+    "inputs": [
+      {
+        "name": "existing",
+        "type": "bytes32[]",
+        "internalType": "bytes32[]"
       }
     ],
     "outputs": [],

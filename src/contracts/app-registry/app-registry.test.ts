@@ -78,3 +78,21 @@ describe("AppRegistryClient publishers", () => {
 		expect(writes[0].args).toEqual([APP, SELF]);
 	});
 });
+
+describe("AppRegistryClient listing", () => {
+	it("lists every app with one count and one page, from the start", async () => {
+		const reads: { functionName: string; args: readonly unknown[] }[] = [];
+		const publicClient = {
+			readContract: (q: { functionName: string; args: readonly unknown[] }) => {
+				reads.push(q);
+				return Promise.resolve(q.functionName === "appCount" ? 2n : [APP, APP]);
+			},
+		} as unknown as PublicClient;
+		const apps = new AppRegistryClient(REGISTRY, undefined, publicClient, {} as WalletClient);
+		expect(await apps.allApps()).toEqual([APP, APP]);
+		expect(reads.map((r) => [r.functionName, r.args])).toEqual([
+			["appCount", []],
+			["appsPage", [0n, 2n]],
+		]);
+	});
+});
