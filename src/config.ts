@@ -72,7 +72,7 @@ export const ArbitrumSepoliaConfig = {
 	// Every scan here is filtered by address; the public RPC served 1M-block ranges
 	// of those when measured (2026-10-20).
 	logWindow: 100_000n,
-	// ponytail: no hosted worker here for now; Arbitrum clients bring a workerUrl or their own storage.
+	// note: no hosted worker here on purpose
 } satisfies AppConfig
 
 export const BaseSepoliaConfig = {
