@@ -16,6 +16,7 @@ import {
 	encodeBlock,
 	lookupMst,
 	readMst,
+	diffMst,
 } from "./records.js";
 import { packCar, readCar } from "./car.js";
 
@@ -55,6 +56,8 @@ export interface RepoDiff {
 	puts: StoredRecord[];
 	/** Ids of records that are gone. */
 	deletes: string[];
+	/** CIDs of the old versions: records deleted, or replaced by a put. An index keyed by record CID drops these. */
+	superseded: string[];
 }
 
 const ZERO_BYTES32 = ZERO_HEAD;
@@ -137,6 +140,12 @@ export class FangornEngine {
 	private cache = new Map<string, Uint8Array>();
 	/** Commits whose CAR has already been loaded into the cache. */
 	private loadedCars = new Set<string>();
+	/**
+	 * Blocks from a loaded CAR, not yet hash-checked. A CAR holds every block its commit introduced
+	 * (the first commit of a 50k-record repo: all of them), and a diff reads a handful: each block is
+	 * checked when `getBlock` first hands it out, then moves to `cache`.
+	 */
+	private unverified = new Map<string, Uint8Array>();
 
 	constructor(
 		private storage: MetadataStorage,
@@ -196,8 +205,9 @@ export class FangornEngine {
 	/** Pull every block of `commit`'s CAR into the local cache. */
 	private async loadCar(commitCid: CID, commit: CommitObject): Promise<void> {
 		const bytes = await this.storage.getFile(commit.car);
-		for (const block of await readCar(bytes)) {
-			this.cache.set(block.cid.toString(), block.bytes);
+		for (const block of await readCar(bytes, { verify: false })) {
+			const key = block.cid.toString();
+			if (!this.cache.has(key)) this.unverified.set(key, block.bytes);
 		}
 		this.loadedCars.add(commitCid.toString());
 	}
@@ -208,7 +218,17 @@ export class FangornEngine {
 	 */
 	private async getBlock(cid: CID, hint: CID | null): Promise<Uint8Array> {
 		const key = cid.toString();
-		const hit = this.cache.get(key);
+		const local = () => {
+			const hit = this.cache.get(key);
+			if (hit) return hit;
+			const raw = this.unverified.get(key);
+			if (!raw) return null;
+			assertBlockMatches(cid, raw);
+			this.unverified.delete(key);
+			this.cache.set(key, raw);
+			return raw;
+		};
+		const hit = local();
 		if (hit) return hit;
 
 		let cursor = hint;
@@ -216,7 +236,7 @@ export class FangornEngine {
 			const commit = await this.getCommit(cursor);
 			if (!this.loadedCars.has(cursor.toString())) {
 				await this.loadCar(cursor, commit);
-				const found = this.cache.get(key);
+				const found = local();
 				if (found) return found;
 			}
 			cursor = commit.parent;
@@ -410,8 +430,8 @@ export class FangornEngine {
 	 * Diffing root-to-root (rather than walking commits) is deliberately robust:
 	 * it yields the correct net delta even across a force-push / non-fast-forward
 	 * reorg — exactly what an index builder needs (what to (re)embed, what to evict).
-	 * ponytail: reads both whole trees; skip subtrees with equal CIDs if diffs
-	 * of large repos get slow.
+	 * Reads only the nodes on changed paths (`diffMst`): 10 new records in a
+	 * 50k-record repo cost ~10 × depth nodes, not two 50k-key walks.
 	 */
 	async repoDiff(
 		oldRootHex: string | null,
@@ -427,18 +447,16 @@ export class FangornEngine {
 				? this.hexToRootCid(oldRootHex)
 				: null;
 
-		const after = newCommit ? (await this.stateAt(newCommit)).state : new Map<string, CID>();
-		const before = oldCommit ? (await this.stateAt(oldCommit)).state : new Map<string, CID>();
-
+		const root = async (c: CID | null) => (c ? (await this.getCommit(c)).root : null);
+		const diff = await diffMst(
+			await root(oldCommit),
+			await root(newCommit),
+			(cid) => this.getBlock(cid, oldCommit),
+			(cid) => this.getBlock(cid, newCommit),
+		);
 		const puts: StoredRecord[] = [];
-		if (newCommit) {
-			for (const [id, cid] of after) {
-				if (before.get(id)?.toString() !== cid.toString())
-					puts.push(await this.decodeRecord(id, cid, newCommit));
-			}
-		}
-		const deletes = [...before.keys()].filter((id) => !after.has(id));
-		return { puts, deletes };
+		if (newCommit) for (const [id, cid] of diff.puts) puts.push(await this.decodeRecord(id, cid, newCommit));
+		return { puts, deletes: diff.deletes, superseded: [...diff.before.values()].map(String) };
 	}
 
 	/** Diff a commit against its parent. */

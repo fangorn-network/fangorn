@@ -36,13 +36,13 @@ export async function packCar(
 }
 
 /** Decode CAR bytes back into blocks, each checked against its CID (the host is untrusted). */
-export async function readCar(bytes: Uint8Array): Promise<Block[]> {
+export async function readCar(bytes: Uint8Array, { verify = true } = {}): Promise<Block[]> {
 	const reader = await CarReader.fromBytes(bytes);
 	const blocks: Block[] = [];
 	for await (const { cid, bytes: blockBytes } of reader.blocks()) {
 		// @ipld/car may carry its own multiformats build; normalize to ours.
 		const ours = CID.parse(cid.toString());
-		assertBlockMatches(ours, blockBytes);
+		if (verify) assertBlockMatches(ours, blockBytes);
 		blocks.push({ cid: ours, bytes: blockBytes });
 	}
 	return blocks;

@@ -16,7 +16,7 @@ We seek the same functions without the platform. In our setting, data is held by
 - the ordering service is a blockchain, which runs the registry and authenticates directories and update logs to light readers;
 - the Merkle DAG for states is a Merkle Search Tree, and the commitments to the update log and to each app's log are Merkle mountain ranges.
 
-**Appendix A** sketches how a software agent uses the protocol through a single server, and defines a **semantic CDN**: clustered views and their coverages, by which an agent routes a query to the closest records in the whole network, exactly, and fetches them from any host, without trusting an index.
+**Appendix A** sketches how a software agent uses the protocol through a single server, and defines a **semantic CDN**: clustered views and their coverages, by which an agent routes a query to the closest records in the whole network, exactly, and fetches them from any host, without trusting an index. **Appendix B** lets a repo change faster than the ordering: a publisher signs micro-commits at any rate and anchors them periodically, and a publisher who anchors something other than what it signed can be proven to have done so.
 
 ### 0.1 Our Contributions
 
@@ -256,7 +256,7 @@ A **commit** is an event $\gamma = (e, \mathit{parent}, \mathit{root})$:
 
 A repo's commits form a Merkle clock with one writer, and hence a chain. A repo's **head** is the name $N(\gamma)$ of its current commit. For a head $h$, $M_h$ is the state committed by its commit's root, and $M_\bot = \emptyset$. A reader holding a head thereby holds, by name, the repo's whole history and its current state.
 
-What the Merkle clock cannot say on its own is whether a head is the *latest*. A host can withhold newer commits, and nothing in the DAG reveals that it has done so. It is the ordering service that answers this question.
+What the Merkle clock cannot say on its own is whether a head is the *latest*. A host can withhold newer commits, and nothing in the DAG reveals that it has done so. It is the ordering service that answers this question. A publisher whose data changes faster than the ordering accepts entries may commit between anchors, with signed micro-commits that settle at the next anchor (Appendix B).
 
 ### 3.2 The ordering service orders heads
 
@@ -1035,7 +1035,8 @@ This document omits the following, each of which builds upon it:
 - proofs that a view is correct (§3.4), for lenses too large to recompute;
 - exclusions of key ranges or prefixes, for example as one exclusion root per repo, replaced atomically;
 - constructions of validation rules and their evidence: proofs that a state satisfies a rule, including rules relating its records, incrementally from a state already validated, and validators that attest to their code. Rules on one record can also be checked as they are read, as validation lenses (§3.4), but rules over several records then have no succinct fraud proof;
-- sealed (encrypted) data, and who may read it, including licenses that restrict which apps may present a repo, and acceptance of data that the acceptor cannot read.
+- sealed (encrypted) data, and who may read it, including licenses that restrict which apps may present a repo, and acceptance of data that the acceptor cannot read;
+- for micro-commits between anchors (Appendix B): forced inclusion, delegated device keys, sealing finer than an epoch, and the on-chain cost of checking faults.
 
 # Appendix A — Agents and a semantic CDN
 
@@ -1146,6 +1147,102 @@ An agent is also an author, and so may publish: its notes, its findings, or a mo
 - **Counts.** A coverage could also state each cluster's size, which an agent would use to estimate fetch costs. A size is an aggregate, checked by anyone who reads the cluster, but it has no succinct fraud proof.
 - **What hosts learn.** Which clusters an agent opens reveals roughly what it asked. How much a fixed fetch pattern hides is not analysed.
 - **Paid and sealed views.** These are left to later work (§7).
+
+# Appendix B — Between anchors: repos that change faster than the ordering
+
+Every head costs one entry in the ordering (§3.2), and every entry costs a transaction (§5). A repo can therefore change no faster than the ordering accepts entries, and each change costs as much as any other. That suits a council's minutes. It does not suit a sensor that reads every 100 ms, or a computation over a live stream.
+
+This appendix lets a publisher commit off the ordering, at any rate, and **anchor** periodically. Between anchors, each change is a **micro-commit** that the publisher signs. A micro-commit gives what a Merkle clock gives (§3.1): authorship, and order within the repo. It does not give currency, meaning that no newer state exists; the next anchor supplies that. If the publisher anchors a history that contradicts what it signed, a short proof shows it. It is a design on Part I, not part of the protocol, and its results are tagged as in §1.1.
+
+No merge is needed. A repo still has one writer (§1.5), so its micro-commits form a chain, exactly as its commits do. Each repo is, in effect, its own sequencer, and the ordering is where its history settles.
+
+### B.1 Micro-commits
+
+**Definition B.1 (Micro-commit).** Let repo $\rho = (P, s)$ have position $i$ at the time of writing, so that its head $h_i$ is fixed by the update log (Lemma 3.5). A **micro-commit on base $i$** is a value
+$$
+\mu = (\iota,\ \rho,\ i,\ j,\ a,\ \mathit{root},\ \tau)
+$$
+together with $P$'s signature on it, where:
+- $j \ge 1$ is its index;
+- $a = \mathsf{LCom}(\mu_1, \ldots, \mu_{j-1})$ is the log commitment of the micro-commits before it on the same base, the empty log's commitment if $j = 1$;
+- $\mathit{root}$ is the root of the state after it;
+- $\tau$ is the publisher's own time, which is informational and trusted by no one.
+
+The **sub-log** on base $i$ is the sequence $L_i = (\mu_1, \ldots, \mu_k)$ of micro-commits that $P$ has signed on that base. The **soft head** at $\mu_j$ is the triple $(i, j, N(\mu_j))$, and its state is the one committed by its $\mathit{root}$.
+
+A micro-commit is a commit that is never submitted. It is linked to its predecessors by a log commitment rather than a parent, so that proving one is in a sub-log costs a positional opening, logarithmic in $k$, rather than a walk back through every predecessor (Definition 1.7). Naming $\iota$, $\rho$, and $i$ binds the signature to one registry, one repo, and one base, as the statements of §3.2 are bound, so it cannot be replayed elsewhere.
+
+### B.2 Anchors
+
+**Definition B.2 (Anchor).** An **anchor** of $\rho$ is an update whose commit is
+$$
+\gamma = (e,\ h_i,\ \mathit{root},\ a)
+$$
+where $a = \mathsf{LCom}(\mu_1, \ldots, \mu_k)$ commits a sub-log on base $i$ with $k \ge 1$, and $\mathit{root}$ is the root of $\mu_k$. Its name is $N(e, h_i, \mathit{root}, a)$. A commit with no sub-log is the case $a = \bot$, encoded as in §3.1, so an ordinary update is unchanged.
+
+The registry needs one change. An update carries $a$, and line 3 of $\mathsf{Apply}$ computes $h' = N(e, \mathit{parent}, \mathit{root})$ when $a = \bot$, and $h' = N(e, \mathit{parent}, \mathit{root}, a)$ otherwise. The guard is unchanged: the anchor's parent is the on-chain head $h_i$, and not any micro-commit. The registry never sees a micro-commit and checks nothing about one, just as it never fetches a commit or a state (§3.2).
+
+Theorem 3 holds unchanged, since its proof uses only that a head names a commit whose fields include its parent. Theorem 1 holds as well, now for $a$: a head fixes its commit, and so fixes the sub-log commitment it carries.
+
+What the registry does not enforce is the publisher's obligation: **an anchor on base $i$ commits exactly the micro-commits that $P$ signed on base $i$, and ends at the state of the last one.** That obligation is enforced instead by the faults below.
+
+### B.3 Pre-confirmation, and its faults
+
+**Definition B.3 (Faults).** A **fault** of $P$ on base $i$ of $\rho$ is one of:
+- **(F1) Double signing.** Two micro-commits on base $i$ with the same index $j$, both signed by $P$, that differ.
+- **(F2) Omission or substitution.** A micro-commit $\mu$ on base $i$ with index $j$, signed by $P$, while the update at position $i + 1$ commits a sub-log of length $k < j$, or one whose opening at position $j$ is a value other than $\mu$. An ordinary update, with $a = \bot$, counts as a sub-log of length $0$.
+- **(F3) Wrong root.** The update at position $i + 1$ has a root other than that of the micro-commit at position $k$ of its sub-log.
+
+The evidence for F1 is the two signed values. The evidence for F2 and F3 is the signed micro-commit (for F2), the anchor's commit, fetched by its name, and one positional opening of $a$.
+
+**Proposition B.4 (Pre-confirmations bind) [proof].** Let $P$ sign a micro-commit $\mu$ at index $j$ on base $i$ of $\rho$, and let the update at position $i + 1$ be final. Then, except with probability $\mathbf{Adv}^{\mathsf{bind}}_N + \mathbf{Adv}^{\mathsf{pos}}_{\mathsf{LCom}}$, either that update commits a sub-log whose position $j$ opens to $\mu$, or a fault F2 exists and can be checked with one positional opening. Two readers who hold micro-commits signed by $P$ at the same index on the same base hold the same value, or between them hold a fault F1.
+
+*Proof.* By Theorem 3, position $i + 1$ holds one head, the name of one commit, which by binding of $N$ fixes $a$. By binding of $\mathsf{LCom}$, $a$ fixes its length $k$. If $k < j$, that is F2. Otherwise, by position binding, exactly one value opens at position $j$, and if it is not $\mu$, that is F2. The second claim is the definition of F1. $\square$
+
+Proposition B.4 is what makes data that has not yet been anchored sellable. A buyer who holds $\mu_j$ knows that $P$ said it, in this order, after $h_i$. Once an anchor lands and is final, the buyer either finds $\mu_j$ at index $j$ of the history at position $i + 1$, or holds a proof that $P$ broke its word.
+
+What a soft head does not give is exactly what a Merkle clock does not give (§3.1):
+- **currency:** a newer micro-commit may exist;
+- **liveness:** $P$ may never anchor;
+- **availability:** no host is obliged to serve it.
+
+The first two are recovered by anchoring, and §B.4 adds an incentive for the second.
+
+**Reading.** A soft read in context $\bot$ replaces $H_t(\rho)$ with a soft head, and runs lines 6 and 7 of $\mathsf{ReadSlice}$ against its root. Theorem 1 and authenticity by signature still hold, but Theorem 4's currency for that repo does not. Accepted histories are made of positions (§3.2), so an app presents only anchored heads. An app whose acceptance rule admits $P$'s future heads (Admission, §3.2) may let its readers treat $P$'s soft heads as provisionally presented, at the reader's risk until the anchor.
+
+**Views.** A pointwise view can follow soft heads, one micro-commit at a time, at the cost of Proposition 3.12. An indexer's claim about a view at a soft head names $(\rho, i, j)$, and it is refuted as any claim is, once the soft head is anchored or shown to be a fault.
+
+### B.4 Accountability
+
+A fault convinces anyone who checks it, so it needs no contract. For compensation, $P$ may post a **bond** to a contract that pays out to the first valid fault, as an indexer does (§5).
+- **F1** costs two signature checks on chain.
+- **F2 and F3** cost the anchor's commit fields, from which the contract computes its name and checks it against the update log by a positional opening of $\mathcal{U}$, plus one opening of $a$. That is $O(\log M + \log k)$ hashes. **[estimate]** The gas is not given here.
+
+**Forced inclusion [no proof].** A publisher can sign and never anchor, which is not a fault. A holder of $\mu$ may post it to the bond contract, which records its clock value $t_\mu$. If no update at position $i + 1$ that commits at least $j$ micro-commits is applied by $t_\mu + \Theta$, the bond pays. This is the analogue of a rollup's forced inclusion. $\Theta$ must allow at least the window $W$ of §3.2, and is otherwise not analysed.
+
+### B.5 Cost and frequency
+
+A micro-commit costs no entry. Making one costs a signature, an append to the sub-log (fewer than two hashes on average, Lemma 6.3), and rewriting the changed part of the state, $O(\Delta(h+1))$ nodes for $\Delta$ changed keys (Lemma 6.1). On chain, an anchor costs what an update costs (§5), plus one 32-byte field. **[estimate]** That is a few hundred more gas for the longer encoding. Anchoring every $\Theta$ seconds therefore costs a publisher in proportion to $1/\Theta$, **whatever its rate of change**, and a soft head becomes final within $\Theta + \delta$.
+
+**Relayed anchors.** Assumption O.2 binds an entry to its author, which on an EVM chain is the transaction's sender. To let one transaction carry many publishers' anchors, an update must instead be authorized by $P$'s signature on the update as an EIP-712 statement, which anyone may submit, as anyone may already submit an acceptance (§3.2). Part 1 of Theorem 2 then reads "set by an entry carrying $P$'s signature", and its proof is unchanged. **[estimate]** Each anchor in a batch adds one signature check, a few thousand gas, to its storage writes, so batching saves only the overhead of each transaction. The real lever is $\Theta$. A relayer can delay an anchor, which is the liveness that Assumption O leaves to the ordering, but it cannot forge or alter one.
+
+### B.6 Streams for sale
+
+A sealed repo is encrypted per epoch, and one witness opens every sealed repo of an app for that epoch [WP2, §2.2]. Micro-commits are states like any other, so a stream sealed this way is **sold by the epoch**: buying epoch $e$ buys the key to every micro-commit in it. Selling by the minute needs conditions whose statements name minutes, which [WP2, §2.1] allows, since a statement's epoch is whatever interval the condition names. Revocation takes effect after $W$ epochs [WP2, §2.2], so a stream should use short ones. **[no proof]** That this composes with soft heads is not analysed.
+
+### B.7 Many devices, one publisher
+
+A single writer per repo is what spares us from CRDTs, so a publisher with a fleet must give **each device its own repo**, for example $s = (\mathit{fleet}, \mathit{device})$, nested as in §3.2. Two devices writing one repo would race for the same base and both sign index $j$, which is a fault F1 against their own publisher.
+
+If every device holds $P$'s key, compromising one device compromises all of them. The remedy is **delegated keys**: a program that $P$ controls lists, for each repo, the key allowed to sign its micro-commits and anchors, and it is read when an anchor or a fault is checked, as $\chi_A$ reads a list of moderators (§2). That program is not specified here.
+
+### B.8 What is open
+
+- **Forced inclusion:** the choice of $\Theta$, and the contract's cost.
+- **Delegated device keys:** the program and its revocation.
+- **Sealing finer than an epoch,** and its interaction with soft heads.
+- **The on-chain cost** of checking F2 and F3.
+- **Soft heads in apps** beyond admission: whether an acceptance rule can usefully speak about soft heads.
 
 ## References
 
