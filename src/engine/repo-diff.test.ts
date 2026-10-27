@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { CID } from "multiformats/cid";
 import { FangornEngine, type RecordInput } from "./index.js";
-import { buildMst, encodeBlock, lookupMst, readMst, type MstNode } from "./records.js";
+import { buildMst, diffMst, encodeBlock, lookupMst, readMst, type MstNode } from "./records.js";
 import { MemStorage, newRegistry, rootHex } from "./test-helpers.js";
 
 const NS = "songs";
@@ -72,7 +72,7 @@ describe("FangornEngine records", () => {
 		const c2 = await commit(c1, [], ["t1>by>a1"]);
 
 		const diff = await engine.repoDiff(rootHex(c1), rootHex(c2));
-		expect(diff).toEqual({ puts: [], deletes: ["t1>by>a1"] });
+		expect(diff).toEqual({ puts: [], deletes: ["t1>by>a1"], superseded: [expect.any(String)] });
 	});
 
 	it("returns an empty diff when the repo slice is untouched", async () => {
@@ -86,6 +86,7 @@ describe("FangornEngine records", () => {
 		expect(await engine.repoDiff(rootHex(c1), rootHex(c2))).toEqual({
 			puts: [],
 			deletes: [],
+			superseded: [],
 		});
 	});
 
@@ -175,6 +176,38 @@ describe("Merkle Search Tree", () => {
 			],
 		} satisfies MstNode);
 		await expect(readMst(bad.cid, store([bad]))).rejects.toThrow(/not canonical/);
+	});
+
+	it("diffMst matches a full-state diff, and opens only changed paths", async () => {
+		const val = async (s: string) => (await encodeBlock({ v: s })).cid;
+		const before = new Map<string, CID>();
+		for (let i = 0; i < 3000; i++) before.set(`k${i.toString()}`, await val(`a${i.toString()}`));
+		const after = new Map(before);
+		for (let i = 0; i < 10; i++) after.set(`new${i.toString()}`, await val(`n${i.toString()}`));
+		after.delete("k7"); after.delete("k1500");
+		after.set("k42", await val("changed"));
+		const [x, y] = [await buildMst(before), await buildMst(after)];
+		let reads = 0;
+		const counted = (get: (c: CID) => Promise<Uint8Array>) => (c: CID) => { reads++; return get(c); };
+		const d = await diffMst(x.root, y.root, counted(store(x.nodes)), counted(store(y.nodes)));
+
+		const puts = [...after].filter(([k, v]) => !before.get(k)?.equals(v)).map(([k]) => k).sort();
+		expect([...d.puts.keys()].sort()).toEqual(puts);
+		expect(d.deletes.sort()).toEqual(["k1500", "k7"]);
+		expect([...d.before.keys()].sort()).toEqual(["k1500", "k42", "k7"]);
+		expect(String(d.before.get("k42"))).toBe(String(before.get("k42")));
+		// ~13 changed keys × depth on each side, against ~400 nodes in the two trees.
+		expect(reads).toBeLessThan((x.nodes.length + y.nodes.length) / 3);
+	});
+
+	it("diffMst from or to nothing is every key", async () => {
+		const state = new Map<string, CID>();
+		for (let i = 0; i < 50; i++) state.set(`r${i.toString()}`, (await encodeBlock({ i })).cid);
+		const t = await buildMst(state);
+		expect((await diffMst(null, t.root, store([]), store(t.nodes))).puts.size).toBe(50);
+		const gone = await diffMst(t.root, null, store(t.nodes), store([]));
+		expect([gone.deletes.length, gone.before.size]).toEqual([50, 50]);
+		expect((await diffMst(t.root, t.root, store([]), store([]))).puts.size).toBe(0);
 	});
 
 	it("refuses graph-era trees", async () => {

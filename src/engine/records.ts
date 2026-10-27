@@ -244,6 +244,56 @@ export async function readMst(
 }
 
 /**
+ * What changed from one tree to another: `puts` (new keys, and keys with a new value) and `deletes`
+ * (keys gone), each with its old value in `before`. Both trees are read as in-order streams of entries
+ * and unopened subtrees; a subtree with the same CID at the head of both streams holds the same keys
+ * and values, so it is dropped unread. Only nodes on changed paths are fetched: ~changes × depth,
+ * not the size of either tree.
+ * ponytail: unlike readMst, does not prove either tree canonical (that needs every key). Blocks are
+ * still hash-checked by `getBlock`; a publisher's malformed tree can only misreport its own records.
+ */
+export async function diffMst(
+	oldRoot: CID | null,
+	newRoot: CID | null,
+	getOld: (cid: CID) => Promise<Uint8Array>,
+	getNew: (cid: CID) => Promise<Uint8Array>,
+): Promise<{ puts: Map<string, CID>; deletes: string[]; before: Map<string, CID> }> {
+	type Item = { sub: CID; level: number } | { key: string; value: CID };
+	// Stacks, head last. A root's level is unknown until read: Infinity opens both roots first.
+	const a: Item[] = oldRoot ? [{ sub: oldRoot, level: Infinity }] : [];
+	const b: Item[] = newRoot ? [{ sub: newRoot, level: Infinity }] : [];
+	const open = async (s: Item[], get: (cid: CID) => Promise<Uint8Array>) => {
+		const { sub } = s.pop() as { sub: CID };
+		const node = decodeBlock<MstNode>(await get(sub));
+		const items: Item[] = node.left ? [{ sub: node.left, level: node.level - 1 }] : [];
+		for (const e of node.entries) {
+			items.push({ key: e.key, value: e.value });
+			if (e.right) items.push({ sub: e.right, level: node.level - 1 });
+		}
+		s.push(...items.reverse());
+	};
+	const puts = new Map<string, CID>(), before = new Map<string, CID>(), deletes: string[] = [];
+	for (let steps = 0; a.length || b.length; steps++) {
+		if (steps > 1e8) throw new Error("MST diff did not terminate");
+		const x = a.at(-1), y = b.at(-1);
+		if (x && y && "sub" in x && "sub" in y) {
+			if (x.sub.equals(y.sub)) { a.pop(); b.pop(); }
+			else if (x.level > y.level) await open(a, getOld);
+			else if (y.level > x.level) await open(b, getNew);
+			else { await open(a, getOld); await open(b, getNew); }
+		} else if (x && "sub" in x) await open(a, getOld);
+		else if (y && "sub" in y) await open(b, getNew);
+		else if (x && (!y || x.key < y.key)) { a.pop(); deletes.push(x.key); before.set(x.key, x.value); }
+		else if (y && (!x || y.key < x.key)) { b.pop(); puts.set(y.key, y.value); }
+		else if (x && y) {
+			a.pop(); b.pop();
+			if (!x.value.equals(y.value)) { puts.set(y.key, y.value); before.set(x.key, x.value); }
+		}
+	}
+	return { puts, deletes, before };
+}
+
+/**
  * The record CID stored under `key`, or null if absent — one node per level.
  * ponytail: trusts node ordering on the path, so a malformed tree can hide a
  * record (never forge one: the caller checks the record's id). Run `readMst`
