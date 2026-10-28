@@ -66,6 +66,68 @@ describe.skipIf(skipChain)("Apps (contracts on anvil)", () => {
 		await expect(apps.acceptPublisher(f.getAddress())).rejects.toThrow(/AppNotFound/);
 	}, 60_000);
 
+	// A rename moves nothing: the new name is an alias, and the app's members,
+	// subscription and token answer to every name it went by.
+	it("a renamed app answers to every name it went by", async () => {
+		const owner = await net.client("before-rename");
+		const apps = owner.getAppRegistry();
+		// A member still on the old name, who never hears of the rename.
+		const guest = await net.client("before-rename");
+		const expiry = await apps.expiresAt();
+		const fromBlock = await net.clock();
+
+		await owner.renameApp("after-rename");
+		expect(owner.getAppId()).toBe(appId("after-rename"));
+		expect(await apps.canonicalAppId()).toBe(appId("before-rename"));
+		expect(await apps.currentAppId(appId("before-rename"))).toBe(appId("after-rename"));
+		expect(await guest.getAppRegistry().currentAppId()).toBe(appId("after-rename"));
+
+		// Under the new name: the owner, the member, and the subscription, whose
+		// token is still the old id.
+		expect(await apps.getAppOwner()).toBe(owner.getAddress());
+		expect(await apps.status(guest.getAddress())).toBe(PublisherStatus.ACTIVE);
+		expect(await apps.canPublish(guest.getAddress())).toBe(true);
+		expect(await apps.tokenId()).toBe(BigInt(appId("before-rename")));
+		expect(await apps.expiresAt()).toBe(expiry);
+		expect(await apps.isRenewable()).toBe(false);
+
+		// The member publishes under the old name; the owner reads it under the new one.
+		await guest.initRepo("renamed");
+		const { payloadCid } = await guest.upload("renamed", { event: "under the old name" }, "e", "r");
+		const { contents } = await owner.readRepo(guest.getAddress(), "renamed");
+		expect(contents.records.map((v) => v.cid)).toEqual([payloadCid]);
+		const listed = await owner.appRepos({ repo: "renamed", fromBlock });
+		expect(listed.map((t) => t.owner)).toEqual([guest.getAddress()]);
+
+		// Events carry the canonical id, and are found by any name.
+		await apps.setAppAgentUri("https://renamed.example/card.json");
+		const logs = await apps.getAppAgentLogs({ appId: appId("after-rename"), fromBlock });
+		expect(logs.map((l) => [l.appId, l.agentUri])).toEqual([[appId("before-rename"), "https://renamed.example/card.json"]]);
+
+		// The old name stays the app's: nobody can claim it.
+		const squatter = await net.raw("before-rename");
+		await expect(squatter.getAppRegistry().registerApp()).rejects.toThrow(/AppAlreadyRegistered/);
+
+		// Ending the subscription under the new name ends the app's one.
+		await apps.cancelSubscription();
+		expect(await guest.getAppRegistry().expiresAt()).toBe(0n);
+	}, 60_000);
+
+	it("an app can rename back, but not onto another app's name, and only its owner renames it", async () => {
+		const owner = await net.client("rename-back");
+		await net.client("someone-elses");
+		const guest = await net.client("rename-back");
+
+		await expect(owner.renameApp("someone-elses")).rejects.toThrow(/AppAlreadyRegistered/);
+		expect(owner.getAppId()).toBe(appId("rename-back"));
+		await expect(guest.renameApp("guest-took-it")).rejects.toThrow(/Unauthorized/);
+
+		await owner.renameApp("renamed-once");
+		await owner.renameApp("rename-back");
+		expect(await owner.getAppRegistry().currentAppId(appId("renamed-once"))).toBe(appId("rename-back"));
+		expect(await owner.getAppRegistry().canonicalAppId(appId("renamed-once"))).toBe(appId("rename-back"));
+	}, 60_000);
+
 	// The other half of admin.e2e.test.ts: nobody but the admin takes anything down.
 	it("only the protocol admin can suspend an app or ban a wallet", async () => {
 		const owner = await net.client("not-admin");

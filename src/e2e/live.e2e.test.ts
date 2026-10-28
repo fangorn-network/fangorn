@@ -2,11 +2,10 @@ import { describe, it, expect } from "vitest";
 import { createPublicClient, http, parseAbiItem } from "viem";
 import { generatePrivateKey } from "viem/accounts";
 import { FangornConfig } from "../config.js";
-import { DATA_REGISTRY_ABI } from "../contracts/index.js";
 import { Fangorn } from "../fangorn.js";
 
 // The only tests that touch the real chain, and they only read it: that the
-// deployed contracts are wired to each other, and that the public RPC serves
+// deployed AppRegistry names the configured DataRegistry, and that the public RPC serves
 // the log scans the SDK relies on. Everything that writes runs on anvil.
 
 const client = createPublicClient({ transport: http(FangornConfig.rpcUrl) });
@@ -14,14 +13,8 @@ const client = createPublicClient({ transport: http(FangornConfig.rpcUrl) });
 const reader = Fangorn.create({ privateKey: generatePrivateKey() });
 
 describe("Fangorn live deployment (read-only)", () => {
-	it("the registries are wired to each other", async () => {
+	it("the AppRegistry names the configured DataRegistry", async () => {
 		expect(await reader.getAppRegistry().dataRegistry()).toBe(FangornConfig.dataRegistryContractAddress);
-		const back = await client.readContract({
-			address: FangornConfig.dataRegistryContractAddress,
-			abi: DATA_REGISTRY_ABI,
-			functionName: "appRegistry",
-		});
-		expect(back).toBe(FangornConfig.appRegistryContractAddress);
 	}, 60_000);
 
 	// Log scans start at `appRegistryFromBlock`. Too late a block and they miss

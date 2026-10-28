@@ -237,6 +237,44 @@ export const APP_REGISTRY_ABI = [
   },
   {
     "type": "function",
+    "name": "canonicalAppId",
+    "inputs": [
+      {
+        "name": "app_id",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "currentAppId",
+    "inputs": [
+      {
+        "name": "app_id",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "dataRegistry",
     "inputs": [],
     "outputs": [
@@ -281,12 +319,12 @@ export const APP_REGISTRY_ABI = [
     "name": "exclusionCount",
     "inputs": [
       {
-        "name": "",
+        "name": "app_id",
         "type": "bytes32",
         "internalType": "bytes32"
       },
       {
-        "name": "",
+        "name": "exclusion_id",
         "type": "bytes32",
         "internalType": "bytes32"
       }
@@ -435,19 +473,6 @@ export const APP_REGISTRY_ABI = [
   },
   {
     "type": "function",
-    "name": "initializeV2",
-    "inputs": [
-      {
-        "name": "existing",
-        "type": "bytes32[]",
-        "internalType": "bytes32[]"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
     "name": "isAppSuspended",
     "inputs": [
       {
@@ -510,25 +535,6 @@ export const APP_REGISTRY_ABI = [
   },
   {
     "type": "function",
-    "name": "joinFeesOwed",
-    "inputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "name",
     "inputs": [],
     "outputs": [
@@ -585,6 +591,24 @@ export const APP_REGISTRY_ABI = [
         "name": "max_subscription_fee",
         "type": "uint256",
         "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "renameApp",
+    "inputs": [
+      {
+        "name": "app_id",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "new_id",
+        "type": "bytes32",
+        "internalType": "bytes32"
       }
     ],
     "outputs": [],
@@ -839,12 +863,12 @@ export const APP_REGISTRY_ABI = [
     "name": "statusForApp",
     "inputs": [
       {
-        "name": "",
+        "name": "app_id",
         "type": "bytes32",
         "internalType": "bytes32"
       },
       {
-        "name": "",
+        "name": "publisher",
         "type": "address",
         "internalType": "address"
       }
@@ -937,19 +961,6 @@ export const APP_REGISTRY_ABI = [
   },
   {
     "type": "function",
-    "name": "totalJoinFeesOwed",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "transferFrom",
     "inputs": [
       {
@@ -1001,19 +1012,6 @@ export const APP_REGISTRY_ABI = [
       }
     ],
     "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "withdrawJoinFees",
-    "inputs": [
-      {
-        "name": "to",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -1091,6 +1089,25 @@ export const APP_REGISTRY_ABI = [
         "type": "address",
         "indexed": true,
         "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "AppRenamed",
+    "inputs": [
+      {
+        "name": "app_id",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "new_id",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
       }
     ],
     "anonymous": false
@@ -1254,31 +1271,6 @@ export const APP_REGISTRY_ABI = [
         "type": "uint64",
         "indexed": false,
         "internalType": "uint64"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "JoinFeesWithdrawn",
-    "inputs": [
-      {
-        "name": "owner",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "to",
-        "type": "address",
-        "indexed": false,
-        "internalType": "address"
-      },
-      {
-        "name": "amount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
       }
     ],
     "anonymous": false
@@ -1602,11 +1594,6 @@ export const APP_REGISTRY_ABI = [
   },
   {
     "type": "error",
-    "name": "ExceedsProtocolBalance",
-    "inputs": []
-  },
-  {
-    "type": "error",
     "name": "FailedCall",
     "inputs": []
   },
@@ -1633,11 +1620,6 @@ export const APP_REGISTRY_ABI = [
   {
     "type": "error",
     "name": "NotTransferable",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "NothingToWithdraw",
     "inputs": []
   },
   {
@@ -1694,6 +1676,11 @@ export const APP_REGISTRY_ABI = [
   {
     "type": "error",
     "name": "Unauthorized",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ZeroAppId",
     "inputs": []
   },
   {

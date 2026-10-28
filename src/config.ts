@@ -77,12 +77,12 @@ export const ArbitrumSepoliaConfig = {
 
 export const BaseSepoliaConfig = {
 	dataRegistryContractAddress:
-		"0x5f0B6f0D3ca6266b06fb55CCE5725EB4770dbeFd",
+		"0x7a34882568f1b22FC4C4944113B1E4Ca4cF6900f",
 	appRegistryContractAddress:
-		"0x4010ee3a2182D5Ab76E0bf95C17b88bb35Ea711B",
+		"0x6E07C2c7393963242899e5Fb0eb1B6B787927E81",
 	membershipRegistryContractAddress:
-		"0x99bb5101263a4Fc0E64c9887d43b87aeB3f3F32c",
-	appRegistryFromBlock: 50557088n,
+		"0x9De2C2A6261927f91b246C73e7ca86824a357FA6",
+	appRegistryFromBlock: 51469588n,
 	chain: baseSepolia,
 	// Not sepolia.base.org: it caps eth_getLogs at 200 blocks, and Base makes 43,200
 	// a day, so a scan of the registry's history would be hundreds of calls per day
