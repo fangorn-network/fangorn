@@ -6,6 +6,7 @@ import {
 	formatEther,
 	formatUnits,
 	http,
+	isAddress,
 	type Address,
 	type Hex,
 } from "viem";
@@ -99,7 +100,7 @@ function loadConfig(): Config {
 		const storedChain = stored.chainName === "Arbitrum Sepolia" ? "arbitrumSepolia" : stored.chainName;
 		_config = {
 			privateKey: stored.privateKey,
-			cfg: getNetwork(envChain ?? storedChain),
+			cfg: network(envChain ?? storedChain),
 			appId: envAppId ?? nonBlank(stored.appId),
 			pinataJwt: stored.pinataJwt,
 			pinataGateway: stored.pinataGateway,
@@ -120,7 +121,7 @@ function loadConfig(): Config {
 
 		_config = {
 			privateKey: privateKey as Hex,
-			cfg: getNetwork(envChain ?? "baseSepolia"),
+			cfg: network(envChain ?? "baseSepolia"),
 			appId: envAppId,
 			pinataJwt: pinataJwt ?? "",
 			pinataGateway: pinataGateway ?? "",
@@ -134,6 +135,26 @@ function loadConfig(): Config {
 		"No configuration found. Run `fangorn init` or set ETH_PRIVATE_KEY\n" +
 		"(with no config, uploads go to Fangorn's shared Pinata account; files may be unpinned without notice. Set PINATA_JWT + PINATA_GATEWAY to use your own storage).",
 	);
+}
+
+/**
+ * The named network, with its RPC and contracts overridable from the environment:
+ * FANGORN_RPC_URL, FANGORN_APP_REGISTRY and FANGORN_DATA_REGISTRY, for a local
+ * chain (an anvil with the contracts deployed) or a private RPC. Blank counts as unset.
+ */
+function network(name: string): AppConfig {
+	const cfg = getNetwork(name);
+	const address = (variable: string): Hex | undefined => {
+		const value = nonBlank(process.env[variable]);
+		if (value !== undefined && !isAddress(value)) throw new Error(`${variable} is not an address: "${value}"`);
+		return value;
+	};
+	return {
+		...cfg,
+		rpcUrl: nonBlank(process.env.FANGORN_RPC_URL) ?? cfg.rpcUrl,
+		appRegistryContractAddress: address("FANGORN_APP_REGISTRY") ?? cfg.appRegistryContractAddress,
+		dataRegistryContractAddress: address("FANGORN_DATA_REGISTRY") ?? cfg.dataRegistryContractAddress,
+	};
 }
 
 function getAccount(): PrivateKeyAccount {
@@ -426,17 +447,25 @@ appCmd
 			const s = spinner();
 
 			s.start("Reading registry...");
-			const [{ canPublish, owner, expiresAt }, status, appSuspended, suspendedGlobally] = await Promise.all([
+			const [{ canPublish, owner, expiresAt }, status, appSuspended, suspendedGlobally, canonical, current] = await Promise.all([
 				apps.access(self),
 				apps.status(self),
 				apps.isAppSuspended(),
 				apps.isGloballySuspended(self),
+				apps.canonicalAppId(),
+				apps.currentAppId(),
 			]);
 			s.stop();
 			const expired = expiresAt <= BigInt(Math.floor(Date.now() / 1000));
 
 			console.log(`App:        ${currentAppName()}`);
 			console.log(`App id:     ${apps.getAppId() ?? ""}`);
+			// A renamed app answers to every id it went by: say which one it goes by now.
+			// The contract returns lowercase hex; an id given on the command line may not be.
+			const id = apps.getAppId()?.toLowerCase();
+			if (canonical.toLowerCase() !== id) console.log(`Claimed as: ${canonical}`);
+			if (current.toLowerCase() !== id)
+				console.log(`Renamed to: ${current}  (this name still works; \`fangorn set-app <new name>\` follows it)`);
 
 			if (owner === ZERO_ADDRESS) {
 				console.log(`Owner:      (unclaimed — \`fangorn app claim\` takes it)`);
@@ -517,6 +546,68 @@ appCmd
 			console.log(`Owner:  ${self}`);
 			console.log(`Tx:     ${txHash}`);
 			console.log(`\nClaiming makes you your own first publisher. Accept others with \`fangorn app accept <address>\`.`);
+			process.exit(0);
+		} catch (err) {
+			console.error("Failed:", (err as Error).message);
+			process.exit(1);
+		}
+	});
+
+appCmd
+	.command("rename")
+	.description("Give your app a new name (owner only); its old names keep working")
+	.argument("<name>", "The new app name, or a 32-byte app id")
+	.action(async (name: string) => {
+		try {
+			const self = getAccount().address;
+			const fangorn = getFangorn();
+			const registry = fangorn.getAppRegistry();
+			const newId = toAppId(name);
+			const s = spinner();
+
+			s.start("Checking app ownership...");
+			const [owner, canonical, holder, holderOwner] = await Promise.all([
+				registry.getAppOwner(),
+				registry.canonicalAppId(),
+				registry.canonicalAppId(newId),
+				registry.getAppOwner(newId),
+			]);
+			s.stop();
+
+			if (owner === ZERO_ADDRESS) {
+				console.error(`App ${registry.getAppId() ?? ""} is unclaimed — \`fangorn app claim\` takes it.`);
+				process.exit(1);
+			}
+			if (owner.toLowerCase() !== self.toLowerCase()) {
+				console.error(`App ${registry.getAppId() ?? ""} is owned by ${owner}; only its owner can rename it.`);
+				process.exit(1);
+			}
+			// An id the app already went by is its own to take back.
+			if (holderOwner !== ZERO_ADDRESS && holder !== canonical) {
+				console.error(`"${name}" (${newId}) is already another app's, owned by ${holderOwner}. Pick another name.`);
+				process.exit(1);
+			}
+
+			s.start("Renaming app...");
+			const txHash = await fangorn.renameApp(name);
+			s.stop();
+
+			// Follow the rename wherever the CLI took the app from: without --app or
+			// FANGORN_APP_ID, that is the config file. The old name still works, so an
+			// override left behind is a note, not an error.
+			const source = appFlag() ? "--app" : nonBlank(process.env.FANGORN_APP_ID) ? "FANGORN_APP_ID" : undefined;
+			if (!source) writeStoredConfig({ ...readStoredConfig(), appId: name });
+
+			console.log(`App:        ${name}`);
+			console.log(`App id:     ${newId}`);
+			console.log(`Claimed as: ${canonical}`);
+			console.log(`Tx:         ${txHash}`);
+			console.log(
+				source
+					? `\nThe app came from ${source}: update it to "${name}". The old name keeps working meanwhile.`
+					: `\nSaved to ${CONFIG_PATH}.`,
+			);
+			console.log(`Every name the app went by still resolves to it, and stays yours: nobody else can claim one.`);
 			process.exit(0);
 		} catch (err) {
 			console.error("Failed:", (err as Error).message);
@@ -650,31 +741,6 @@ appCmd
 			const txHash = await registry.cancelSubscription();
 			s.stop();
 			console.log(`Cancelled: ${registry.getAppId() ?? ""}`);
-			console.log(`Tx:        ${txHash}`);
-			process.exit(0);
-		} catch (err) {
-			console.error("Failed:", (err as Error).message);
-			process.exit(1);
-		}
-	});
-
-appCmd
-	.command("withdraw-fees")
-	.description("Withdraw the join fees your apps collected before joining was removed (owner only)")
-	.argument("[to]", "Where to send them; defaults to this wallet")
-	.action(async (to: string | undefined) => {
-		try {
-			const registry = getFangorn().getAppRegistry();
-			const owed = await registry.joinFeesOwed();
-			if (owed === 0n) {
-				console.log("No join fees to withdraw.");
-				process.exit(0);
-			}
-			const s = spinner();
-			s.start(`Withdrawing ${formatUsdc(owed)}...`);
-			const txHash = await registry.withdrawJoinFees(to as Address | undefined);
-			s.stop();
-			console.log(`Withdrawn: ${formatUsdc(owed)}`);
 			console.log(`Tx:        ${txHash}`);
 			process.exit(0);
 		} catch (err) {

@@ -9,14 +9,18 @@ const REGISTRY = "0x00000000000000000000000000000000000000aa" as Address;
 const USDC = "0x00000000000000000000000000000000000000bb" as Address;
 const SELF = "0x00000000000000000000000000000000000000cc" as Address;
 const APP = ("0x" + "ab".repeat(32)) as Hex;
+// What APP was renamed to: the contract resolves it back to APP.
+const ALIAS = ("0x" + "cd".repeat(32)) as Hex;
 const NOW = 1_000n;
 const PERIOD = 30n;
 
-function client(opts: { fee?: bigint; allowance?: bigint; expiresAt?: bigint; renewable?: boolean }) {
+function client(opts: { fee?: bigint; allowance?: bigint; expiresAt?: bigint; renewable?: boolean; appId?: Hex }) {
 	const writes: { call: string; args: readonly unknown[] }[] = [];
+	const reads: { functionName: string; args: readonly unknown[] }[] = [];
 	const publicClient = {
-		readContract: ({ functionName }: { functionName: string }) =>
-			Promise.resolve(
+		readContract: ({ functionName, args }: { functionName: string; args: readonly unknown[] }) => {
+			reads.push({ functionName, args });
+			return Promise.resolve(
 				{
 					subscriptionFee: opts.fee ?? 0n,
 					subscriptionPeriod: PERIOD,
@@ -24,8 +28,10 @@ function client(opts: { fee?: bigint; allowance?: bigint; expiresAt?: bigint; re
 					expiresAt: opts.expiresAt ?? NOW + PERIOD,
 					usdc: USDC,
 					allowance: opts.allowance ?? 0n,
+					canonicalAppId: args[0] === ALIAS ? APP : args[0],
 				}[functionName],
-			),
+			);
+		},
 		getBlock: () => Promise.resolve({ timestamp: NOW }),
 		estimateFeesPerGas: () => Promise.resolve({ maxFeePerGas: 1n, maxPriorityFeePerGas: 1n }),
 		estimateContractGas: () => Promise.resolve(1n),
@@ -39,8 +45,8 @@ function client(opts: { fee?: bigint; allowance?: bigint; expiresAt?: bigint; re
 			return Promise.resolve("0xhash");
 		},
 	} as unknown as WalletClient;
-	const apps = new AppRegistryClient(REGISTRY, APP, publicClient, walletClient);
-	return { apps, calls: () => writes.map((w) => w.call), writes };
+	const apps = new AppRegistryClient(REGISTRY, opts.appId ?? APP, publicClient, walletClient);
+	return { apps, calls: () => writes.map((w) => w.call), writes, reads };
 }
 
 describe("AppRegistryClient subscription", () => {
@@ -94,5 +100,61 @@ describe("AppRegistryClient listing", () => {
 			["appCount", []],
 			["appsPage", [0n, 2n]],
 		]);
+	});
+});
+
+// A renamed app answers to every id it went by, but its token and its events carry
+// the id it was claimed under: the client resolves that before using either.
+describe("AppRegistryClient renaming", () => {
+	it("renames this client's app to the new id", async () => {
+		const { apps, calls, writes } = client({});
+		await apps.renameApp(ALIAS);
+		expect(calls()).toEqual(["renameApp@registry"]);
+		expect(writes[0].args).toEqual([APP, ALIAS]);
+		// The client keeps the id it had, which still resolves.
+		expect(apps.getAppId()).toBe(APP);
+	});
+
+	it("refuses to rename with no app chosen", async () => {
+		const apps = new AppRegistryClient(REGISTRY, undefined, {} as PublicClient, {} as WalletClient);
+		await expect(apps.renameApp(ALIAS)).rejects.toThrow(/no app chosen/);
+	});
+
+	it("reads the canonical and current ids of this app, or of another", async () => {
+		const { apps, reads } = client({ appId: ALIAS });
+		expect(await apps.canonicalAppId()).toBe(APP);
+		await apps.currentAppId(APP);
+		expect(reads.map((r) => [r.functionName, r.args])).toEqual([
+			["canonicalAppId", [ALIAS]],
+			["currentAppId", [APP]],
+		]);
+	});
+
+	it("uses the canonical id as the token id under an alias", async () => {
+		const { apps, writes, reads } = client({ appId: ALIAS });
+		expect(await apps.tokenId()).toBe(BigInt(APP));
+		await apps.renewSubscription();
+		await apps.cancelSubscription();
+		expect(writes.map((w) => w.args[0])).toEqual([BigInt(APP), BigInt(APP)]);
+		await apps.expiresAt();
+		expect(reads.filter((r) => r.functionName === "expiresAt" || r.functionName === "isRenewable").map((r) => r.args)).toEqual([
+			[BigInt(APP)],
+			[BigInt(APP)],
+		]);
+	});
+
+	it("filters agent logs by the canonical id, and scans every app without one", async () => {
+		const filters: unknown[] = [];
+		const publicClient = {
+			readContract: ({ args }: { args: readonly unknown[] }) => Promise.resolve(args[0] === ALIAS ? APP : args[0]),
+			getContractEvents: (q: { args: unknown }) => {
+				filters.push(q.args);
+				return Promise.resolve([]);
+			},
+		} as unknown as PublicClient;
+		const apps = new AppRegistryClient(REGISTRY, ALIAS, publicClient, {} as WalletClient);
+		await apps.getAppAgentLogs({ appId: ALIAS, fromBlock: 0n, toBlock: 0n });
+		await apps.getAppAgentLogs({ fromBlock: 0n, toBlock: 0n });
+		expect(filters).toEqual([{ app_id: APP }, {}]);
 	});
 });

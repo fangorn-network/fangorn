@@ -1019,6 +1019,23 @@ export class Fangorn {
 		this._feed = null;
 	}
 
+	/**
+	 * Rename this client's app (owner only) — to a name (`"my-app"`) or an app id —
+	 * and point this client at the new id.
+	 *
+	 * Nothing moves on chain: the new id is an alias of the id the app was claimed
+	 * under, so its publishers, exclusions, subscription and token carry on, and
+	 * clients still on an old id keep working. The new id must be unclaimed, or one
+	 * this app already went by (renaming back).
+	 */
+	async renameApp(nameOrId: string): Promise<Hash> {
+		const chosen = nonBlank(nameOrId);
+		if (!chosen) throw new Error("the new app name must not be blank");
+		const txHash = await this.getAppRegistry().renameApp(toAppId(chosen));
+		this.setAppId(chosen);
+		return txHash;
+	}
+
 	getStorage(): MetadataStorage {
 		if (!this.ctx.metadataStorage) {
 			throw new Error(

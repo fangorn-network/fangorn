@@ -112,8 +112,19 @@ fangorn app reinstate <address>
 fangorn app renew                # pay for the next period
 fangorn app cancel               # end the subscription now, no refund
 fangorn app agent --access-worker <url>   # register the worker's agent card with ERC-8004 (or pass a card URL)
-fangorn app withdraw-fees [to]   # join fees still owed from before joining was removed
+fangorn app rename <name>        # give the app a new name; the old ones keep working
 ```
+
+**Renaming moves nothing.** `fangorn app rename` (SDK: `fangorn.renameApp(name)`)
+makes the new name's id an alias of the id the app was claimed under, its
+*canonical* id. Publishers, exclusions, the subscription and the token carry on,
+and every name the app has gone by still resolves to it and stays the owner's:
+nobody can claim one, and clients still using an old name keep working. The token
+id, the app listings and the contract's events keep the canonical id;
+`getAppRegistry().canonicalAppId()` and `.currentAppId()` translate between them,
+and `fangorn app info` shows both when they differ. The CLI saves the new name to
+its config file, unless the app came from `--app` or `FANGORN_APP_ID`, which you
+update yourself.
 
 ### Track a repo
 
@@ -617,6 +628,10 @@ official endpoint caps `eth_getLogs` at 200 blocks, too narrow to scan the regis
 history. Each config's `logWindow` is the most blocks one log query spans on its RPC
 (Base 10,000, Arbitrum 100,000); `FANGORN_LOG_WINDOW` overrides it for a private RPC.
 
+The CLI takes the chosen network's RPC and contracts from the environment when set:
+`FANGORN_RPC_URL`, `FANGORN_APP_REGISTRY` and `FANGORN_DATA_REGISTRY`, for a private
+RPC or a local `anvil` with the contracts deployed.
+
 `BaseSepoliaConfig` (also exported as `FangornConfig`, the default) and `ArbitrumSepoliaConfig` in `src/config.ts` are the authoritative list and what the SDK
 uses — prefer it over any address copied out of a document,
 including this table. The sources are `fangorn-network/contracts`
@@ -651,6 +666,7 @@ pnpm test:e2e
 | `src/e2e/sdk.e2e.test.ts`      | the contracts on anvil       | `anvil`, `forge`         |
 | `src/e2e/apps.e2e.test.ts`     | the contracts on anvil       | `anvil`, `forge`         |
 | `src/e2e/admin.e2e.test.ts`    | the contracts on anvil       | `anvil`, `forge`         |
+| `src/e2e/cli.e2e.test.ts`      | the CLI, on anvil            | `anvil`, `forge`         |
 | `src/e2e/live.e2e.test.ts`     | Base Sepolia, read-only      | nothing                  |
 
 Without `anvil`, `forge` or the contracts checkout the anvil suites are skipped

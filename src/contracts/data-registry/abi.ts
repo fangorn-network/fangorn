@@ -36,19 +36,6 @@ export const DATA_REGISTRY_ABI = [
   },
   {
     "type": "function",
-    "name": "appRegistry",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "getHead",
     "inputs": [
       {
@@ -84,11 +71,6 @@ export const DATA_REGISTRY_ABI = [
         "name": "admin_",
         "type": "address",
         "internalType": "address"
-      },
-      {
-        "name": "appRegistry_",
-        "type": "address",
-        "internalType": "address"
       }
     ],
     "outputs": [],
@@ -113,19 +95,6 @@ export const DATA_REGISTRY_ABI = [
     "inputs": [
       {
         "name": "new_admin",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "setAppRegistry",
-    "inputs": [
-      {
-        "name": "registry",
         "type": "address",
         "internalType": "address"
       }

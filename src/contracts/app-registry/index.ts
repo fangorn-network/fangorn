@@ -43,8 +43,15 @@ export interface AppAgentLog {
 /**
  * Client for the AppRegistry's app management: apps and their ERC-5643
  * subscriptions, the publishers each app accepts, the agent card, and the
- * protocol admin's powers. What an app presents — its members, less exclusions — is
- * read through the registry (`ChainRegistry`), not this client.
+ * protocol admin's powers.
+ *
+ * An app can be renamed (`renameApp`): the new id is an alias of the id the app
+ * was claimed under, its canonical id. The contract accepts any id an app has gone
+ * by, so this client may be scoped to any of them; what the contract keys by the
+ * canonical id alone (the token, events) is resolved here first.
+ *
+ * What an app presents — its members, less exclusions — is read through the
+ * registry (`ChainRegistry`), not this client.
  *
  * Scoped to one app, which may be unset: then only the calls that take no app work.
  */
@@ -76,9 +83,12 @@ export class AppRegistryClient {
         return this.appId;
     }
 
-    /** The app's subscription token: an app's token id is its app id. */
-    tokenId(appId: Hex = this.app()): bigint {
-        return hexToBigInt(appId);
+    /**
+     * The app's subscription token: its canonical id, as a number. Not the id
+     * passed in, if that is an id the app was renamed to.
+     */
+    async tokenId(appId: Hex = this.app()): Promise<bigint> {
+        return hexToBigInt(await this.canonicalAppId(appId));
     }
 
     private executeWrite<F extends WriteName>(
@@ -145,8 +155,9 @@ export class AppRegistryClient {
                 `app ${this.app()} cannot be renewed until less than one period is left — it expires ${new Date(Number(expiry) * 1000).toISOString()}`,
             );
         }
+        const tokenId = await this.tokenId();
         await this.approveUsdc(fee);
-        return this.executeWrite("renewSubscription", [this.tokenId(), period]);
+        return this.executeWrite("renewSubscription", [tokenId, period]);
     }
 
     /**
@@ -154,17 +165,17 @@ export class AppRegistryClient {
      * nothing is refunded. Until it is renewed the app provides no storage and includes nothing.
      */
     async cancelSubscription(): Promise<Hash> {
-        return this.executeWrite("cancelSubscription", [this.tokenId()]);
+        return this.executeWrite("cancelSubscription", [await this.tokenId()]);
     }
 
     /** Unix seconds this app's subscription expires at; 0 once cancelled. Reverts for an unclaimed app. */
     async expiresAt(appId: Hex = this.app()): Promise<bigint> {
-        return this.read("expiresAt", [this.tokenId(appId)]);
+        return this.read("expiresAt", [await this.tokenId(appId)]);
     }
 
     /** True while less than one period is left, or the subscription has expired. */
     async isRenewable(): Promise<boolean> {
-        return this.read("isRenewable", [this.tokenId()]);
+        return this.read("isRenewable", [await this.tokenId()]);
     }
 
     /** How long one payment lasts, in seconds. */
@@ -186,22 +197,51 @@ export class AppRegistryClient {
         return this.read("getAppOwner", [appId]);
     }
 
+    // ── Renaming ─────────────────────────────────────────────────────────────
+
+    /**
+     * Give this app a new id (owner only). Nothing moves: `newId` becomes an
+     * alias of the canonical id, so the app's publishers, exclusions,
+     * subscription and token carry on, and every id it went by still resolves to
+     * it. `newId` must be unclaimed, or an id this app already goes by (renaming
+     * back); one held by another app reverts `AppAlreadyRegistered`.
+     *
+     * This client stays scoped to the id it had, which still works; switch it
+     * with `setAppId(newId)`.
+     */
+    async renameApp(newId: Hex): Promise<Hash> {
+        return this.executeWrite("renameApp", [this.app(), newId]);
+    }
+
+    /** The id this app (or `appId`) was claimed under. An id no app goes by comes back unchanged. */
+    async canonicalAppId(appId: Hex = this.app()): Promise<Hex> {
+        return this.read("canonicalAppId", [appId]);
+    }
+
+    /**
+     * The id this app (or `appId`) goes by now: the last it was renamed to, or its
+     * canonical id. An id no app goes by comes back unchanged.
+     */
+    async currentAppId(appId: Hex = this.app()): Promise<Hex> {
+        return this.read("currentAppId", [appId]);
+    }
+
     // ── Listing apps ─────────────────────────────────────────────────────────
     // The contract keeps every claimed app id, oldest first, so listing apps is a
     // read, not a log scan. Expired and suspended apps are listed too.
 
-    /** How many apps have been claimed. */
+    /** How many apps have been claimed. A rename adds none. */
     async appCount(): Promise<bigint> {
         return this.read("appCount", []);
     }
 
-    /** Up to `limit` app ids from position `offset`, oldest first; fewer past the end. */
+    /** Up to `limit` canonical app ids from position `offset`, oldest first; fewer past the end. */
     async appsPage(offset: bigint, limit: bigint): Promise<readonly Hex[]> {
         return this.read("appsPage", [offset, limit]);
     }
 
     /**
-     * Every claimed app id, oldest first.
+     * Every claimed app id (canonical; see `currentAppId`), oldest first.
      * ponytail: one eth_call for all of them; page with `appsPage` once the list
      * outgrows the RPC's eth_call gas cap (tens of thousands of apps).
      */
@@ -209,7 +249,7 @@ export class AppRegistryClient {
         return this.appsPage(0n, await this.appCount());
     }
 
-    /** The app ids `owner` claimed, oldest first. */
+    /** The app ids `owner` claimed (canonical; see `currentAppId`), oldest first. */
     async appsOf(owner: Address): Promise<readonly Hex[]> {
         return this.read("appsOf", [owner]);
     }
@@ -221,16 +261,6 @@ export class AppRegistryClient {
      */
     async setAppAgentUri(agentUri: string): Promise<Hash> {
         return this.executeWrite("setAppAgentUri", [this.app(), agentUri]);
-    }
-
-    /** Send the join fees the caller is still owed, from the old join flow, to `to`. */
-    async withdrawJoinFees(to: Address = this.senderAddress()): Promise<Hash> {
-        return this.executeWrite("withdrawJoinFees", [to]);
-    }
-
-    /** Join fees still owed to `owner` from the old join flow, in USDC base units. Nothing adds to it. */
-    async joinFeesOwed(owner: Address = this.senderAddress()): Promise<bigint> {
-        return this.read("joinFeesOwed", [owner]);
     }
 
     async isAppSuspended(): Promise<boolean> {
@@ -287,6 +317,9 @@ export class AppRegistryClient {
      * `AppAgentChanged` events, oldest first. The last one for an app is its
      * current card; an empty `agentUri` means the owner unset it.
      *
+     * Events carry the canonical id: `appId` may be any id the app goes by, and
+     * each log's `appId` is the canonical one.
+     *
      * Leave `appId` out to list every app that has ever set a card. To list apps,
      * use `allApps` or `appsOf`, which are one read each; this is a windowed log
      * scan, for a card's history. `fromBlock` is required because scanning from genesis on an L2 costs
@@ -298,12 +331,13 @@ export class AppRegistryClient {
         fromBlock: bigint;
         toBlock?: bigint;
     }): Promise<AppAgentLog[]> {
+        const appId = opts.appId && (await this.canonicalAppId(opts.appId));
         const logs = await getLogsInWindows(this.publicClient, opts.fromBlock, opts.toBlock, (from, to) =>
             this.publicClient.getContractEvents({
                 address: this.contractAddress,
                 abi: APP_REGISTRY_ABI,
                 eventName: "AppAgentChanged",
-                args: opts.appId ? { app_id: opts.appId } : {},
+                args: appId ? { app_id: appId } : {},
                 fromBlock: from,
                 toBlock: to,
                 strict: true,

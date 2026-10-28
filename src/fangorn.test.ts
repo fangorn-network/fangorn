@@ -90,3 +90,36 @@ describe("signed-url uploads → the network's hosted worker", () => {
 		expect(await uploadAndCaptureAppIds(create(BaseSepoliaConfig, WORKER))).toHaveLength(2);
 	});
 });
+
+// Renaming moves the app on chain to an alias of its canonical id; the client
+// follows it only once the rename landed.
+describe("Fangorn.renameApp", () => {
+	const create = (appId?: string) => Fangorn.create({ privateKey: KEY, appId, config: BaseSepoliaConfig });
+
+	it("renames the app on chain, then scopes the client to the new id", async () => {
+		const fangorn = create("old-name");
+		const rename = vi.spyOn(fangorn.getAppRegistry(), "renameApp").mockResolvedValue("0xhash");
+		expect(await fangorn.renameApp(" new-name ")).toBe("0xhash");
+		expect(rename).toHaveBeenCalledWith(toAppId("new-name"));
+		expect(fangorn.getAppId()).toBe(toAppId("new-name"));
+		expect(fangorn.getAppRegistry().getAppId()).toBe(toAppId("new-name"));
+	});
+
+	it("takes an app id as well as a name", async () => {
+		const fangorn = create("old-name");
+		const id = ("0x" + "cd".repeat(32)) as Hex;
+		const rename = vi.spyOn(fangorn.getAppRegistry(), "renameApp").mockResolvedValue("0xhash");
+		await fangorn.renameApp(id);
+		expect(rename).toHaveBeenCalledWith(id);
+		expect(fangorn.getAppId()).toBe(id);
+	});
+
+	it("keeps the old id when the rename fails, and refuses a blank name", async () => {
+		const fangorn = create("old-name");
+		const rename = vi.spyOn(fangorn.getAppRegistry(), "renameApp").mockRejectedValue(new Error("AppAlreadyRegistered"));
+		await expect(fangorn.renameApp("taken")).rejects.toThrow(/AppAlreadyRegistered/);
+		await expect(fangorn.renameApp("  ")).rejects.toThrow(/blank/);
+		expect(rename).toHaveBeenCalledTimes(1);
+		expect(fangorn.getAppId()).toBe(toAppId("old-name"));
+	});
+});

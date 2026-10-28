@@ -163,7 +163,7 @@ export async function chainNetwork() {
 	);
 	const data = await proxied(
 		"DataRegistry",
-		encodeFunctionData({ abi: DATA_REGISTRY_ABI, functionName: "initialize", args: [admin.address, apps] }),
+		encodeFunctionData({ abi: DATA_REGISTRY_ABI, functionName: "initialize", args: [admin.address] }),
 	);
 	await chain.waitForTransactionReceipt({
 		hash: await chain.writeContract({
