@@ -16,8 +16,8 @@ import {
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { foundry } from "viem/chains";
 import { Fangorn } from "../fangorn.js";
-import { type AppConfig, FangornConfig } from "../config.js";
-import { APP_REGISTRY_ABI, DATA_REGISTRY_ABI, SETTLEMENT_REGISTRY_ABI } from "../contracts/index.js";
+import { type NetworkConfig, FangornConfig } from "../config.js";
+import { DATA_REGISTRY_ABI, SETTLEMENT_REGISTRY_ABI } from "../contracts/index.js";
 import { MemStorage } from "../engine/test-helpers.js";
 import { PinataBackend } from "../providers/storage/pinata.js";
 import type { MetadataStorage } from "../providers/storage/types.js";
@@ -53,7 +53,7 @@ export function memoryNetwork(Registry: typeof MemRegistry = MemRegistry) {
 			return Promise.resolve(Fangorn.create({
 				privateKey: sk,
 				// The ledger is this deployment, and it starts at 0.
-				config: { ...FangornConfig, appRegistryFromBlock: 0n },
+				config: { ...FangornConfig, fromBlock: 0n },
 				storage: { backend: storage },
 				registry: new R(privateKeyToAccount(sk).address, ledger),
 			}));
@@ -140,28 +140,10 @@ export async function chainNetwork() {
 	};
 	const proxied = async (name: string, init: Hex) => deploy("ERC1967Proxy", [await deploy(name, []), init]);
 
-	const apps = await proxied(
-		"AppRegistry",
-		encodeFunctionData({
-			abi: APP_REGISTRY_ABI,
-			functionName: "initialize",
-			args: [admin.address],
-		}),
-	);
 	const data = await proxied(
 		"DataRegistry",
 		encodeFunctionData({ abi: DATA_REGISTRY_ABI, functionName: "initialize", args: [admin.address] }),
 	);
-	await chain.waitForTransactionReceipt({
-		hash: await chain.writeContract({
-			account: admin,
-			address: apps,
-			abi: APP_REGISTRY_ABI,
-			functionName: "setDataRegistry",
-			args: [data],
-		}),
-	});
-
 	// Payments and proofs are mocked (contracts repo, test/Mocks.sol): USDC
 	// doesn't check signatures and Semaphore accepts any proof.
 	const usdc = await deploy("MockUSDC", [], "Mocks");
@@ -174,13 +156,12 @@ export async function chainNetwork() {
 		}),
 	);
 
-	const config: AppConfig = {
+	const config: NetworkConfig = {
 		...FangornConfig,
 		rpcUrl,
-		appRegistryContractAddress: apps,
 		dataRegistryContractAddress: data,
 		settlementRegistryContractAddress: settlement,
-		appRegistryFromBlock: 0n,
+		fromBlock: 0n,
 	};
 	const storage = e2eStorage();
 
@@ -189,9 +170,9 @@ export async function chainNetwork() {
 		await chain.setBalance({ address: privateKeyToAccount(sk).address, value: parseEther("1") });
 		return sk;
 	};
-	/** A client with gas, managing `app` if given. */
-	const raw = async (app?: string, sk?: Hex) =>
-		Fangorn.create({ privateKey: await wallet(sk), config, appId: app, storage: { backend: storage } });
+	/** A client with gas. */
+	const client = async (sk?: Hex) =>
+		Fangorn.create({ privateKey: await wallet(sk), config, storage: { backend: storage } });
 
 	return {
 		name: "chain",
@@ -200,11 +181,8 @@ export async function chainNetwork() {
 		chain,
 		/** MockUSDC: `balanceOf` is what each address has been paid. */
 		usdc,
-		/** The protocol admin's key. */
-		adminKey: ADMIN_KEY,
 		wallet,
-		raw,
-		client: (sk?: Hex) => raw(undefined, sk),
+		client,
 		clock: () => chain.getBlockNumber({ cacheTime: 0 }),
 		stop: () => anvil.kill(),
 	} satisfies Network & Record<string, unknown>;

@@ -1,15 +1,8 @@
-import { Chain, Hex, keccak256, toHex } from "viem";
+import { Chain, Hex } from "viem";
 import { arbitrumSepolia, baseSepolia } from "viem/chains";
 
 /**
- * Derive an app id from a human-readable name (keccak256(hex(name)).
- */
-export function appId(name: string): Hex {
-	return keccak256(toHex(name));
-}
-
-/**
- * Blank input means "not set", never an app called "". Returns the trimmed value,
+ * Blank input means "not set", never a value of "". Returns the trimmed value,
  * or undefined when it is missing or only whitespace, so it can sit on the left of
  * a `??` fallback. `??` on the raw value would let "" through: it is not nullish.
  */
@@ -18,25 +11,14 @@ export function nonBlank(value: string | undefined): string | undefined {
 	return trimmed === "" ? undefined : trimmed;
 }
 
-export function toAppId(nameOrId: string): Hex {
-	// A blank name hashes to keccak("") — a valid-looking id for an app nobody
-	// owns. Callers normalise blank to "unset" at their input boundary; anything
-	// that gets here blank is a bug, so say so instead of acting on a phantom app.
-	const name = nameOrId.trim();
-	if (!name) throw new Error("App name or id must not be blank.");
-	return /^0x[0-9a-fA-F]{64}$/.test(name) ? (name as Hex) : appId(name);
-}
-
-export interface AppConfig {
+export interface NetworkConfig {
 	// The deployed DataRegistry (every repo's head, keyed by publisher and repo)
 	dataRegistryContractAddress: Hex;
-	// The deployed AppRegistry (app names: curator repo, payout, agent card)
-	appRegistryContractAddress: Hex;
 	// The deployed SettlementRegistry (per-record prices, referral splits, read access).
 	// Unset where it is not deployed.
 	settlementRegistryContractAddress?: Hex;
-	// The block the AppRegistry was deployed in. Scans of the registry's logs start here.
-	appRegistryFromBlock: bigint;
+	// The block the DataRegistry was deployed in. Scans of its update log start here.
+	fromBlock: bigint;
 	// The viem chain
 	chain: Chain;
 	// The public rpc address of the chain we are connecting to
@@ -57,9 +39,7 @@ export interface AppConfig {
 export const ArbitrumSepoliaConfig = {
 	dataRegistryContractAddress:
 		"0x72B5f83526F3893aF9f1eE0f32A27218EA09f8aE",
-	appRegistryContractAddress:
-		"0x55e6209ea1833ceD900989a3b3b22466934E04A5",
-	appRegistryFromBlock: 319536642n,
+	fromBlock: 319536642n,
 	chain: arbitrumSepolia,
 	rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
 	caip2: 421614,
@@ -68,16 +48,14 @@ export const ArbitrumSepoliaConfig = {
 	// of those when measured (2026-10-20).
 	logWindow: 100_000n,
 	// note: no hosted worker here on purpose
-} satisfies AppConfig
+} satisfies NetworkConfig
 
 export const BaseSepoliaConfig = {
 	dataRegistryContractAddress:
 		"0x0F3eb0E62CF610dbaC6B3aD4Bf4cE38Ab50EBCC5",
-	appRegistryContractAddress:
-		"0x197A44c42276F31DC2CeA34C138380a59A28D1C0",
 	settlementRegistryContractAddress:
 		"0x61A5A195B54F57ada786Ba6689CdB04553cf7fBc",
-	appRegistryFromBlock: 53592845n,
+	fromBlock: 53592845n,
 	chain: baseSepolia,
 	// Not sepolia.base.org: it caps eth_getLogs at 200 blocks, and Base makes 43,200
 	// a day, so a scan of the registry's history would be hundreds of calls per day
@@ -87,7 +65,7 @@ export const BaseSepoliaConfig = {
 	ipfsGateway: 'https://ipfs.io',
 	logWindow: 1_000n,
 	signedUrlWorker: "https://base-sepolia.storage-worker.fangorn.network",
-} satisfies AppConfig
+} satisfies NetworkConfig
 
 /**
  * The default network: what `Fangorn.create` uses without a `config`, and the CLI
@@ -99,7 +77,7 @@ export const FangornConfig = BaseSepoliaConfig;
 /**
  * The networks supported by Fangorn, by the name `CHAIN_NAME` takes.
  */
-export const SupportedNetworks: Record<string, AppConfig> = {
+export const SupportedNetworks: Record<string, NetworkConfig> = {
 	arbitrumSepolia: ArbitrumSepoliaConfig,
 	baseSepolia: BaseSepoliaConfig,
 };
@@ -108,8 +86,8 @@ export const SupportedNetworks: Record<string, AppConfig> = {
  * Get a network's deployment by name ("arbitrumSepolia" or "baseSepolia").
  * @returns The corresponding config if it is supported, otherwise an error
  */
-export default function getNetwork(name: string): AppConfig {
-	const config = SupportedNetworks[name] as AppConfig | undefined;
+export default function getNetwork(name: string): NetworkConfig {
+	const config = SupportedNetworks[name] as NetworkConfig | undefined;
 	if (!config) throw new Error(`Chain ${name} is not supported. Use one of: ${Object.keys(SupportedNetworks).join(", ")}`);
 	return config;
 }

@@ -203,7 +203,7 @@ describe("writes", () => {
 		const { reg, writes } = client();
 		await reg.raiseGeneration(REPO);
 		await reg.setDenied(REFERRER, true);
-		await reg.setDisabled(account.address, REPO, KEY, true);
+		await reg.setDisabled(REPO, KEY, true);
 		expect(writes).toEqual([
 			{ functionName: "raiseGeneration", args: [REPO] },
 			{ functionName: "setDenied", args: [REFERRER, true] },

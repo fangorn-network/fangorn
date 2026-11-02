@@ -1,6 +1,6 @@
-// ERC-8004 registration (Fangorn.registerAgent, `fangorn app agent`).
+// ERC-8004 registration (Fangorn.registerAgent, `fangorn card`).
 // It builds a registration file, pins it with the client's storage (a Pinata JWT,
-// or signed URLs billed to the app, so a browser wallet can do it too),
+// or signed URLs billed to the publisher, so a browser wallet can do it too),
 // and handles the identity registry's `register` and `setAgentURI` functions.
 // 
 // The file is identitcal agent0-sdk's format, so the

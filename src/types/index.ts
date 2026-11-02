@@ -1,17 +1,15 @@
 import { Hex, PublicClient, WalletClient } from "viem";
-import { AppConfig } from "../config.js";
+import { NetworkConfig } from "../config.js";
 import { MetadataStorage } from "../providers/storage/types.js";
 import { Registry } from "../registry.js";
 
 export interface FangornContext {
-    config: AppConfig;
+    config: NetworkConfig;
     walletClient: WalletClient;
     publicClient: PublicClient;
     metadataStorage: MetadataStorage | undefined;
     /** Heads and the update log (WHITEPAPER_1 §3.2). */
     registry: Registry;
-    /** The app this client manages, if any. */
-    appId: Hex | undefined;
 }
 
 export type StorageConfig =
@@ -28,10 +26,7 @@ export type StorageConfig =
 
 export interface FangornCreateOptions {
     storage?: StorageConfig;
-    config?: AppConfig;
-    // The app this client manages, by name or 32-byte id. Switch later with
-    // `fangorn.setAppId()`.
-    appId?: string;
+    config?: NetworkConfig;
     privateKey?: Hex;
     walletClient?: WalletClient;
     // The registry to read and write history through. Defaults to the deployed

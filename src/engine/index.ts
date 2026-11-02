@@ -306,7 +306,7 @@ export class FangornEngine {
 
 	/**
 	 * Which repo a commit belongs to. Events carry only `keccak256(name)`, so
-	 * this is how an app-wide subscriber recovers the name.
+	 * this is how a subscriber to every repo recovers the name.
 	 */
 	async repoOf(rootHex: Hex): Promise<RepoName> {
 		return (await this.getCommit(this.hexToRootCid(rootHex))).repo;

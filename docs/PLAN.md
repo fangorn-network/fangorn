@@ -35,7 +35,6 @@ Rules every part keeps:
 | Contract | Address |
 |---|---|
 | DataRegistry | `0x0F3eb0E62CF610dbaC6B3aD4Bf4cE38Ab50EBCC5` |
-| AppRegistry | `0x197A44c42276F31DC2CeA34C138380a59A28D1C0` |
 | SettlementRegistry | `0x61A5A195B54F57ada786Ba6689CdB04553cf7fBc` |
 | Semaphore v4 | `0x8A1fd199516489B0Fb7153EB5f075cDAC83c693D` |
 | USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
@@ -161,10 +160,11 @@ repo, every hour.
 
 ### Keys
 
-- **Repo key** `kRepo`: 32 bytes, one per statement. `repoKeyFrom(secret, stmt)`
-  derives it from a secret only the publisher holds (the SDK uses the private
-  key; the website can use a signature, if the wallet signs deterministically),
-  so the publisher never stores it. `newRepoKey()` makes a random one instead.
+- **Repo key** `kRepo`: 32 random bytes from `newRepoKey()`, one per
+  statement. The publisher doesn't need to keep it: the deposit (below) holds
+  it sealed to the key server, and the publisher gets it back with
+  `requestKey({ deposit, key: WHOLE_REPO, signer })`, signing with their own
+  wallet. No private key or derived secret ever has to reach the browser.
 - **Record key**: `deriveRecordKey(kRepo, stmt, key)` =
   `HKDF-SHA256(kRepo, info = stmt || key || "fangorn:record-key")`, where `key`
   is `recordKey(id)`.
@@ -241,7 +241,8 @@ the response. It:
 1. returns 400 if `|now - timestamp| > 60`;
 2. recomputes `stmt` from **its own** chain id and registry, and recovers
    `reader` from the signature (`verifyAccessRequest`);
-3. returns 403 if `canRead(reader, publisher, repo, key)` is false;
+3. returns 403 if `canRead(reader, publisher, repo, key)` is false, unless
+   `reader` is the publisher, who can always have their own keys;
 4. unseals `kRepo` from `sealed` under `stmt`, or returns 400;
 5. returns `{ "sealed": seal(out, readerKey, stmt) }`, where `out` is `kRepo`
    for `WHOLE_REPO` and the record key otherwise.
@@ -270,11 +271,16 @@ does the request, fetches the ciphertext and decrypts. A whole-repo buyer calls
 
 ```json
 { "block": "53600000",
+  "cards": [{ "publisher": "0x…", "repo": "picks", "url": "https://…/agent-card.json" }],
   "entries": [
     { "publisher": "0x…", "repo": "notes", "repoId": "0x…", "key": "0x…", "id": "record-id",
       "public": { "title": "…" }, "paid": ["body"], "price": "10000",
       "terms": { … }, "signature": "0x…", "deposit": { … } } ] }
 ```
+
+`cards` lists every repo's `@card` record. It's only a list of candidates:
+a reader checks a card with `discoverCard(url)`, which reads the record
+itself, so a wrong catalog can't make a card look bound.
 
 `deposit` is the repo's `@deposit/<generation>` record for the handles'
 generation; the buyer passes it straight to `openField`. Whole-repo terms get
@@ -286,7 +292,7 @@ from simulation:
 | Route | Body | What the worker does |
 |---|---|---|
 | `POST /relay/commit` | `SignedUpdate` (bigints as strings) | limit per signer, simulate, `relayCommit` |
-| `POST /relay/register` | `register`'s arguments without `referrer` | set `referrer` to AppRegistry `payoutOf(appId("fangorn"))`; limit free (`price == 0`) registers per payer; simulate; send |
+| `POST /relay/register` | `register`'s arguments without `referrer` | set `referrer` to the treasury address (`TREASURY`, a plain var); limit free (`price == 0`) registers per payer; simulate; send |
 | `POST /relay/settle` | `settle`'s arguments | simulate, send |
 
 Every call is simulated first, because a reverted transaction still costs the
@@ -304,7 +310,7 @@ the gas.
 | # | Task | Needs | Done when |
 |---|---|---|---|
 | S1 | ✅ `accessMessage`, `buildAccessRequest`, `verifyAccessRequest`, and `serveAccess`, the whole `/access` route | — | `src/crypto/paid.test.ts`: a changed field, another chain or registry, or a stale timestamp fails |
-| S2 | ✅ `statement`, `repoKeyFrom`, `deriveRecordKey`, `makeDeposit`, `sealField` (uploads through `MetadataStorage.putFile`), `termsToJson` / `termsFromJson` | — | a field opens only under its own record key, statement, record and field name |
+| S2 | ✅ `statement`, `newRepoKey`, `deriveRecordKey`, `makeDeposit`, `sealField` (uploads through `MetadataStorage.putFile`), `termsToJson` / `termsFromJson` | — | a field opens only under its own record key, statement, record and field name |
 | S3 | ✅ The test chain (`src/test/testbed.ts`) also deploys SettlementRegistry with `MockUSDC` and `MockSemaphore` from the contracts repo's `test/Mocks.sol` | — | `src/e2e/paid.e2e.test.ts` |
 | S4 | ✅ `requestKey` and `openField` | S1, S2 | `src/e2e/paid.e2e.test.ts`: 403 before settle, plaintext after, 403 for another record, the publisher and referrer paid; a whole-repo buyer opens every record; a takedown stops release |
 | S5 | ✅ The package root imports nothing from Node (`crypto`, `Buffer` and a module-level `process.env` removed from the engine and storage) | — | a Worker importing the root bundles with `wrangler deploy --dry-run` and answers `/access` under `wrangler dev` |
@@ -319,8 +325,8 @@ the gas.
 | W2 | Storage worker: `GET /ipfs/:cid`, reading from R2 with the IPFS gateway as fallback, adding the R2 binding | — | the first read fills R2, the second is served from it, and an unknown CID returns 404 |
 | W3 | Key server, removing storage: delete `/ct`, `/upload`, `DELETE /upload`, the R2 binding, key minting, `FREE_BYTES` and upload tokens. Make `WORKER_X25519_SECRET` required. Delete `SETTLEMENT_REGISTRY_ADDRESS` and `ARBITRUM_SEPOLIA_RPC` from `wrangler.toml`, which override the SDK's addresses | — | the remaining tests pass and the deleted routes return 404 |
 | W4 | Key server: the new `/access` (Formats, Key server): parse the body, call the SDK's `serveAccess` with `canRead` from `SettlementRegistryClient`, map `AccessError.status` to the response. `/pubkey` serves the public half of `WORKER_X25519_SECRET` | W3, S7 | tests: 403 before settle and 200 after; 400 for a deposit made for another repo; 400 for a stale timestamp |
-| W5 | App worker: a new package with the relay routes. The treasury key is a secret; the limits are in KV, following the storage worker's `RATE_KV`; every call is simulated first; the referrer is read from AppRegistry | — | tests: a call that would revert is never sent; the limit holds; a `referrer` in the body is ignored |
-| W6 | App worker: the catalog. A cron trigger (every 10 minutes) lists repos with `fangorn.repos()` and reads their records. It keeps those with `"@terms"`, leaves handles out of `public`, attaches the repo's deposit, and writes `catalog.json` to R2. `/index` serves that file and makes no chain calls | W5, S5 | tests: a record with terms appears, one without doesn't, and `If-None-Match` returns 304 |
+| W5 | App worker: a new package with the relay routes. The treasury key is a secret; the limits are in KV, following the storage worker's `RATE_KV`; every call is simulated first; the referrer is the `TREASURY` var | — | tests: a call that would revert is never sent; the limit holds; a `referrer` in the body is ignored |
+| W6 | App worker: the catalog. A cron trigger (every 10 minutes) lists repos with `fangorn.repos()` and reads their records. It keeps those with `"@terms"`, leaves handles out of `public`, attaches the repo's deposit, collects each repo's `@card` record into `cards`, and writes `catalog.json` to R2. `/index` serves that file and makes no chain calls | W5, S5 | tests: a record with terms appears, one without doesn't, and `If-None-Match` returns 304 |
 | W7 | End-to-end test on anvil: `sealField`, `/relay/commit`, the catalog cron, `/index`, `/access` refused, `/relay/register`, `/relay/settle`, `/access`, `openField` returning the plaintext | S2–S4, W2, W4–W6 | passes in CI |
 
 W1, W2, W3 and W5 can all start on day one. W4 and W6 follow S7. W7 comes
@@ -331,10 +337,10 @@ last.
 1. Deploy the three Workers. The key server needs `WORKER_X25519_SECRET`. The
    app worker needs the treasury key, funded with Base Sepolia ETH, and its
    bucket. The storage worker needs its R2 binding.
-2. Claim the name `fangorn` in AppRegistry, with the treasury as its payout
-   address.
-3. Do one real purchase end to end, with a real Semaphore proof. The anvil
-   test only exercises the mocks.
+2. Set `TREASURY` on the app worker. There is no app to claim: the referrer
+   is just an address.
+3. ✅ One real purchase end to end, with a real Semaphore proof (2026-11-02,
+   key server run locally). Repeat it once the deployed key server is up.
 
 ## Known gaps
 

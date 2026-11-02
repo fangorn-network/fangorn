@@ -187,9 +187,11 @@ export class SettlementRegistryClient {
 		return this.write("setDenied", [referrer, denied]);
 	}
 
-	/** Publisher or admin. */
-	setDisabled(publisher: Address, repo: Hex, key: Hex, disabled: boolean): Promise<Hash> {
-		return this.write("setDisabled", [publisher, repo, key, disabled]);
+	/** Takes down (or restores) one of this wallet's own subjects. */
+	setDisabled(repo: Hex, key: Hex, disabled: boolean): Promise<Hash> {
+		const account = requireWallet(this.walletClient, "setDisabled").account;
+		if (!account) throw new Error("setDisabled: the wallet client has no account");
+		return this.write("setDisabled", [account.address, repo, key, disabled]);
 	}
 
 	// ── Buyer (relayable) ──

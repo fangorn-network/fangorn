@@ -1,10 +1,10 @@
 # Fangorn SDK
 
-The Fangorn SDK is a decentralized "git for data" protocol. Publishers cryptographically commit to version-controlled "repos": data stored as a Merkle search tree in IPFS, with each repo's head on chain. Published data belongs to its publisher, and needs no app.
+Fangorn is a "git for data" protocol. Publishers commit to version-controlled "repos": data stored as a Merkle search tree in IPFS, with each repo's head cyrptographically anchored on chain. It facilitates 
 
-A **repo** belongs to its publisher, keyed **`publisher : repo`**. Its state is a map of **records** (`{ id, type, payload }`, content-addressed), and its head is the digest of the latest commit block. Any wallet can update its own repos; updating a head is a compare-and-swap on the parent (i.e. a git ref update), and an update names no app.
+A **repo** belongs to its publisher, keyed **`publisher : repo`**. Its state is a map of **records** (`{ id, type, payload }`, content-addressed), and its head is the digest of the latest commit block. Any wallet can update its own repos; updating a head is a compare-and-swap on the parent (i.e. a git ref update).
 
-An **app** is a curator's repo of citations: records that point at other publishers' records at named heads. The AppRegistry names it, and says where its referral share is paid. An app selects and arranges data; it never holds or admits it.
+An **app** is just a repo: a publisher's view of other repos, made of records that cite other publishers' records at named heads. There is no app registry. An app's publisher address is its identity and where its referral share is paid, and an agent card attaches to the repo (see [Agent cards](#agent-cards)). An app selects and arranges data; it never holds or admits it.
 
 **Version Control**
 
@@ -65,36 +65,12 @@ SIGNED_URL_WORKER_URL=https://pinata-url-provider.your-subdomain.workers.dev   #
 ### Check your wallet
 
 ```sh
-fangorn wallet show            # address, public key, balance, network, current app
+fangorn wallet show            # address, public key, balance, network
 fangorn wallet show --reveal   # also prints the PRIVATE key — it grants full control
 ```
 
 The private key is never printed without `--reveal`: terminal scrollback, shell
 logs and screen shares all outlive the command.
-
-### Pick an app
-
-Publishing and reading need no app. An app is a name for a curator's repo of
-citations, with a payout address for referrals and an optional agent card.
-
-```sh
-fangorn set-app my-app                 # the app this CLI manages; --app <name-or-id> overrides per command
-fangorn app info                       # owner, repo, payout address, agent card
-fangorn app claim                      # register it, if nobody has (free)
-fangorn app curator picks              # point it at your repo "picks" (--curator <address> for another's)
-fangorn app payout <address>           # where referral shares go (default: the owner)
-fangorn app agent --access-worker <url>   # register the worker's agent card with ERC-8004 (or pass a card URL)
-fangorn app rename <name>              # give the app a new name; the old ones keep working
-```
-
-**Renaming moves nothing.** `fangorn app rename` (SDK: `fangorn.renameApp(name)`)
-makes the new name's id an alias of the id the app was registered under, its
-*canonical* id. Every name the app has gone by still resolves to it and stays the
-owner's. The listings and the contract's events keep the canonical id;
-`getAppRegistry().canonicalAppId()` and `.currentAppId()` translate between them,
-and `fangorn app info` shows both when they differ. The CLI saves the new name to
-its config file, unless the app came from `--app` or `FANGORN_APP_ID`, which you
-update yourself.
 
 Hosted uploads (`storage: { signedUrl: {} }`, through the network's worker,
 `config.signedUrlWorker`) count against the signing publisher's storage quota.
@@ -225,7 +201,7 @@ Each emitted line is a repo change:
 }
 ```
 
-`fangorn subscribe --all` watches the whole app instead (every presented publisher and repo); a repo name or `--owner` narrows it.
+`fangorn subscribe --all` watches every repo instead; a repo name or `--owner` narrows it.
 
 **Resumability.** The last processed block is saved to
 `.fangorn/subscribe-<owner>-<repo>.json` after each change, so restarting
@@ -260,7 +236,6 @@ const fangorn = Fangorn.create({
 		},
 	},
 	config: FangornConfig, // the default, Base Sepolia
-	appId: "my-app", // optional: the app this client manages
 });
 ```
 
@@ -376,23 +351,37 @@ fangorn.subscribeAll({ owner: "0x..." });
 await fangorn.repos({ repo: "reviews" });
 ```
 
-### Apps
+### Agent cards
 
-An app is a curator's repo of citations, named in the AppRegistry:
+A repo can have an A2A agent card, so agents can find it. The binding is a
+record in the repo, `@card`, holding `{ url }`. Only the publisher can commit
+it. The card names the repo back, in the `FANGORN_REPO_EXTENSION` extension:
 
-```ts
-const fangorn = Fangorn.create({ privateKey, storage, appId: "my-app" });
-const apps = fangorn.getAppRegistry();
-
-await apps.registerApp(); // free; first come, first served
-await apps.setCurator(fangorn.getAddress(), "picks"); // the app's repo of citations
-await apps.setPayout(payoutAddress); // where referral shares go
-await apps.curatorOf(); // { curator, repo }
-fangorn.setAppId("my-other-app"); // by name, or by 32-byte app id
+```jsonc
+{
+	"name": "Picks",
+	"description": "…",
+	"capabilities": {
+		"extensions": [{
+			"uri": "https://fangorn.network/a2a/repo/v1",
+			"params": { "chainId": 84532, "dataRegistry": "0x…", "publisher": "0x…", "repo": "picks" }
+		}]
+	}
+}
 ```
 
-See the [CLI quickstart](#pick-an-app) for the same flow from the
-command line.
+```ts
+// Commit `@card`, and register the card with the ERC-8004 identity registry
+// (skipRegister: true only commits the record).
+await fangorn.registerAgent(cardUrl, { repo: "picks" });
+
+// A reader holding only the URL: fetches the card, reads the repo's `@card`
+// record, and refuses the card unless it points back at exactly this URL.
+const { card, publisher, repo } = await fangorn.discoverCard(cardUrl);
+```
+
+From the CLI, `fangorn card <url>` does the same for the repo tracked in the
+current directory, or for the one given with `--repo`.
 
 ### Storage
 
@@ -413,15 +402,10 @@ addressability — fully public while the payload stays closed.
 A **gadget** names _how_ a value is sealed and _under what condition_ it opens. Two
 ship today, both exported from the package root (`@fangorn-network/sdk`):
 
-| Gadget           | Key derivation                                | Who can open it                                                                     |
-| ---------------- | --------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `self-hkdf-v1`   | HKDF from your own 32-byte secret             | Only you. No ECDH, no recipient, no gate — nobody else can re-derive the key.       |
-| `worker-usdc-v1` | X25519 ECDH to the access worker's static key | Anyone who has settled for the resource; the worker checks the Settlement Registry. |
-
-Every key is bound to a 32-byte **`resourceId`**, which doubles as the Settlement
-Registry key. The same secret cannot cross-open a different resource, and changing
-_who can read_ means re-sealing under a new gadget/`resourceId` and committing a
-record that points at the new bytes.
+| Gadget         | Key                                      | Who can open it                                                                  |
+| -------------- | ---------------------------------------- | -------------------------------------------------------------------------------- |
+| `self-hkdf-v1` | HKDF from your own 32-byte secret        | Only you. No recipient, no server.                                               |
+| `field-v1`     | a random repo key, held by a key server  | Anyone who has paid for the record (or the whole repo) in the SettlementRegistry |
 
 ### `self-hkdf-v1` — fully private
 
@@ -465,78 +449,99 @@ const plaintext = unsealSelf(
 );
 ```
 
-### `worker-usdc-v1` — settlement-gated
+### `field-v1`: paid fields
 
-For paid or conditionally-readable data, seal to the **access worker's** static X25519
-public key and hand the ciphertext to the worker, which stores the opaque bytes in R2
-(never IPFS — a large, frequently-fetched ciphertext shouldn't burn public gateway
-egress). `encryptAndUpload` does both and returns a **handle**:
+A paid field is encrypted in the publisher's client and uploaded as a
+ciphertext. The record carries a **handle** in its place, along with the
+signed terms of sale. No server ever sees the plaintext.
 
-```ts
-import { encryptAndUpload, GADGET_WORKER_USDC_V1 } from "@fangorn-network/sdk";
+**Keys.** Each repo has one random repo key per *generation* (see
+`raiseGeneration`). Every record's key is derived from it, so selling one
+record reveals nothing about the others. The publisher seals the repo key to a
+**key server** once, and commits the result as a public record,
+`@deposit/<generation>`. After a buyer pays, the key server releases the key:
+the record key for a record purchase, the repo key for a whole-repo purchase.
+It is sealed to a throwaway key the buyer generates for the request. The key
+server stores nothing and checks `canRead` on the SettlementRegistry for every
+request.
 
-const handle = await encryptAndUpload({
-	gadget: GADGET_WORKER_USDC_V1,
-	plaintext: new TextEncoder().encode("the full dataset"),
-	resourceId,
-	workerPubkey, // the access worker's static X25519 key (32 bytes)
-	storage: {
-		workerUrl: process.env.ACCESS_WORKER_URL!,
-		authToken: process.env.ACCESS_WORKER_TOKEN!,
-		contentType: "application/octet-stream",
-	},
-});
-```
+Everything is bound to one statement:
+`(chainId, settlementRegistry, publisher, repo, generation)`. A key or
+deposit made for one repo, deployment or generation never opens another.
 
-The handle is what you commit in place of the plaintext value — the engine treats it
-as an ordinary opaque object in the record payload:
-
-```jsonc
-{
-	"@type": "handle",
-	"objectKey": "…", // R2 object key
-	"workerUrl": "https://access-worker.example.workers.dev",
-	"encryption": {
-		"gadget": "worker-usdc-v1",
-		"resourceId": "0x…", // Settlement Registry key + HKDF binding
-		"ciphertextHash": "0x…", // sha256 of the sealed bytes
-		"workerPubkey": "0x…", // worker-usdc-v1 only
-	},
-}
-```
-
-### Reading a handle
-
-Both gadgets resolve through the worker's `POST /access`. `decryptHandle` signs the
-request (the worker recovers the signer's address and checks the Settlement Registry
-for `resourceId`), fetches the bytes, and returns plaintext:
+**Publishing:**
 
 ```ts
-import { decryptHandle } from "@fangorn-network/sdk";
+import { x25519 } from "@noble/curves/ed25519";
+import { makeDeposit, newRepoKey, recordKey, repoId, sealField, termsToJson } from "@fangorn-network/sdk";
 
-const plaintext = await decryptHandle({
-	handle,
-	signer, // any viem LocalAccount / WalletClient — the address settlement is checked for
-	nullifier, // per-read nullifier (replay / anonymity)
-	// ownSecret,           // self-hkdf-v1 only
+const settlement = fangorn.getSettlementRegistry();
+const repo = repoId("rusty-anchor");
+const scope = {
+	chainId: fangorn.getConfig().chain.id,
+	registry: settlement.getAddress(),
+	publisher: fangorn.getAddress(),
+	repo,
+	generation: await settlement.generationOf(fangorn.getAddress(), repo),
+};
+
+const kRepo = newRepoKey(); // no need to keep it, see below
+const deposit = makeDeposit({ kRepo, keyServerPubkey, keyServer: KEY_SERVER_URL, scope });
+
+const body = await sealField({
+	plaintext: new TextEncoder().encode("the eagles are coming"),
+	kRepo,
+	scope,
+	key: recordKey("a"),
+	field: "body",
+	storage: fangorn.getStorage(),
 });
+const terms = await settlement.signTerms({ repo, key: recordKey("a"), price: 10_000n, shareBps: 500, deadline });
+
+await fangorn.uploadBatch("rusty-anchor", [
+	{ id: "a", type: "note", payload: { title: "a paid note", body, "@terms": termsToJson(terms) } },
+	{ id: `@deposit/${deposit.generation}`, type: "deposit", payload: deposit },
+]);
 ```
 
-- **`self-hkdf-v1`** — the resource is priced 0, so any signed request passes; the bytes
-  come back _still sealed_, are checked against `ciphertextHash`, and are unsealed
-  locally with `ownSecret`.
-- **`worker-usdc-v1`** — the worker streams bytes only once the signer has settled,
-  having unsealed with its own key; the bytes arrive as plaintext.
+The handle holds no key material:
 
-`buildAccessRequest` / `accessMessageHash` are exported if you want to drive the
-`/access` endpoint yourself, and `getSettlementRegistry()` (`canRead`, `signTerms`,
-`register`, `settle`) reads and writes the payment contract directly.
+```json
+{ "@type": "handle", "gadget": "field-v1", "generation": "0", "cid": "bafy…" }
+```
 
-**Trust model.** For `worker-usdc-v1` the access worker is the "somewhat trusted" party:
-it holds the unsealing key and sees plaintext at release time. That is deliberate for
-v1 — no TEE, no threshold network. Swapping in a stronger backend later is a _new
-gadget_ behind the same handle shape, so committed data doesn't change form.
-`self-hkdf-v1` trusts nobody: the worker is dumb storage and never holds a key.
+To seal more records later, the publisher gets the repo key back from the key
+server by signing with their own wallet. A request signed by the publisher is
+always served:
+
+```ts
+const kRepo = await requestKey({ deposit, key: WHOLE_REPO, signer });
+```
+
+**Buying and reading.** The buyer pays with `register`, which takes the signed
+terms, an ERC-3009 USDC authorization and a Semaphore identity commitment. The
+buyer then calls `settle` with a Semaphore proof naming the reading address.
+Anyone can submit either transaction. After that:
+
+```ts
+const plaintext = await openField({ handle: record.body, deposit, key: recordKey("a"), field: "body", signer, storage });
+```
+
+`openField` signs a request to the deposit's key server, unseals the record
+key, fetches the ciphertext and decrypts it. A whole-repo buyer calls
+`requestKey({ deposit, key: WHOLE_REPO, signer })` once, then uses
+`deriveRecordKey` and `decryptField` for each record.
+
+**Running a key server.** `serveAccess(body, { secret, chainId, registry, canRead })`
+is the whole `POST /access` route. A Worker or HTTP server only parses the
+body and maps `AccessError.status` (400 or 403) to the response.
+
+**Trust model.** The key server can unseal any deposit made to it, so it could
+decrypt the data. It is trusted not to do that, and not to release keys to
+someone who hasn't paid. A publisher who doesn't want to trust it can run
+their own key server and commit a deposit that names it. What the key server
+doesn't see is plaintext in transit: it releases keys, and it never handles
+the content.
 
 ---
 
@@ -548,7 +553,6 @@ gadget_ behind the same handle shape, so committed data doesn't change form.
 | -------------------- | ---------------------------------------------------------------------------- |
 | DataRegistry         | Every repo's head, and the update log                                        |
 | SettlementRegistry   | Per-record prices the publisher signs, referral splits, and read access (USDC + Semaphore) |
-| AppRegistry          | App names: owner, repo of citations, payout address, agent card              |
 
 `Fangorn.create` uses it when given no `config`, and the CLI when `CHAIN_NAME` is unset.
 
@@ -558,7 +562,7 @@ history. Each config's `logWindow` is the most blocks one log query spans on its
 (Base 10,000, Arbitrum 100,000); `FANGORN_LOG_WINDOW` overrides it for a private RPC.
 
 The CLI takes the chosen network's RPC and contracts from the environment when set:
-`FANGORN_RPC_URL`, `FANGORN_APP_REGISTRY`, `FANGORN_DATA_REGISTRY` and
+`FANGORN_RPC_URL`, `FANGORN_DATA_REGISTRY` and
 `FANGORN_SETTLEMENT_REGISTRY`, for a private
 RPC or a local `anvil` with the contracts deployed.
 
@@ -566,7 +570,7 @@ RPC or a local `anvil` with the contracts deployed.
 holds the addresses the SDK uses. The sources are `fangorn-network/contracts`
 (`solidity/script/Deployments.sol`); regenerate the ABIs with `pnpm abis`.
 
-No contract calls another, and an update names no app.
+The two contracts don't call each other.
 
 ---
 
@@ -592,26 +596,25 @@ pnpm test:e2e
 | File                           | Runs against                 | Needs                    |
 | ------------------------------ | ---------------------------- | ------------------------ |
 | `src/e2e/sdk.e2e.test.ts`      | the contracts on anvil       | `anvil`, `forge`         |
-| `src/e2e/apps.e2e.test.ts`     | the contracts on anvil       | `anvil`, `forge`         |
-| `src/e2e/admin.e2e.test.ts`    | the contracts on anvil       | `anvil`, `forge`         |
+| `src/e2e/cards.e2e.test.ts`    | the contracts on anvil       | `anvil`, `forge`         |
+| `src/e2e/paid.e2e.test.ts`     | the contracts on anvil       | `anvil`, `forge`         |
 | `src/e2e/cli.e2e.test.ts`      | the CLI, on anvil            | `anvil`, `forge`         |
 | `src/e2e/live.e2e.test.ts`     | Base Sepolia, read-only      | nothing                  |
 
 Without `anvil`, `forge` or the contracts checkout the anvil suites are skipped
-(in CI they fail). The deployer is the protocol admin, so the admin suite needs
-no real key. Storage is in memory; `E2E_STORAGE=pinata` runs the same suites
+(in CI they fail). Storage is in memory; `E2E_STORAGE=pinata` runs the same suites
 against Pinata (`PINATA_JWT`, `PINATA_GATEWAY`).
 
-**The live suite** only reads: that the registries point at each other, and that
-the config's start block is the AppRegistry's deployment.
+**The live suite** only reads: that the config's start block is the
+DataRegistry's deployment.
 
 ---
 
 ## Limitations / Future Work
 
-- Sealed fields are live (`self-hkdf-v1`, `worker-usdc-v1`), but which fields to seal is expressed per-call at stage time — there is no schema-level `sealedFields` hint yet, and no CLI command for sealing.
+- Sealed fields are live (`self-hkdf-v1`, `field-v1`), but which fields to seal is expressed per-call at stage time — there is no schema-level `sealedFields` hint yet, and no CLI command for sealing.
 - The SDK signs terms and relays `register`/`settle`, but carries no proving dependency: Semaphore identities and proofs are the buyer's.
-- `worker-usdc-v1` trusts the access worker with the unsealing key. A TEE- or threshold-backed replacement would ship as a new gadget, and the on-chain gadget registry (`gadget → resolver`) is still future work.
+- `field-v1` trusts the key server not to unseal deposits for itself. A TEE- or threshold-backed key server would ship as a new gadget, and the on-chain gadget registry (`gadget → resolver`) is still future work.
 - Record schema validation is client-side only — no on-chain enforcement.
 
 ---

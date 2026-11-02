@@ -22,7 +22,7 @@ Each party gets one surface. Fangorn runs everything they don't see.
 |---|---|---|---|
 | Publisher | fangorn.network | Upload, public or paid, price, earnings | Storage (1 GB), custodian, relayer, gas |
 | Consumer | fangorn-mcp in Claude; any app's site | Answers, a monthly budget, receipts | The Fangorn app: the catalog, key sales |
-| App builder | fangorn.network/#/build | Claim, build, bind | Nothing; they run their own Worker |
+| App builder | fangorn.network/#/build | Publish a repo, build, bind a card | Nothing; they run their own Worker |
 | Sovereign publisher | One setting: "Hold my own keys" | A deploy button and a URL field | Nothing; they run their own custodian |
 
 No chain, wallet, repo, Worker or key appears on the publisher's or the
@@ -30,8 +30,8 @@ consumer's surface unless they look for it.
 
 ## 3. The Fangorn app
 
-The explorer is not special. It is an app like any other, claimed in
-AppRegistry. Fangorn runs three Workers, one per secret ([PLAN.md](PLAN.md)):
+The explorer is not special. It is an app like any other: a publisher and its
+repos, with no registry entry. An app is a published view of other repos. Fangorn runs three Workers, one per secret ([PLAN.md](PLAN.md)):
 the app worker (catalog and relayer), the key server (the custodian, which a
 publisher who holds their own keys deploys on their own account), and the
 storage worker (uploads to IPFS, hot copies in R2). Together they:
@@ -49,7 +49,7 @@ fangorn-mcp opens it by default.
 flowchart LR
   P([Publisher]) -->|upload, price| Web[fangorn.network]
   C([Consumer]) -->|asks| MCP[fangorn-mcp in Claude]
-  B([App builder]) -->|claim, deploy| Own[Their app's Worker]
+  B([App builder]) -->|publish, deploy| Own[Their app's Worker]
 
   subgraph F[Fangorn's Workers]
     Cat[catalog]
@@ -76,7 +76,7 @@ flowchart LR
 
 - The buyer pays the record's price, in USDC, to SettlementRegistry through
   `register`.
-- The Fangorn app is the referrer, and its payout address is the treasury.
+- The Fangorn app is the referrer: the relayer names the treasury address.
   The website's default terms set `shareBps` to 500 (5%).
 - The contract pays the treasury and the publisher directly. The treasury
   never holds a publisher's money.
@@ -205,7 +205,7 @@ A sealed field is always paid; free data goes in public fields.
 | C | Workers: the key server made stateless and gated on `canRead`, the new app worker (catalog, relayer), the storage worker's 1 GB cap and R2 hot copies. Tasks W1–W7 in [PLAN.md](PLAN.md) | `~/fangorn/webworker` | colleague | B's request format (stubbed until merged); A on anvil | an anvil e2e: commit, register, settle, `/access` succeed through them; `/access` refuses before settle; `/index` lists the record |
 | D | Buyer path in fangorn-mcp: a cached catalog with local keyword search, and a `buy` tool doing §6 Buy, under the budget | westmarch `src/agent/mcp.js` | agent | §7 shapes; C on anvil | the same anvil e2e driven from the MCP tools |
 | E | Website publisher flow: upload, public or paid, price, earnings (with sales as demand); apps move to `/build` | website | agent | §7 shapes; the publisher's uncommitted edits merged first | a second wallet buys a record uploaded from the page, against anvil or testnet |
-| F | Testnet release: deploy C, claim the Fangorn app, fund the treasury's relayer key, publish fangorn-mcp, deploy the website | all | contracts/SDK | A–E | §1's done-when, on Base Sepolia |
+| F | Testnet release: deploy C, set the treasury address, fund the treasury's relayer key, publish fangorn-mcp, deploy the website | all | contracts/SDK | A–E | §1's done-when, on Base Sepolia |
 
 A and B are done (B's publish, S7, remains). C and D start against stubs and anvil the same
 day; E starts once the website's pending edits are in.

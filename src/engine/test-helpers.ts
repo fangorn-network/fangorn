@@ -77,5 +77,4 @@ export class MemStorage implements MetadataStorage {
 
 /** The paper's registry in memory, signing as PUBLISHER. */
 export const PUBLISHER = "0x0000000000000000000000000000000000000001" as Hex;
-export const APP: Hex = `0x${"a".repeat(64)}`;
 export const newRegistry = () => new MemRegistry(PUBLISHER);

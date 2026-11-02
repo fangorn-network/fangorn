@@ -241,7 +241,7 @@ describe.skipIf(skipChain)("paid records (contracts on anvil)", () => {
 		const reader = privateKeyToAccount(generatePrivateKey());
 		const a = await read(pub, "gone", "a");
 		await buy(buyer, a.payload["@terms"], reader.address, recordKey("a"));
-		await pub.getSettlementRegistry().setDisabled(pub.getAddress(), repo, recordKey("a"), true);
+		await pub.getSettlementRegistry().setDisabled(repo, recordKey("a"), true);
 
 		await expect(
 			openField({ handle: a.payload.body, deposit: a.deposit, key: recordKey("a"), field: "body", signer: reader, storage: buyer.getStorage() }),

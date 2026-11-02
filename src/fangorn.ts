@@ -10,7 +10,7 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import { CID } from "multiformats/cid";
 
-import { AppConfig, FangornConfig, nonBlank, toAppId } from "./config.js";
+import { NetworkConfig, FangornConfig, nonBlank } from "./config.js";
 import {
 	FangornContext,
 	FangornCreateOptions,
@@ -34,7 +34,6 @@ import {
 	type SignedUpdate,
 } from "./engine/index.js";
 import {
-	AppRegistryClient,
 	PreparedTx,
 	SettlementRegistryClient,
 } from "./contracts/index.js";
@@ -99,7 +98,7 @@ function walletSigner(walletClient: WalletClient): SignedUrlSigner {
 function resolveStorage(
 	storage: StorageConfig | undefined,
 	walletClient: WalletClient,
-	config: AppConfig,
+	config: NetworkConfig,
 ): MetadataStorage | undefined {
 	if (!storage) return undefined;
 	if ("backend" in storage) return storage.backend;
@@ -125,11 +124,21 @@ function resolveStorage(
 	);
 }
 
-/** The A2A extension a Fangorn app's agent card carries: it names the app the card speaks for. */
-export const FANGORN_APP_EXTENSION = "https://fangorn.network/a2a/app/v1";
+/**
+ * The A2A extension a repo's agent card carries. Its params name the repo the
+ * card speaks for: `{ chainId, dataRegistry, publisher, repo }`.
+ */
+export const FANGORN_REPO_EXTENSION = "https://fangorn.network/a2a/repo/v1";
 
 /**
- * The part of an A2A agent card `discoverApp` reads. A card's other fields
+ * The record that binds a repo to its agent card: `{ url }`, at this id in the
+ * repo. Only the publisher can commit it, so it plays the part an on-chain
+ * pointer would.
+ */
+export const CARD_RECORD = "@card";
+
+/**
+ * The part of an A2A agent card `discoverCard` reads. A card's other fields
  * (skills, endpoints and so on) pass through untouched.
  */
 export interface AgentCard {
@@ -149,8 +158,6 @@ export class Fangorn {
 	private _engine: FangornEngine | null = null;
 
 	private _feed: CommitFeed | null = null;
-
-	private _apps: AppRegistryClient | null = null;
 
 	private _settlement: SettlementRegistryClient | null = null;
 
@@ -207,15 +214,10 @@ export class Fangorn {
 			transport: http(config.rpcUrl),
 		}) as PublicClient;
 
-		// Blank is "no app chosen", not an app called "". An empty FANGORN_APP_ID
-		// or `--app ""` must not silently scope reads or billing to keccak("").
-		const chosenApp = nonBlank(options.appId);
-
 		const ctx: FangornContext = {
 			config,
 			walletClient,
 			publicClient,
-			appId: chosenApp ? toAppId(chosenApp) : undefined,
 			metadataStorage: undefined,
 			registry: options.registry ?? new ChainRegistry(config, publicClient, walletClient),
 		};
@@ -576,7 +578,7 @@ export class Fangorn {
 		const registry = this.ctx.registry;
 		const entries = await registry.log(
 			{ publisher: opts.owner, repo: opts.repo },
-			opts.fromBlock ?? this.ctx.config.appRegistryFromBlock,
+			opts.fromBlock ?? this.ctx.config.fromBlock,
 		);
 		// Entries arrive oldest-first, so the last update per repo wins.
 		const latest = new Map<string, { owner: Hex; repo: string; root: Hex; blockNumber: bigint }>();
@@ -592,61 +594,64 @@ export class Fangorn {
 	}
 
 	/**
-	 * Resolve an app from its agent card URL alone, and prove the card speaks for it.
+	 * Resolve a repo from its agent card URL alone, and prove the card speaks for it.
 	 *
-	 * The card names its app in the `FANGORN_APP_EXTENSION` A2A extension, but
-	 * anyone can serve a card that names any app. So the card is trusted only if
-	 * the app's on-chain `agent_uri`, which only the app owner can set, points
+	 * The card names its repo in the `FANGORN_REPO_EXTENSION` A2A extension, but
+	 * anyone can serve a card that names any repo. So the card is trusted only if
+	 * the repo's `@card` record, which only its publisher can commit, points
 	 * back at this exact URL. The comparison is exact string equality, so a
 	 * trailing slash or a different host counts as a different card.
-	 *
-	 * Doesn't touch this client's app. Pass `appId` to `setAppId` to read under it.
 	 */
-	async discoverApp(cardUrl: string): Promise<{
-		card: AgentCard;
-		appId: Hex;
-		fromBlock: bigint;
-		repos: string[];
-	}> {
+	async discoverCard(cardUrl: string): Promise<{ card: AgentCard; publisher: Hex; repo: string }> {
 		const res = await fetch(cardUrl, { signal: AbortSignal.timeout(10_000) });
 		if (!res.ok) throw new Error(`agent card ${cardUrl}: HTTP ${String(res.status)}`);
 		const card = (await res.json()) as AgentCard;
 
-		const ext = card.capabilities?.extensions?.find((e) => e.uri === FANGORN_APP_EXTENSION);
-		if (!ext) throw new Error(`agent card ${cardUrl} has no ${FANGORN_APP_EXTENSION} extension`);
+		const ext = card.capabilities?.extensions?.find((e) => e.uri === FANGORN_REPO_EXTENSION);
+		if (!ext) throw new Error(`agent card ${cardUrl} has no ${FANGORN_REPO_EXTENSION} extension`);
 		const p = ext.params ?? {};
-		if (typeof p.appId !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(p.appId)) {
-			throw new Error(`agent card ${cardUrl}: appId is not a 32-byte hex string`);
+		if (typeof p.publisher !== "string" || !/^0x[0-9a-fA-F]{40}$/.test(p.publisher)) {
+			throw new Error(`agent card ${cardUrl}: publisher is not an address`);
 		}
-		if (typeof p.fromBlock !== "string" || !/^\d+$/.test(p.fromBlock)) {
-			throw new Error(`agent card ${cardUrl}: fromBlock is not a decimal block number`);
-		}
-		// `namespaces` is the field's name on cards published before the rename.
-		const repos = p.repos ?? p.namespaces ?? [];
-		if (!Array.isArray(repos) || !repos.every((n) => typeof n === "string")) {
-			throw new Error(`agent card ${cardUrl}: repos is not a list of strings`);
-		}
+		if (typeof p.repo !== "string" || !p.repo) throw new Error(`agent card ${cardUrl}: repo is not a repo name`);
 		// Checked before the binding: a card from another deployment would
 		// otherwise fail as "not bound", which sends the reader looking for a forgery.
-		const apps = this.getAppRegistry();
+		const registry = this.ctx.config.dataRegistryContractAddress;
 		if (
 			p.chainId !== this.ctx.config.caip2 ||
-			typeof p.appRegistry !== "string" ||
-			p.appRegistry.toLowerCase() !== apps.getAddress().toLowerCase()
+			typeof p.dataRegistry !== "string" ||
+			p.dataRegistry.toLowerCase() !== registry.toLowerCase()
 		) {
 			throw new Error(
-				`agent card ${cardUrl} is for chain ${String(p.chainId)} / AppRegistry ${String(p.appRegistry)}, not this client's`,
+				`agent card ${cardUrl} is for chain ${String(p.chainId)} / DataRegistry ${String(p.dataRegistry)}, not this client's`,
 			);
 		}
 
-		const appId = p.appId as Hex;
-		const bound = await apps.appAgentUri(appId);
+		const publisher = p.publisher as Hex;
+		const bound = await this.cardOf(publisher, p.repo);
 		if (bound !== cardUrl) {
 			throw new Error(
-				`agent card ${cardUrl} is not bound to app ${appId}: its on-chain agent_uri is ${bound ? `"${bound}"` : "unset"}`,
+				`agent card ${cardUrl} is not bound to ${publisher}/${p.repo}: its ${CARD_RECORD} record is ${bound ? `"${bound}"` : "unset"}`,
 			);
 		}
-		return { card, appId, fromBlock: BigInt(p.fromBlock), repos };
+		return { card, publisher, repo: p.repo };
+	}
+
+	/** The card URL a repo's `@card` record points at, or undefined for none. */
+	async cardOf(publisher: Hex, repo: string): Promise<string | undefined> {
+		if (!(await this.headCommit({ publisher, repo }))) return undefined;
+		const url = (await this.engine.readRecord(publisher, repo, CARD_RECORD))?.payload.url;
+		return typeof url === "string" ? url : undefined;
+	}
+
+	/**
+	 * Point one of your repos at its agent card, by committing its `@card` record.
+	 * Returns the transaction, or undefined if it already points there.
+	 */
+	async setCard(repo: string, cardUrl: string): Promise<Hash | undefined> {
+		if ((await this.cardOf(this.getAddress(), repo)) === cardUrl) return undefined;
+		const { txHash } = await this.uploadBatch(repo, [{ id: CARD_RECORD, type: "card", payload: { url: cardUrl } }]);
+		return txHash;
 	}
 
 	/**
@@ -863,25 +868,13 @@ export class Fangorn {
 		};
 	}
 
-	getConfig(): AppConfig {
+	getConfig(): NetworkConfig {
 		return this.ctx.config;
 	}
 
 	/** Heads and the update log: the registry of WHITEPAPER_1 §3.2. */
 	getRegistry(): Registry {
 		return this.ctx.registry;
-	}
-
-	/** App names: owner, repo of citations, payout address and agent card. */
-	getAppRegistry(): AppRegistryClient {
-		this._apps ??= new AppRegistryClient(
-			this.ctx.config.appRegistryContractAddress,
-			this.ctx.appId,
-			this.ctx.publicClient,
-			this.ctx.walletClient,
-			this.ctx.config.logWindow,
-		);
-		return this._apps;
 	}
 
 	getSettlementRegistry(): SettlementRegistryClient {
@@ -896,8 +889,8 @@ export class Fangorn {
 	}
 
 	/**
-	 * Register the app as an ERC-8004 agent from its card, and point the app at the card
-	 * (owner only). The registration file is pinned with this client's storage, so a
+	 * Register a repo as an ERC-8004 agent from its card, and point the repo at
+	 * the card (`setCard`). The registration file is pinned with this client's storage, so a
 	 * browser wallet on signed-URL storage needs no Pinata JWT.
 	 *
 	 * `update` re-files an agent already minted (its token id) from the card as it is
@@ -906,7 +899,7 @@ export class Fangorn {
 	 */
 	async registerAgent(
 		cardUrl: string,
-		opts: { mcp?: string; update?: bigint; skipRegister?: boolean } = {},
+		opts: { repo: string; mcp?: string; update?: bigint; skipRegister?: boolean },
 	): Promise<{ card: Erc8004Card; agentId?: bigint; txHash?: Hash }> {
 		const res = await fetch(cardUrl);
 		if (!res.ok) throw new Error(`card at ${cardUrl} returned ${String(res.status)}`);
@@ -940,38 +933,8 @@ export class Fangorn {
 			}
 		}
 
-		const apps = this.getAppRegistry();
-		if ((await apps.appAgentUri().catch(() => "")) === cardUrl) return { card: named, agentId };
-		const txHash = await retryNonce(() => apps.setAppAgentUri(cardUrl));
+		const txHash = await retryNonce(() => this.setCard(opts.repo, cardUrl));
 		return { card: named, agentId, txHash };
-	}
-
-	/** The app this client manages, or undefined for none. */
-	getAppId(): Hex | undefined {
-		return this.ctx.appId;
-	}
-
-	/** Point this client at a different app, by name (`"my-app"`) or id, or at none. */
-	setAppId(nameOrId: string | undefined): void {
-		const chosen = nonBlank(nameOrId);
-		this.ctx.appId = chosen ? toAppId(chosen) : undefined;
-		this._apps?.setAppId(this.ctx.appId);
-	}
-
-	/**
-	 * Rename this client's app (owner only) — to a name (`"my-app"`) or an app id —
-	 * and point this client at the new id.
-	 *
-	 * The new id is an alias of the id the app was registered under, so clients
-	 * still on an old id keep working. It must be unclaimed, or one this app
-	 * already went by.
-	 */
-	async renameApp(nameOrId: string): Promise<Hash> {
-		const chosen = nonBlank(nameOrId);
-		if (!chosen) throw new Error("the new app name must not be blank");
-		const txHash = await this.getAppRegistry().renameApp(toAppId(chosen));
-		this.setAppId(chosen);
-		return txHash;
 	}
 
 	getStorage(): MetadataStorage {

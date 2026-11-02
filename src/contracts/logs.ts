@@ -8,7 +8,7 @@ import { nonBlank } from "../config.js";
  * RPC providers limit how many blocks one `eth_getLogs` call can cover (the
  * Base Sepolia one 50,000, sepolia.base.org 200), and a call past the limit fails
  * outright, taking whatever depends on it (a catch-up, a directory listing) with
- * it. Each network's config says what its RPC takes (`AppConfig.logWindow`, passed
+ * it. Each network's config says what its RPC takes (`NetworkConfig.logWindow`, passed
  * here as `defaultWindow`); `FANGORN_LOG_WINDOW` overrides it, for a private RPC.
  */
 export async function getLogsInWindows<T>(
