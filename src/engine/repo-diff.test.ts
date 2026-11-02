@@ -26,7 +26,6 @@ describe("FangornEngine records", () => {
 			base: parent,
 			records,
 			deletes,
-			message: "test",
 		});
 		return commitCid;
 	}
@@ -95,7 +94,7 @@ describe("FangornEngine records", () => {
 			{ id: "t1", type: "track", payload: { title: "Locura" } },
 		]);
 		await expect(
-			engine.createCommit({ repo: "other", base: c1, records: [], message: "x" }),
+			engine.createCommit({ repo: "other", base: c1, records: [] }),
 		).rejects.toThrow(/another repo/);
 	});
 
@@ -114,7 +113,6 @@ describe("FangornEngine records", () => {
 			repo: NS,
 			base: null,
 			records: [{ type: "note", payload: { body: "hi" } }],
-			message: "test",
 		});
 		expect(Object.keys(recordCids)).toHaveLength(1);
 	});

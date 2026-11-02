@@ -1,19 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { x25519 } from "@noble/curves/ed25519";
-import {
-	encodePacked,
-	keccak256,
-	recoverMessageAddress,
-	type Hex,
-} from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+import type { Hex } from "viem";
 import {
 	seal,
 	unseal,
 	sealSelf,
 	unsealSelf,
-	accessMessageHash,
-	buildAccessRequest,
 	X25519_PUBKEY_LENGTH,
 } from "./encryption.js";
 import { GCM_NONCE_LENGTH } from "./aes.js";
@@ -62,7 +54,7 @@ describe("self-hkdf-v1 gadget", () => {
 	});
 });
 
-describe("worker-usdc-v1 gadget", () => {
+describe("seal", () => {
 	it("round-trips: sealed to the worker pubkey, opened by the worker secret", () => {
 		const workerSecret = x25519.utils.randomSecretKey();
 		const workerPubkey = x25519.getPublicKey(workerSecret);
@@ -96,64 +88,5 @@ describe("worker-usdc-v1 gadget", () => {
 		expect(() =>
 			unseal(ct, x25519.utils.randomSecretKey(), RES_A),
 		).toThrow();
-	});
-});
-
-describe("access request (/access rail)", () => {
-	const objectKey = "tracks/user-1/track-abc.mp3";
-	const nullifier =
-		"0x000000000000000000000000000000000000000000000000000000000000002a" as Hex;
-
-	it("hashes the packed message exactly as the worker does", () => {
-		const ts = 1_700_000_000;
-		// The worker's buildMessageHash, recomputed independently.
-		const expected = keccak256(
-			encodePacked(
-				["uint256", "bytes32", "string", "uint64"],
-				[BigInt(nullifier), RES_A, objectKey, BigInt(ts)],
-			),
-		);
-		expect(accessMessageHash(nullifier, RES_A, objectKey, ts)).toBe(expected);
-	});
-
-	it("produces a signature the worker recovers to the signer's address", async () => {
-		const account = privateKeyToAccount(
-			"0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
-		);
-		const req = await buildAccessRequest({
-			signer: account,
-			nullifier,
-			resourceId: RES_A,
-			objectKey,
-			timestamp: 1_700_000_000,
-		});
-		// Mirror the worker's recovery: recoverMessageAddress over the raw hash.
-		const recovered = await recoverMessageAddress({
-			message: {
-				raw: accessMessageHash(
-					req.nullifier,
-					req.resourceId,
-					req.objectKey,
-					req.timestamp,
-				),
-			},
-			signature: req.signature,
-		});
-		expect(recovered).toBe(account.address);
-	});
-
-	it("defaults the timestamp to now", async () => {
-		const account = privateKeyToAccount(
-			"0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
-		);
-		const before = Math.floor(Date.now() / 1000);
-		const req = await buildAccessRequest({
-			signer: account,
-			nullifier,
-			resourceId: RES_A,
-			objectKey,
-		});
-		expect(req.timestamp).toBeGreaterThanOrEqual(before);
-		expect(req.timestamp).toBeLessThanOrEqual(Math.floor(Date.now() / 1000));
 	});
 });

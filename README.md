@@ -1,10 +1,10 @@
 # Fangorn SDK
 
-The Fangorn SDK is a decentralized "git for data" protocol. It follows an app <> publisher paradigm. An "app" is synonymous with gauranteed data availability and a 'view' of its underlying data. For publishers, it lets you cryptographically commit to to a version controlled "repo", which is data stored as a Merkle search tree in IPFS. Published data exists independently of an app, and apps emerge on top of data that they sponsor (pin).
+The Fangorn SDK is a decentralized "git for data" protocol. Publishers cryptographically commit to version-controlled "repos": data stored as a Merkle search tree in IPFS, with each repo's head on chain. Published data belongs to its publisher, and needs no app.
 
 A **repo** belongs to its publisher, keyed **`publisher : repo`**. Its state is a map of **records** (`{ id, type, payload }`, content-addressed), and its head is the digest of the latest commit block. Any wallet can update its own repos; updating a head is a compare-and-swap on the parent (i.e. a git ref update), and an update names no app.
 
-An **app** is sponsored storage. Its owner accepts publishers; an accepted publisher uploads with the app's storage, and the app presents that publisher's repos at their latest heads.
+An **app** is a curator's repo of citations: records that point at other publishers' records at named heads. The AppRegistry names it, and says where its referral share is paid. An app selects and arranges data; it never holds or admits it.
 
 **Version Control**
 
@@ -74,57 +74,30 @@ logs and screen shares all outlive the command.
 
 ### Pick an app
 
-Publishing needs no app: any wallet updates its own repos, and an update names
-no app. **An app is sponsored storage for the publishers it accepts**: its owner
-accepts a publisher, the app pays for that publisher's uploads, and it includes
-their repos at their latest heads, less what the owner withdraws
-(`registry.exclude`).
+Publishing and reading need no app. An app is a name for a curator's repo of
+citations, with a payout address for referrals and an optional agent card.
 
 ```sh
-fangorn set-app my-app     # persists the app; --app <name-or-id> overrides per command
-fangorn app info           # owner, subscription, and where you stand in it
-fangorn app claim          # claim it, if nobody owns it yet (irreversible; pays the subscription)
-```
-
-The protocol admin can ban a wallet network-wide: it can't claim an app or be
-accepted into one, and no app stores or presents it.
-
-**An app is a storage subscription** (ERC-5643; the app is a token that cannot
-be transferred). `fangorn app claim` pays one period of the subscription fee in
-USDC (the client approves exactly the fee for you), and `fangorn app renew` pays
-the next once less than a period is left. An expired app stores and presents nothing
-until it is renewed. **Apps provide storage**: you upload relative to
-an app, and hosted uploads (`storage: { signedUrl: {} }`, through the network's
-hosted worker, `config.signedUrlWorker`) are billed to the client's app, which must have accepted you. There is no app-less hosted upload — with no
-app, bring your own Pinata (`{ pinata }`) and pin your own data. A publisher that
-pays for its own storage claims a one-member app.
-
-**The owner accepts publishers.** `fangorn app accept <address>` is the whole
-membership: no invitation, terms or join fee. The owner is their own first
-publisher.
-
-Owning an app comes with its own commands:
-
-```sh
-fangorn app accept <address>     # accept a publisher: the app stores and includes its data
-fangorn app suspend <address>    # suspend a member from THIS app only
-fangorn app reinstate <address>
-fangorn app renew                # pay for the next period
-fangorn app cancel               # end the subscription now, no refund
+fangorn set-app my-app                 # the app this CLI manages; --app <name-or-id> overrides per command
+fangorn app info                       # owner, repo, payout address, agent card
+fangorn app claim                      # register it, if nobody has (free)
+fangorn app curator picks              # point it at your repo "picks" (--curator <address> for another's)
+fangorn app payout <address>           # where referral shares go (default: the owner)
 fangorn app agent --access-worker <url>   # register the worker's agent card with ERC-8004 (or pass a card URL)
-fangorn app rename <name>        # give the app a new name; the old ones keep working
+fangorn app rename <name>              # give the app a new name; the old ones keep working
 ```
 
 **Renaming moves nothing.** `fangorn app rename` (SDK: `fangorn.renameApp(name)`)
-makes the new name's id an alias of the id the app was claimed under, its
-*canonical* id. Publishers, exclusions, the subscription and the token carry on,
-and every name the app has gone by still resolves to it and stays the owner's:
-nobody can claim one, and clients still using an old name keep working. The token
-id, the app listings and the contract's events keep the canonical id;
+makes the new name's id an alias of the id the app was registered under, its
+*canonical* id. Every name the app has gone by still resolves to it and stays the
+owner's. The listings and the contract's events keep the canonical id;
 `getAppRegistry().canonicalAppId()` and `.currentAppId()` translate between them,
 and `fangorn app info` shows both when they differ. The CLI saves the new name to
 its config file, unless the app came from `--app` or `FANGORN_APP_ID`, which you
 update yourself.
+
+Hosted uploads (`storage: { signedUrl: {} }`, through the network's worker,
+`config.signedUrlWorker`) count against the signing publisher's storage quota.
 
 ### Track a repo
 
@@ -141,7 +114,7 @@ fangorn repo init rusty-anchor
 
 ```sh
 # Stage records into a new local commit — does NOT push
-fangorn commit records.json -m "initial import"
+fangorn commit records.json
 
 # Settle the local tip on-chain (permission + fast-forward checked here)
 fangorn push
@@ -160,36 +133,37 @@ fangorn push --force        # push even if it doesn't fast-forward the on-chain 
 }
 ```
 
+#### Epochs
+
+Every commit carries an **epoch**: the hour it was made, as
+`floor(unix seconds / 3600)` (`EPOCH_SECONDS`, `epochOf`). `commit` reads it
+from the chain's latest block. The DataRegistry accepts a push only if the
+commit's epoch is no more than 24 epochs (`WINDOW`, so a day) behind the
+current block's, and isn't ahead of it. Any other push reverts with `EpochOutOfWindow`, and you make
+the commit again.
+
+The epoch exists for two reasons:
+
+- **A commit can't be replayed late.** Whoever submits your signed commit,
+  such as a relayer or a sequencer, can delay it but can't land it more than a
+  day after you made it. Without an epoch, a commit you signed and then
+  abandoned could be pushed at any time, as long as its parent was still the
+  head.
+- **It dates the commit.** The epoch is part of the head the registry stores
+  (it is hashed with the parent, root and CAR), so anyone reading a head
+  knows, to within the window, when the publisher made it. This doesn't depend
+  on any indexer or timestamp service.
+
+The window is a day rather than an exact match because you can't choose when a
+transaction is included. Requiring an exact match would reject every push that
+crossed an hour boundary. The full argument is in
+[WHITEPAPER_1](docs/WHITEPAPER_1.md) §3.2, under "Commit epochs".
+
 Each commit records its parent, so history is real and walkable. By default a commit is **additive** (the staged records join the repo's existing contents); pass `--replace` for snapshot semantics, where the file _is_ the repo's new state and anything omitted is removed — earlier history is retained either way. Blocks are content-addressed, so unchanged records are reused byte-for-byte across commits and never re-uploaded.
 
 ### Builders
 
-Turning your source data into records is application logic, but the SDK ships a small **harness** for the common "a directory of files → records" case, exported from the package root:
-
-```ts
-import { buildAssetGraph, extractMarkdownLinks } from "@fangorn-network/sdk";
-
-// One processor per file extension. Return the vertex tag/payload and the
-// ids this file links to; buildAssetGraph wires the edges (rel: "links"),
-// dropping self-links and links to files that don't exist.
-const { vertices } = buildAssetGraph("./docs", {
-	processors: {
-		".md": (file) => ({
-			tag: "note",
-			payload: { title: file.nameNoExt, body: file.readText() },
-			links: extractMarkdownLinks(file.readText()), // markdown links + [[wikilinks]]
-		}),
-	},
-});
-
-await fangorn.commit({
-	repo: "rusty-anchor",
-	message: "import docs",
-	records: vertices.map((v) => ({ id: v.id, type: v.tag, payload: v.payload })),
-});
-```
-
-Each `id` is the filename without extension. The harness also returns the links between files as `edges`; records have no edges, so keep links you need in the payload. For anything that isn't "files in a folder," build the records yourself and pass them straight to `commit` / `uploadBatch` — the harness is a convenience, not a requirement.
+Turning your source data into records is application logic: build the records yourself and pass them to `commit` / `uploadBatch`.
 
 ### Inspect
 
@@ -220,7 +194,7 @@ Watch a repo for on-chain updates and stream the diffs — **no subgraph, no
 indexer**. Each `publisher:repo` pair is its own timeline, and the registry's
 `Updated` event indexes both, so this reads exactly that timeline straight from
 the RPC node and, for each new head, diffs the repo's records against the
-previous one. Under an app, only what the app presents is emitted. Each push's
+previous one. Each push's
 blocks arrive as one CAR download, resolved from IPFS on demand.
 
 ```sh
@@ -285,27 +259,10 @@ const fangorn = Fangorn.create({
 			gateway: process.env.PINATA_GATEWAY!,
 		},
 	},
-	config: FangornConfig, // the default, Base Sepolia; or ArbitrumSepoliaConfig
-	appId: "my-app", // optional for reads (no app: each publisher's latest head); hosted uploads need one
+	config: FangornConfig, // the default, Base Sepolia
+	appId: "my-app", // optional: the app this client manages
 });
-
-// The app stores and presents your repos once its owner accepts this wallet
-// (`apps.acceptPublisher`). A non-member's update still lands; the app just
-// presents nothing of it.
-const apps = fangorn.getAppRegistry();
-await apps.canPublish(fangorn.getAddress());
 ```
-
-The storage paywall lives on the same client, because an app is its
-subscription: `apps.subscriptionFee()`, `apps.expiresAt()`,
-`apps.renewSubscription()`, `apps.cancelSubscription()`, and
-`apps.access(publisher)` — the `{ canPublish, owner, expiresAt }` the upload gate
-reads. The contract enforces the expiry itself: `canPublish` is false once it
-has passed.
-
-`fangorn.getMembershipRegistry()` (consumer access to an app's paid records)
-hangs off the same object. It takes the app id per call, so `setAppId`
-deliberately leaves it alone.
 
 ### Repos & the git-native flow
 
@@ -321,7 +278,6 @@ let tip = await fangorn.onChainTip(fangorn.getAddress(), "rusty-anchor");
 const c1 = await fangorn.commit({
 	repo: "rusty-anchor",
 	parent: tip!,
-	message: "initial import",
 	records: [
 		{ id: "t1", type: "track", payload: { title: "Locura", artist: "Alice" } },
 		{ id: "a1", type: "artist", payload: { name: "Alice" } },
@@ -333,7 +289,6 @@ await fangorn.push("rusty-anchor", c1.commitCid);
 const c2 = await fangorn.commit({
 	repo: "rusty-anchor",
 	parent: c1.commitCid,
-	message: "add a track, drop the artist",
 	records: [{ id: "t2", type: "track", payload: { title: "Otra", artist: "Alice" } }],
 	deletes: ["a1"],
 });
@@ -349,7 +304,7 @@ const tip = await fangorn.onChainTip(fangorn.getAddress(), "rusty-anchor");
 
 // Walk commits, newest first
 for await (const c of fangorn.log(tip!)) {
-	console.log(c.cid, c.message);
+	console.log(c.cid, c.epoch);
 }
 
 // What a commit changed vs. its parent ({ puts, deletes })
@@ -358,7 +313,7 @@ const diff = await fangorn.show(tip!);
 // Every record currently in one of your repos
 const { records } = await fangorn.inspectRepo("rusty-anchor"); // { id, cid, type, payload }[]
 
-// Someone else's repo, as this client's app presents it
+// Someone else's repo, at its latest head
 const { tip: head, contents } = await fangorn.readRepo("0x...", "rusty-anchor");
 ```
 
@@ -402,52 +357,38 @@ The pure diff primitive is also exposed on the engine —
 `engine.repoDiff(oldRootHex, newRootHex)` — if you want to diff
 two arbitrary roots without watching.
 
-### Subscribe to a whole app
+### Subscribe to every repo
 
 Every update lands under `publisher:repo`, and each pair is its own on-chain
-timeline. Two publishers — or one publisher's two repos — never contend for the
-same compare-and-swap.
-
-`subscribeApp` yields the same `RepoChange` values as `subscribe`, from every
-publisher the app presents, less its exclusions. With no app it is every update
-by anyone:
+timeline. `subscribeAll` yields the same `RepoChange` values as `subscribe`, from
+every publisher; `feed()` shares one such stream among many consumers.
 
 ```ts
-// Everything the app presents
-for await (const change of fangorn.subscribeApp({
-	signal: controller.signal,
-})) {
+for await (const change of fangorn.subscribeAll({ signal: controller.signal })) {
 	console.log(change.owner, change.repo, change.puts.length);
 }
 
-// Narrow it: every publisher's "reviews" repo, or one publisher's whole footprint
-fangorn.subscribeApp({ repo: "reviews" });
-fangorn.subscribeApp({ owner: "0x..." });
+// Narrow it: every publisher's "reviews" repo, or one publisher's repos
+fangorn.subscribeAll({ repo: "reviews" });
+fangorn.subscribeAll({ owner: "0x..." });
+
+// Every repo's latest head, from one scan of the update log
+await fangorn.repos({ repo: "reviews" });
 ```
 
-The app is per-client state, not part of the network config — set it when you
-create the client, or switch at runtime:
+### Apps
+
+An app is a curator's repo of citations, named in the AppRegistry:
 
 ```ts
 const fangorn = Fangorn.create({ privateKey, storage, appId: "my-app" });
-fangorn.setAppId("my-other-app"); // by name, or by 32-byte app id
-fangorn.getAppId(); // 0x… — what the registry keys on
-```
-
-Under an app, reads (`readRepo`, `appRepos`, `subscribe`) are what the app
-presents: its members' latest heads (`canPublish`), less its exclusions. With
-no app they are each publisher's latest heads.
-
-Apps live in the AppRegistry, and membership of one is what gets your storage
-paid for and your repos presented:
-
-```ts
 const apps = fangorn.getAppRegistry();
 
-await apps.registerApp(); // claim it — pays the subscription fee (USDC); you are its first publisher
-await apps.acceptPublisher(publisher); // owner: accept a publisher
-await apps.setPublisherSuspended(publisher, true); // owner: suspend them from this app
-await apps.renewSubscription(); // owner: pay for the next period
+await apps.registerApp(); // free; first come, first served
+await apps.setCurator(fangorn.getAddress(), "picks"); // the app's repo of citations
+await apps.setPayout(payoutAddress); // where referral shares go
+await apps.curatorOf(); // { curator, repo }
+fangorn.setAppId("my-other-app"); // by name, or by 32-byte app id
 ```
 
 See the [CLI quickstart](#pick-an-app) for the same flow from the
@@ -588,8 +529,8 @@ const plaintext = await decryptHandle({
   having unsealed with its own key; the bytes arrive as plaintext.
 
 `buildAccessRequest` / `accessMessageHash` are exported if you want to drive the
-`/access` endpoint yourself, and `MembershipRegistryClient` (`canRead`, `planOf`)
-reads the membership rail directly.
+`/access` endpoint yourself, and `getSettlementRegistry()` (`canRead`, `signTerms`,
+`register`, `settle`) reads and writes the payment contract directly.
 
 **Trust model.** For `worker-usdc-v1` the access worker is the "somewhat trusted" party:
 it holds the unsealing key and sees plaintext at release time. That is deliberate for
@@ -603,25 +544,13 @@ gadget_ behind the same handle shape, so committed data doesn't change form.
 
 ### Base Sepolia (the default)
 
-| Contract             | Address                                      | What it owns                                        |
-| -------------------- | -------------------------------------------- | --------------------------------------------------- |
-| DataRegistry         | `0xE9183f768865dd2Cde5f1B71F8446F0Cd798ebe0` | Every repo's head, and the update log           |
-| AppRegistry          | `0x0D3e98399df41b558048Cdd7D71723c37A3A9D6F` | Apps: owner, accepted publishers, bans, storage subscription (ERC-5643, USDC); what each app excludes |
-| MembershipRegistry   | `0x0e96C012b5c53622EcDAA82F342E31C2623A04f5` | Time-limited, unlinkable access to an app's paid records (USDC + Semaphore) |
+| Contract             | What it owns                                                                 |
+| -------------------- | ---------------------------------------------------------------------------- |
+| DataRegistry         | Every repo's head, and the update log                                        |
+| SettlementRegistry   | Per-record prices the publisher signs, referral splits, and read access (USDC + Semaphore) |
+| AppRegistry          | App names: owner, repo of citations, payout address, agent card              |
 
 `Fangorn.create` uses it when given no `config`, and the CLI when `CHAIN_NAME` is unset.
-
-### Arbitrum Sepolia
-
-| Contract             | Address                                      |
-| -------------------- | -------------------------------------------- |
-| DataRegistry         | `0x72B5f83526F3893aF9f1eE0f32A27218EA09f8aE` |
-| AppRegistry          | `0x55e6209ea1833ceD900989a3b3b22466934E04A5` |
-| MembershipRegistry   | `0xDF17030Cd65435C86eb043F31DDACa99E819E347` |
-
-Still runs an older version of the contracts, which this SDK's ABIs do not match.
-Select it with `Fangorn.create({ config: ArbitrumSepoliaConfig, ... })`, or from the
-CLI with `CHAIN_NAME=arbitrumSepolia` (or pick it in `fangorn init`).
 
 Its default RPC is `base-sepolia-rpc.publicnode.com`, not `sepolia.base.org`: the
 official endpoint caps `eth_getLogs` at 200 blocks, too narrow to scan the registry's
@@ -629,16 +558,15 @@ history. Each config's `logWindow` is the most blocks one log query spans on its
 (Base 10,000, Arbitrum 100,000); `FANGORN_LOG_WINDOW` overrides it for a private RPC.
 
 The CLI takes the chosen network's RPC and contracts from the environment when set:
-`FANGORN_RPC_URL`, `FANGORN_APP_REGISTRY` and `FANGORN_DATA_REGISTRY`, for a private
+`FANGORN_RPC_URL`, `FANGORN_APP_REGISTRY`, `FANGORN_DATA_REGISTRY` and
+`FANGORN_SETTLEMENT_REGISTRY`, for a private
 RPC or a local `anvil` with the contracts deployed.
 
-`BaseSepoliaConfig` (also exported as `FangornConfig`, the default) and `ArbitrumSepoliaConfig` in `src/config.ts` are the authoritative list and what the SDK
-uses — prefer it over any address copied out of a document,
-including this table. The sources are `fangorn-network/contracts`
+`BaseSepoliaConfig` (also exported as `FangornConfig`, the default) in `src/config.ts`
+holds the addresses the SDK uses. The sources are `fangorn-network/contracts`
 (`solidity/script/Deployments.sol`); regenerate the ABIs with `pnpm abis`.
 
-Neither contract calls the other: an update names no app, and an app presents
-its members (`canPublish`).
+No contract calls another, and an update names no app.
 
 ---
 
@@ -682,11 +610,9 @@ the config's start block is the AppRegistry's deployment.
 ## Limitations / Future Work
 
 - Sealed fields are live (`self-hkdf-v1`, `worker-usdc-v1`), but which fields to seal is expressed per-call at stage time — there is no schema-level `sealedFields` hint yet, and no CLI command for sealing.
-- The SDK covers the **app owner** half of the membership rail (`setPlan`, plus the reads and the relayed `join`/`claim`). The **buyer** half — Semaphore identity, the ERC-3009 authorization, membership proofs — lives in [`@fangorn-network/fetch`](https://github.com/fangorn-network/x402f), which relays both writes through a facilitator so the buyer needs no gas. This package deliberately carries no proving dependency.
-- `fangorn subscribe` is the event stream, not the storage paywall — that is `fangorn app claim` / `fangorn app renew`.
+- The SDK signs terms and relays `register`/`settle`, but carries no proving dependency: Semaphore identities and proofs are the buyer's.
 - `worker-usdc-v1` trusts the access worker with the unsealing key. A TEE- or threshold-backed replacement would ship as a new gadget, and the on-chain gadget registry (`gadget → resolver`) is still future work.
 - Record schema validation is client-side only — no on-chain enforcement.
-- An app presents each accepted publisher's latest head; the data itself is unverified, so accept publishers you trust.
 
 ---
 

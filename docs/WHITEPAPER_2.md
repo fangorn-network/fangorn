@@ -1,15 +1,16 @@
 # Fangorn II: Programmable Access to Verifiable Data
 
-*Working draft, 2026-10-13 · driemworks. The second of two papers. [WP1] gives the data model: data held by untrusted hosts, history ordered by a logical clock, and reads and indexes that anyone can check. This paper adds who may read. Part I is a general model of access as witness encryption. Part II instantiates it, with practical witness encryption built from zero-knowledge proofs and a key-release scheme.*
+*Working draft, 2026-10-30 · driemworks. The second of two papers. [WP1] gives the data model: data held by untrusted hosts, history ordered by a logical clock, and reads and indexes that anyone can check. This paper adds who may read. Part I is a general model of access as witness encryption. Part II instantiates it, with practical witness encryption built from zero-knowledge proofs and a key-release scheme.*
 
 ## 0. Introduction
 
 On a platform, the party that serves the data also decides who may read it. So it sees every read, and watching readers becomes the cheapest way to pay for the service [ZUB19]. This is a property of the infrastructure, not of publishing: storage, authority and observation happen in one place. [WP1] removes the platform from storing, ordering and finding data. This paper removes it from reading.
 
-A publisher can make data readable only by those who meet a condition it chooses, without any party deciding, case by case, who may read, and without any party learning who reads.
+A publisher can make data readable only by those who meet a condition it chooses, without any party deciding, case by case, who may read, and without any party learning who reads. The condition belongs to the publisher's repo, not to any app that presents it: a publisher sets it once, and every app that presents the repo, and every reader who finds it, meets the same condition. An app that leads a reader to a purchase is paid a share of it, so that curating data pays without buying it.
 
 **Part I** gives a general model:
-- **Access.** A sealed state is encrypted so that it can be read by exactly those who hold a witness for a condition. This is witness encryption, and the condition may refer to the ordering itself: membership, payment and time are all statements about the ordering.
+- **Access.** A sealed state, or the sealed fields of a state, are encrypted so that they can be read by exactly those who hold a witness for a condition the publisher sets. This is witness encryption, and the condition may refer to the ordering itself: membership, payment and time are all statements about the ordering.
+- **Referral.** A payment names the app that referred it, and the payment program splits the price between the publisher and that app, at a share the publisher sets.
 - **Security.** Anyone who learns anything about a sealed state beyond its leakage could have satisfied the condition, and reading leaves no trace.
 
 **Part II** approximates witness encryption with a zero-knowledge proof posted to the chain, together with a key-release scheme, which may be a single custodian, a trusted execution environment, or a threshold committee.
@@ -47,7 +48,7 @@ The second property is what stops a proof from being copied onto another message
 
 ### 1.3 Clocks
 
-[WP1, Definition 1.9] gives the ordering service, with its checkpoints and its logical clock. $\mathsf{Verify}$ sees only $d$ and $\mathcal{O}'$. So what matters about a clock is what an adversary can make it accept.
+[WP1, Definition 1.10] gives the ordering service, with its checkpoints and its logical clock. $\mathsf{Verify}$ sees only $d$ and $\mathcal{O}'$. So what matters about a clock is what an adversary can make it accept.
 
 **Definition 1.3 (Reference clock).** Let $R_{\mathsf{clk}}$ be the relation where $((d, \tau, r), w) \in R_{\mathsf{clk}}$ if $w$ is an extension of the checkpoint $d$ that $\mathsf{Verify}$ accepts, reaches clock value $\tau$, and has a state with root $r$. For a class $\mathcal{C}$ of adversaries, the ordering is:
 1. **timely** for $\mathcal{C}$ if no adversary in $\mathcal{C}$ outputs a witness for $(d, \tau, \cdot)$ while the honest clock is below $\tau$, except with negligible probability;
@@ -124,16 +125,18 @@ Bulk data is encrypted with a symmetric scheme, and only its key is witness-encr
 A **condition** is an NP relation $R_\phi$. Its statements have the form
 
 $$
-x = (\phi,\ A,\ e,\ d)
+x = (\phi,\ \sigma,\ e,\ d)
 $$
 
 where:
 - $\phi$ names the condition;
-- $A$ is the app;
+- $\sigma$ is the **subject**: a repo $\rho$, or one record of it, $(\rho, k)$, so that a publisher can set a different condition, and a different price, for every record (§2.2);
 - $e$ is an epoch;
 - $d$ is the name of a checkpoint of $\mathcal{O}$.
 
-As with the operations of [WP1, Definition 3.1], every statement and message below also names the registry $\iota$, so that a witness, proof or grant for one registry means nothing in another. The notation leaves $\iota$ out.
+The subject is a repo or a record, never an app. An app cites data [WP1, §2], but what it takes to read the data is fixed by its publisher, and is the same in every app that cites it.
+
+As with every value signed apart from the ordering [WP1, §3.2], every statement and message below also names the registry $\iota$, so that a witness, proof or grant for one registry means nothing in another. The notation leaves $\iota$ out.
 
 A witness $w$ for $x$ is whatever the condition asks for. It may include an extension of the ordering after $d$, accepted by $\mathsf{Verify}$. This is how a condition refers to things that happen after the data is sealed.
 
@@ -145,10 +148,12 @@ $$
 
 Examples:
 - **Password.** $R(x, w) = 1$ iff $N(\texttt{pw}, w) = y$, for a value $y$ fixed in $\phi$.
-- **Membership.** $w = (\mathit{sk}, \mathcal{O}')$, where $\mathcal{O}'$ extends the ordering after $d$ and records the enrollment of the commitment to $\mathit{sk}$ in $A$ for epoch $e$. With a succinct clock, $w = (\mathit{sk}, \pi, o)$: $\pi$ proves a clock statement $(d, \tau, r)$, and $o$ opens the state root $r$ at the enrollment.
-- **Payment.** $w = (\mathit{sk}, \mathcal{O}')$, where $\mathcal{O}'$ extends the ordering and records a payment of the price for $(A, e)$, bound to the commitment to $\mathit{sk}$. With a succinct clock, the extension is replaced by a proof and an opening, as for membership.
+- **Membership.** $w = (\mathit{sk}, \mathcal{O}')$, where $\mathcal{O}'$ extends the ordering after $d$ and records the enrollment of the commitment to $\mathit{sk}$ in a group for epoch $e$, such as the members of an app $A$ that $\phi$ names. With a succinct clock, $w = (\mathit{sk}, \pi, o)$: $\pi$ proves a clock statement $(d, \tau, r)$, and $o$ opens the state root $r$ at the enrollment.
+- **Payment.** $w = (\mathit{sk}, \mathcal{O}')$, where $\mathcal{O}'$ extends the ordering and records a payment of the price that $\phi$ names for $(\sigma, e)$, bound to the commitment to $\mathit{sk}$. With a succinct clock, the extension is replaced by a proof and an opening, as for membership.
 - **Time.** $w = \mathcal{O}'$, an extension of the ordering that reaches clock value $T$, under a relation associated to the clock. The ordering itself is the witness [LJKW18]. With a succinct clock, $w$ is a proof for $(d, T, \cdot)$.
 - **Credential.** $w$ is a credential from a fixed issuer that satisfies a fixed predicate.
+
+**Bundles.** A publisher that wants its repo read by the members of an app $A$, as well as by those who pay, sets $\phi = \mathsf{pay}(p) \vee \mathsf{member}(A)$. This is how an app sells one membership over the data of many publishers: each publisher opts in through its own condition, and none is included without it. Since a grant is per subject (§4.2), a member proves its membership once for each repo it reads in an epoch, rather than once for the app. How a bundle's revenue reaches the publishers in it is not part of this paper (§5).
 
 In every example except the password and the credential, the witness is a piece of the ordering. The ordering is what a reader proves things about. This is why one ordered log is enough to express membership, payment and time as conditions on reading.
 
@@ -164,43 +169,67 @@ In the instantiation of §4, private forks do not arise in the same way. A grant
 
 ### 2.2 Sealing
 
-This paper extends the app tuple [WP1, §2] with a **condition** $\phi_A$, under which the app's sealed repos can be read:
+This paper gives each subject a **condition** $\phi_\sigma$, under which what is sealed in it can be read. A repo's condition $\phi_\rho$ is the default for its records, and a record's own condition $\phi_{(\rho,k)}$, where its publisher sets one, overrides it, so that each photo in a repo of photos can have its own price. A condition is set by **terms**: a value
 
 $$
-A = (n_A,\ o_A,\ \phi_A,\ \chi_A)
+\mathit{terms} = (\iota,\ \sigma,\ \phi,\ s,\ n,\ t_x)
 $$
 
-Like the rest of the tuple, $\phi_A$ is fixed when the app is created. A repo of $A$ is **public** or **sealed**. A sealed repo has a public directory entry. Its records are part of $\mathcal{G}_t$, but only a reader holding its key can open them.
+signed by the publisher of $\sigma$, naming the subject, the condition, a curator share $s$ (§2.4), a **generation** $n$, and a deadline $t_x$. Terms are not entries of the ordering: the publisher signs them once, publishes them as a public field of the record or of the repo, and anyone who meets the condition carries them to the payment program, which checks the signature (§2.4). Setting a price, or a different price for every record, therefore costs nothing on the chain. The payment program keeps one counter per repo, the generation, which only its publisher may raise, and accepts terms only of the current generation and before their deadline, so that raising it voids every earlier price at once. Each sealed value names, in its statement, the condition it was sealed under, so a new condition applies to what is sealed after it, and never to what was sealed before. A repo with no condition is **public**. A sealed repo has a public directory entry, and its records are part of $\mathcal{G}_t$, but what is sealed in them opens only to a reader holding a key. A repo is sealed in one of two modes, which its publisher chooses.
 
-For each epoch $e$ in which a sealed repo $\rho$ is written, its publisher:
+**State sealing.** For each epoch $e$ in which $\rho$ is written, its publisher:
 1. samples a key $k_{\rho,e}$;
 2. encrypts every node of the new state with $\mathsf{SE}.\mathsf{Enc}_{k_{\rho,e}}(\cdot\,; (\rho, e))$, including the records, the internal nodes and the root;
-3. publishes $c_{\rho,e} = \mathsf{WE}.\mathsf{Enc}\big(1^\lambda,\ x_{A,e},\ k_{\rho,e}\big)$, where $x_{A,e} = (\phi_A, A, e, d)$ and $d$ is a recent checkpoint.
+3. publishes $c_{\rho,e} = \mathsf{WE}.\mathsf{Enc}\big(1^\lambda,\ x_{\rho,e},\ k_{\rho,e}\big)$, where $x_{\rho,e} = (\phi_\rho, \rho, e, d)$ and $d$ is a recent checkpoint.
 
-The commit itself stays public: its epoch, parent and root are the fields of the update, which the registry checks and names [WP1, Definition 3.1]. So the epoch that keys a sealed state is fixed by the ordering, within the window of $W$ epochs that the registry allows. A sealed node is named by $N$ of its ciphertext, so the sealed state is still a Merkle DAG.
+The subject is the whole repo, since its keys are themselves sealed.
 
-To read sealed repo $\rho$ at epoch $e$, a reader holding a witness $w$ for $x_{A,e}$ computes $k_{\rho,e} = \mathsf{WE}.\mathsf{Dec}(c_{\rho,e}, w)$. It then reads as in [WP1, §3.3], decrypting each node under associated data $(\rho, e)$. One witness opens every sealed repo of $A$ for that epoch, because they all share the statement $x_{A,e}$.
+**Field sealing.** The state is public, except for the fields of each record that the publisher marks as sealed. For each epoch $e$ in which $\rho$ is written, its publisher samples $k_{\rho,e}$, derives a key $k_{\rho,e,k} = \mathsf{KDF}(k_{\rho,e}, k)$ for each record key $k$, and replaces each sealed value $v$ of field $a$ in record $k$ with $\mathsf{SE}.\mathsf{Enc}_{k_{\rho,e,k}}(v\,; (\rho, e, k, a))$. It publishes $c_{\rho,e}$ as above, and may also publish $c_{\rho,e,k} = \mathsf{WE}.\mathsf{Enc}(1^\lambda, x_{(\rho,k),e}, k_{\rho,e,k})$ for each record, so that one record can be read without the rest. $k_{\rho,e,k}$ reveals nothing of $k_{\rho,e}$, or of any other record's key, if $\mathsf{KDF}$ is a PRF.
+
+Field sealing is what lets data be found without being read. The public fields of a record, such as a title, tags, a thumbnail or a preview, are the publisher's chosen leakage: any reader, indexer or app may read them, and build public views of them (§2.3), while the sealed fields, such as the full image, open only under the condition.
+
+The commit itself stays public: its epoch, parent and root are the fields of the update, which the registry checks and names [WP1, Definition 3.1]. So the epoch that keys a sealed state is fixed by the ordering, within the window of $W$ epochs that the registry allows. A sealed node or value is named by $N$ of its ciphertext, so the sealed state is still a Merkle DAG.
+
+To read subject $\sigma$ at epoch $e$, a reader holding a witness $w$ for $x_{\sigma,e}$ computes its key with $\mathsf{WE}.\mathsf{Dec}$, then reads as in [WP1, §3.3], decrypting under the same associated data. A witness for a repo opens every record of that repo for the epoch, and nothing of any other repo.
 
 **Leakage.** A sealed commit reveals:
 - $\rho$, its position, its epoch and its parent, and the clock value of its update, which the update log records [WP1, §3.2];
-- the number and sizes of the nodes it adds;
-- which of those nodes equal nodes already present in the same epoch.
+- the number and sizes of the nodes it adds, or under field sealing, of the sealed values;
+- which of those nodes, or values, equal ones already present in the same epoch;
+- under field sealing, the whole state except its sealed values: every key, every type, and every public field.
 
-We write $\mathsf{Leak}(M)$ for this information about a state $M$. It does not include keys, types or payloads.
+We write $\mathsf{Leak}(M)$ for this information about a state $M$. Under state sealing, it does not include keys, types or payloads.
 
 **Revocation.** Access is granted per epoch: a member not enrolled for a later epoch holds no witness for it. The publisher chooses $e$ within the window [WP1, §3.2], so a state published up to $W$ epochs after the audience changes can still be sealed for the earlier audience. Revocation therefore takes effect after $W$ epochs. An update that lands too late is invalid, and its publisher seals the state again under the current epoch. Keys already obtained, and states already read, stay with their holders.
 
 ### 2.3 Sealed views
 
-A lens over a sealed repo can be computed only by readers who hold its key, and its view is derived from sealed records. **[requirement; no proof that it suffices]** A view committed as a repo must be sealed so that every party able to read the view is able to read the input. Otherwise the view publishes what the seal protects. What a view leaks to parties who can read neither is not analysed here. Lenses over the public part of a sealed repo are open to everyone. That public part is its directory entries, its log entries, and $\mathsf{Leak}$.
+A lens over what is sealed can be computed only by readers who hold its key, and its view is derived from sealed values. **[requirement; no proof that it suffices]** A view committed as a repo must be sealed so that every party able to read the view is able to read the input. Otherwise the view publishes what the seal protects. What a view leaks to parties who can read neither is not analysed here. Lenses over the public part of a sealed repo are open to everyone. That public part is its directory entries, its log entries, and $\mathsf{Leak}$, which under field sealing includes every public field.
 
-The same rule covers the views of [WP1, §3.4] that reveal content, such as embeddings, and search indexes [WP1, §3.5]: an embedding view or a search index over sealed records is a sealed view. A public search index should be built over public records only.
+The same rule covers the views of [WP1, §3.4] that reveal content, such as embeddings, and search indexes [WP1, §3.5]: an embedding view or a search index over sealed records is a sealed view. A public search index should be built over public values only. Under field sealing, those include the public fields of sealed repos, so a public index can hold every record of a sealed repo, keyed and embedded by what its publisher chose to show, and point to sealed values that it cannot open. This is how an app curates data it has not bought.
+
+An app may want a view of sealed values, such as an embedding of a full image under its own model, without buying every record. That requires releasing $f(v)$ for a named lens $f$ rather than $v$, which a key-release scheme that runs code could do (§4.3, item 2), under a condition that names the lenses the publisher allows. It is not constructed here (§5).
+
+### 2.4 Referral
+
+Under a payment condition, the payment is made to a program on the ordering, which pays the publisher. A publisher that wants its data curated sets, with its price $p$, a **curator share** $s \in [0, 1]$ in its terms. A payment carries the terms, and may name a **referrer** $r$, an app's repo [WP1, §2]. The program then pays $s \cdot p$ to the publisher of $r$, its curator, and $(1 - s) \cdot p$ to the publisher of the subject, unless no referrer is named, or the publisher **denies** $r$, in which case it pays all of $p$ to the publisher. The program keeps, for each publisher, the curators it denies, which only that publisher may change. A denial is the publisher's recourse against an app it does not want to be associated with: it cannot stop the app from citing public data, any more than a web page can stop a link [WP1, §2], but it stops the app from earning from it, and an honest frontend may also decline to show an app that a publisher denies.
+
+The referrer is not part of the statement $x_{\sigma,e}$, and a witness opens the same key whoever referred the payment. Referral changes who is paid, never who may read.
+
+What this gives each party:
+- **A publisher** sets $p$ and $s$ once, and is paid on every sale, by whatever app made it.
+- **An app** is paid for every sale it refers, without buying, holding or reading what it presents. It competes with other apps that present the same data on how well it leads readers to it, since the share is the same for all of them.
+- **A reader** pays $p$, whichever app it came through.
+
+**[no proof] Self-referral.** A reader may publish an app of its own and name it as the referrer of its own payments, and so pay $(1 - s) \cdot p$. Nothing in the program can tell this from a genuine referral. The publisher's effective price is therefore $(1 - s) \cdot p$, and it should set $p$ and $s$ knowing so. A denial, or a share of zero, removes the incentive.
+
+**Leakage of a referral.** A payment names its subject and its referrer on the ordering. Made under a commitment and through a relayer (§3.2), it does not name the reader, but it reveals that some reader, referred by $r$, paid for $\sigma$. For a record subject, that is which record was bought.
 
 ## 3. Security
 
 ### 3.1 Confidentiality
 
-The following game fixes a sealed repo $\rho$ of app $A$, and an epoch $e$.
+The following game fixes a sealed repo $\rho$, a subject $\sigma$ of it, and an epoch $e$. For a record subject, the challenger gives $\mathcal{A}$ every other record's key as well, which by the PRF property of $\mathsf{KDF}$ costs at most $\mathbf{Adv}^{\mathsf{prf}}_{\mathsf{KDF}}$ more below.
 
 $$
 \begin{array}{rl}
@@ -208,7 +237,7 @@ $$
 & \textbf{Experiment } \mathsf{Conf}^{b}_{\mathcal{A}}(\rho, e) \\
 \hline
 1: & \mathcal{A} \text{ chooses two states } M_0, M_1 \text{ with } \mathsf{Leak}(M_0) = \mathsf{Leak}(M_1) \\
-2: & \text{the challenger seals } M_b \text{ as } \rho\text{'s state in epoch } e\text{, and gives } \mathcal{A} \text{ every public value: } \mathcal{O}\text{, } c_{\rho,e}\text{, and every sealed node} \\
+2: & \text{the challenger seals } M_b \text{ as } \rho\text{'s state in epoch } e\text{, and gives } \mathcal{A} \text{ every public value: } \mathcal{O}\text{, } c_{\sigma,e}\text{, and every sealed node or value} \\
 3: & \mathcal{A} \text{ outputs } b' \\
 \hline
 \end{array}
@@ -220,13 +249,13 @@ $$
 \big|\Pr[\mathsf{Conf}^0_{\mathcal{A}} = 1] - \Pr[\mathsf{Conf}^1_{\mathcal{A}} = 1]\big| \ge 1/p(\lambda) + \mathbf{Adv}^{\mathsf{dae}}_{\mathsf{SE}}
 $$
 
-then an efficient extractor, given what $\mathcal{A}$ was given, outputs a witness for $x_{A,e}$ with non-negligible probability.
+then an efficient extractor, given what $\mathcal{A}$ was given, outputs a witness for $x_{\sigma,e}$ with non-negligible probability.
 
 In words, anyone who learns anything about a sealed state beyond its leakage could have satisfied the condition.
 
-*Proof.* Consider a hybrid in which $c_{\rho,e}$ encrypts an independent random key instead of $k_{\rho,e}$. In the hybrid, $k_{\rho,e}$ appears only as the key of $\mathsf{SE}$. By DAE security, the sealed nodes of $M_0$ and of $M_1$ are each indistinguishable from random strings of the sizes and repetition pattern that $\mathsf{Leak}$ gives, and these are equal by assumption. So in the hybrid, $\mathcal{A}$'s advantage is at most $\mathbf{Adv}^{\mathsf{dae}}_{\mathsf{SE}}$.
+*Proof.* Consider a hybrid in which $c_{\sigma,e}$ encrypts an independent random key instead of $k_\sigma$, the subject's key, $k_{\rho,e}$ or $k_{\rho,e,k}$. In the hybrid, $k_\sigma$ appears only as the key of $\mathsf{SE}$. By DAE security, the sealed nodes of $M_0$ and of $M_1$ are each indistinguishable from random strings of the sizes and repetition pattern that $\mathsf{Leak}$ gives, and these are equal by assumption. So in the hybrid, $\mathcal{A}$'s advantage is at most $\mathbf{Adv}^{\mathsf{dae}}_{\mathsf{SE}}$.
 
-Therefore, if $\mathcal{A}$'s advantage in the real game is at least $1/p(\lambda) + \mathbf{Adv}^{\mathsf{dae}}_{\mathsf{SE}}$, then $\mathcal{A}$, with the rest of its view as auxiliary input, distinguishes $\mathsf{WE}.\mathsf{Enc}(x_{A,e}, k_{\rho,e})$ from $\mathsf{WE}.\mathsf{Enc}(x_{A,e}, k')$ with advantage at least $1/p(\lambda)$. By extractable security, the extractor outputs a witness for $x_{A,e}$. $\square$
+Therefore, if $\mathcal{A}$'s advantage in the real game is at least $1/p(\lambda) + \mathbf{Adv}^{\mathsf{dae}}_{\mathsf{SE}}$, then $\mathcal{A}$, with the rest of its view as auxiliary input, distinguishes $\mathsf{WE}.\mathsf{Enc}(x_{\sigma,e}, k_\sigma)$ from $\mathsf{WE}.\mathsf{Enc}(x_{\sigma,e}, k')$ with advantage at least $1/p(\lambda)$. By extractable security, the extractor outputs a witness for $x_{\sigma,e}$. $\square$
 
 What counts as "could have satisfied the condition" depends on the condition. For payment, anyone who can extend the ordering with a payment can satisfy it, which is the intent: anyone who pays may read. For membership, only those who can produce an enrollment can.
 
@@ -238,7 +267,7 @@ With a signed clock, the time condition can also be met directly: the honest sig
 
 ### 3.2 Reader privacy
 
-**Theorem 2 (Reader privacy) [proof].** Decrypting a sealed repo is a local computation on public values. For any two readers that hold witnesses for $x_{A,e}$, the views of all other parties are identical whether either, both or neither of them decrypts.
+**Theorem 2 (Reader privacy) [proof].** Decrypting a sealed subject is a local computation on public values. For any two readers that hold witnesses for $x_{\sigma,e}$, the views of all other parties are identical whether either, both or neither of them decrypts.
 
 *Proof.* $\mathsf{WE}.\mathsf{Dec}$ and $\mathsf{SE}.\mathsf{Dec}$ take only the reader's witness and public values, and send nothing. Fetching nodes by name from public hosts is the same for every reader of the repo. $\square$
 
@@ -250,13 +279,13 @@ Reading leaves no trace in the general model. Whatever a reader reveals, it reve
 
 ## 4. Practical witness encryption
 
-**The chain as a clock.** A proof-of-work chain is a computational reference clock [LJKW18, §5]: a valid chain of headers that meets a bound on targets is evidence that the corresponding time has passed. The chain of [WP1, §5], taken here to be an EVM rollup, is a **signed** clock (Definition 1.3), not a computational one. Its acceptance rule is the finality of the chain it settles on, together with the rollup's own mechanism for proving or disputing its state, and $\delta$ includes that chain's finality delay, which for a light reader that does not trust the proposer is the rollup's settlement time [WP1, §5]. A light reader can verify it succinctly. A validity proof of the rollup's state against the chain it settles on, together with a proof of that chain's attestations, makes it a succinct clock over a signed one (Definition 1.4). How to build that proof is out of scope (§7).
+**The chain as a clock.** A proof-of-work chain is a computational reference clock [LJKW18, §5]: a valid chain of headers that meets a bound on targets is evidence that the corresponding time has passed. The chain of [WP1, §5], taken here to be an EVM rollup, is a **signed** clock (Definition 1.3), not a computational one. Its acceptance rule is the finality of the chain it settles on, together with the rollup's own mechanism for proving or disputing its state, and $\delta$ includes that chain's finality delay, which for a light reader that does not trust the proposer is the rollup's settlement time [WP1, §5]. A light reader can verify it succinctly. A validity proof of the rollup's state against the chain it settles on, together with a proof of that chain's attestations, makes it a succinct clock over a signed one (Definition 1.4). How to build that proof is out of scope (§5).
 
 ### 4.1 The ideal and the gap
 
 Practical witness encryption for the relations of §2.1 does not exist. We replace it with an ideal functionality, and realize that functionality with two components.
 
-**Definition 4.1 (Release functionality).** $\mathcal{F}_{\mathsf{rel}}$ holds the keys $k_{\rho,e}$ that publishers deposit. On input a witness $w$ for $x_{A,e}$, it returns $k_{\rho,e}$ for every sealed repo $\rho$ of $A$ in epoch $e$. It reveals nothing else.
+**Definition 4.1 (Release functionality).** $\mathcal{F}_{\mathsf{rel}}$ holds the keys $k_{\rho,e}$ that publishers deposit. On input a witness $w$ for $x_{\sigma,e}$, it returns $k_{\rho,e}$ if $\sigma = \rho$, and $k_{\rho,e,k}$ if $\sigma = (\rho, k)$. It reveals nothing else.
 
 A system that realizes $\mathcal{F}_{\mathsf{rel}}$ satisfies Theorem 1, with "an extractor outputs a witness" replaced by "the functionality was given a witness". The question is who is trusted to realize it.
 
@@ -264,31 +293,31 @@ A system that realizes $\mathcal{F}_{\mathsf{rel}}$ satisfies Theorem 1, with "a
 
 The construction has two components.
 
-**Zero-knowledge proofs of knowledge.** A proof system $\Pi$ for $R_{\phi_A}$ that is zero-knowledge and simulation-extractable (Definition 1.2). Each proof is bound to a message that the verifier computes itself.
+**Zero-knowledge proofs of knowledge.** A proof system $\Pi$ for each $R_{\phi_\rho}$ that is zero-knowledge and simulation-extractable (Definition 1.2). Each proof is bound to a message that the verifier computes itself.
 
 **A key-release scheme.** A party, or set of parties, that holds the deposited keys and releases them according to the chain.
 
 The construction runs in three steps.
 1. **Seal.** The publisher encrypts the state under $k_{\rho,e}$ as in §2.2, and deposits $k_{\rho,e}$ with the release scheme, in place of publishing $c_{\rho,e}$.
-2. **Prove.** A reader with witness $w$ for $x_{A,e}$:
+2. **Prove.** A reader with witness $w$ for $x_{\sigma,e}$:
    - generates a fresh key pair $(\mathit{sk}', \mathit{pk}')$;
-   - computes a pseudonym $\nu = \mathsf{PRF}(\mathit{sk}, (A, e))$ from the secret in its witness;
-   - posts $(x_{A,e}, \mathit{pk}', \nu, \pi)$ to the chain, through a relayer, where $\pi$ proves knowledge of $w$ with $R_{\phi_A}(x_{A,e}, w) = 1$ and that $\nu$ is computed correctly.
+   - computes a pseudonym $\nu = \mathsf{PRF}(\mathit{sk}, (\sigma, e))$ from the secret in its witness;
+   - posts $(x_{\sigma,e}, \mathit{pk}', \nu, \pi)$ to the chain, through a relayer, where $\pi$ proves knowledge of $w$ with $R_{\phi_\rho}(x_{\sigma,e}, w) = 1$ and that $\nu$ is computed correctly.
 
-   The proof is bound to the message $(A, e, \mathit{pk}')$. The chain verifies $\pi$, rejects a pseudonym it has already seen, and records a **grant** $(A, e, \mathit{pk}')$.
-3. **Release.** On a grant, the release scheme publishes $k_{\rho,e}$ encrypted to $\mathit{pk}'$, for every sealed repo $\rho$ of $A$.
+   The proof is bound to the message $(\sigma, e, \mathit{pk}')$. The chain verifies $\pi$, rejects a pseudonym it has already seen, and records a **grant** $(\sigma, e, \mathit{pk}')$.
+3. **Release.** On a grant, the release scheme publishes the subject's key encrypted to $\mathit{pk}'$: $k_{\rho,e}$ for a repo, or $k_{\rho,e,k}$ for a record, which it derives from the deposited $k_{\rho,e}$.
 
 **Theorem 3 (The construction realizes $\mathcal{F}_{\mathsf{rel}}$) [proof sketch].** If $\Pi$ is simulation-extractable and zero-knowledge, the chain satisfies [WP1, Assumption O], and the release scheme releases keys exactly on grants, then the construction realizes $\mathcal{F}_{\mathsf{rel}}$. Moreover:
 1. each key reaches only the holder of $\mathit{sk}'$ for a recorded grant;
-2. each grant comes with an extractable witness for $x_{A,e}$;
+2. each grant comes with an extractable witness for $x_{\sigma,e}$;
 3. the public values of a grant reveal nothing about which witness was used, beyond the condition's anonymity set;
-4. a witness yields one grant per $(A, e)$.
+4. a witness yields one grant per $(\sigma, e)$.
 
 *Sketch.*
 1. Release happens only on a grant, and only to $\mathit{pk}'$.
 2. A grant is recorded only for a valid proof whose message the chain fixes. A proof not produced by an honest reader is a proof for a new (statement, message) pair, and simulation extractability yields a witness. Because the message includes $\mathit{pk}'$, a copied proof grants a key the copier does not hold.
 3. By zero knowledge, $\pi$ can be simulated from the statement alone, and $\nu$ is a pseudorandom value for a fresh scope.
-4. The pseudonym is a function of the witness's secret and $(A, e)$, it is part of the proven statement, and the chain accepts each pseudonym once.
+4. The pseudonym is a function of the witness's secret and $(\sigma, e)$, it is part of the proven statement, and the chain accepts each pseudonym once.
 
 $\square$
 
@@ -296,6 +325,10 @@ $\square$
 
 The construction leaves one component open: who holds the keys. The schemes below differ in who can read every key, and who must be online.
 
+0. **The publisher's own custodian.** Each publisher runs, or has provisioned for it, a custodian that holds only its own keys, and releases them on grants.
+   - **Trust:** it can read only what its publisher could already read. A reader trusts it to release on a grant, which is visible if it does not.
+   - **Liveness:** the publisher's custodian must be online, for that publisher's data only.
+   - The code is that of item 1, so a publisher can later move its keys to item 2 or 3 without resealing anything that has not yet been granted.
 1. **A single custodian.** One party holds every key, and releases on grants.
    - **Trust:** it can read every sealed repo, and could release without a grant, undetected.
    - **Liveness:** it must be online.
@@ -303,16 +336,18 @@ The construction leaves one component open: who holds the keys. The schemes belo
 2. **A trusted execution environment.** The custodian runs inside an enclave whose attested code releases only on grants it has verified against the chain itself.
    - **Trust:** nobody reads the keys unless the enclave is broken. Physical attacks on current hardware are known [TEEF25].
    - **Liveness:** the enclave must be online.
-3. **A threshold committee.** Keys are encrypted to the tag $(A, e)$ under signature-based witness encryption [MCF24, SWE24], with a committee set up without a dealer [GKPW24, WW26]. Members sign the tag when the chain shows a grant, and $t$ signatures decrypt.
+3. **A threshold committee.** Keys are encrypted to the tag $(\sigma, e)$ under signature-based witness encryption [MCF24, SWE24], with a committee set up without a dealer [GKPW24, WW26]. Members sign the tag when the chain shows a grant, and $t$ signatures decrypt.
    - **Trust:** no coalition below the threshold can read a key.
    - **Liveness:** any $t$ of the $n$ members suffice.
 
    This is the closest to the general model. The committee replaces the extractor of Definition 1.8 with an honest-threshold assumption, and nobody holds the keys.
 4. **Time alone.** For the time condition, a committee signs each tag when the chain's clock reaches its value. No proof from the reader is needed.
 
-**Exclusions and keys.** An exclusion names a publisher, a repo, or one key of a repo [WP1, Definition 3.1]. Over a sealed repo it hides what it covers from the presented state, as over a public one. While a publisher or a repo is excluded, a single custodian or an enclave can also stop releasing the keys of its repos, and release them again on a restore. A key exclusion cannot be enforced this way, because $k_{\rho,e}$ opens the whole repo for the epoch. Keys already released stay with their holders. The registry names an excluded key by its hash [WP1, §5], so excluding a record of a sealed repo reveals the hash of its key, which hides only a key that cannot be guessed. The threshold scheme, as described in item 3, cannot withhold keys for one repo. One signature on the tag $(A, e)$ opens every sealed repo of $A$ for epoch $e$, and the ciphertexts are public. Withholding a single repo would need a tag per repo, at the cost of one more signature per repo per grant.
+**Curation and keys.** An app that stops citing a sealed record [WP1, §2] stops presenting it, but does not change who may read it: the condition is the subject's, not the app's, and a reader that finds the record elsewhere can still meet it. Withholding keys is a matter for the operator of a release scheme (below).
 
-In all four, a reader who receives a key can share it, exactly as a reader who decrypts under true witness encryption can share the plaintext.
+**Operators.** A custodian or an enclave may refuse to release keys for a subject, on a policy of its own, for example on a lawful notice, and release them again later. Grants are public, so a refusal is visible. Since subjects are repos or records, it can refuse exactly one record, under field sealing, or one repo. Keys already released stay with their holders. A threshold committee refuses only if a threshold of its members do. A publisher that does not accept an operator's policy deposits its keys with another.
+
+In all of them, a reader who receives a key can share it, exactly as a reader who decrypts under true witness encryption can share the plaintext.
 
 ## 5. Scope
 
@@ -325,13 +360,18 @@ In all four, a reader who receives a key can share it, exactly as a reader who d
 - **Lemma 1.5.** It holds given knowledge soundness in the concrete form. For proofs built by recursion over many steps, that is a hypothesis (§1.2).
 - **Definition 1.2.** Zero knowledge and simulation extractability are stated informally.
 - **The rule for sealed views (§2.3).** It is a requirement, with no analysis of what a view leaks.
+- **Referral (§2.4).** That a curator share pays for curation is argued, not proven, and self-referral lowers the effective price to $(1 - s) \cdot p$.
+- **Field sealing (§2.2).** What a record's public fields reveal about its sealed ones is the publisher's choice, and is not analysed. A thumbnail is a copy of an image at low resolution, and an embedding can be partly inverted.
 - **Clock skew (§3.1).** With the chain's timestamps as the clock [WP1, §5], a proposer can set them ahead within their skew bound, and so meet a time condition early by up to that bound. The bound is assumed. A deployment that cannot accept it can state time conditions in block heights.
 
 This document omits the following, each of which builds on it:
 - how to build a succinct clock for the chain of [WP1, §5];
 - the construction of anonymous payment;
+- how the revenue of a bundle (§2.1) is shared among the publishers in it, for example in proportion to the number of members each epoch;
+- releasing a function of sealed values rather than a key, so that an app can index what it has not bought (§2.3);
+- the policies of operators (§4.3), and their legal obligations;
 - cumulative access to earlier epochs through key regression [FKK06];
-- exclusions in sealed repos: whether a key exclusion names the plaintext key, so that a moderator must be able to decrypt it, and how point reads and the fraud proofs of [WP1, §3.5] apply to sealed slices;
+- how point reads and the fraud proofs of [WP1, Appendix C] apply to sealed slices;
 - where the grant and enrollment programs live relative to the registry, beyond naming $\iota$;
 - the cost of committing again under a new epoch, after a late update [WP1, §3.2], which re-encrypts every node of the state under the new key.
 

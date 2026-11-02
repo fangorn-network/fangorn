@@ -15,8 +15,9 @@ export function aesGcmEncrypt(
 	key: Uint8Array,
 	plaintext: Uint8Array,
 	nonce: Uint8Array,
+	aad?: Uint8Array,
 ): Uint8Array {
-	return gcm(key, nonce).encrypt(plaintext);
+	return gcm(key, nonce, aad).encrypt(plaintext);
 }
 
 /**
@@ -27,6 +28,7 @@ export function aesGcmDecrypt(
 	key: Uint8Array,
 	sealed: Uint8Array,
 	nonce: Uint8Array,
+	aad?: Uint8Array,
 ): Uint8Array {
-	return gcm(key, nonce).decrypt(sealed);
+	return gcm(key, nonce, aad).decrypt(sealed);
 }

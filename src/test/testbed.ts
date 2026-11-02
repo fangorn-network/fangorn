@@ -17,7 +17,7 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { foundry } from "viem/chains";
 import { Fangorn } from "../fangorn.js";
 import { type AppConfig, FangornConfig } from "../config.js";
-import { APP_REGISTRY_ABI, DATA_REGISTRY_ABI } from "../contracts/index.js";
+import { APP_REGISTRY_ABI, DATA_REGISTRY_ABI, SETTLEMENT_REGISTRY_ABI } from "../contracts/index.js";
 import { MemStorage } from "../engine/test-helpers.js";
 import { PinataBackend } from "../providers/storage/pinata.js";
 import type { MetadataStorage } from "../providers/storage/types.js";
@@ -31,19 +31,12 @@ export { MemLedger, MemRegistry } from "./mem-registry.js";
 //   • chainNetwork  — the contracts, built from source and deployed to a fresh
 //     anvil, with storage in memory, or on Pinata when E2E_STORAGE=pinata.
 
-/** The app every client is accepted into unless told otherwise. */
-export const TEST_APP = "test-app";
-
 /** What a suite needs of a network: clients on one ordering and one storage. */
 export interface Network {
 	name: string;
 	storage: MetadataStorage;
-	/**
-	 * A client for a fresh wallet (or `sk`) under `app`, or under no app for
-	 * `null`. On chain it is a joined member of the app: the first client of an
-	 * app claims it, and the claimer accepts each later one.
-	 */
-	client(app?: string | null, sk?: Hex): Promise<Fangorn>;
+	/** A client for a fresh wallet, or for `sk`. */
+	client(sk?: Hex): Promise<Fangorn>;
 	/** The ordering's clock (a block number on chain). */
 	clock(): Promise<bigint>;
 	stop(): void;
@@ -56,19 +49,14 @@ export function memoryNetwork(Registry: typeof MemRegistry = MemRegistry) {
 		name: "memory",
 		ledger,
 		storage,
-		/** As on chain, a client under an app is one of its members. */
-		client(app: string | null = TEST_APP, sk: Hex = generatePrivateKey(), R = Registry): Promise<Fangorn> {
-			const f = Fangorn.create({
+		client(sk: Hex = generatePrivateKey(), R = Registry): Promise<Fangorn> {
+			return Promise.resolve(Fangorn.create({
 				privateKey: sk,
-				appId: app ?? undefined,
 				// The ledger is this deployment, and it starts at 0.
 				config: { ...FangornConfig, appRegistryFromBlock: 0n },
 				storage: { backend: storage },
 				registry: new R(privateKeyToAccount(sk).address, ledger),
-			});
-			const id = f.getAppId();
-			if (id) ledger.members.add(`${id}/${f.getAddress().toLowerCase()}`);
-			return Promise.resolve(f);
+			}));
 		},
 		clock: () => Promise.resolve(ledger.t),
 		stop: () => undefined,
@@ -88,8 +76,6 @@ export const skipChain = !(has("anvil") && has("forge") && existsSync(CONTRACTS)
 
 /** anvil's first prefunded account: the deployer, and the protocol admin. */
 const ADMIN_KEY: Hex = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
-/** No contract: fees are zero, so the token is never called. */
-const NO_TOKEN: Address = "0x000000000000000000000000000000000000dEaD";
 
 async function startAnvil(chainId: number): Promise<{ rpcUrl: string; anvil: ChildProcess }> {
 	const anvil = spawn("anvil", ["--port", "0", "--chain-id", String(chainId)], {
@@ -110,8 +96,9 @@ async function startAnvil(chainId: number): Promise<{ rpcUrl: string; anvil: Chi
 	return { rpcUrl, anvil };
 }
 
-function artifact(name: string): { abi: Abi; bytecode: Hex } {
-	const json = JSON.parse(readFileSync(`${CONTRACTS}/out/${name}.sol/${name}.json`, "utf-8")) as {
+/** `file`: the .sol it is in, when that isn't `name`.sol. */
+function artifact(name: string, file = name): { abi: Abi; bytecode: Hex } {
+	const json = JSON.parse(readFileSync(`${CONTRACTS}/out/${file}.sol/${name}.json`, "utf-8")) as {
 		abi: Abi;
 		bytecode: { object: Hex };
 	};
@@ -128,7 +115,7 @@ function e2eStorage(): MetadataStorage {
 
 /**
  * A fresh anvil with the contracts deployed from source, each behind its
- * ERC-1967 proxy as Deploy.s.sol does, and wired to each other. Fees are zero.
+ * ERC-1967 proxy as Deploy.s.sol does, and wired to each other.
  * Call `stop` from `afterAll`.
  */
 export async function chainNetwork() {
@@ -144,8 +131,8 @@ export async function chainNetwork() {
 		.extend(walletActions);
 	const admin = privateKeyToAccount(ADMIN_KEY);
 
-	const deploy = async (name: string, args: unknown[]): Promise<Address> => {
-		const { abi, bytecode } = artifact(name);
+	const deploy = async (name: string, args: unknown[], file?: string): Promise<Address> => {
+		const { abi, bytecode } = artifact(name, file);
 		const hash = await chain.deployContract({ account: admin, abi, bytecode, args });
 		const { contractAddress } = await chain.waitForTransactionReceipt({ hash });
 		if (!contractAddress) throw new Error(`${name} did not deploy`);
@@ -158,7 +145,7 @@ export async function chainNetwork() {
 		encodeFunctionData({
 			abi: APP_REGISTRY_ABI,
 			functionName: "initialize",
-			args: [admin.address, NO_TOKEN, 0n, 30n * 24n * 3600n],
+			args: [admin.address],
 		}),
 	);
 	const data = await proxied(
@@ -175,11 +162,24 @@ export async function chainNetwork() {
 		}),
 	});
 
+	// Payments and proofs are mocked (contracts repo, test/Mocks.sol): USDC
+	// doesn't check signatures and Semaphore accepts any proof.
+	const usdc = await deploy("MockUSDC", [], "Mocks");
+	const settlement = await proxied(
+		"SettlementRegistry",
+		encodeFunctionData({
+			abi: SETTLEMENT_REGISTRY_ABI,
+			functionName: "initialize",
+			args: [admin.address, usdc, await deploy("MockSemaphore", [], "Mocks")],
+		}),
+	);
+
 	const config: AppConfig = {
 		...FangornConfig,
 		rpcUrl,
 		appRegistryContractAddress: apps,
 		dataRegistryContractAddress: data,
+		settlementRegistryContractAddress: settlement,
 		appRegistryFromBlock: 0n,
 	};
 	const storage = e2eStorage();
@@ -189,34 +189,22 @@ export async function chainNetwork() {
 		await chain.setBalance({ address: privateKeyToAccount(sk).address, value: parseEther("1") });
 		return sk;
 	};
-	/** A client and nothing more: no app claimed or accepted into. */
+	/** A client with gas, managing `app` if given. */
 	const raw = async (app?: string, sk?: Hex) =>
 		Fangorn.create({ privateKey: await wallet(sk), config, appId: app, storage: { backend: storage } });
 
-	const owners = new Map<string, Fangorn>();
 	return {
 		name: "chain",
 		storage,
 		config,
 		chain,
+		/** MockUSDC: `balanceOf` is what each address has been paid. */
+		usdc,
 		/** The protocol admin's key. */
 		adminKey: ADMIN_KEY,
 		wallet,
 		raw,
-		/** The client that claimed `app` through `client`. */
-		owner: (app = TEST_APP) => owners.get(app),
-		async client(app: string | null = TEST_APP, sk?: Hex): Promise<Fangorn> {
-			const f = await raw(app ?? undefined, sk);
-			if (app === null) return f;
-			const owner = owners.get(app);
-			if (!owner) {
-				await f.getAppRegistry().registerApp();
-				owners.set(app, f);
-			} else {
-				await owner.getAppRegistry().acceptPublisher(f.getAddress());
-			}
-			return f;
-		},
+		client: (sk?: Hex) => raw(undefined, sk),
 		clock: () => chain.getBlockNumber({ cacheTime: 0 }),
 		stop: () => anvil.kill(),
 	} satisfies Network & Record<string, unknown>;

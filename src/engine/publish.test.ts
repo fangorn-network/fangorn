@@ -68,7 +68,6 @@ describe("publish scalability & cost", () => {
 			repo: NS,
 			base: null,
 			records,
-			message: "one",
 		});
 
 		const contents = await engine.repoDiff(null, rootHex(commitCid));
@@ -88,7 +87,6 @@ describe("publish scalability & cost", () => {
 			repo: NS,
 			base: null,
 			records: robinhoodRecords(480), // the observed real ingest cycle size
-			message: "cycle",
 		});
 		expect(storage.writes).toBe(2);
 	}, 120_000);
@@ -104,7 +102,6 @@ describe("publish scalability & cost", () => {
 			repo: NS,
 			base: null,
 			records: robinhoodRecords(2000),
-			message: "cycle 1",
 		});
 		const firstCarSize = [...storage.files.values()][0].length;
 
@@ -113,7 +110,6 @@ describe("publish scalability & cost", () => {
 			repo: NS,
 			base: c1,
 			records: robinhoodRecords(2001),
-			message: "cycle 2",
 		});
 		expect(storage.writes).toBe(4); // still 2 per commit
 		const secondCarSize = [...storage.files.values()][1].length;
@@ -131,7 +127,6 @@ describe("publish scalability & cost", () => {
 			repo: NS,
 			base: null,
 			records: robinhoodRecords(100),
-			message: "publish",
 		});
 		await engine.pushCommit(PUBLISHER, NS, c1);
 
@@ -141,7 +136,6 @@ describe("publish scalability & cost", () => {
 			repo: NS,
 			base: c1,
 			records: r2,
-			message: "delta",
 		});
 		await engine.pushCommit(PUBLISHER, NS, c2);
 
@@ -160,7 +154,6 @@ describe("publish scalability & cost", () => {
 			repo: NS,
 			base: null,
 			records,
-			message: "full",
 		});
 
 		// keep everything except transfer 0 and its 3 relation records
@@ -170,7 +163,6 @@ describe("publish scalability & cost", () => {
 			repo: NS,
 			base: c1,
 			records: kept,
-			message: "prune",
 			replace: true,
 		});
 		expect(storage.writes - writesBefore).toBe(2);
@@ -197,7 +189,6 @@ describe("publish scalability & cost", () => {
 				repo,
 				base,
 				records: [{ id: "0", type: "rec", payload: { i } }],
-				message: `commit ${i.toString()}`,
 			});
 
 		// Both are root commits (base: null) — neither knows about the other.
@@ -226,7 +217,6 @@ describe("publish scalability & cost", () => {
 				repo: ns,
 				base: null,
 				records: [],
-				message: "x",
 			}),
 		).rejects.toThrow(/maximum length/i);
 	});
@@ -243,7 +233,6 @@ describe("publish scalability & cost", () => {
 				{ id: "0", type: "rec", payload: { i: 0 } },
 				{ id: "1", type: "rec", payload: { i: 1 } },
 			],
-			message: "x",
 		});
 		const diff = await e2.repoDiff(null, rootHex(commitCid));
 		expect(diff.puts).toHaveLength(2);

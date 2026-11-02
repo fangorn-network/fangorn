@@ -8,12 +8,9 @@ export interface FangornContext {
     walletClient: WalletClient;
     publicClient: PublicClient;
     metadataStorage: MetadataStorage | undefined;
-    /** Heads, membership, exclusions and logs (WHITEPAPER_1 §3.2). */
+    /** Heads and the update log (WHITEPAPER_1 §3.2). */
     registry: Registry;
-    /**
-     * The app this client reads and publishes under (the paper's context). Unset,
-     * reads are each publisher's latest head, and hosted uploads are refused.
-     */
+    /** The app this client manages, if any. */
     appId: Hex | undefined;
 }
 
@@ -21,10 +18,8 @@ export type StorageConfig =
     // Bring your own Pinata JWT + gateway.
     | { pinata: { jwt: string; gateway: string } }
     // No JWT: prove wallet ownership to the presigned-URL worker and upload via
-    // the short-lived URLs it issues; read from a public IPFS gateway. Apps
-    // provide storage: uploads are billed to the client's app, which must admit
-    // this wallet, and a client with no app cannot upload this way. A publisher
-    // that pays for its own storage claims a one-member app.
+    // the short-lived URLs it issues; read from a public IPFS gateway. Uploads
+    // count against the signing publisher's storage quota.
     // `workerUrl` defaults to the network's hosted worker (config.signedUrlWorker),
     // `gateway` to config.ipfsGateway.
     | { signedUrl: { workerUrl?: string; gateway?: string } }
@@ -34,9 +29,8 @@ export type StorageConfig =
 export interface FangornCreateOptions {
     storage?: StorageConfig;
     config?: AppConfig;
-    // The app to read and publish under, by name or 32-byte id. Omit it to read
-    // each publisher's own word and to publish without being presented anywhere.
-    // Switch later with `fangorn.setAppId()`.
+    // The app this client manages, by name or 32-byte id. Switch later with
+    // `fangorn.setAppId()`.
     appId?: string;
     privateKey?: Hex;
     walletClient?: WalletClient;

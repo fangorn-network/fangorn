@@ -6,7 +6,6 @@ import { SignedUrlBackend, DEFAULT_SIGNED_URL_WORKER } from "./signed-url.js";
 
 const WORKER = "https://worker.example/";
 const GATEWAY = "https://gw.example";
-const APP = ("0x" + "ab".repeat(32)) as Hex;
 
 function jsonRes(obj: unknown, status = 200): Promise<Response> {
 	return Promise.resolve(
@@ -63,7 +62,7 @@ describe("SignedUrlBackend", () => {
 		});
 		vi.stubGlobal("fetch", fetchMock);
 
-		const backend = new SignedUrlBackend(WORKER, signer, GATEWAY, () => APP);
+		const backend = new SignedUrlBackend(WORKER, signer, GATEWAY);
 		const cid = await backend.putFile(new Uint8Array([1, 2, 3]), "data.car");
 
 		expect(cid).toBe("bafkreiuploaded");
@@ -72,46 +71,6 @@ describe("SignedUrlBackend", () => {
 		expect(grantBody.signature).toBe("0xdeadbeef");
 		expect(uploadedNetwork).toBe("public");
 		expect(uploadedFile).toBeInstanceOf(File);
-	});
-
-	it("sends the client's current app id on both handshake legs", async () => {
-		const signer = makeSigner();
-		const sent: (Hex | undefined)[] = [];
-		// A getter, so a setAppId between uploads is picked up without rebuilding.
-		let appId = "0xaa" + "bb".repeat(31) as Hex;
-
-		vi.stubGlobal(
-			"fetch",
-			vi.fn((url: string | URL, init?: RequestInit) => {
-				const target = String(url);
-				if (target === WORKER) {
-					const body = JSON.parse(init?.body as string) as {
-						signature?: string;
-						appId?: Hex;
-					};
-					sent.push(body.appId);
-					if (!body.signature) return jsonRes({ challenge: "SIGN ME" });
-					return jsonRes({ ok: true, uploadUrl: "https://upload.example/put", network: "public" });
-				}
-				return jsonRes({ data: { cid: "bafkreiuploaded" } });
-			}),
-		);
-
-		const backend = new SignedUrlBackend(WORKER, signer, GATEWAY, () => appId);
-		await backend.putFile(new Uint8Array([1]), "x");
-		const first = appId;
-		appId = "0xcc" + "dd".repeat(31) as Hex;
-		await backend.putFile(new Uint8Array([1]), "x");
-
-		expect(sent).toEqual([first, first, appId, appId]);
-	});
-
-	it("refuses to upload with no app, before contacting the worker", async () => {
-		const fetch = vi.fn();
-		vi.stubGlobal("fetch", fetch);
-		const backend = new SignedUrlBackend(WORKER, makeSigner(), GATEWAY, () => undefined);
-		await expect(backend.putFile(new Uint8Array([1]), "x")).rejects.toThrow(/billed to an app/);
-		expect(fetch).not.toHaveBeenCalled();
 	});
 
 	it("falls back to the hosted worker when no URL is given", async () => {
@@ -128,7 +87,7 @@ describe("SignedUrlBackend", () => {
 			}),
 		);
 		// Empty string (an unset CLI field) must also use the default.
-		const backend = new SignedUrlBackend("", signer, GATEWAY, () => APP);
+		const backend = new SignedUrlBackend("", signer, GATEWAY);
 		// The upload URL echoes back the worker, so a rejected upload still proves
 		// which worker was hit.
 		await backend.putFile(new Uint8Array([1]), "x").catch(() => undefined);
@@ -152,7 +111,7 @@ describe("SignedUrlBackend", () => {
 				);
 			}),
 		);
-		const backend = new SignedUrlBackend(WORKER, signer, GATEWAY, () => APP);
+		const backend = new SignedUrlBackend(WORKER, signer, GATEWAY);
 		// The detail is the actionable half — it must reach the caller.
 		await expect(backend.putFile(new Uint8Array([1]), "x")).rejects.toThrow(
 			/Failed to create Pinata upload URL\..*invalid JWT/,
@@ -175,7 +134,7 @@ describe("SignedUrlBackend", () => {
 			}),
 		);
 
-		const backend = new SignedUrlBackend(WORKER, signer, GATEWAY, () => APP);
+		const backend = new SignedUrlBackend(WORKER, signer, GATEWAY);
 		const out = await backend.getRawBlock(dagCbor.toString());
 
 		expect(fetched).toBe(`${GATEWAY}/ipfs/${raw.toString()}`);

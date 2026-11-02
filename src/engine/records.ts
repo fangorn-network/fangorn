@@ -1,4 +1,5 @@
-import { createHash } from "crypto";
+import { sha256 as sha256Sync } from "@noble/hashes/sha2.js";
+import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 import { CID } from "multiformats/cid";
 import { sha256 } from "multiformats/hashes/sha2";
 import * as dagCbor from "@ipld/dag-cbor";
@@ -13,7 +14,7 @@ import * as dagCbor from "@ipld/dag-cbor";
 //
 //   record   { id, type, payload }                     — one version of an entity
 //   MST node { level, left, entries: [{ key, value, right }] }
-//   commit   { epoch, parent, root, repo, message, car }
+//   commit   { epoch, parent, root, repo, car }
 //
 // Relations are not a separate block kind: a relation is a record whose payload
 // holds `src`/`dst` references (`Ref`). Everything is canonical dag-cbor over
@@ -44,8 +45,7 @@ export function decodeBlock<T>(bytes: Uint8Array): T {
 
 /** Throw unless `bytes` hash to `cid`. Hosts are untrusted; every fetched block goes through this. */
 export function assertBlockMatches(cid: CID, bytes: Uint8Array): void {
-	const digest = createHash("sha256").update(bytes).digest();
-	if (!Buffer.from(cid.multihash.digest).equals(digest)) {
+	if (bytesToHex(cid.multihash.digest) !== bytesToHex(sha256Sync(bytes))) {
 		throw new Error(`block ${cid.toString()} does not match its content hash`);
 	}
 }
@@ -70,12 +70,10 @@ export type Ref = { local: string } | { pinned: string };
  * Commit block: γ = (e, parent, root) of WHITEPAPER_1 §3.1, whose name is the
  * on-chain head. `root` is the repo's MST root.
  *
- * Three more fields, until the registry computes heads from (e, parent, root)
- * itself (docs/REGISTRY_SPEC.md):
+ * Two more fields:
  *   • `repo`: the repo's name, which events carry only as keccak256(name);
- *   • `message`: a commit note;
- *   • `car`: the opaque storage URI of the CAR file holding every block this
- *     commit introduced. The commit block itself is stored OUTSIDE that CAR
+ *   • `car`: the CID of the CAR file holding every block this commit
+ *     introduced. The commit block itself is stored OUTSIDE that CAR
  *     (individually addressable), so a reader goes digest → commit → CAR with
  *     no index lookups.
  */
@@ -84,8 +82,7 @@ export interface CommitBlock {
 	parent: CID | null;
 	root: CID;
 	repo: string;
-	message: string;
-	car: string;
+	car: CID;
 }
 
 // ── Record ids ───────────────────────────────────────────────────────────────
@@ -139,7 +136,7 @@ export interface MstNode {
 
 /** level(k) = ⌊leading zero bits of sha256(k) / b⌋ */
 export function keyLevel(key: string): number {
-	const digest = createHash("sha256").update(key).digest();
+	const digest = sha256Sync(utf8ToBytes(key));
 	let zeros = 0;
 	for (const byte of digest) {
 		if (byte !== 0) {

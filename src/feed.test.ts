@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AppFeed } from "./feed.js";
+import { CommitFeed } from "./feed.js";
 import type { RepoChange } from "./fangorn.js";
 
 const change = (repo: string) => ({ repo }) as RepoChange;
@@ -10,7 +10,7 @@ function manualFeed() {
 	let push!: (c: RepoChange) => void;
 	let fail!: (err: Error) => void;
 	let opened = 0;
-	const feed = new AppFeed(async function* (signal) {
+	const feed = new CommitFeed(async function* (signal) {
 		opened += 1;
 		// Grouped in an object so TypeScript doesn't narrow these to their
 		// values at loop entry — they're set from outside the generator.
@@ -47,7 +47,7 @@ function manualFeed() {
 	};
 }
 
-describe("AppFeed", () => {
+describe("CommitFeed", () => {
 	it("opens one subscription and fans it out to every listener", async () => {
 		const { feed, push, opened } = manualFeed();
 		const a: string[] = [];

@@ -6,6 +6,8 @@ import type {
 } from "../providers/storage/types.js";
 import { MemRegistry } from "../test/mem-registry.js";
 import { CID } from "multiformats/cid";
+import * as raw from "multiformats/codecs/raw";
+import { sha256 } from "multiformats/hashes/sha2";
 
 export const ZERO_BYTES32 =
 	"0x0000000000000000000000000000000000000000000000000000000000000000";
@@ -33,11 +35,11 @@ export class MemStorage implements MetadataStorage {
 		return Promise.resolve();
 	}
 
-	putFile(bytes: Uint8Array, name: string): Promise<string> {
+	async putFile(bytes: Uint8Array): Promise<string> {
 		this.writes++;
-		const uri = `mem://${this.files.size.toString()}/${name}`;
+		const uri = CID.createV1(raw.code, await sha256.digest(bytes)).toString();
 		this.files.set(uri, bytes);
-		return Promise.resolve(uri);
+		return uri;
 	}
 
 	getFile(uri: string): Promise<Uint8Array> {

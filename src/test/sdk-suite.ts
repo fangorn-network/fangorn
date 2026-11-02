@@ -4,18 +4,11 @@ import { generatePrivateKey } from "viem/accounts";
 import { ZERO_HEAD } from "../registry.js";
 import { sealSelf, unsealSelf, GADGET_SELF_HKDF_V1 } from "../crypto/encryption.js";
 import type { Fangorn, RepoChange } from "../fangorn.js";
-import { TEST_APP, type Network } from "./testbed.js";
+import type { Network } from "./testbed.js";
 
 // The SDK's behaviour, end to end, on any network: memory (src/sdk.test.ts) or
 // the contracts on anvil (src/e2e/sdk.e2e.test.ts). Each test takes fresh
 // wallets and repo names, so they share one network.
-
-/** The app a test client was made under. */
-export function appOf(f: Fangorn): Hex {
-	const app = f.getAppId();
-	if (!app) throw new Error("this client has no app");
-	return app;
-}
 
 export const head = (f: Fangorn, repo: string) => f.getRegistry().head({ publisher: f.getAddress(), repo });
 
@@ -28,9 +21,6 @@ export async function take(stream: AsyncGenerator<RepoChange>, n: number): Promi
 	}
 	return out;
 }
-
-/** A fresh app name, so a test's owner and exclusions are its own. */
-const freshApp = () => `app-${Math.random().toString(36).slice(2)}`;
 
 export function sdkSuite(makeNetwork: () => Promise<Network>, timeout = 5_000) {
 	let net: Network;
@@ -88,7 +78,7 @@ export function sdkSuite(makeNetwork: () => Promise<Network>, timeout = 5_000) {
 
 		it("stores a payload sealed to its publisher as opaque bytes", async () => {
 			const sk = generatePrivateKey();
-			const f = await net.client(TEST_APP, sk);
+			const f = await net.client(sk);
 			await f.initRepo("private");
 			const resourceId = keccak256(stringToBytes("private:secret"));
 			const ciphertext = sealSelf(new TextEncoder().encode("the eagles are coming"), hexToBytes(sk), resourceId);
@@ -120,105 +110,35 @@ export function sdkSuite(makeNetwork: () => Promise<Network>, timeout = 5_000) {
 			const f = await net.client();
 			await f.initRepo("r");
 			// built on the empty history, while the head has moved on
-			const stale = await f.commit({ repo: "r", records: [{ id: "x", type: "t", payload: {} }], message: "m" });
+			const stale = await f.commit({ repo: "r", records: [{ id: "x", type: "t", payload: {} }] });
 			await expect(f.push("r", stale.commitCid)).rejects.toThrow(/stale parent/);
 		}, timeout);
 	});
 
-	describe("apps present what they accept", () => {
-		it("one member reads another's repo, and the app lists both", async () => {
-			const app = freshApp();
-			const owner = await net.client(app);
-			const guest = await net.client(app);
-			await owner.initRepo("catalog");
-			await guest.initRepo("catalog");
-			const { payloadCid } = await guest.upload("catalog", { title: "from the guest" }, "entry", "g");
+	describe("reading other publishers", () => {
+		it("any client reads any publisher's repo, and lists every repo", async () => {
+			const reader = await net.client();
+			const pub = await net.client();
+			await pub.initRepo("catalog");
+			const { payloadCid } = await pub.upload("catalog", { title: "t" }, "entry", "g");
 
-			const { contents } = await owner.readRepo(guest.getAddress(), "catalog");
+			const { contents } = await reader.readRepo(pub.getAddress(), "catalog");
 			expect(contents.records.map((r) => r.cid)).toEqual([payloadCid]);
-			const listed = await owner.appRepos({ repo: "catalog" });
-			expect(listed.map((d) => d.owner).sort()).toEqual([owner.getAddress(), guest.getAddress()].sort());
-			expect(listed.every((d) => d.repo === "catalog")).toBe(true);
-		}, timeout);
-
-		it("an app presents its members' repos and nobody else's; an update names no app", async () => {
-			const app = freshApp();
-			const owner = await net.client(app);
-			// Publishes under no app: its own word, presented by no app.
-			const loner = await net.client(null);
-			await loner.initRepo("notes");
-			await loner.upload("notes", { n: 1 }, "t", "x");
-
-			expect((await owner.readRepo(loner.getAddress(), "notes")).contents.records).toEqual([]);
-			expect(await owner.appRepos()).toEqual([]);
-			// Under no app, a repo is its latest head.
-			const outsider = await net.client(null);
-			expect((await outsider.readRepo(loner.getAddress(), "notes")).contents.records).toHaveLength(1);
-		}, timeout);
-
-		it("an excluded publisher disappears from the app's reads, and a restore brings it back", async () => {
-			const app = freshApp();
-			const owner = await net.client(app);
-			const guest = await net.client(app);
-			await guest.initRepo("catalog");
-			await guest.upload("catalog", { title: "t" }, "entry", "g");
-			const x = { publisher: guest.getAddress() };
-			const appId = appOf(owner);
-
-			await owner.getRegistry().exclude(appId, x);
-			expect(await owner.appRepos()).toEqual([]);
-			expect((await owner.readRepo(guest.getAddress(), "catalog")).contents.records).toEqual([]);
-
-			await owner.getRegistry().restore(appId, x);
-			expect(await owner.appRepos()).toHaveLength(1);
-			expect((await owner.readRepo(guest.getAddress(), "catalog")).contents.records).toHaveLength(1);
-		}, timeout);
-
-		it("a repo exclusion hides that repo only", async () => {
-			const app = freshApp();
-			const owner = await net.client(app);
-			const guest = await net.client(app);
-			for (const repo of ["keep", "drop"]) {
-				await guest.initRepo(repo);
-				await guest.upload(repo, { repo }, "t", "x");
-			}
-			await owner.getRegistry().exclude(appOf(owner), { publisher: guest.getAddress(), repo: "drop" });
-
-			expect((await owner.appRepos()).map((d) => d.repo)).toEqual(["keep"]);
-			expect((await owner.readRepo(guest.getAddress(), "drop")).contents.records).toEqual([]);
-			expect((await owner.readRepo(guest.getAddress(), "keep")).contents.records).toHaveLength(1);
-		}, timeout);
-
-		it("an exclusion in one app hides nothing in another that presents the same publisher", async () => {
-			const [appA, appB] = [freshApp(), freshApp()];
-			const ownerA = await net.client(appA);
-			const ownerB = await net.client(appB);
-			// One wallet, a member of both: one repo, presented by two apps.
-			const sk = generatePrivateKey();
-			const guest = await net.client(appA, sk);
-			await net.client(appB, sk);
-			await guest.initRepo("catalog");
-			await guest.upload("catalog", { title: "t" }, "entry", "g");
-			const ref = { publisher: guest.getAddress(), repo: "catalog" };
-
-			await ownerA.getRegistry().exclude(appOf(ownerA), { publisher: ref.publisher });
-
-			expect((await ownerA.readRepo(ref.publisher, "catalog")).contents.records).toEqual([]);
-			expect((await ownerB.readRepo(ref.publisher, "catalog")).contents.records).toHaveLength(1);
+			const listed = await reader.repos({ owner: pub.getAddress() });
+			expect(listed.map((d) => [d.owner, d.repo])).toEqual([[pub.getAddress(), "catalog"]]);
 		}, timeout);
 	});
 
 	describe("subscriptions", () => {
 		it("replays from a block, then follows live", async () => {
-			const app = freshApp();
-			const pub = await net.client(app);
+			const pub = await net.client();
 			const from = await net.clock();
 			await pub.initRepo("feed");
 			await pub.upload("feed", { n: 1 }, "t", "a");
 
 			const ctl = new AbortController();
-			const reader = await net.client(app);
-			const stream = reader.subscribeApp({ fromBlock: from, signal: ctl.signal, pollingInterval: 100 });
+			const reader = await net.client();
+			const stream = reader.subscribeAll({ owner: pub.getAddress(), fromBlock: from, signal: ctl.signal, pollingInterval: 100 });
 			const first = await stream.next();
 			expect((first.value as RepoChange).puts.map((r) => r.id)).toEqual(["a"]);
 

@@ -101,16 +101,19 @@ describe.skipIf(skipChain)("CLI app commands (contracts on anvil)", () => {
 		const renamed = await owner.run(["app", "rename", "cli-after"]);
 		expect(renamed).toMatchObject({ code: 0 });
 		expect(renamed.out).toContain(`App id:     ${appId("cli-after")}`);
-		expect(renamed.out).toContain(`Claimed as: ${appId("cli-before")}`);
+		expect(renamed.out).toContain(`Registered: ${appId("cli-before")}`);
 		expect(owner.storedApp()).toBe("cli-after");
 
-		// Under the new name: the app, and where it was claimed.
+		// Under the new name: the app, and where it was registered.
 		const info = await owner.run(["app", "info"]);
 		expect(info).toMatchObject({ code: 0 });
 		expect(info.out).toContain(`App id:     ${appId("cli-after")}`);
-		expect(info.out).toContain(`Claimed as: ${appId("cli-before")}`);
+		expect(info.out).toContain(`Registered: ${appId("cli-before")}`);
 		expect(info.out).toContain("(you)");
-		expect(info.out).toMatch(/This app:\s+accepted/);
+		expect(info.out).toMatch(/Repo:\s+\(not set/);
+
+		expect((await owner.run(["app", "curator", "picks"])).code).toBe(0);
+		expect((await owner.run(["app", "info"])).out).toMatch(/Repo:\s+0x[0-9a-fA-F]{40}\/picks/);
 
 		// Under the old name, which still works: where the app went.
 		const old = await owner.run(["--app", "cli-before", "app", "info"]);
@@ -152,7 +155,7 @@ describe.skipIf(skipChain)("CLI app commands (contracts on anvil)", () => {
 		expect(owner.storedApp()).toBe("cli-stored");
 	}, 180_000);
 
-	it("refuses a stranger's rename, a taken name, and an unclaimed app", async () => {
+	it("refuses a stranger's rename, a taken name, and an unregistered app", async () => {
 		const owner = await user("cli-mine");
 		expect((await owner.run(["app", "claim"])).code).toBe(0);
 		const other = await user("cli-theirs");
@@ -181,7 +184,7 @@ describe.skipIf(skipChain)("CLI app commands (contracts on anvil)", () => {
 			"cli-anything",
 		]);
 		expect(unclaimed.code).toBe(1);
-		expect(unclaimed.out).toContain("is unclaimed");
+		expect(unclaimed.out).toContain("is unregistered");
 	}, 180_000);
 
 	it("rejects an override that is not an address", async () => {

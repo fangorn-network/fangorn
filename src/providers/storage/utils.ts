@@ -1,3 +1,4 @@
+import { base64pad } from "multiformats/bases/base64";
 import { CID } from "multiformats/cid";
 
 export * from "./pinata.js";
@@ -27,7 +28,7 @@ const REVIVERS: ((key: string, value: unknown) => unknown)[] = [
 			"data" in value &&
 			(value as { __type: unknown }).__type === "Uint8Array"
 		) {
-			return new Uint8Array(Buffer.from((value as { data: string }).data, "base64"));
+			return base64pad.baseDecode((value as { data: string }).data);
 		}
 		return value;
 	},
@@ -37,7 +38,7 @@ export function serialize(data: unknown): string {
 	if (typeof data === "string") return data;
 	return JSON.stringify(data, (_key, value) => {
 		if (value instanceof Uint8Array) {
-			return { __type: "Uint8Array", data: Buffer.from(value).toString("base64") };
+			return { __type: "Uint8Array", data: base64pad.baseEncode(value) };
 		}
 		return value as unknown;
 	});
@@ -57,10 +58,9 @@ export function deserialize(text: string): unknown {
 // disconnected") and overloads (5xx/429), especially under parallel uploads on a
 // modest uplink. A single chunk failing would otherwise abort an entire
 // multi-chunk publish, so retry transient upload errors with exponential backoff.
-export const MAX_UPLOAD_ATTEMPTS = Math.max(
-	1,
-	Number(process.env.PINATA_UPLOAD_RETRIES ?? 6),
-);
+// `process` is absent in Workers and browsers.
+const env = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env;
+export const MAX_UPLOAD_ATTEMPTS = Math.max(1, Number(env?.PINATA_UPLOAD_RETRIES ?? 6));
 
 export function isTransientUpload(err: unknown): boolean {
 	const e = err as { statusCode?: number; code?: string; message?: string };

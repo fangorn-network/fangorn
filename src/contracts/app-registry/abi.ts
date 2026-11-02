@@ -23,58 +23,6 @@ export const APP_REGISTRY_ABI = [
   },
   {
     "type": "function",
-    "name": "acceptPublisher",
-    "inputs": [
-      {
-        "name": "app_id",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "publisher",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "access",
-    "inputs": [
-      {
-        "name": "app_id",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "publisher",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      },
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "",
-        "type": "uint64",
-        "internalType": "uint64"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "admin",
     "inputs": [],
     "outputs": [
@@ -117,24 +65,6 @@ export const APP_REGISTRY_ABI = [
       }
     ],
     "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "approve",
-    "inputs": [
-      {
-        "name": "to",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "tokenId",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -181,62 +111,6 @@ export const APP_REGISTRY_ABI = [
   },
   {
     "type": "function",
-    "name": "balanceOf",
-    "inputs": [
-      {
-        "name": "owner",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "canPublish",
-    "inputs": [
-      {
-        "name": "app_id",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "publisher",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "cancelSubscription",
-    "inputs": [
-      {
-        "name": "tokenId",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "payable"
-  },
-  {
-    "type": "function",
     "name": "canonicalAppId",
     "inputs": [
       {
@@ -250,6 +124,30 @@ export const APP_REGISTRY_ABI = [
         "name": "",
         "type": "bytes32",
         "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "curatorOf",
+    "inputs": [
+      {
+        "name": "app_id",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "curator",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "repo",
+        "type": "string",
+        "internalType": "string"
       }
     ],
     "stateMutability": "view"
@@ -288,106 +186,6 @@ export const APP_REGISTRY_ABI = [
   },
   {
     "type": "function",
-    "name": "exclude",
-    "inputs": [
-      {
-        "name": "app_id",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "publisher",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "repo_id",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "key_id",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "exclusionCount",
-    "inputs": [
-      {
-        "name": "app_id",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "exclusion_id",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint64",
-        "internalType": "uint64"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "exclusionId",
-    "inputs": [
-      {
-        "name": "publisher",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "repo_id",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "key_id",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ],
-    "stateMutability": "pure"
-  },
-  {
-    "type": "function",
-    "name": "expiresAt",
-    "inputs": [
-      {
-        "name": "tokenId",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint64",
-        "internalType": "uint64"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "getAppOwner",
     "inputs": [
       {
@@ -407,65 +205,12 @@ export const APP_REGISTRY_ABI = [
   },
   {
     "type": "function",
-    "name": "getApproved",
-    "inputs": [
-      {
-        "name": "tokenId",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "globalSuspensions",
-    "inputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "initialize",
     "inputs": [
       {
         "name": "admin_",
         "type": "address",
         "internalType": "address"
-      },
-      {
-        "name": "usdc_",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "subscriptionFee_",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "subscriptionPeriod_",
-        "type": "uint64",
-        "internalType": "uint64"
       }
     ],
     "outputs": [],
@@ -492,68 +237,12 @@ export const APP_REGISTRY_ABI = [
   },
   {
     "type": "function",
-    "name": "isApprovedForAll",
+    "name": "payoutOf",
     "inputs": [
       {
-        "name": "owner",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "operator",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "isRenewable",
-    "inputs": [
-      {
-        "name": "tokenId",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "name",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "string",
-        "internalType": "string"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "ownerOf",
-    "inputs": [
-      {
-        "name": "tokenId",
-        "type": "uint256",
-        "internalType": "uint256"
+        "name": "app_id",
+        "type": "bytes32",
+        "internalType": "bytes32"
       }
     ],
     "outputs": [
@@ -586,11 +275,6 @@ export const APP_REGISTRY_ABI = [
         "name": "app_id",
         "type": "bytes32",
         "internalType": "bytes32"
-      },
-      {
-        "name": "max_subscription_fee",
-        "type": "uint256",
-        "internalType": "uint256"
       }
     ],
     "outputs": [],
@@ -609,103 +293,6 @@ export const APP_REGISTRY_ABI = [
         "name": "new_id",
         "type": "bytes32",
         "internalType": "bytes32"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "renewSubscription",
-    "inputs": [
-      {
-        "name": "tokenId",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "duration",
-        "type": "uint64",
-        "internalType": "uint64"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "payable"
-  },
-  {
-    "type": "function",
-    "name": "restore",
-    "inputs": [
-      {
-        "name": "app_id",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "publisher",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "repo_id",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "key_id",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "safeTransferFrom",
-    "inputs": [
-      {
-        "name": "from",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "to",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "tokenId",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "safeTransferFrom",
-    "inputs": [
-      {
-        "name": "from",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "to",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "tokenId",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "data",
-        "type": "bytes",
-        "internalType": "bytes"
       }
     ],
     "outputs": [],
@@ -762,17 +349,22 @@ export const APP_REGISTRY_ABI = [
   },
   {
     "type": "function",
-    "name": "setApprovalForAll",
+    "name": "setCurator",
     "inputs": [
       {
-        "name": "operator",
+        "name": "app_id",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "curator",
         "type": "address",
         "internalType": "address"
       },
       {
-        "name": "approved",
-        "type": "bool",
-        "internalType": "bool"
+        "name": "repo",
+        "type": "string",
+        "internalType": "string"
       }
     ],
     "outputs": [],
@@ -793,25 +385,7 @@ export const APP_REGISTRY_ABI = [
   },
   {
     "type": "function",
-    "name": "setGlobalSuspension",
-    "inputs": [
-      {
-        "name": "publisher",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "is_suspended",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "setPublisherSuspended",
+    "name": "setPayout",
     "inputs": [
       {
         "name": "app_id",
@@ -819,164 +393,9 @@ export const APP_REGISTRY_ABI = [
         "internalType": "bytes32"
       },
       {
-        "name": "publisher",
+        "name": "payout",
         "type": "address",
         "internalType": "address"
-      },
-      {
-        "name": "is_suspended",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "setSubscriptionFee",
-    "inputs": [
-      {
-        "name": "fee",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "setSubscriptionPeriod",
-    "inputs": [
-      {
-        "name": "period",
-        "type": "uint64",
-        "internalType": "uint64"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "statusForApp",
-    "inputs": [
-      {
-        "name": "app_id",
-        "type": "bytes32",
-        "internalType": "bytes32"
-      },
-      {
-        "name": "publisher",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint8",
-        "internalType": "enum AppRegistry.Status"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "subscriptionFee",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "subscriptionPeriod",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint64",
-        "internalType": "uint64"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "supportsInterface",
-    "inputs": [
-      {
-        "name": "interface_id",
-        "type": "bytes4",
-        "internalType": "bytes4"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "bool",
-        "internalType": "bool"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "symbol",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "string",
-        "internalType": "string"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "tokenURI",
-    "inputs": [
-      {
-        "name": "tokenId",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "string",
-        "internalType": "string"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "transferFrom",
-    "inputs": [
-      {
-        "name": "from",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "to",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "tokenId",
-        "type": "uint256",
-        "internalType": "uint256"
       }
     ],
     "outputs": [],
@@ -999,19 +418,6 @@ export const APP_REGISTRY_ABI = [
     ],
     "outputs": [],
     "stateMutability": "payable"
-  },
-  {
-    "type": "function",
-    "name": "usdc",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "address"
-      }
-    ],
-    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -1133,50 +539,25 @@ export const APP_REGISTRY_ABI = [
   },
   {
     "type": "event",
-    "name": "Approval",
+    "name": "CuratorChanged",
     "inputs": [
       {
-        "name": "owner",
+        "name": "app_id",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "curator",
         "type": "address",
         "indexed": true,
         "internalType": "address"
       },
       {
-        "name": "approved",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "tokenId",
-        "type": "uint256",
-        "indexed": true,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "ApprovalForAll",
-    "inputs": [
-      {
-        "name": "owner",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "operator",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "approved",
-        "type": "bool",
+        "name": "repo",
+        "type": "string",
         "indexed": false,
-        "internalType": "bool"
+        "internalType": "string"
       }
     ],
     "anonymous": false
@@ -1202,68 +583,6 @@ export const APP_REGISTRY_ABI = [
   },
   {
     "type": "event",
-    "name": "ExclusionChanged",
-    "inputs": [
-      {
-        "name": "app_id",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
-      },
-      {
-        "name": "publisher",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "exclusion_id",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
-      },
-      {
-        "name": "repo_id",
-        "type": "bytes32",
-        "indexed": false,
-        "internalType": "bytes32"
-      },
-      {
-        "name": "key_id",
-        "type": "bytes32",
-        "indexed": false,
-        "internalType": "bytes32"
-      },
-      {
-        "name": "count",
-        "type": "uint64",
-        "indexed": false,
-        "internalType": "uint64"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "GlobalSuspensionChanged",
-    "inputs": [
-      {
-        "name": "publisher",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "suspended",
-        "type": "bool",
-        "indexed": false,
-        "internalType": "bool"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
     "name": "Initialized",
     "inputs": [
       {
@@ -1277,7 +596,7 @@ export const APP_REGISTRY_ABI = [
   },
   {
     "type": "event",
-    "name": "PublisherAccepted",
+    "name": "PayoutChanged",
     "inputs": [
       {
         "name": "app_id",
@@ -1286,80 +605,10 @@ export const APP_REGISTRY_ABI = [
         "internalType": "bytes32"
       },
       {
-        "name": "publisher",
+        "name": "payout",
         "type": "address",
-        "indexed": true,
+        "indexed": false,
         "internalType": "address"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "PublisherSuspensionChanged",
-    "inputs": [
-      {
-        "name": "app_id",
-        "type": "bytes32",
-        "indexed": true,
-        "internalType": "bytes32"
-      },
-      {
-        "name": "publisher",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "suspended",
-        "type": "bool",
-        "indexed": false,
-        "internalType": "bool"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "SubscriptionFeeChanged",
-    "inputs": [
-      {
-        "name": "fee",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "SubscriptionPeriodChanged",
-    "inputs": [
-      {
-        "name": "period",
-        "type": "uint64",
-        "indexed": false,
-        "internalType": "uint64"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "SubscriptionUpdate",
-    "inputs": [
-      {
-        "name": "tokenId",
-        "type": "uint256",
-        "indexed": true,
-        "internalType": "uint256"
-      },
-      {
-        "name": "expiration",
-        "type": "uint64",
-        "indexed": false,
-        "internalType": "uint64"
       }
     ],
     "anonymous": false
@@ -1391,31 +640,6 @@ export const APP_REGISTRY_ABI = [
   },
   {
     "type": "event",
-    "name": "Transfer",
-    "inputs": [
-      {
-        "name": "from",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "to",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "tokenId",
-        "type": "uint256",
-        "indexed": true,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
     "name": "Upgraded",
     "inputs": [
       {
@@ -1440,32 +664,12 @@ export const APP_REGISTRY_ABI = [
   },
   {
     "type": "error",
-    "name": "AlreadyAccepted",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "AlreadyExcluded",
-    "inputs": []
-  },
-  {
-    "type": "error",
     "name": "AppAlreadyRegistered",
     "inputs": []
   },
   {
     "type": "error",
     "name": "AppNotFound",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "CannotSuspendOwner",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "DurationMismatch",
     "inputs": []
   },
   {
@@ -1486,114 +690,6 @@ export const APP_REGISTRY_ABI = [
   },
   {
     "type": "error",
-    "name": "ERC721IncorrectOwner",
-    "inputs": [
-      {
-        "name": "sender",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "tokenId",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "owner",
-        "type": "address",
-        "internalType": "address"
-      }
-    ]
-  },
-  {
-    "type": "error",
-    "name": "ERC721InsufficientApproval",
-    "inputs": [
-      {
-        "name": "operator",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "tokenId",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ]
-  },
-  {
-    "type": "error",
-    "name": "ERC721InvalidApprover",
-    "inputs": [
-      {
-        "name": "approver",
-        "type": "address",
-        "internalType": "address"
-      }
-    ]
-  },
-  {
-    "type": "error",
-    "name": "ERC721InvalidOperator",
-    "inputs": [
-      {
-        "name": "operator",
-        "type": "address",
-        "internalType": "address"
-      }
-    ]
-  },
-  {
-    "type": "error",
-    "name": "ERC721InvalidOwner",
-    "inputs": [
-      {
-        "name": "owner",
-        "type": "address",
-        "internalType": "address"
-      }
-    ]
-  },
-  {
-    "type": "error",
-    "name": "ERC721InvalidReceiver",
-    "inputs": [
-      {
-        "name": "receiver",
-        "type": "address",
-        "internalType": "address"
-      }
-    ]
-  },
-  {
-    "type": "error",
-    "name": "ERC721InvalidSender",
-    "inputs": [
-      {
-        "name": "sender",
-        "type": "address",
-        "internalType": "address"
-      }
-    ]
-  },
-  {
-    "type": "error",
-    "name": "ERC721NonexistentToken",
-    "inputs": [
-      {
-        "name": "tokenId",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ]
-  },
-  {
-    "type": "error",
-    "name": "EthNotAccepted",
-    "inputs": []
-  },
-  {
-    "type": "error",
     "name": "FailedCall",
     "inputs": []
   },
@@ -1604,52 +700,12 @@ export const APP_REGISTRY_ABI = [
   },
   {
     "type": "error",
-    "name": "NotAccepted",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "NotExcluded",
-    "inputs": []
-  },
-  {
-    "type": "error",
     "name": "NotInitializing",
     "inputs": []
   },
   {
     "type": "error",
-    "name": "NotTransferable",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "PublisherNotSuspended",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "PublisherSuspendedGlobal",
-    "inputs": []
-  },
-  {
-    "type": "error",
     "name": "ReentrancyGuardReentrantCall",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "SubscriptionFeeRequired",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "SubscriptionFeeTooHigh",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "SubscriptionNotRenewable",
     "inputs": []
   },
   {
@@ -1681,11 +737,6 @@ export const APP_REGISTRY_ABI = [
   {
     "type": "error",
     "name": "ZeroAppId",
-    "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "ZeroPeriod",
     "inputs": []
   }
 ] as const;

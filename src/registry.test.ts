@@ -1,47 +1,71 @@
 import { describe, it, expect } from "vitest";
 import type { Hex } from "viem";
-import { ZERO_HEAD, covers, repoExcluded } from "./registry.js";
+import { privateKeyToAccount } from "viem/accounts";
+import { EPOCH_SECONDS, WINDOW, ZERO_HEAD, type CommitUpdate } from "./registry.js";
 import { MemRegistry } from "./test/mem-registry.js";
+import { commitHead } from "./engine/index.js";
 
 const P: Hex = "0x0000000000000000000000000000000000000001";
-const A: Hex = `0x${"a".repeat(64)}`;
-const B: Hex = `0x${"b".repeat(64)}`;
-const h = (n: number): Hex => `0x${n.toString(16).padStart(64, "0")}`;
 const ref = { publisher: P, repo: "s" };
+
+// The commits DataRegistry.t.sol checks `commitHead` against.
+const E = 493_000;
+const ROOT: Hex = "0xc3a75f27a0777dd37f80e7252ba50f882a088dd9b6e3e602281b9c217375cd9f";
+const CAR: Hex = "0x01551220039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81";
+const FIRST: Hex = "0x745133376af45492027c3773e51c69553b6c728af140de19e4b3489c0e789c94";
+const SECOND: Hex = "0x43eed88abf71cb580f34d4da9a0307977e54039e9a7c335f49040293328fb44e";
+const LONG: Hex = "0xc2d736394f98eeacb72b4f1f2d20961d558ec56ca6fa7a9a90fe3de736ed93f4";
+const SMALL: Hex = "0xa9cbca8f0bd56bab838f43d0dfdb3bf460163017d793b3fe17798837173b6d0b";
+
+const u = (repo: string, epoch: number, parent: Hex = ZERO_HEAD): CommitUpdate => ({ repo, epoch, parent, root: ROOT, car: CAR });
+const at = (epoch: number) => () => epoch * EPOCH_SECONDS + 5;
+
+describe("commitHead", () => {
+	it("matches the contract's fixtures", async () => {
+		expect(await commitHead(u("photos", E))).toBe(FIRST);
+		expect(await commitHead(u("photos", E + 1, FIRST))).toBe(SECOND);
+		expect(await commitHead(u("r".repeat(256), 7, FIRST))).toBe(LONG);
+		expect(await commitHead(u("a", 23))).toBe(SMALL);
+	});
+});
 
 describe("MemRegistry (Definition 3.1)", () => {
 	it("an update applies once, only while its parent is the head (Theorem 3)", async () => {
-		const r = new MemRegistry(P);
-		await r.update("s", ZERO_HEAD, h(1));
-		await expect(r.update("s", ZERO_HEAD, h(2))).rejects.toThrow(/Stale/);
-		await r.update("s", h(1), h(2));
-		expect(await r.head(ref)).toBe(h(2));
+		const r = new MemRegistry(P, undefined, at(E + 1));
+		await r.update(u("s", E));
+		const first = await commitHead(u("s", E));
+		expect(await r.head(ref)).toBe(first);
+		await expect(r.update(u("s", E))).rejects.toThrow(/Stale/);
+		await r.update(u("s", E + 1, first));
+		expect(await r.head(ref)).toBe(await commitHead(u("s", E + 1, first)));
 		expect(await r.head({ publisher: P, repo: "t" })).toBe(ZERO_HEAD);
 	});
 
-	it("an app presents exactly the publishers the ledger makes its members", async () => {
-		const r = new MemRegistry(P);
-		r.ledger.members.add(`${A}/${P}`);
-		expect(await r.presents(A, P)).toBe(true);
-		expect(await r.presents(B, P)).toBe(false);
+	it("takes a commit's epoch only within the window", async () => {
+		const r = new MemRegistry(P, undefined, at(E));
+		await expect(r.update(u("a", E + 1))).rejects.toThrow(/Epoch/);
+		await expect(r.update(u("a", E - WINDOW - 1))).rejects.toThrow(/Epoch/);
+		await r.update(u("a", E - WINDOW));
+		await r.update(u("b", E));
 	});
 
-	it("exclusions alternate exclude/restore and count each change (Proposition 3.2)", async () => {
-		const r = new MemRegistry(P);
-		await r.exclude(A, ref);
-		await expect(r.exclude(A, ref)).rejects.toThrow();
-		expect(await repoExcluded(r, A, ref)).toBe(true);
-		expect(await repoExcluded(r, B, ref)).toBe(false);
-		await r.restore(A, ref);
-		expect(await r.exclusionCount(A, ref)).toBe(2);
-		expect(await repoExcluded(r, A, ref)).toBe(false);
+	it("updateBySig moves the signer's repo, whoever submits it", async () => {
+		const account = privateKeyToAccount(`0x${"22".repeat(32)}`);
+		const publisher = new MemRegistry(account.address, undefined, at(E), account);
+		const relayer = new MemRegistry(P, publisher.ledger, at(E));
+		const sig = await publisher.signUpdate(u("photos", E));
+		await relayer.updateBySig(account.address, u("photos", E), sig);
+		expect(await relayer.head({ publisher: account.address, repo: "photos" })).toBe(FIRST);
+		expect(await relayer.head({ publisher: P, repo: "photos" })).toBe(ZERO_HEAD);
+		await expect(relayer.updateBySig(account.address, u("photos", E), sig)).rejects.toThrow(/Stale/);
 	});
 
-	it("an exclusion covers every key of what it names", () => {
-		expect(covers({ publisher: P }, ref, "k")).toBe(true);
-		expect(covers({ publisher: P, repo: "s" }, ref, "k")).toBe(true);
-		expect(covers({ publisher: P, repo: "t" }, ref, "k")).toBe(false);
-		expect(covers({ publisher: P, repo: "s", key: "k" }, ref, "k")).toBe(true);
-		expect(covers({ publisher: P, repo: "s", key: "j" }, ref, "k")).toBe(false);
+	it("updateBySig rejects a changed field or another signer", async () => {
+		const account = privateKeyToAccount(`0x${"22".repeat(32)}`);
+		const r = new MemRegistry(account.address, undefined, at(E), account);
+		const sig = await r.signUpdate(u("photos", E));
+		await expect(r.updateBySig(account.address, u("videos", E), sig)).rejects.toThrow(/BadSignature/);
+		await expect(r.updateBySig(account.address, { ...u("photos", E), root: FIRST }, sig)).rejects.toThrow(/BadSignature/);
+		await expect(r.updateBySig(P, u("photos", E), sig)).rejects.toThrow(/BadSignature/);
 	});
 });
