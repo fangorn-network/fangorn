@@ -1,28 +1,11 @@
-import { isCancel, select } from "@clack/prompts";
-import getNetwork from "../config";
+import { isCancel } from "@clack/prompts";
 
 export * from "./cli.js";
-
-export const getChain = (chainStr: string) => {
-	return getNetwork(chainStr).chain;
-};
 
 export const handleCancel = (value: unknown) => {
 	if (isCancel(value)) {
 		process.exit(0);
 	}
-};
-
-export const selectChain = async () => {
-	const chainChoice = await select({
-		message: "Pick your chain.",
-		options: [
-			{ value: "baseSepolia", label: "Base Sepolia" },
-			{ value: "arbitrumSepolia", label: "Arbitrum Sepolia" },
-		],
-	});
-	handleCancel(chainChoice);
-	return chainChoice.toString();
 };
 
 export function parseGadgetArg(raw: string): { type: string; args: string[] } {

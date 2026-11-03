@@ -12,6 +12,7 @@ gen() { # contract, out dir, const name
 		printf 'export const %s = %s as const;\n' "$3" "$(cd "$dir" && forge inspect "$1" abi --json)"
 	} >"src/contracts/$2/abi.ts"
 }
-gen AppRegistry app-registry APP_REGISTRY_ABI
 gen DataRegistry data-registry DATA_REGISTRY_ABI
-gen MembershipRegistry membership-registry MEMBERSHIP_REGISTRY_ABI
+gen SettlementRegistry settlement-registry SETTLEMENT_REGISTRY_ABI
+# `forge inspect` can leave artifacts without bytecode; rebuild so deploys still work.
+(cd "$dir" && forge build --force >/dev/null)

@@ -36,7 +36,10 @@ export async function packCar(
 }
 
 /** Decode CAR bytes back into blocks, each checked against its CID (the host is untrusted). */
-export async function readCar(bytes: Uint8Array, { verify = true } = {}): Promise<Block[]> {
+export async function readCar(
+	bytes: Uint8Array,
+	{ verify = true } = {},
+): Promise<Block[]> {
 	const reader = await CarReader.fromBytes(bytes);
 	const blocks: Block[] = [];
 	for await (const { cid, bytes: blockBytes } of reader.blocks()) {

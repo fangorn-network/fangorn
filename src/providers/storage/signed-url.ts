@@ -39,7 +39,7 @@ export interface SignedUrlSigner {
  *
  * Uploads go through the pinata-url-provider Worker. Prove wallet ownership by
  * signing the worker's challenge, and it hands back a short-lived, single-use
- * Pinata presigned upload URL that users POST the file to. 
+ * Pinata presigned upload URL that users POST the file to.
  * Reads need no auth: every Fangorn block is public content, so it's
  * fetched straight from a public IPFS gateway by CID (privacy is cryptographic,
  * not access-controlled). Each upload runs a fresh handshake because the
@@ -48,12 +48,7 @@ export interface SignedUrlSigner {
  * JWT-only operations (server-side metadata queries / deletes) are unavailable
  * here. Switch to a PinataBackend they're needed.
  *
- * Apps provide storage: every upload is billed to the client's app, whose
- * subscription pays for it. Each request carries the app id, the signer must be
- * one of that app's publishers, and the pins are filed under the app's group.
- * There is no app-less upload: with no app this refuses before contacting the
- * worker. The id is read per request so a later `setAppId` takes effect
- * immediately.
+ * Every upload is charged to the signing publisher's storage quota.
  */
 export class SignedUrlBackend implements MetadataStorage {
 	private readonly workerUrl: string;
@@ -62,8 +57,6 @@ export class SignedUrlBackend implements MetadataStorage {
 		workerUrl: string | undefined,
 		private readonly signer: SignedUrlSigner,
 		private readonly gateway: string,
-		/** The client's current app id, read per upload (see setAppId). */
-		private readonly appId: () => Hex | undefined,
 	) {
 		// Blank/whitespace (e.g. an unset CLI field) falls back to the default —
 		// so `??` alone won't do, it wouldn't catch "".
@@ -76,20 +69,11 @@ export class SignedUrlBackend implements MetadataStorage {
 		uploadId: string,
 	): Promise<{ uploadUrl: string; network: string }> {
 		const address = this.signer.address;
-		// Which app's subscription pays for this upload. Sent on both requests so the
-		// worker can reject a bad id before the SDK signs anything.
-		const appId = this.appId();
-		if (!appId) {
-			throw new Error(
-				"signed-url uploads are billed to an app: pass `appId` to Fangorn.create() or call setAppId(), " +
-					"or bring your own storage ({ pinata } or { backend })",
-			);
-		}
 
 		// 1) Ask for the challenge to sign, declaring the upload size up front so
 		// the worker mints a presigned URL scoped to exactly this many bytes. The
 		// uploadId lets the worker charge one logical upload once across retries.
-		const challenge = await this.workerJson({ address, size, uploadId, appId });
+		const challenge = await this.workerJson({ address, size, uploadId });
 		if (!challenge.challenge) {
 			throw new Error(
 				`Presigned-URL worker did not issue a challenge: ${workerError(challenge)}`,
@@ -104,7 +88,6 @@ export class SignedUrlBackend implements MetadataStorage {
 			signature,
 			size,
 			uploadId,
-			appId,
 		});
 		if (!grant.ok || !grant.uploadUrl) {
 			throw new Error(
@@ -114,7 +97,9 @@ export class SignedUrlBackend implements MetadataStorage {
 		return { uploadUrl: grant.uploadUrl, network: grant.network ?? "public" };
 	}
 
-	private async workerJson(body: Record<string, unknown>): Promise<WorkerResponse> {
+	private async workerJson(
+		body: Record<string, unknown>,
+	): Promise<WorkerResponse> {
 		const res = await fetch(this.workerUrl, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
@@ -125,7 +110,11 @@ export class SignedUrlBackend implements MetadataStorage {
 	}
 
 	/** Upload bytes via a fresh one-time presigned URL; returns the pinned CID. */
-	private uploadBytes(bytes: Uint8Array, name: string, type: string): Promise<string> {
+	private uploadBytes(
+		bytes: Uint8Array,
+		name: string,
+		type: string,
+	): Promise<string> {
 		// One idempotency id per logical upload, shared across retries. A transient
 		// failure re-mints a fresh (single-use) URL, but the worker dedupes the
 		// storage-budget debit by this id, so the retry isn't charged again.
@@ -133,7 +122,10 @@ export class SignedUrlBackend implements MetadataStorage {
 		return withUploadRetry(name, async () => {
 			// A fresh URL per attempt: presigned URLs are single-use and short-lived.
 			// Declare the exact byte length so the worker scopes the URL to it.
-			const { uploadUrl, network } = await this.requestUploadUrl(bytes.length, uploadId);
+			const { uploadUrl, network } = await this.requestUploadUrl(
+				bytes.length,
+				uploadId,
+			);
 			const fd = new FormData();
 			fd.append("network", network);
 			fd.append("file", new File([bytes as BlobPart], name, { type }));
@@ -144,12 +136,17 @@ export class SignedUrlBackend implements MetadataStorage {
 			} | null;
 			if (!res.ok) {
 				throw Object.assign(
-					new Error(`Pinata upload failed: ${data ? JSON.stringify(data) : "(no body)"}`),
+					new Error(
+						`Pinata upload failed: ${data ? JSON.stringify(data) : "(no body)"}`,
+					),
 					{ statusCode: res.status },
 				);
 			}
 			const cid = data?.data?.cid;
-			if (!cid) throw new Error(`Pinata upload returned no CID: ${JSON.stringify(data)}`);
+			if (!cid)
+				throw new Error(
+					`Pinata upload returned no CID: ${JSON.stringify(data)}`,
+				);
 			return cid;
 		});
 	}

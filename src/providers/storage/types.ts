@@ -38,7 +38,7 @@ export interface MetadataStorage {
 	putBlock(block: RawBlock): Promise<void>;
 
 	/**
-	 * Store an opaque byte payload (e.g. a CAR file) and return a URI handle.
+	 * Store an opaque byte payload (e.g. a CAR file) and return its CID.
 	 * The backend is NOT expected to understand the contents.
 	 */
 	putFile(bytes: Uint8Array, name: string): Promise<string>;

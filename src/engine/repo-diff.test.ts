@@ -1,7 +1,14 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { CID } from "multiformats/cid";
 import { FangornEngine, type RecordInput } from "./index.js";
-import { buildMst, diffMst, encodeBlock, lookupMst, readMst, type MstNode } from "./records.js";
+import {
+	buildMst,
+	diffMst,
+	encodeBlock,
+	lookupMst,
+	readMst,
+	type MstNode,
+} from "./records.js";
 import { MemStorage, newRegistry, rootHex } from "./test-helpers.js";
 
 const NS = "songs";
@@ -10,10 +17,7 @@ describe("FangornEngine records", () => {
 	let engine: FangornEngine;
 
 	beforeEach(() => {
-		engine = new FangornEngine(
-			new MemStorage(),
-			newRegistry(),
-		);
+		engine = new FangornEngine(new MemStorage(), newRegistry());
 	});
 
 	async function commit(
@@ -26,7 +30,6 @@ describe("FangornEngine records", () => {
 			base: parent,
 			records,
 			deletes,
-			message: "test",
 		});
 		return commitCid;
 	}
@@ -47,7 +50,11 @@ describe("FangornEngine records", () => {
 
 	it("an update keeps the id, changes the cid, and diffs as one put", async () => {
 		const c1 = await commit(null, [
-			{ id: "t1", type: "track", payload: { title: "Locura", status: "draft" } },
+			{
+				id: "t1",
+				type: "track",
+				payload: { title: "Locura", status: "draft" },
+			},
 			{ id: "a1", type: "artist", payload: { name: "Alice" } },
 		]);
 		const c2 = await commit(c1, [
@@ -56,23 +63,38 @@ describe("FangornEngine records", () => {
 
 		const diff = await engine.repoDiff(rootHex(c1), rootHex(c2));
 		expect(diff.puts).toHaveLength(1);
-		expect(diff.puts[0]).toMatchObject({ id: "t1", payload: { status: "live" } });
+		expect(diff.puts[0]).toMatchObject({
+			id: "t1",
+			payload: { status: "live" },
+		});
 		expect(diff.deletes).toHaveLength(0);
 
 		const show = await engine.diffCommit(c2);
-		expect(show).toMatchObject({ added: [], updated: [`${NS}/t1`], removed: [] });
+		expect(show).toMatchObject({
+			added: [],
+			updated: [`${NS}/t1`],
+			removed: [],
+		});
 	});
 
 	it("deletes by id, and a relation is just a record with refs", async () => {
 		const c1 = await commit(null, [
 			{ id: "t1", type: "track", payload: { title: "Otra" } },
 			{ id: "a1", type: "artist", payload: { name: "Alice" } },
-			{ id: "t1>by>a1", type: "by", payload: { src: { local: "t1" }, dst: { local: "a1" } } },
+			{
+				id: "t1>by>a1",
+				type: "by",
+				payload: { src: { local: "t1" }, dst: { local: "a1" } },
+			},
 		]);
 		const c2 = await commit(c1, [], ["t1>by>a1"]);
 
 		const diff = await engine.repoDiff(rootHex(c1), rootHex(c2));
-		expect(diff).toEqual({ puts: [], deletes: ["t1>by>a1"], superseded: [expect.any(String)] });
+		expect(diff).toEqual({
+			puts: [],
+			deletes: ["t1>by>a1"],
+			superseded: [expect.any(String)],
+		});
 	});
 
 	it("returns an empty diff when the repo slice is untouched", async () => {
@@ -95,12 +117,14 @@ describe("FangornEngine records", () => {
 			{ id: "t1", type: "track", payload: { title: "Locura" } },
 		]);
 		await expect(
-			engine.createCommit({ repo: "other", base: c1, records: [], message: "x" }),
+			engine.createCommit({ repo: "other", base: c1, records: [] }),
 		).rejects.toThrow(/another repo/);
 	});
 
 	it("rejects bad or duplicate ids", async () => {
-		await expect(commit(null, [{ id: "has space", type: "x", payload: {} }])).rejects.toThrow(/invalid record id/);
+		await expect(
+			commit(null, [{ id: "has space", type: "x", payload: {} }]),
+		).rejects.toThrow(/invalid record id/);
 		await expect(
 			commit(null, [
 				{ id: "a", type: "x", payload: {} },
@@ -114,7 +138,6 @@ describe("FangornEngine records", () => {
 			repo: NS,
 			base: null,
 			records: [{ type: "note", payload: { body: "hi" } }],
-			message: "test",
 		});
 		expect(Object.keys(recordCids)).toHaveLength(1);
 	});
@@ -131,14 +154,18 @@ describe("Merkle Search Tree", () => {
 		const blocks = new Map(nodes.map((b) => [b.cid.toString(), b.bytes]));
 		return (cid: CID) => {
 			const b = blocks.get(cid.toString());
-			return b ? Promise.resolve(b) : Promise.reject(new Error(`missing ${cid.toString()}`));
+			return b
+				? Promise.resolve(b)
+				: Promise.reject(new Error(`missing ${cid.toString()}`));
 		};
 	};
 
 	it("the root depends only on the state, not insertion order (Lemma 1)", async () => {
 		const s = await state(500);
 		const reversed = new Map([...s].reverse());
-		expect((await buildMst(s)).root.toString()).toBe((await buildMst(reversed)).root.toString());
+		expect((await buildMst(s)).root.toString()).toBe(
+			(await buildMst(reversed)).root.toString(),
+		);
 	});
 
 	it("an edit rewrites only one path (Lemma 2)", async () => {
@@ -158,9 +185,13 @@ describe("Merkle Search Tree", () => {
 		const get = store(nodes);
 		const back = await readMst(root, get);
 		expect([...back.state].map(([k, v]) => [k, v.toString()])).toEqual(
-			[...s].map(([k, v]) => [k, v.toString()]).sort(([a], [b]) => (a < b ? -1 : 1)),
+			[...s]
+				.map(([k, v]) => [k, v.toString()])
+				.sort(([a], [b]) => (a < b ? -1 : 1)),
 		);
-		expect((await lookupMst(root, "k7", get))?.toString()).toBe(s.get("k7")?.toString());
+		expect((await lookupMst(root, "k7", get))?.toString()).toBe(
+			s.get("k7")?.toString(),
+		);
 		expect(await lookupMst(root, "nope", get)).toBeNull();
 	});
 
@@ -175,23 +206,39 @@ describe("Merkle Search Tree", () => {
 				{ key: "a", value: v, right: null },
 			],
 		} satisfies MstNode);
-		await expect(readMst(bad.cid, store([bad]))).rejects.toThrow(/not canonical/);
+		await expect(readMst(bad.cid, store([bad]))).rejects.toThrow(
+			/not canonical/,
+		);
 	});
 
 	it("diffMst matches a full-state diff, and opens only changed paths", async () => {
 		const val = async (s: string) => (await encodeBlock({ v: s })).cid;
 		const before = new Map<string, CID>();
-		for (let i = 0; i < 3000; i++) before.set(`k${i.toString()}`, await val(`a${i.toString()}`));
+		for (let i = 0; i < 3000; i++)
+			before.set(`k${i.toString()}`, await val(`a${i.toString()}`));
 		const after = new Map(before);
-		for (let i = 0; i < 10; i++) after.set(`new${i.toString()}`, await val(`n${i.toString()}`));
-		after.delete("k7"); after.delete("k1500");
+		for (let i = 0; i < 10; i++)
+			after.set(`new${i.toString()}`, await val(`n${i.toString()}`));
+		after.delete("k7");
+		after.delete("k1500");
 		after.set("k42", await val("changed"));
 		const [x, y] = [await buildMst(before), await buildMst(after)];
 		let reads = 0;
-		const counted = (get: (c: CID) => Promise<Uint8Array>) => (c: CID) => { reads++; return get(c); };
-		const d = await diffMst(x.root, y.root, counted(store(x.nodes)), counted(store(y.nodes)));
+		const counted = (get: (c: CID) => Promise<Uint8Array>) => (c: CID) => {
+			reads++;
+			return get(c);
+		};
+		const d = await diffMst(
+			x.root,
+			y.root,
+			counted(store(x.nodes)),
+			counted(store(y.nodes)),
+		);
 
-		const puts = [...after].filter(([k, v]) => !before.get(k)?.equals(v)).map(([k]) => k).sort();
+		const puts = [...after]
+			.filter(([k, v]) => !before.get(k)?.equals(v))
+			.map(([k]) => k)
+			.sort();
 		expect([...d.puts.keys()].sort()).toEqual(puts);
 		expect(d.deletes.sort()).toEqual(["k1500", "k7"]);
 		expect([...d.before.keys()].sort()).toEqual(["k1500", "k42", "k7"]);
@@ -202,12 +249,17 @@ describe("Merkle Search Tree", () => {
 
 	it("diffMst from or to nothing is every key", async () => {
 		const state = new Map<string, CID>();
-		for (let i = 0; i < 50; i++) state.set(`r${i.toString()}`, (await encodeBlock({ i })).cid);
+		for (let i = 0; i < 50; i++)
+			state.set(`r${i.toString()}`, (await encodeBlock({ i })).cid);
 		const t = await buildMst(state);
-		expect((await diffMst(null, t.root, store([]), store(t.nodes))).puts.size).toBe(50);
+		expect(
+			(await diffMst(null, t.root, store([]), store(t.nodes))).puts.size,
+		).toBe(50);
 		const gone = await diffMst(t.root, null, store(t.nodes), store([]));
 		expect([gone.deletes.length, gone.before.size]).toEqual([50, 50]);
-		expect((await diffMst(t.root, t.root, store([]), store([]))).puts.size).toBe(0);
+		expect(
+			(await diffMst(t.root, t.root, store([]), store([]))).puts.size,
+		).toBe(0);
 	});
 
 	it("refuses graph-era trees", async () => {

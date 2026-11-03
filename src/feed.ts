@@ -1,18 +1,17 @@
 import type { RepoChange } from "./fangorn.js";
 
 /**
- * One shared app-wide commit stream, fanned out to many consumers.
+ * One shared commit stream, fanned out to many consumers.
  *
- * `subscribeApp` opens a fresh RPC watch per call. A server that subscribes per
- * connection × per tracked repo opens N×M pollers for what is the *same*
- * app-level topic filter. This opens exactly one, ref-counted: it starts with
- * the first listener and stops with the last. Consumers filter in memory — the
- * events are already narrowed to the app on-chain.
+ * `subscribeAll` opens a fresh RPC watch per call. A server that subscribes per
+ * connection × per tracked repo opens N×M pollers for the *same* topic filter.
+ * This opens exactly one, ref-counted: it starts with the first listener and
+ * stops with the last. Consumers filter in memory.
  *
  * Not a lens (WHITEPAPER_1 §3.4): a lens computes a view over the stream, this
  * only shares the stream. fangorn-md's server fans it out to its connections.
  */
-export class AppFeed {
+export class CommitFeed {
 	private readonly listeners = new Set<{
 		onChange: (change: RepoChange) => void;
 		onError?: (err: Error) => void;
@@ -71,7 +70,7 @@ export class AppFeed {
 						}
 					}
 				} catch (err) {
-						if (stopped()) return;
+					if (stopped()) return;
 					for (const l of [...this.listeners]) l.onError?.(asError(err));
 				}
 				// The watch ending is not terminal — an RPC hiccup shouldn't leave a

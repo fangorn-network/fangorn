@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { generatePrivateKey } from "viem/accounts";
-import { MemRegistry, memoryNetwork, TEST_APP } from "./test/testbed.js";
+import { MemRegistry, memoryNetwork } from "./test/testbed.js";
 import { sdkSuite, take } from "./test/sdk-suite.js";
 
 // The SDK end to end on an in-memory network: the registry and storage are mocks.
@@ -24,9 +24,12 @@ describe("Fangorn subscriptions (in memory only)", () => {
 				return (await super.log(...args)).filter((e) => e.t !== 3n);
 			}
 		}
-		const reader = await net.client(TEST_APP, generatePrivateKey(), LossyRegistry);
+		const reader = await net.client(generatePrivateKey(), LossyRegistry);
 
-		const changes = await take(reader.subscribeApp({ fromBlock: 0n }), 2);
-		expect(changes.map((c) => c.puts.map((r) => r.id).sort())).toEqual([["a"], ["b", "c"]]);
+		const changes = await take(reader.subscribeAll({ fromBlock: 0n }), 2);
+		expect(changes.map((c) => c.puts.map((r) => r.id).sort())).toEqual([
+			["a"],
+			["b", "c"],
+		]);
 	});
 });

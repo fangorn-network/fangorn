@@ -4,9 +4,9 @@ import { intro, outro, text, spinner, confirm } from "@clack/prompts";
 import {
 	createPublicClient,
 	formatEther,
-	formatUnits,
 	http,
 	isAddress,
+	parseUnits,
 	type Address,
 	type Hex,
 } from "viem";
@@ -23,10 +23,10 @@ import { homedir } from "os";
 import "dotenv/config";
 
 import { Fangorn } from "../fangorn.js";
-import { handleCancel, selectChain } from "./index.js";
-import getNetwork, { AppConfig, nonBlank, toAppId } from "../config.js";
+import { sealRecords } from "./sell.js";
+import { handleCancel } from "./index.js";
+import getNetwork, { NetworkConfig, nonBlank } from "../config.js";
 import { StorageConfig } from "../types/index.js";
-import { PublisherStatus } from "../contracts/index.js";
 import { agentCardUrl, parseAgentId } from "../erc8004.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -39,19 +39,11 @@ interface StoredConfig {
 	// The pinata-url-provider worker that distributes presigned upload URLs.
 	// Required only when uploading via signed URLs (no own Pinata JWT).
 	signedUrlWorkerUrl?: string;
-	// The app (global namespace) commands run under — a name or a 32-byte app id.
-	// Set with `fangorn set-app`; unset means the SDK default.
-	appId?: string;
 }
 
 interface Config {
 	privateKey: Hex;
-	cfg: AppConfig;
-	// The app the user actually chose (env, config file, or `--app`), if any.
-	// Left undefined since naming an app bills uploads to that
-	// app owner's storage subscription. We do not want `fangorn` to be filled in on the user's
-	// behalf. `currentAppName()` applies the default for display and namespace keys.
-	appId?: string;
+	cfg: NetworkConfig;
 	pinataJwt: string;
 	pinataGateway: string;
 	signedUrlWorkerUrl: string;
@@ -89,19 +81,13 @@ function loadConfig(): Config {
 	const pinataJwt = process.env.PINATA_JWT;
 	const pinataGateway = process.env.PINATA_GATEWAY;
 	const signedUrlWorkerUrl = process.env.SIGNED_URL_WORKER_URL;
-	// Blank counts as unset, so an exported-but-empty FANGORN_APP_ID (common in
-	// Docker/CI) falls through to the stored app instead of overriding it with an
-	// app called "".
-	const envAppId = nonBlank(process.env.FANGORN_APP_ID);
 	const envChain = nonBlank(process.env.CHAIN_NAME);
 
 	if (existsSync(CONFIG_PATH)) {
 		const stored = readStoredConfig();
-		const storedChain = stored.chainName === "Arbitrum Sepolia" ? "arbitrumSepolia" : stored.chainName;
 		_config = {
 			privateKey: stored.privateKey,
-			cfg: network(envChain ?? storedChain),
-			appId: envAppId ?? nonBlank(stored.appId),
+			cfg: network(envChain ?? stored.chainName),
 			pinataJwt: stored.pinataJwt,
 			pinataGateway: stored.pinataGateway,
 			signedUrlWorkerUrl: stored.signedUrlWorkerUrl ?? "",
@@ -115,14 +101,13 @@ function loadConfig(): Config {
 		if (!privateKey) {
 			throw new Error(
 				"Incomplete environment configuration. Missing: ETH_PRIVATE_KEY\n" +
-				"Set it or run `fangorn init` to use a config file.",
+					"Set it or run `fangorn init` to use a config file.",
 			);
 		}
 
 		_config = {
 			privateKey: privateKey as Hex,
 			cfg: network(envChain ?? "baseSepolia"),
-			appId: envAppId,
 			pinataJwt: pinataJwt ?? "",
 			pinataGateway: pinataGateway ?? "",
 			signedUrlWorkerUrl: signedUrlWorkerUrl ?? "",
@@ -133,27 +118,31 @@ function loadConfig(): Config {
 
 	throw new Error(
 		"No configuration found. Run `fangorn init` or set ETH_PRIVATE_KEY\n" +
-		"(with no config, uploads go to Fangorn's shared Pinata account; files may be unpinned without notice. Set PINATA_JWT + PINATA_GATEWAY to use your own storage).",
+			"(with no config, uploads go to Fangorn's shared Pinata account; files may be unpinned without notice. Set PINATA_JWT + PINATA_GATEWAY to use your own storage).",
 	);
 }
 
 /**
  * The named network, with its RPC and contracts overridable from the environment:
- * FANGORN_RPC_URL, FANGORN_APP_REGISTRY and FANGORN_DATA_REGISTRY, for a local
+ * FANGORN_RPC_URL, FANGORN_DATA_REGISTRY and FANGORN_SETTLEMENT_REGISTRY, for a local
  * chain (an anvil with the contracts deployed) or a private RPC. Blank counts as unset.
  */
-function network(name: string): AppConfig {
+function network(name: string): NetworkConfig {
 	const cfg = getNetwork(name);
 	const address = (variable: string): Hex | undefined => {
 		const value = nonBlank(process.env[variable]);
-		if (value !== undefined && !isAddress(value)) throw new Error(`${variable} is not an address: "${value}"`);
+		if (value !== undefined && !isAddress(value))
+			throw new Error(`${variable} is not an address: "${value}"`);
 		return value;
 	};
 	return {
 		...cfg,
 		rpcUrl: nonBlank(process.env.FANGORN_RPC_URL) ?? cfg.rpcUrl,
-		appRegistryContractAddress: address("FANGORN_APP_REGISTRY") ?? cfg.appRegistryContractAddress,
-		dataRegistryContractAddress: address("FANGORN_DATA_REGISTRY") ?? cfg.dataRegistryContractAddress,
+		dataRegistryContractAddress:
+			address("FANGORN_DATA_REGISTRY") ?? cfg.dataRegistryContractAddress,
+		settlementRegistryContractAddress:
+			address("FANGORN_SETTLEMENT_REGISTRY") ??
+			cfg.settlementRegistryContractAddress,
 	};
 }
 
@@ -176,39 +165,18 @@ function getFangorn(): Fangorn {
 	const storage: StorageConfig = cfg.pinataJwt
 		? { pinata: { jwt: cfg.pinataJwt, gateway: cfg.pinataGateway } }
 		: {
-			signedUrl: {
-				workerUrl: cfg.signedUrlWorkerUrl,
-				gateway: cfg.pinataGateway,
-			},
-		};
+				signedUrl: {
+					workerUrl: cfg.signedUrlWorkerUrl,
+					gateway: cfg.pinataGateway,
+				},
+			};
 
 	_fangorn = Fangorn.create({
 		privateKey: cfg.privateKey,
 		storage,
 		config: cfg.cfg,
-		// `--app` (global option) wins over the stored app for this invocation.
-		appId: appFlag() ?? cfg.appId,
 	});
 	return _fangorn;
-}
-
-/** The `--app` override for this invocation; blank counts as unset. */
-function appFlag(): string | undefined {
-	return nonBlank(program.opts().app as string | undefined);
-}
-
-/**
- * The currently configured app name. App commands need one: there is no default
- * app, since publishing and reading need none.
- */
-function currentAppName(): string {
-	const name = appFlag() ?? loadConfig().appId;
-	if (!name) throw new Error("no app chosen: run `fangorn set-app <name>` or pass --app");
-	return name;
-}
-
-function currentAppId(): Hex {
-	return toAppId(currentAppName());
 }
 
 // ─── Local repo (working-directory ref) ─────────────────────────────────────────
@@ -224,7 +192,7 @@ class LocalRepo {
 	private constructor(
 		private readonly dir: string,
 		private state: RepoState,
-	) { }
+	) {}
 
 	private static path(dir: string): string {
 		return join(dir, ".fangorn", "repo.json");
@@ -289,14 +257,8 @@ class LocalRepo {
 // ─── CLI root ─────────────────────────────────────────────────────────────────
 
 const program = new Command();
-const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 
 program.name("fangorn").description("Fangorn Network CLI").version("0.4.0");
-// The app id decides which global namespace a command reads from and publishes into, overrides set-app
-program.option(
-	"--app <name-or-id>",
-	"App (global namespace) for this command — overrides the stored app (see `set-app`)",
-);
 
 /// initialize the fangorn cli
 program
@@ -305,7 +267,7 @@ program
 	.action(async () => {
 		intro("Fangorn Setup");
 
-		const chainName = await selectChain();
+		const chainName = "baseSepolia"; // ponytail: one network; restore a picker when there is a second
 
 		const privateKey = await text({
 			message: "Wallet private key (stored locally, never transmitted):",
@@ -321,12 +283,14 @@ program
 		// Storage: either your own Pinata JWT + gateway, or the access worker for
 		// signed-url uploads (no JWT). Leave the JWT blank to use signed URLs.
 		const pinataJwt = await text({
-			message: "Pinata JWT — leave blank to use Fangorn's shared Pinata account (testnet convenience; files may be unpinned without notice):",
+			message:
+				"Pinata JWT — leave blank to use Fangorn's shared Pinata account (testnet convenience; files may be unpinned without notice):",
 		});
 		handleCancel(pinataJwt);
 
 		const pinataGateway = await text({
-			message: "Pinata Gateway URL (optional; blank uses a public IPFS gateway):",
+			message:
+				"Pinata Gateway URL (optional; blank uses a public IPFS gateway):",
 			placeholder: "https://your-gateway.mypinata.cloud",
 		});
 		handleCancel(pinataGateway);
@@ -335,7 +299,8 @@ program
 		// upload URLs. Optional — blank uses the hosted default, so no JWT is
 		// needed to upload via signed URLs.
 		const signedUrlWorkerUrl = await text({
-			message: "Presigned-URL worker URL (optional; blank uses the hosted default):",
+			message:
+				"Presigned-URL worker URL (optional; blank uses the hosted default):",
 			placeholder: "https://pinata-url-provider.your-subdomain.workers.dev",
 		});
 		handleCancel(signedUrlWorkerUrl);
@@ -346,323 +311,99 @@ program
 			pinataJwt: pinataJwt as string,
 			pinataGateway: pinataGateway as string,
 			signedUrlWorkerUrl: signedUrlWorkerUrl as string,
-			// Keep whatever `set-app` chose; re-running init shouldn't silently
-			// move the user back to the default app.
-			appId: existsSync(CONFIG_PATH) ? readStoredConfig().appId : undefined,
 		});
 
 		outro(`Config saved to ${CONFIG_PATH}`);
 	});
 
-// ─── app (global namespace) ───────────────────────────────────────────────────
+// ─── card ──────────────────────────────────────────────────────────────────────
 //
-// The app id prefixes every namespace key, so it decides which global namespace
-// commands read from and publish into. It is per-client state, not part of the
-// SDK's network config: the CLI persists a choice here, the SDK takes it via
-// `Fangorn.create({ appId })` / `fangorn.setAppId()`.
+// A repo's agent card: the `@card` record points the repo at it, and the card
+// names the repo back (FANGORN_REPO_EXTENSION), which is what `discoverCard` checks.
 
 program
-	.command("set-app")
+	.command("card")
 	.description(
-		"Set the app (global namespace) this CLI publishes and reads under",
-	)
-	.argument("[app]", "App name or 32-byte app id (omit to show the current one)")
-	.action((app: string | undefined) => {
-		try {
-			if (!app) {
-				const current = currentAppName();
-				console.log(`App:    ${current}`);
-				console.log(`App id: ${toAppId(current)}`);
-				process.exit(0);
-			}
-
-			if (!existsSync(CONFIG_PATH)) {
-				throw new Error(
-					`no config file at ${CONFIG_PATH} — run \`fangorn init\` first, or set FANGORN_APP_ID in the environment.`,
-				);
-			}
-			writeStoredConfig({ ...readStoredConfig(), appId: app });
-
-			console.log(`App:    ${app}`);
-			console.log(`App id: ${toAppId(app)}`);
-			if (process.env.FANGORN_APP_ID) {
-				console.log(
-					`\nNote: FANGORN_APP_ID=${process.env.FANGORN_APP_ID} is set and overrides this.`,
-				);
-			}
-			// Switching apps changes nothing on-chain: the new app may be
-			// unclaimed, or claimed by someone else who has not accepted you. Both
-			// surface as a revert at push time, so point at `app info` now.
-			console.log(
-				`\nSaved to ${CONFIG_PATH}. Run \`fangorn app info\` to see whether it is claimed and whether it has accepted you.`,
-			);
-			process.exit(0);
-		} catch (err) {
-			console.error("Failed:", (err as Error).message);
-			process.exit(1);
-		}
-	});
-
-// ─── app membership ───────────────────────────────────────────────────────────
-//
-// An app stores and includes the data of the publishers it accepts: its owner
-// runs `fangorn app accept <address>`, and that is the whole membership.
-// `fangorn app info` shows where you stand. An app is also a storage
-// subscription (ERC-5643) — `app claim` pays the first period, `app renew` the
-// next; once it expires, the app stores and includes nothing until renewed.
-
-/** Fees are USDC, which has 6 decimals; the contracts count in its base units. */
-const USDC_DECIMALS = 6;
-
-function formatUsdc(amount: bigint): string {
-	return `${formatUnits(amount, USDC_DECIMALS)} USDC`;
-}
-
-/** The status word for a publisher in one app, and whether they can publish. */
-function membershipLine(status: PublisherStatus, canPublish: boolean, appSuspended: boolean, expired: boolean): string {
-	// A takedown or a lapsed subscription outranks everything below: either makes
-	// `canPublish` false for the app's own owner.
-	if (appSuspended)
-		return "the whole app is suspended by the protocol admin — nobody can publish under it";
-	if (expired)
-		return "the app's subscription has expired — nobody can publish until its owner runs `fangorn app renew`";
-	if (canPublish) return "accepted";
-	if (status === PublisherStatus.SUSPENDED) return "suspended from this app by its owner";
-	if (status === PublisherStatus.ACTIVE) return "accepted, but suspended network-wide by the protocol admin";
-	return "not accepted here — ask the app's owner to run `fangorn app accept <your address>`";
-}
-
-const appCmd = program
-	.command("app")
-	.description("Claim and manage apps, and the publishers they accept");
-
-appCmd
-	.command("info")
-	.description("Show this app's owner, subscription, and where you stand in it")
-	.action(async () => {
-		try {
-			const self = getAccount().address;
-			const fangorn = getFangorn();
-			const apps = fangorn.getAppRegistry();
-			const s = spinner();
-
-			s.start("Reading registry...");
-			const [{ canPublish, owner, expiresAt }, status, appSuspended, suspendedGlobally, canonical, current] = await Promise.all([
-				apps.access(self),
-				apps.status(self),
-				apps.isAppSuspended(),
-				apps.isGloballySuspended(self),
-				apps.canonicalAppId(),
-				apps.currentAppId(),
-			]);
-			s.stop();
-			const expired = expiresAt <= BigInt(Math.floor(Date.now() / 1000));
-
-			console.log(`App:        ${currentAppName()}`);
-			console.log(`App id:     ${apps.getAppId() ?? ""}`);
-			// A renamed app answers to every id it went by: say which one it goes by now.
-			// The contract returns lowercase hex; an id given on the command line may not be.
-			const id = apps.getAppId()?.toLowerCase();
-			if (canonical.toLowerCase() !== id) console.log(`Claimed as: ${canonical}`);
-			if (current.toLowerCase() !== id)
-				console.log(`Renamed to: ${current}  (this name still works; \`fangorn set-app <new name>\` follows it)`);
-
-			if (owner === ZERO_ADDRESS) {
-				console.log(`Owner:      (unclaimed — \`fangorn app claim\` takes it)`);
-			} else {
-				console.log(
-					`Owner:      ${owner}${owner.toLowerCase() === self.toLowerCase() ? "  (you)" : ""}`,
-				);
-				console.log(
-					expiresAt === 0n
-						? `Expires:    cancelled — \`fangorn app renew\` starts a new period`
-						: `Expires:    ${new Date(Number(expiresAt) * 1000).toISOString()}${expired ? "  (EXPIRED)" : ""}`,
-				);
-			}
-
-			if (appSuspended)
-				console.log(`Status:     SUSPENDED by the protocol admin`);
-
-			console.log(`\nWallet:     ${self}`);
-			if (suspendedGlobally)
-				console.log(`Network:      SUSPENDED by the protocol admin — cannot claim, be accepted or publish`);
-			console.log(
-				`This app:     ${owner === ZERO_ADDRESS ? "n/a (unclaimed)" : membershipLine(status, canPublish, appSuspended, expired)}`,
-			);
-			process.exit(0);
-		} catch (err) {
-			console.error("Failed:", (err as Error).message);
-			process.exit(1);
-		}
-	});
-
-appCmd
-	.command("claim")
-	.description("Claim the configured app on-chain (first come, first served)")
-	.action(async () => {
-		try {
-			const self = getAccount().address;
-			const fangorn = getFangorn();
-			const registry = fangorn.getAppRegistry();
-			const s = spinner();
-
-			s.start("Checking app ownership...");
-			const [owner, suspendedGlobally] = await Promise.all([
-				registry.getAppOwner(),
-				registry.isGloballySuspended(self),
-			]);
-			s.stop();
-
-			// Apps are first come, first served — claiming a taken one reverts.
-			if (owner !== ZERO_ADDRESS) {
-				const mine = owner.toLowerCase() === self.toLowerCase();
-				console.log(
-					mine
-						? `Already claimed by you: ${registry.getAppId() ?? ""}`
-						: `App ${registry.getAppId() ?? ""} is already owned by ${owner}. Pick another name with \`fangorn set-app\`, or ask its owner to accept you.`,
-				);
-				process.exit(mine ? 0 : 1);
-			}
-
-			// The contract refuses a claim from a wallet the protocol admin has
-			// banned.
-			if (suspendedGlobally) {
-				console.error(
-					`${self} is suspended by the protocol admin — claiming will revert.`,
-				);
-				process.exit(1);
-			}
-
-			// Claiming an app is subscribing: the fee is pulled in USDC, and the
-			// client approves it first.
-			const subscriptionFee = await registry.subscriptionFee();
-			console.log(`Subscription fee: ${formatUsdc(subscriptionFee)}`);
-			s.start("Claiming app...");
-			const txHash = await registry.registerApp();
-			s.stop();
-
-			console.log(`App:    ${currentAppName()}`);
-			console.log(`App id: ${currentAppId()}`);
-			console.log(`Owner:  ${self}`);
-			console.log(`Tx:     ${txHash}`);
-			console.log(`\nClaiming makes you your own first publisher. Accept others with \`fangorn app accept <address>\`.`);
-			process.exit(0);
-		} catch (err) {
-			console.error("Failed:", (err as Error).message);
-			process.exit(1);
-		}
-	});
-
-appCmd
-	.command("rename")
-	.description("Give your app a new name (owner only); its old names keep working")
-	.argument("<name>", "The new app name, or a 32-byte app id")
-	.action(async (name: string) => {
-		try {
-			const self = getAccount().address;
-			const fangorn = getFangorn();
-			const registry = fangorn.getAppRegistry();
-			const newId = toAppId(name);
-			const s = spinner();
-
-			s.start("Checking app ownership...");
-			const [owner, canonical, holder, holderOwner] = await Promise.all([
-				registry.getAppOwner(),
-				registry.canonicalAppId(),
-				registry.canonicalAppId(newId),
-				registry.getAppOwner(newId),
-			]);
-			s.stop();
-
-			if (owner === ZERO_ADDRESS) {
-				console.error(`App ${registry.getAppId() ?? ""} is unclaimed — \`fangorn app claim\` takes it.`);
-				process.exit(1);
-			}
-			if (owner.toLowerCase() !== self.toLowerCase()) {
-				console.error(`App ${registry.getAppId() ?? ""} is owned by ${owner}; only its owner can rename it.`);
-				process.exit(1);
-			}
-			// An id the app already went by is its own to take back.
-			if (holderOwner !== ZERO_ADDRESS && holder !== canonical) {
-				console.error(`"${name}" (${newId}) is already another app's, owned by ${holderOwner}. Pick another name.`);
-				process.exit(1);
-			}
-
-			s.start("Renaming app...");
-			const txHash = await fangorn.renameApp(name);
-			s.stop();
-
-			// Follow the rename wherever the CLI took the app from: without --app or
-			// FANGORN_APP_ID, that is the config file. The old name still works, so an
-			// override left behind is a note, not an error.
-			const source = appFlag() ? "--app" : nonBlank(process.env.FANGORN_APP_ID) ? "FANGORN_APP_ID" : undefined;
-			if (!source) writeStoredConfig({ ...readStoredConfig(), appId: name });
-
-			console.log(`App:        ${name}`);
-			console.log(`App id:     ${newId}`);
-			console.log(`Claimed as: ${canonical}`);
-			console.log(`Tx:         ${txHash}`);
-			console.log(
-				source
-					? `\nThe app came from ${source}: update it to "${name}". The old name keeps working meanwhile.`
-					: `\nSaved to ${CONFIG_PATH}.`,
-			);
-			console.log(`Every name the app went by still resolves to it, and stays yours: nobody else can claim one.`);
-			process.exit(0);
-		} catch (err) {
-			console.error("Failed:", (err as Error).message);
-			process.exit(1);
-		}
-	});
-
-appCmd
-	.command("agent")
-	.description(
-		"Register this app's gateway as an ERC-8004 agent and point the app at its card (owner only)",
+		"Point a repo at its agent card, and register the card as an ERC-8004 agent",
 	)
 	.argument(
 		"[cardUrl]",
 		"The agent card URL; or pass --access-worker to use its /.well-known/agent-card.json",
 	)
+	.option(
+		"--repo <name>",
+		"The repo the card speaks for (default: the repo tracked here)",
+	)
 	.option("--access-worker <url>", "The access worker serving the agent card")
 	.option("--mcp <url>", "An MCP endpoint to index alongside the card")
 	.option(
 		"--skip-register",
-		"Only set agent_uri on-chain — for a gateway already registered with ERC-8004",
+		"Only commit the @card record, for a card already registered with ERC-8004",
 	)
 	.option(
 		"--update <agentId>",
 		"Update an agent already registered (e.g. 84532:10323) from the card as it is now: a new registration file, pointed to by setAgentURI; mints nothing",
 	)
 	.action(
-		async (cardUrl: string | undefined, opts: { accessWorker?: string; mcp?: string; skipRegister?: boolean; update?: string }) => {
+		async (
+			cardUrl: string | undefined,
+			opts: {
+				repo?: string;
+				accessWorker?: string;
+				mcp?: string;
+				skipRegister?: boolean;
+				update?: string;
+			},
+		) => {
 			try {
 				const cfg = loadConfig();
 				const url = agentCardUrl(cardUrl, opts.accessWorker);
+				const local = opts.repo ? undefined : LocalRepo.open();
+				const repo = opts.repo ?? local?.namespace() ?? "";
 
 				const s = spinner();
-				// The storage the CLI is configured with pins the registration file: its Pinata
-				// JWT, or signed URLs billed to the app.
 				const chainId = cfg.cfg.caip2;
-				const update = opts.update ? parseAgentId(opts.update, chainId) : undefined;
-				s.start(opts.skipRegister ? "Pointing the app at its card" : update !== undefined ? `Updating ERC-8004 agent ${opts.update ?? ""}` : "Registering with the ERC-8004 identity registry");
+				const update = opts.update
+					? parseAgentId(opts.update, chainId)
+					: undefined;
+				s.start(
+					opts.skipRegister
+						? `Pointing ${repo} at its card`
+						: update !== undefined
+							? `Updating ERC-8004 agent ${opts.update ?? ""}`
+							: "Registering with the ERC-8004 identity registry",
+				);
+				const fangorn = getFangorn();
 				let result: Awaited<ReturnType<Fangorn["registerAgent"]>>;
 				try {
-					result = await getFangorn().registerAgent(url, { mcp: opts.mcp, update, skipRegister: opts.skipRegister });
+					result = await fangorn.registerAgent(url, {
+						repo,
+						mcp: opts.mcp,
+						update,
+						skipRegister: opts.skipRegister,
+					});
 				} catch (e) {
 					s.stop();
 					const minted = (e as { agentId?: bigint }).agentId;
 					throw minted !== undefined
-						? new Error(`${(e as Error).message.replace(/; finish it with .*/, "")}. Finish it with: fangorn app agent ${url} --update ${String(chainId)}:${String(minted)}`)
+						? new Error(
+								`${(e as Error).message.replace(/; finish it with .*/, "")}. Finish it with: fangorn card ${url} --repo ${repo} --update ${String(chainId)}:${String(minted)}`,
+							)
 						: e;
 				}
 				s.stop();
-				const agentId = result.agentId !== undefined ? `${String(chainId)}:${String(result.agentId)}` : undefined;
-				const txHash = result.txHash ?? "(already bound)";
+				// The @card record is a commit: move the tracked head along with it.
+				if (local && result.txHash)
+					local.setHead(await fangorn.onChainTip(fangorn.getAddress(), repo));
+				const agentId =
+					result.agentId !== undefined
+						? `${String(chainId)}:${String(result.agentId)}`
+						: undefined;
 
 				if (agentId) console.log(`Agent ID:  ${agentId}`);
+				console.log(`Repo:      ${repo}`);
 				console.log(`Card:      ${url}`);
-				console.log(`Tx:        ${txHash}`);
+				console.log(`Tx:        ${result.txHash ?? "(already bound)"}`);
 				process.exit(0);
 			} catch (err) {
 				console.error("Failed:", (err as Error).message);
@@ -670,226 +411,6 @@ appCmd
 			}
 		},
 	);
-
-appCmd
-	.command("accept")
-	.description("Accept a publisher into your app (owner only): the app stores and includes its data")
-	.argument("<publisher>", "Publisher address")
-	.action(async (publisher: string) => {
-		try {
-			const registry = getFangorn().getAppRegistry();
-			const s = spinner();
-			// The contract refuses a wallet the protocol admin has banned.
-			s.start("Checking publisher standing...");
-			const suspended = await registry.isGloballySuspended(publisher as Address);
-			s.stop();
-			if (suspended) {
-				console.error(
-					`${publisher} is suspended by the protocol admin — accepting them will revert.`,
-				);
-				process.exit(1);
-			}
-
-			s.start("Accepting publisher...");
-			const txHash = await registry.acceptPublisher(publisher as Address);
-			s.stop();
-			console.log(`Accepted: ${publisher}`);
-			console.log(`Tx:       ${txHash}`);
-			console.log(`\nThey can now upload with this app's storage, and the app includes their data.`);
-			process.exit(0);
-		} catch (err) {
-			console.error("Failed:", (err as Error).message);
-			process.exit(1);
-		}
-	});
-
-appCmd
-	.command("renew")
-	.description("Pay for one more period of your app's subscription (owner only)")
-	.action(async () => {
-		try {
-			const registry = getFangorn().getAppRegistry();
-			const s = spinner();
-			s.start("Renewing subscription...");
-			const txHash = await registry.renewSubscription();
-			const expiresAt = await registry.expiresAt();
-			s.stop();
-			console.log(`Renewed: ${registry.getAppId() ?? ""}`);
-			console.log(`Expires: ${new Date(Number(expiresAt) * 1000).toISOString()}`);
-			console.log(`Tx:      ${txHash}`);
-			process.exit(0);
-		} catch (err) {
-			console.error("Failed:", (err as Error).message);
-			process.exit(1);
-		}
-	});
-
-appCmd
-	.command("cancel")
-	.description("End your app's subscription now, without refund (owner only)")
-	.action(async () => {
-		try {
-			const registry = getFangorn().getAppRegistry();
-			const ok = await confirm({
-				message: `Cancel ${registry.getAppId() ?? ""}'s subscription? Nothing is refunded, and the app takes no commits or joins until renewed.`,
-			});
-			handleCancel(ok);
-			if (!ok) process.exit(0);
-
-			const s = spinner();
-			s.start("Cancelling subscription...");
-			const txHash = await registry.cancelSubscription();
-			s.stop();
-			console.log(`Cancelled: ${registry.getAppId() ?? ""}`);
-			console.log(`Tx:        ${txHash}`);
-			process.exit(0);
-		} catch (err) {
-			console.error("Failed:", (err as Error).message);
-			process.exit(1);
-		}
-	});
-
-appCmd
-	.command("suspend")
-	.description("Suspend a member from your app (owner only)")
-	.argument("<publisher>", "Publisher address")
-	.action(async (publisher: string) => {
-		try {
-			const s = spinner();
-			s.start("Suspending publisher...");
-			const txHash = await getFangorn()
-				.getAppRegistry()
-				.setPublisherSuspended(publisher as Address, true);
-			s.stop();
-			// Per-app only: their global standing and other apps are untouched.
-			console.log(`Suspended: ${publisher}`);
-			console.log(`Tx:        ${txHash}`);
-			process.exit(0);
-		} catch (err) {
-			console.error("Failed:", (err as Error).message);
-			process.exit(1);
-		}
-	});
-
-appCmd
-	.command("reinstate")
-	.description("Reinstate a suspended publisher in your app (owner only)")
-	.argument("<publisher>", "Publisher address")
-	.action(async (publisher: string) => {
-		try {
-			const s = spinner();
-			s.start("Reinstating publisher...");
-			const txHash = await getFangorn()
-				.getAppRegistry()
-				.setPublisherSuspended(publisher as Address, false);
-			s.stop();
-			console.log(`Reinstated: ${publisher}`);
-			console.log(`Tx:         ${txHash}`);
-			process.exit(0);
-		} catch (err) {
-			console.error("Failed:", (err as Error).message);
-			process.exit(1);
-		}
-	});
-
-// ─── app admin (protocol admin) ────────────────────────────────────────────────
-//
-// A level above the app owner: `app suspend` ejects one publisher from one app,
-// `app admin suspend` takes the whole app down, its owner included. The
-// memberships underneath survive, so a reinstatement restores the app exactly as
-// it was rather than making everyone pay to join again.
-
-const appAdminCmd = appCmd
-	.command("admin")
-	.description("Protocol-admin takedowns for the whole app (admin only)");
-
-/** The AppRegistry client, refusing early if this wallet is not the protocol admin. */
-async function requireAdmin() {
-	const registry = getFangorn().getAppRegistry();
-	const self = getAccount().address;
-	const admin = await registry.admin();
-	if (admin.toLowerCase() !== self.toLowerCase()) {
-		// Otherwise the only feedback is an `Unauthorized` revert after gas.
-		throw new Error(
-			`Not the protocol admin: this registry's admin is ${admin}, you are ${self}.`,
-		);
-	}
-	return registry;
-}
-
-appAdminCmd
-	.command("suspend")
-	.description("Suspend this entire app — nobody can publish under it (admin only)")
-	.action(async () => {
-		try {
-			const registry = await requireAdmin();
-
-			const ok = await confirm({
-				message: `Suspend the whole app ${registry.getAppId() ?? ""}? Every publisher, including its owner, stops being able to publish.`,
-			});
-			handleCancel(ok);
-			if (!ok) process.exit(0);
-
-			const s = spinner();
-			s.start("Suspending app...");
-			const txHash = await registry.setAppSuspended(true);
-			s.stop();
-			console.log(`Suspended: ${currentAppId()}`);
-			console.log(`Tx:        ${txHash}`);
-			console.log(
-				`\nMemberships are kept — \`fangorn app admin reinstate\` restores them as they were.`,
-			);
-			process.exit(0);
-		} catch (err) {
-			console.error("Failed:", (err as Error).message);
-			process.exit(1);
-		}
-	});
-
-appAdminCmd
-	.command("reinstate")
-	.description("Lift the suspension on this entire app (admin only)")
-	.action(async () => {
-		try {
-			const registry = await requireAdmin();
-			const s = spinner();
-			s.start("Reinstating app...");
-			const txHash = await registry.setAppSuspended(false);
-			s.stop();
-			console.log(`Reinstated: ${currentAppId()}`);
-			console.log(`Tx:         ${txHash}`);
-			process.exit(0);
-		} catch (err) {
-			console.error("Failed:", (err as Error).message);
-			process.exit(1);
-		}
-	});
-
-appAdminCmd
-	.command("status")
-	.description("Who the protocol admin is, and whether this app is suspended")
-	.action(async () => {
-		try {
-			const registry = getFangorn().getAppRegistry();
-			const self = getAccount().address;
-			const s = spinner();
-			s.start("Reading registry...");
-			const [admin, suspended] = await Promise.all([
-				registry.admin(),
-				registry.isAppSuspended(),
-			]);
-			s.stop();
-			console.log(`App id:    ${currentAppId()}`);
-			console.log(
-				`Admin:     ${admin}${admin.toLowerCase() === self.toLowerCase() ? "  (you)" : ""}`,
-			);
-			console.log(`Suspended: ${suspended ? "yes — nobody can publish under this app" : "no"}`);
-			process.exit(0);
-		} catch (err) {
-			console.error("Failed:", (err as Error).message);
-			process.exit(1);
-		}
-	});
 
 // ─── wallet ───────────────────────────────────────────────────────────────────
 
@@ -908,22 +429,31 @@ program
 			const s = spinner();
 
 			s.start("Reading balance...");
-			const publicClient = createPublicClient({ transport: http(cfg.cfg.rpcUrl) });
-			const balance = await publicClient.getBalance({ address: account.address });
+			const publicClient = createPublicClient({
+				transport: http(cfg.cfg.rpcUrl),
+			});
+			const balance = await publicClient.getBalance({
+				address: account.address,
+			});
 			s.stop();
 
 			console.log(`Address:     ${account.address}`);
 			console.log(`Public key:  ${account.publicKey}`);
 			console.log(`Balance:     ${formatEther(balance)} ETH`);
-			console.log(`Network:     ${cfg.cfg.chain.name} (${cfg.cfg.caip2.toString()})`);
-			console.log(`App:         ${currentAppName()}`);
-			console.log(`Config:      ${existsSync(CONFIG_PATH) ? CONFIG_PATH : "(from environment)"}`);
+			console.log(
+				`Network:     ${cfg.cfg.chain.name} (${cfg.cfg.caip2.toString()})`,
+			);
+			console.log(
+				`Config:      ${existsSync(CONFIG_PATH) ? CONFIG_PATH : "(from environment)"}`,
+			);
 
 			// Printing a key to a terminal puts it in scrollback, shell logs and any
 			// screen share, so it takes an explicit flag — never the default output.
 			if (opts.reveal) {
 				console.log(`\nPrivate key: ${cfg.privateKey}`);
-				console.log(`Anyone with that key controls this wallet. Do not share it.`);
+				console.log(
+					`Anyone with that key controls this wallet. Do not share it.`,
+				);
 			} else {
 				console.log(`\nPrivate key: hidden — pass --reveal to print it`);
 			}
@@ -936,7 +466,6 @@ program
 
 const repoCmd = program.command("repo").description("Repository operations");
 
-// track an app instead of namespace?
 repoCmd
 	.command("init")
 	.description("Start tracking a namespace here (allocates it on-chain if new)")
@@ -949,7 +478,9 @@ repoCmd
 			s.start(`Initializing namespace "${namespace}"...`);
 			const result = await fangorn.initRepo(namespace);
 			// Whether we just created it or it already existed, HEAD tracks the on-chain tip.
-			const head = result.alreadyInitialized ? await fangorn.onChainTip(owner, namespace) : result.commitCid;
+			const head = result.alreadyInitialized
+				? await fangorn.onChainTip(owner, namespace)
+				: result.commitCid;
 			const repo = LocalRepo.init({ namespace, owner, head });
 			s.stop();
 
@@ -979,25 +510,85 @@ program
 		"<file>",
 		'JSON file: {"records":[{"id","type","payload"}],"deletes":["id"]}',
 	)
-	.requiredOption("-m, --message <msg>", "Commit message")
 	.option(
 		"--replace",
 		"Snapshot semantics: the file replaces the namespace's previous contents (omitted entries are removed)",
 	)
+	.option(
+		"--paid <fields>",
+		"Comma-separated payload fields to sell: sealed (field-v1) and priced with signed terms",
+	)
+	.option("--price <usdc>", "Price of each paid record, in USDC (e.g. 0.01)")
+	.option(
+		"--share <percent>",
+		"Share of each sale paid to the referrer (Fangorn's treasury, via its relay)",
+		"5",
+	)
+	.option("--deadline-days <days>", "Days the signed terms stay buyable", "365")
+	.option(
+		"--key-server <url>",
+		"Key server a new deposit is sealed to (an existing deposit keeps its own)",
+		"https://keys-test.fangorn.network",
+	)
 	.action(
-		async (file: string, options: { message: string; replace?: boolean }) => {
+		async (
+			file: string,
+			options: {
+				replace?: boolean;
+				paid?: string;
+				price?: string;
+				share: string;
+				deadlineDays: string;
+				keyServer: string;
+			},
+		) => {
 			try {
 				if (!existsSync(file)) throw new Error(`file not found: ${file}`);
 				const data = JSON.parse(readFileSync(file, "utf-8")) as CommitFile;
-				const records = data.records ?? [];
+				let records = data.records ?? [];
 				const deletes = data.deletes ?? [];
-				if (!Array.isArray(records) || !Array.isArray(deletes) || records.length + deletes.length === 0) {
-					throw new Error(`${file} must contain a non-empty "records" or "deletes" array`);
+				if (
+					!Array.isArray(records) ||
+					!Array.isArray(deletes) ||
+					records.length + deletes.length === 0
+				) {
+					throw new Error(
+						`${file} must contain a non-empty "records" or "deletes" array`,
+					);
 				}
 
 				const repo = LocalRepo.open();
 				const fangorn = getFangorn();
 				const parent = repo.head() ?? undefined;
+				if (options.paid) {
+					if (!options.price) throw new Error("--paid needs --price");
+					// The deposit is read from the on-chain head: sealing on top of unpushed commits could make a second one.
+					if (
+						parent &&
+						parent !==
+							(await fangorn.onChainTip(fangorn.getAddress(), repo.namespace()))
+					) {
+						throw new Error(
+							"push your local commits before committing paid records",
+						);
+					}
+					const shareBps = Math.round(Number(options.share) * 100);
+					const days = Number(options.deadlineDays);
+					if (!Number.isFinite(days) || days <= 0)
+						throw new Error(
+							`--deadline-days must be a positive number, got ${options.deadlineDays}`,
+						);
+					records = await sealRecords(fangorn, repo.namespace(), records, {
+						fields: options.paid
+							.split(",")
+							.map((f) => f.trim())
+							.filter(Boolean),
+						price: parseUnits(options.price, 6),
+						shareBps,
+						deadline: BigInt(Math.floor(Date.now() / 1000 + days * 86400)),
+						keyServer: options.keyServer,
+					});
+				}
 				const s = spinner();
 				s.start(
 					parent
@@ -1009,7 +600,6 @@ program
 					records,
 					deletes,
 					parent,
-					message: options.message,
 					replace: options.replace,
 				});
 				s.stop();
@@ -1021,7 +611,6 @@ program
 				console.log(
 					`Staged:  ${records.length.toString()} put(s) / ${deletes.length.toString()} delete(s)`,
 				);
-				console.log(`Message: ${options.message}`);
 				console.log(
 					`\nCommitted locally. Run \`fangorn push\` to settle it on-chain.`,
 				);
@@ -1047,10 +636,7 @@ program
 			const s = spinner();
 
 			s.start("Pushing...");
-			const { txHash, onChainTip } = await fangorn.push(
-				repo.namespace(),
-				head,
-			);
+			const { txHash, onChainTip } = await fangorn.push(repo.namespace(), head);
 			s.stop();
 
 			console.log(`Tx:  ${txHash}`);
@@ -1113,8 +699,7 @@ program
 			for await (const c of fangorn.log(head, options.max)) {
 				console.log(`commit ${c.cid}`);
 				console.log(`Epoch:  ${c.epoch.toString()}`);
-				console.log(`Tree:   ${c.root}`);
-				console.log(`\n    ${c.message}\n`);
+				console.log(`Tree:   ${c.root}\n`);
 			}
 			process.exit(0);
 		} catch (err) {
@@ -1138,8 +723,7 @@ program
 			console.log(`commit ${target}`);
 			console.log(`Epoch:   ${diff.epoch.toString()}`);
 			console.log(`Parent:  ${diff.parent ?? "(root)"}`);
-			console.log(`Tree:    ${diff.root}`);
-			console.log(`\n    ${diff.message}\n`);
+			console.log(`Tree:    ${diff.root}\n`);
 			console.log(
 				`Changes vs. parent:  +${diff.added.length.toString()} / -${diff.removed.length.toString()} key(s)`,
 			);
@@ -1211,7 +795,7 @@ program
 	.option("--pretty", "Pretty-print each change")
 	.option(
 		"--all",
-		"Watch the whole app (every publisher, every namespace); --owner/namespace narrow it",
+		"Watch every publisher and namespace; --owner/namespace narrow it",
 	)
 	.action(
 		async (
@@ -1228,7 +812,7 @@ program
 				const fangorn = getFangorn();
 
 				// Namespace/owner: explicit args win, else fall back to a local repo.
-				// In --app mode both are optional filters, so no repo fallback and no
+				// With --all both are optional filters, so no repo fallback and no
 				// self-owner default — an omitted one means "every one of them".
 				let namespace = namespaceArg;
 				let owner = options.owner;
@@ -1253,7 +837,7 @@ program
 				const repoDir = join(process.cwd(), ".fangorn");
 				const cursorPath = join(
 					repoDir,
-					`subscribe-${owner ?? "app"}-${namespace ?? "all"}.json`,
+					`subscribe-${owner ?? "all"}-${namespace ?? "all"}.json`,
 				);
 				const readCursor = (): bigint | undefined => {
 					// Genesis, not `undefined` — an undefined fromBlock means "live from the
@@ -1261,7 +845,9 @@ program
 					if (options.fromStart) return 0n;
 					if (options.fromBlock !== undefined) return options.fromBlock;
 					if (existsSync(cursorPath)) {
-						const val = JSON.parse(readFileSync(cursorPath, "utf-8")) as { lastBlock?: string | number | bigint };
+						const val = JSON.parse(readFileSync(cursorPath, "utf-8")) as {
+							lastBlock?: string | number | bigint;
+						};
 						const numInput = val.lastBlock ?? 0;
 						return BigInt(numInput) + 1n;
 					}
@@ -1285,37 +871,41 @@ program
 				const fromBlock = readCursor();
 				// Status/logging on stderr so stdout stays a clean JSON-lines stream for piping.
 				console.error(
-					`Subscribing to "${namespace ?? "*"}" @ ${owner ?? "* (whole app)"} ` +
-					(fromBlock !== undefined
-						? `from block ${fromBlock.toString()}`
-						: "(live from current tip)") +
-					` — Ctrl-C to stop.`,
+					`Subscribing to "${namespace ?? "*"}" @ ${owner ?? "*"} ` +
+						(fromBlock !== undefined
+							? `from block ${fromBlock.toString()}`
+							: "(live from current tip)") +
+						` — Ctrl-C to stop.`,
 				);
 
 				const controller = new AbortController();
-				process.on("SIGINT", () => { controller.abort(); });
-				process.on("SIGTERM", () => { controller.abort(); });
+				process.on("SIGINT", () => {
+					controller.abort();
+				});
+				process.on("SIGTERM", () => {
+					controller.abort();
+				});
 
-				// --all widens the topic filter to the app id; namespace/owner, when given,
-				// narrow it back down. Without it the filter is one exact publisher+subspace.
+				// --all widens the filter to every repo; namespace/owner, when given, narrow
+				// it back down. Without it the filter is one exact publisher and repo.
 				const stream = options.all
-					? fangorn.subscribeApp({
-						repo: namespace,
-						owner,
-						fromBlock,
-						signal: controller.signal,
-					})
+					? fangorn.subscribeAll({
+							repo: namespace,
+							owner,
+							fromBlock,
+							signal: controller.signal,
+						})
 					: fangorn.subscribe({
-						repo: namespace ?? "",
-						owner,
-						fromBlock,
-						signal: controller.signal,
-					});
+							repo: namespace ?? "",
+							owner,
+							fromBlock,
+							signal: controller.signal,
+						});
 
 				for await (const change of stream) {
 					process.stdout.write(
 						JSON.stringify(change, bigintReplacer, options.pretty ? 2 : 0) +
-						"\n",
+							"\n",
 					);
 					writeCursor(change.blockNumber);
 				}
@@ -1329,9 +919,7 @@ program
 
 program
 	.command("read")
-	.description(
-		"List every record committed under a namespace, as JSON",
-	)
+	.description("List every record committed under a namespace, as JSON")
 	.argument("[namespace]", "Namespace name (default: current repo)")
 	.option(
 		"--owner <address>",

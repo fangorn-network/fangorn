@@ -16,8 +16,11 @@ import {
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { foundry } from "viem/chains";
 import { Fangorn } from "../fangorn.js";
-import { type AppConfig, FangornConfig } from "../config.js";
-import { APP_REGISTRY_ABI, DATA_REGISTRY_ABI } from "../contracts/index.js";
+import { type NetworkConfig, FangornConfig } from "../config.js";
+import {
+	DATA_REGISTRY_ABI,
+	SETTLEMENT_REGISTRY_ABI,
+} from "../contracts/index.js";
 import { MemStorage } from "../engine/test-helpers.js";
 import { PinataBackend } from "../providers/storage/pinata.js";
 import type { MetadataStorage } from "../providers/storage/types.js";
@@ -31,19 +34,12 @@ export { MemLedger, MemRegistry } from "./mem-registry.js";
 //   • chainNetwork  — the contracts, built from source and deployed to a fresh
 //     anvil, with storage in memory, or on Pinata when E2E_STORAGE=pinata.
 
-/** The app every client is accepted into unless told otherwise. */
-export const TEST_APP = "test-app";
-
 /** What a suite needs of a network: clients on one ordering and one storage. */
 export interface Network {
 	name: string;
 	storage: MetadataStorage;
-	/**
-	 * A client for a fresh wallet (or `sk`) under `app`, or under no app for
-	 * `null`. On chain it is a joined member of the app: the first client of an
-	 * app claims it, and the claimer accepts each later one.
-	 */
-	client(app?: string | null, sk?: Hex): Promise<Fangorn>;
+	/** A client for a fresh wallet, or for `sk`. */
+	client(sk?: Hex): Promise<Fangorn>;
 	/** The ordering's clock (a block number on chain). */
 	clock(): Promise<bigint>;
 	stop(): void;
@@ -56,19 +52,16 @@ export function memoryNetwork(Registry: typeof MemRegistry = MemRegistry) {
 		name: "memory",
 		ledger,
 		storage,
-		/** As on chain, a client under an app is one of its members. */
-		client(app: string | null = TEST_APP, sk: Hex = generatePrivateKey(), R = Registry): Promise<Fangorn> {
-			const f = Fangorn.create({
-				privateKey: sk,
-				appId: app ?? undefined,
-				// The ledger is this deployment, and it starts at 0.
-				config: { ...FangornConfig, appRegistryFromBlock: 0n },
-				storage: { backend: storage },
-				registry: new R(privateKeyToAccount(sk).address, ledger),
-			});
-			const id = f.getAppId();
-			if (id) ledger.members.add(`${id}/${f.getAddress().toLowerCase()}`);
-			return Promise.resolve(f);
+		client(sk: Hex = generatePrivateKey(), R = Registry): Promise<Fangorn> {
+			return Promise.resolve(
+				Fangorn.create({
+					privateKey: sk,
+					// The ledger is this deployment, and it starts at 0.
+					config: { ...FangornConfig, fromBlock: 0n },
+					storage: { backend: storage },
+					registry: new R(privateKeyToAccount(sk).address, ledger),
+				}),
+			);
 		},
 		clock: () => Promise.resolve(ledger.t),
 		stop: () => undefined,
@@ -76,7 +69,9 @@ export function memoryNetwork(Registry: typeof MemRegistry = MemRegistry) {
 }
 
 /** The contracts checkout. Override with FANGORN_CONTRACTS_DIR. */
-const CONTRACTS = process.env.FANGORN_CONTRACTS_DIR ?? resolve(import.meta.dirname, "../../../contracts/solidity");
+const CONTRACTS =
+	process.env.FANGORN_CONTRACTS_DIR ??
+	resolve(import.meta.dirname, "../../../contracts/solidity");
 
 const has = (cmd: string) => spawnSync(cmd, ["--version"]).status === 0;
 
@@ -84,14 +79,16 @@ const has = (cmd: string) => spawnSync(cmd, ["--version"]).status === 0;
  * Without anvil, forge or the contracts checkout, a chain suite shows as
  * skipped — except in CI, where it has to fail rather than quietly stop testing.
  */
-export const skipChain = !(has("anvil") && has("forge") && existsSync(CONTRACTS)) && !process.env.CI;
+export const skipChain =
+	!(has("anvil") && has("forge") && existsSync(CONTRACTS)) && !process.env.CI;
 
 /** anvil's first prefunded account: the deployer, and the protocol admin. */
-const ADMIN_KEY: Hex = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
-/** No contract: fees are zero, so the token is never called. */
-const NO_TOKEN: Address = "0x000000000000000000000000000000000000dEaD";
+const ADMIN_KEY: Hex =
+	"0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 
-async function startAnvil(chainId: number): Promise<{ rpcUrl: string; anvil: ChildProcess }> {
+async function startAnvil(
+	chainId: number,
+): Promise<{ rpcUrl: string; anvil: ChildProcess }> {
 	const anvil = spawn("anvil", ["--port", "0", "--chain-id", String(chainId)], {
 		stdio: ["ignore", "pipe", "inherit"],
 	});
@@ -110,8 +107,11 @@ async function startAnvil(chainId: number): Promise<{ rpcUrl: string; anvil: Chi
 	return { rpcUrl, anvil };
 }
 
-function artifact(name: string): { abi: Abi; bytecode: Hex } {
-	const json = JSON.parse(readFileSync(`${CONTRACTS}/out/${name}.sol/${name}.json`, "utf-8")) as {
+/** `file`: the .sol it is in, when that isn't `name`.sol. */
+function artifact(name: string, file = name): { abi: Abi; bytecode: Hex } {
+	const json = JSON.parse(
+		readFileSync(`${CONTRACTS}/out/${file}.sol/${name}.json`, "utf-8"),
+	) as {
 		abi: Abi;
 		bytecode: { object: Hex };
 	};
@@ -122,101 +122,109 @@ function artifact(name: string): { abi: Abi; bytecode: Hex } {
 function e2eStorage(): MetadataStorage {
 	if (process.env.E2E_STORAGE !== "pinata") return new MemStorage();
 	const { PINATA_JWT: jwt, PINATA_GATEWAY: gateway } = process.env;
-	if (!jwt || !gateway) throw new Error("E2E_STORAGE=pinata needs PINATA_JWT and PINATA_GATEWAY");
+	if (!jwt || !gateway)
+		throw new Error("E2E_STORAGE=pinata needs PINATA_JWT and PINATA_GATEWAY");
 	return new PinataBackend(jwt, gateway);
 }
 
 /**
  * A fresh anvil with the contracts deployed from source, each behind its
- * ERC-1967 proxy as Deploy.s.sol does, and wired to each other. Fees are zero.
+ * ERC-1967 proxy as Deploy.s.sol does, and wired to each other.
  * Call `stop` from `afterAll`.
  */
 export async function chainNetwork() {
-	const build = spawnSync("forge", ["build"], { cwd: CONTRACTS, stdio: "inherit" });
+	const build = spawnSync("forge", ["build"], {
+		cwd: CONTRACTS,
+		stdio: "inherit",
+	});
 	if (build.status !== 0) throw new Error(`forge build failed in ${CONTRACTS}`);
 
 	const { rpcUrl, anvil } = await startAnvil(FangornConfig.chain.id);
 	// The default network's id on a plain chain: Base's OP Stack formatters make this
 	// function's inferred type too large for the .d.ts build (TS7056), and anvil
 	// needs only the id.
-	const chain = createTestClient({ mode: "anvil", chain: { ...foundry, id: FangornConfig.chain.id }, transport: http(rpcUrl) })
+	const chain = createTestClient({
+		mode: "anvil",
+		chain: { ...foundry, id: FangornConfig.chain.id },
+		transport: http(rpcUrl),
+	})
 		.extend(publicActions)
 		.extend(walletActions);
 	const admin = privateKeyToAccount(ADMIN_KEY);
 
-	const deploy = async (name: string, args: unknown[]): Promise<Address> => {
-		const { abi, bytecode } = artifact(name);
-		const hash = await chain.deployContract({ account: admin, abi, bytecode, args });
+	const deploy = async (
+		name: string,
+		args: unknown[],
+		file?: string,
+	): Promise<Address> => {
+		const { abi, bytecode } = artifact(name, file);
+		const hash = await chain.deployContract({
+			account: admin,
+			abi,
+			bytecode,
+			args,
+		});
 		const { contractAddress } = await chain.waitForTransactionReceipt({ hash });
 		if (!contractAddress) throw new Error(`${name} did not deploy`);
 		return getAddress(contractAddress);
 	};
-	const proxied = async (name: string, init: Hex) => deploy("ERC1967Proxy", [await deploy(name, []), init]);
+	const proxied = async (name: string, init: Hex) =>
+		deploy("ERC1967Proxy", [await deploy(name, []), init]);
 
-	const apps = await proxied(
-		"AppRegistry",
-		encodeFunctionData({
-			abi: APP_REGISTRY_ABI,
-			functionName: "initialize",
-			args: [admin.address, NO_TOKEN, 0n, 30n * 24n * 3600n],
-		}),
-	);
 	const data = await proxied(
 		"DataRegistry",
-		encodeFunctionData({ abi: DATA_REGISTRY_ABI, functionName: "initialize", args: [admin.address] }),
-	);
-	await chain.waitForTransactionReceipt({
-		hash: await chain.writeContract({
-			account: admin,
-			address: apps,
-			abi: APP_REGISTRY_ABI,
-			functionName: "setDataRegistry",
-			args: [data],
+		encodeFunctionData({
+			abi: DATA_REGISTRY_ABI,
+			functionName: "initialize",
+			args: [admin.address],
 		}),
-	});
+	);
+	// Payments and proofs are mocked (contracts repo, test/Mocks.sol): USDC
+	// doesn't check signatures and Semaphore accepts any proof.
+	const usdc = await deploy("MockUSDC", [], "Mocks");
+	const settlement = await proxied(
+		"SettlementRegistry",
+		encodeFunctionData({
+			abi: SETTLEMENT_REGISTRY_ABI,
+			functionName: "initialize",
+			args: [admin.address, usdc, await deploy("MockSemaphore", [], "Mocks")],
+		}),
+	);
 
-	const config: AppConfig = {
+	const config: NetworkConfig = {
 		...FangornConfig,
 		rpcUrl,
-		appRegistryContractAddress: apps,
 		dataRegistryContractAddress: data,
-		appRegistryFromBlock: 0n,
+		settlementRegistryContractAddress: settlement,
+		fromBlock: 0n,
 	};
 	const storage = e2eStorage();
 
 	/** A wallet with gas: `sk`, or a new one. */
 	const wallet = async (sk: Hex = generatePrivateKey()): Promise<Hex> => {
-		await chain.setBalance({ address: privateKeyToAccount(sk).address, value: parseEther("1") });
+		await chain.setBalance({
+			address: privateKeyToAccount(sk).address,
+			value: parseEther("1"),
+		});
 		return sk;
 	};
-	/** A client and nothing more: no app claimed or accepted into. */
-	const raw = async (app?: string, sk?: Hex) =>
-		Fangorn.create({ privateKey: await wallet(sk), config, appId: app, storage: { backend: storage } });
+	/** A client with gas. */
+	const client = async (sk?: Hex) =>
+		Fangorn.create({
+			privateKey: await wallet(sk),
+			config,
+			storage: { backend: storage },
+		});
 
-	const owners = new Map<string, Fangorn>();
 	return {
 		name: "chain",
 		storage,
 		config,
 		chain,
-		/** The protocol admin's key. */
-		adminKey: ADMIN_KEY,
+		/** MockUSDC: `balanceOf` is what each address has been paid. */
+		usdc,
 		wallet,
-		raw,
-		/** The client that claimed `app` through `client`. */
-		owner: (app = TEST_APP) => owners.get(app),
-		async client(app: string | null = TEST_APP, sk?: Hex): Promise<Fangorn> {
-			const f = await raw(app ?? undefined, sk);
-			if (app === null) return f;
-			const owner = owners.get(app);
-			if (!owner) {
-				await f.getAppRegistry().registerApp();
-				owners.set(app, f);
-			} else {
-				await owner.getAppRegistry().acceptPublisher(f.getAddress());
-			}
-			return f;
-		},
+		client,
 		clock: () => chain.getBlockNumber({ cacheTime: 0 }),
 		stop: () => anvil.kill(),
 	} satisfies Network & Record<string, unknown>;

@@ -1,4 +1,5 @@
-import { createHash } from "crypto";
+import { sha256 as sha256Sync } from "@noble/hashes/sha2.js";
+import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 import { CID } from "multiformats/cid";
 import { sha256 } from "multiformats/hashes/sha2";
 import * as dagCbor from "@ipld/dag-cbor";
@@ -13,7 +14,7 @@ import * as dagCbor from "@ipld/dag-cbor";
 //
 //   record   { id, type, payload }                     — one version of an entity
 //   MST node { level, left, entries: [{ key, value, right }] }
-//   commit   { epoch, parent, root, repo, message, car }
+//   commit   { epoch, parent, root, repo, car }
 //
 // Relations are not a separate block kind: a relation is a record whose payload
 // holds `src`/`dst` references (`Ref`). Everything is canonical dag-cbor over
@@ -44,8 +45,7 @@ export function decodeBlock<T>(bytes: Uint8Array): T {
 
 /** Throw unless `bytes` hash to `cid`. Hosts are untrusted; every fetched block goes through this. */
 export function assertBlockMatches(cid: CID, bytes: Uint8Array): void {
-	const digest = createHash("sha256").update(bytes).digest();
-	if (!Buffer.from(cid.multihash.digest).equals(digest)) {
+	if (bytesToHex(cid.multihash.digest) !== bytesToHex(sha256Sync(bytes))) {
 		throw new Error(`block ${cid.toString()} does not match its content hash`);
 	}
 }
@@ -70,12 +70,10 @@ export type Ref = { local: string } | { pinned: string };
  * Commit block: γ = (e, parent, root) of WHITEPAPER_1 §3.1, whose name is the
  * on-chain head. `root` is the repo's MST root.
  *
- * Three more fields, until the registry computes heads from (e, parent, root)
- * itself (docs/REGISTRY_SPEC.md):
+ * Two more fields:
  *   • `repo`: the repo's name, which events carry only as keccak256(name);
- *   • `message`: a commit note;
- *   • `car`: the opaque storage URI of the CAR file holding every block this
- *     commit introduced. The commit block itself is stored OUTSIDE that CAR
+ *   • `car`: the CID of the CAR file holding every block this commit
+ *     introduced. The commit block itself is stored OUTSIDE that CAR
  *     (individually addressable), so a reader goes digest → commit → CAR with
  *     no index lookups.
  */
@@ -84,8 +82,7 @@ export interface CommitBlock {
 	parent: CID | null;
 	root: CID;
 	repo: string;
-	message: string;
-	car: string;
+	car: CID;
 }
 
 // ── Record ids ───────────────────────────────────────────────────────────────
@@ -139,7 +136,7 @@ export interface MstNode {
 
 /** level(k) = ⌊leading zero bits of sha256(k) / b⌋ */
 export function keyLevel(key: string): number {
-	const digest = createHash("sha256").update(key).digest();
+	const digest = sha256Sync(utf8ToBytes(key));
 	let zeros = 0;
 	for (const byte of digest) {
 		if (byte !== 0) {
@@ -198,7 +195,11 @@ export async function buildMst(
 	let root = await build(items, top);
 	if (!root) {
 		// the empty state is one empty node
-		const empty = await encodeBlock({ level: 0, left: null, entries: [] } satisfies MstNode);
+		const empty = await encodeBlock({
+			level: 0,
+			left: null,
+			entries: [],
+		} satisfies MstNode);
 		nodes.push(empty);
 		root = empty.cid;
 	}
@@ -219,7 +220,10 @@ export async function readMst(
 	const nodeCids = new Set<string>();
 
 	const walk = async (cid: CID, depth: number): Promise<void> => {
-		if (depth > MAX_DEPTH) throw new Error(`MST at ${root.toString()} is deeper than ${MAX_DEPTH.toString()}`);
+		if (depth > MAX_DEPTH)
+			throw new Error(
+				`MST at ${root.toString()} is deeper than ${MAX_DEPTH.toString()}`,
+			);
 		nodeCids.add(cid.toString());
 		const node = decodeBlock<Partial<MstNode>>(await getBlock(cid));
 		if (!Array.isArray(node.entries)) {
@@ -257,7 +261,11 @@ export async function diffMst(
 	newRoot: CID | null,
 	getOld: (cid: CID) => Promise<Uint8Array>,
 	getNew: (cid: CID) => Promise<Uint8Array>,
-): Promise<{ puts: Map<string, CID>; deletes: string[]; before: Map<string, CID> }> {
+): Promise<{
+	puts: Map<string, CID>;
+	deletes: string[];
+	before: Map<string, CID>;
+}> {
 	type Item = { sub: CID; level: number } | { key: string; value: CID };
 	// Stacks, head last. A root's level is unknown until read: Infinity opens both roots first.
 	const a: Item[] = oldRoot ? [{ sub: oldRoot, level: Infinity }] : [];
@@ -265,29 +273,48 @@ export async function diffMst(
 	const open = async (s: Item[], get: (cid: CID) => Promise<Uint8Array>) => {
 		const { sub } = s.pop() as { sub: CID };
 		const node = decodeBlock<MstNode>(await get(sub));
-		const items: Item[] = node.left ? [{ sub: node.left, level: node.level - 1 }] : [];
+		const items: Item[] = node.left
+			? [{ sub: node.left, level: node.level - 1 }]
+			: [];
 		for (const e of node.entries) {
 			items.push({ key: e.key, value: e.value });
 			if (e.right) items.push({ sub: e.right, level: node.level - 1 });
 		}
 		s.push(...items.reverse());
 	};
-	const puts = new Map<string, CID>(), before = new Map<string, CID>(), deletes: string[] = [];
+	const puts = new Map<string, CID>(),
+		before = new Map<string, CID>(),
+		deletes: string[] = [];
 	for (let steps = 0; a.length || b.length; steps++) {
 		if (steps > 1e8) throw new Error("MST diff did not terminate");
-		const x = a.at(-1), y = b.at(-1);
+		const x = a.at(-1),
+			y = b.at(-1);
 		if (x && y && "sub" in x && "sub" in y) {
-			if (x.sub.equals(y.sub)) { a.pop(); b.pop(); }
-			else if (x.level > y.level) await open(a, getOld);
+			if (x.sub.equals(y.sub)) {
+				a.pop();
+				b.pop();
+			} else if (x.level > y.level) await open(a, getOld);
 			else if (y.level > x.level) await open(b, getNew);
-			else { await open(a, getOld); await open(b, getNew); }
+			else {
+				await open(a, getOld);
+				await open(b, getNew);
+			}
 		} else if (x && "sub" in x) await open(a, getOld);
 		else if (y && "sub" in y) await open(b, getNew);
-		else if (x && (!y || x.key < y.key)) { a.pop(); deletes.push(x.key); before.set(x.key, x.value); }
-		else if (y && (!x || y.key < x.key)) { b.pop(); puts.set(y.key, y.value); }
-		else if (x && y) {
-			a.pop(); b.pop();
-			if (!x.value.equals(y.value)) { puts.set(y.key, y.value); before.set(x.key, x.value); }
+		else if (x && (!y || x.key < y.key)) {
+			a.pop();
+			deletes.push(x.key);
+			before.set(x.key, x.value);
+		} else if (y && (!x || y.key < x.key)) {
+			b.pop();
+			puts.set(y.key, y.value);
+		} else if (x && y) {
+			a.pop();
+			b.pop();
+			if (!x.value.equals(y.value)) {
+				puts.set(y.key, y.value);
+				before.set(x.key, x.value);
+			}
 		}
 	}
 	return { puts, deletes, before };

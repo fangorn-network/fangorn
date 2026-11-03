@@ -1,9 +1,19 @@
-import { randomUUID } from "crypto";
 import { CID } from "multiformats/cid";
 import { sha256 } from "multiformats/hashes/sha2";
 import * as Digest from "multiformats/hashes/digest";
-import { type Address, type Hash, type Hex } from "viem";
-import { type Registry, ZERO_HEAD } from "../registry.js";
+import * as dagCbor from "@ipld/dag-cbor";
+import {
+	bytesToHex,
+	hexToBytes,
+	type Address,
+	type Hash,
+	type Hex,
+} from "viem";
+import {
+	type CommitUpdate,
+	type Registry,
+	ZERO_HEAD,
+} from "../contracts/index.js";
 import { MetadataStorage } from "../providers/storage/types.js";
 import {
 	Block,
@@ -43,7 +53,7 @@ export interface StoredRecord {
 	payload: Record<string, unknown>;
 }
 
-/** A decoded commit, γ = (e, parent, root) plus its repo name, message and CAR (see CommitBlock). */
+/** A decoded commit, γ = (e, parent, root) plus its repo name and CAR (see CommitBlock). */
 export type CommitObject = CommitBlock;
 
 export interface RepoContents {
@@ -73,7 +83,50 @@ export const MAX_REPO_NAME_LENGTH = 256;
  * The root of the graph, committed to IPFS, as hex
  */
 export function rootHexFromCid(commitCid: CID): Hex {
-	return `0x${Buffer.from(commitCid.multihash.digest).toString("hex")}`;
+	return bytesToHex(commitCid.multihash.digest);
+}
+
+/** The update that settles `commit`. */
+export function commitUpdate(commit: CommitBlock): CommitUpdate {
+	return {
+		repo: commit.repo,
+		epoch: commit.epoch,
+		parent: commit.parent ? rootHexFromCid(commit.parent) : ZERO_HEAD,
+		root: rootHexFromCid(commit.root),
+		car: bytesToHex(commit.car.bytes),
+	};
+}
+
+/** The head the registry computes for `u`. */
+export async function commitHead(u: CommitUpdate): Promise<Hex> {
+	const link = (digest: Hex) =>
+		CID.createV1(dagCbor.code, Digest.create(sha256.code, hexToBytes(digest)));
+	const block = await encodeBlock({
+		epoch: u.epoch,
+		parent: u.parent === ZERO_HEAD ? null : link(u.parent),
+		root: link(u.root),
+		repo: u.repo,
+		car: CID.decode(hexToBytes(u.car)),
+	} satisfies CommitBlock);
+	return rootHexFromCid(block.cid);
+}
+
+/** A commit's update, signed by its publisher for anyone to submit. */
+export interface SignedUpdate {
+	publisher: Address;
+	update: CommitUpdate;
+	signature: Hex;
+}
+
+/** The CID a storage backend returned for a file, with or without an `ipfs://` prefix. */
+export function fileCid(uri: string): CID {
+	try {
+		return CID.parse(uri.replace(/^ipfs:\/\//, ""));
+	} catch {
+		throw new Error(
+			`storage returned ${JSON.stringify(uri)} for a CAR file; expected its CID`,
+		);
+	}
 }
 
 /** Repos must be non-empty strings whose length does not exceed MAX_REPO_NAME_LENGTH */
@@ -84,14 +137,13 @@ export function assertValidRepoName(repo: RepoName): void {
 	if (repo.length > MAX_REPO_NAME_LENGTH) {
 		throw new Error(
 			`repo exceeds the maximum length of ${MAX_REPO_NAME_LENGTH.toString()} characters ` +
-			`(got ${repo.length.toString()}).`,
+				`(got ${repo.length.toString()}).`,
 		);
 	}
 }
 
 /** One line of a commit's diff against its parent. */
 export interface CommitDiff {
-	message: string;
 	parent: string | null;
 	epoch: number;
 	repo: string;
@@ -113,7 +165,6 @@ export interface CreateCommitOptions {
 	records: RecordInput[];
 	/** Ids of records to remove. Applied before `records`. */
 	deletes?: string[];
-	message: string;
 	/**
 	 * When true, the staged records REPLACE the repo's previous contents
 	 * (a snapshot commit — anything omitted is removed). Default: puts and
@@ -150,7 +201,7 @@ export class FangornEngine {
 	constructor(
 		private storage: MetadataStorage,
 		private registry: Registry,
-	) { }
+	) {}
 
 	/**
 	 * Reconstructs the CID a commit's raw digest hex refers to. The contract only
@@ -160,7 +211,7 @@ export class FangornEngine {
 	 */
 	private hexToRootCid(hex: string): CID {
 		const cleanHex = hex.startsWith("0x") ? hex.slice(2) : hex;
-		const rawDigestBytes = Uint8Array.from(Buffer.from(cleanHex, "hex"));
+		const rawDigestBytes = hexToBytes(`0x${cleanHex}`);
 		const multihash = Digest.create(sha256.code, rawDigestBytes);
 		// Commits are dag-cbor (0x71) blocks.
 		return CID.createV1(0x71, multihash);
@@ -189,7 +240,7 @@ export class FangornEngine {
 		if (typeof decoded.epoch !== "number" || typeof decoded.repo !== "string") {
 			throw new Error(
 				`commit ${key} predates the (e, parent, root) commit format. ` +
-				"Reset the on-chain head (`fangorn reset`) and re-publish.",
+					"Reset the on-chain head (`fangorn reset`) and re-publish.",
 			);
 		}
 		return {
@@ -197,14 +248,13 @@ export class FangornEngine {
 			parent: decoded.parent ? CID.parse(String(decoded.parent)) : null,
 			root: CID.parse(String(decoded.root)),
 			repo: decoded.repo,
-			message: decoded.message ?? "",
-			car: decoded.car ?? "",
+			car: CID.parse(String(decoded.car)),
 		};
 	}
 
 	/** Pull every block of `commit`'s CAR into the local cache. */
 	private async loadCar(commitCid: CID, commit: CommitObject): Promise<void> {
-		const bytes = await this.storage.getFile(commit.car);
+		const bytes = await this.storage.getFile(commit.car.toString());
 		for (const block of await readCar(bytes, { verify: false })) {
 			const key = block.cid.toString();
 			if (!this.cache.has(key)) this.unverified.set(key, block.bytes);
@@ -269,7 +319,7 @@ export class FangornEngine {
 
 	/**
 	 * Which repo a commit belongs to. Events carry only `keccak256(name)`, so
-	 * this is how an app-wide subscriber recovers the name.
+	 * this is how a subscriber to every repo recovers the name.
 	 */
 	async repoOf(rootHex: Hex): Promise<RepoName> {
 		return (await this.getCommit(this.hexToRootCid(rootHex))).repo;
@@ -301,7 +351,9 @@ export class FangornEngine {
 
 		// Parent state (empty for a root commit / new repo).
 		if (base && (await this.getCommit(base)).repo !== repo) {
-			throw new Error(`commit ${base.toString()} belongs to another repo than ${repo}`);
+			throw new Error(
+				`commit ${base.toString()} belongs to another repo than ${repo}`,
+			);
 		}
 		const old = base ? await this.stateAt(base) : EMPTY_STATE;
 		const oldRecordCids = new Set([...old.state.values()].map(String));
@@ -312,7 +364,7 @@ export class FangornEngine {
 		const carBlocks: Block[] = [];
 		const recordCids: Record<string, string> = {};
 		for (const r of opts.records) {
-			const id = r.id ?? randomUUID();
+			const id = r.id ?? globalThis.crypto.randomUUID();
 			assertValidRecordId(id);
 			if (id in recordCids) throw new Error(`record id ${id} staged twice`);
 			const block = await encodeBlock({
@@ -335,9 +387,8 @@ export class FangornEngine {
 		// Persist: one CAR upload for the delta, then the commit block naming it.
 		for (const block of carBlocks) this.putLocal(block);
 		const carBytes = await packCar(mst.root, carBlocks);
-		const carUri = await this.storage.putFile(
-			carBytes,
-			`${mst.root.toString()}.car`,
+		const car = fileCid(
+			await this.storage.putFile(carBytes, `${mst.root.toString()}.car`),
 		);
 
 		const commitObj: CommitBlock = {
@@ -345,8 +396,7 @@ export class FangornEngine {
 			parent: base,
 			root: mst.root,
 			repo,
-			message: opts.message,
-			car: carUri,
+			car,
 		};
 		const commitBlock = await encodeBlock(commitObj);
 		await this.storage.putBlock(commitBlock);
@@ -360,30 +410,61 @@ export class FangornEngine {
 	 * Settle a local commit as the on-chain head of one repo — the `update` of
 	 * WHITEPAPER_1 §3.2. The commit and its CAR are already durable in storage
 	 * (createCommit uploads them), so this is just the compare-and-swap.
-	 *
-	 * The commit's parent must BE the current head, not merely an ancestor of
-	 * it: then the parent chain and the registry's log are one history
-	 * (Theorem 3). Today's contract only checks the old root, so the parent is
-	 * checked here.
 	 */
 	async pushCommit(
 		publisher: Address,
 		repo: RepoName,
 		commitCid: CID,
 	): Promise<{ txHash: Hash; onChainTip: CID }> {
-		const head = await this.registry.head({ publisher, repo });
+		const update = await this.settleable(publisher, repo, commitCid);
+		return {
+			txHash: await this.registry.update(update),
+			onChainTip: commitCid,
+		};
+	}
+
+	/** `pushCommit`, signed by this registry's wallet for anyone to submit with `relayCommit`. */
+	async signCommit(
+		publisher: Address,
+		repo: RepoName,
+		commitCid: CID,
+	): Promise<SignedUpdate> {
+		const update = await this.settleable(publisher, repo, commitCid);
+		return {
+			publisher,
+			update,
+			signature: await this.registry.signUpdate(update),
+		};
+	}
+
+	relayCommit(s: SignedUpdate): Promise<Hash> {
+		return this.registry.updateBySig(s.publisher, s.update, s.signature);
+	}
+
+	/** The update for `commitCid`, once it is one the registry will take as the next head. */
+	async settleable(
+		publisher: Address,
+		repo: RepoName,
+		commitCid: CID,
+	): Promise<CommitUpdate> {
 		const commit = await this.getCommit(commitCid);
-		const parentHex = commit.parent ? rootHexFromCid(commit.parent) : ZERO_BYTES32;
 		if (commit.repo !== repo) {
-			throw new Error(`commit ${commitCid.toString()} is a commit of ${commit.repo}, not ${repo}`);
+			throw new Error(
+				`commit ${commitCid.toString()} is a commit of ${commit.repo}, not ${repo}`,
+			);
 		}
-		if (parentHex !== head) {
+		const update = commitUpdate(commit);
+		if (update.parent !== (await this.registry.head({ publisher, repo }))) {
 			throw new Error(
 				"stale parent: this commit's parent is not the on-chain head — rebuild it onto the current head.",
 			);
 		}
-		const txHash = await this.registry.update(repo, head, rootHexFromCid(commitCid));
-		return { txHash, onChainTip: commitCid };
+		if ((await commitHead(update)) !== rootHexFromCid(commitCid)) {
+			throw new Error(
+				`commit ${commitCid.toString()} is not in the current commit format — rebuild it`,
+			);
+		}
+		return update;
 	}
 
 	/** Walk the parent chain from `tip` toward the root, newest first. */
@@ -417,7 +498,9 @@ export class FangornEngine {
 	): Promise<StoredRecord> {
 		const r = decodeBlock<RecordBlock>(await this.getBlock(link, hint));
 		if (r.id !== id) {
-			throw new Error(`record ${link.toString()} has id ${r.id}, filed under ${id}`);
+			throw new Error(
+				`record ${link.toString()} has id ${r.id}, filed under ${id}`,
+			);
 		}
 		return { id, cid: link.toString(), type: r.type, payload: r.payload };
 	}
@@ -447,7 +530,8 @@ export class FangornEngine {
 				? this.hexToRootCid(oldRootHex)
 				: null;
 
-		const root = async (c: CID | null) => (c ? (await this.getCommit(c)).root : null);
+		const root = async (c: CID | null) =>
+			c ? (await this.getCommit(c)).root : null;
 		const diff = await diffMst(
 			await root(oldCommit),
 			await root(newCommit),
@@ -455,8 +539,14 @@ export class FangornEngine {
 			(cid) => this.getBlock(cid, newCommit),
 		);
 		const puts: StoredRecord[] = [];
-		if (newCommit) for (const [id, cid] of diff.puts) puts.push(await this.decodeRecord(id, cid, newCommit));
-		return { puts, deletes: diff.deletes, superseded: [...diff.before.values()].map(String) };
+		if (newCommit)
+			for (const [id, cid] of diff.puts)
+				puts.push(await this.decodeRecord(id, cid, newCommit));
+		return {
+			puts,
+			deletes: diff.deletes,
+			superseded: [...diff.before.values()].map(String),
+		};
 	}
 
 	/** Diff a commit against its parent. */
@@ -464,7 +554,9 @@ export class FangornEngine {
 		const commit = await this.getCommit(commitCid);
 		const ns = commit.repo;
 		const child = (await this.stateAt(commitCid)).state;
-		const par = commit.parent ? (await this.stateAt(commit.parent)).state : new Map<string, CID>();
+		const par = commit.parent
+			? (await this.stateAt(commit.parent)).state
+			: new Map<string, CID>();
 
 		const added: string[] = [];
 		const updated: string[] = [];
@@ -474,10 +566,10 @@ export class FangornEngine {
 			if (!prev) added.push(`${ns}/${id}`);
 			else if (prev.toString() !== cid.toString()) updated.push(`${ns}/${id}`);
 		}
-		for (const id of par.keys()) if (!child.has(id)) removed.push(`${ns}/${id}`);
+		for (const id of par.keys())
+			if (!child.has(id)) removed.push(`${ns}/${id}`);
 
 		return {
-			message: commit.message,
 			parent: commit.parent?.toString() ?? null,
 			epoch: commit.epoch,
 			repo: ns,
@@ -489,18 +581,12 @@ export class FangornEngine {
 	}
 
 	/** check if the repo already exists (head resolves) */
-	async repoExists(
-		publisher: Address,
-		repo: RepoName,
-	): Promise<boolean> {
+	async repoExists(publisher: Address, repo: RepoName): Promise<boolean> {
 		return (await this.resolveHeadCommit(publisher, repo)) !== null;
 	}
 
 	/** Lists every record currently committed under a repo, resolved from the on-chain root. */
-	async listRepo(
-		publisher: Address,
-		repo: RepoName,
-	): Promise<RepoContents> {
+	async listRepo(publisher: Address, repo: RepoName): Promise<RepoContents> {
 		return this.listAt(await this.resolveHeadCommit(publisher, repo));
 	}
 

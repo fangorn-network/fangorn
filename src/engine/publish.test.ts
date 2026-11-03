@@ -6,7 +6,6 @@ import {
 } from "./index.js";
 import { MemStorage, PUBLISHER, newRegistry, rootHex } from "./test-helpers.js";
 
-
 // ── Publish scalability & cost ───────────────────────────────────────────────
 //
 // The pail-era data layer failed a real publish (quickbeam ingesting a
@@ -32,9 +31,17 @@ function robinhoodRecords(T: number): RecordInput[] {
 		W = 868;
 	const records: RecordInput[] = [];
 	for (let i = 0; i < A; i++)
-		records.push({ id: `asset:${i.toString()}`, type: "Asset", payload: { sym: `A${i.toString()}` } });
+		records.push({
+			id: `asset:${i.toString()}`,
+			type: "Asset",
+			payload: { sym: `A${i.toString()}` },
+		});
 	for (let i = 0; i < W; i++)
-		records.push({ id: `wallet:${i.toString()}`, type: "Wallet", payload: { addr: `0x${i.toString()}` } });
+		records.push({
+			id: `wallet:${i.toString()}`,
+			type: "Wallet",
+			payload: { addr: `0x${i.toString()}` },
+		});
 	const rel = (type: string, src: string, dst: string): RecordInput => ({
 		id: `${src}>${type}>${dst}`,
 		type,
@@ -42,7 +49,11 @@ function robinhoodRecords(T: number): RecordInput[] {
 	});
 	for (let i = 0; i < T; i++) {
 		const x = `xfer:${i.toString()}`;
-		records.push({ id: x, type: "Transfer", payload: { hash: `0xtx${i.toString()}`, v: i } });
+		records.push({
+			id: x,
+			type: "Transfer",
+			payload: { hash: `0xtx${i.toString()}`, v: i },
+		});
 		records.push(rel("hasTransfer", `asset:${(i % A).toString()}`, x));
 		records.push(rel("sentBy", x, `wallet:${(i % W).toString()}`));
 		records.push(rel("receivedBy", x, `wallet:${((i + 1) % W).toString()}`));
@@ -68,7 +79,6 @@ describe("publish scalability & cost", () => {
 			repo: NS,
 			base: null,
 			records,
-			message: "one",
 		});
 
 		const contents = await engine.repoDiff(null, rootHex(commitCid));
@@ -88,7 +98,6 @@ describe("publish scalability & cost", () => {
 			repo: NS,
 			base: null,
 			records: robinhoodRecords(480), // the observed real ingest cycle size
-			message: "cycle",
 		});
 		expect(storage.writes).toBe(2);
 	}, 120_000);
@@ -104,7 +113,6 @@ describe("publish scalability & cost", () => {
 			repo: NS,
 			base: null,
 			records: robinhoodRecords(2000),
-			message: "cycle 1",
 		});
 		const firstCarSize = [...storage.files.values()][0].length;
 
@@ -113,7 +121,6 @@ describe("publish scalability & cost", () => {
 			repo: NS,
 			base: c1,
 			records: robinhoodRecords(2001),
-			message: "cycle 2",
 		});
 		expect(storage.writes).toBe(4); // still 2 per commit
 		const secondCarSize = [...storage.files.values()][1].length;
@@ -131,7 +138,6 @@ describe("publish scalability & cost", () => {
 			repo: NS,
 			base: null,
 			records: robinhoodRecords(100),
-			message: "publish",
 		});
 		await engine.pushCommit(PUBLISHER, NS, c1);
 
@@ -141,7 +147,6 @@ describe("publish scalability & cost", () => {
 			repo: NS,
 			base: c1,
 			records: r2,
-			message: "delta",
 		});
 		await engine.pushCommit(PUBLISHER, NS, c2);
 
@@ -160,17 +165,20 @@ describe("publish scalability & cost", () => {
 			repo: NS,
 			base: null,
 			records,
-			message: "full",
 		});
 
 		// keep everything except transfer 0 and its 3 relation records
-		const kept = records.filter((r) => !r.id?.includes("xfer:0>") && !r.id?.endsWith(">xfer:0") && r.id !== "xfer:0");
+		const kept = records.filter(
+			(r) =>
+				!r.id?.includes("xfer:0>") &&
+				!r.id?.endsWith(">xfer:0") &&
+				r.id !== "xfer:0",
+		);
 		const writesBefore = storage.writes;
 		const { commitCid: c2 } = await engine.createCommit({
 			repo: NS,
 			base: c1,
 			records: kept,
-			message: "prune",
 			replace: true,
 		});
 		expect(storage.writes - writesBefore).toBe(2);
@@ -197,7 +205,6 @@ describe("publish scalability & cost", () => {
 				repo,
 				base,
 				records: [{ id: "0", type: "rec", payload: { i } }],
-				message: `commit ${i.toString()}`,
 			});
 
 		// Both are root commits (base: null) — neither knows about the other.
@@ -207,7 +214,9 @@ describe("publish scalability & cost", () => {
 		await engine.pushCommit(PUBLISHER, NS, a);
 		await engine.pushCommit(PUBLISHER, "other", b);
 
-		expect(await registry.head({ publisher: PUBLISHER, repo: NS })).toBe(rootHex(a));
+		expect(await registry.head({ publisher: PUBLISHER, repo: NS })).toBe(
+			rootHex(a),
+		);
 		expect(await registry.head({ publisher: PUBLISHER, repo: "other" })).toBe(
 			rootHex(b),
 		);
@@ -226,7 +235,6 @@ describe("publish scalability & cost", () => {
 				repo: ns,
 				base: null,
 				records: [],
-				message: "x",
 			}),
 		).rejects.toThrow(/maximum length/i);
 	});
@@ -243,7 +251,6 @@ describe("publish scalability & cost", () => {
 				{ id: "0", type: "rec", payload: { i: 0 } },
 				{ id: "1", type: "rec", payload: { i: 1 } },
 			],
-			message: "x",
 		});
 		const diff = await e2.repoDiff(null, rootHex(commitCid));
 		expect(diff.puts).toHaveLength(2);

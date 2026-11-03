@@ -16,12 +16,14 @@ export function getSubtleCrypto(): SubtleCrypto {
 	}
 }
 
-export function getRandomValues(array: Uint8Array<ArrayBuffer>): Uint8Array<ArrayBuffer> {
-    if (typeof window !== "undefined") {
-        // We cast the parameter to satisfy the strict crypto signature
-        return window.crypto.getRandomValues(array);
-    } else {
-        const webcrypto = getCrypto();
-        return webcrypto.getRandomValues(array);
-    }
+export function getRandomValues(
+	array: Uint8Array<ArrayBuffer>,
+): Uint8Array<ArrayBuffer> {
+	if (typeof window !== "undefined") {
+		// We cast the parameter to satisfy the strict crypto signature
+		return window.crypto.getRandomValues(array);
+	} else {
+		const webcrypto = getCrypto();
+		return webcrypto.getRandomValues(array);
+	}
 }

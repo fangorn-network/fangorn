@@ -1,13 +1,13 @@
 # Acceptance scenarios — contract wrappers
 
 What the TypeScript clients in `src/contracts/` are supposed to do, written as
-scenarios before the tests exist. Each one has an id (`APP-1`, `PUB-3`, …) so a
+scenarios before the tests exist. Each one has an id (`PUB-7`, `CO-3`, …) so a
 test can name the scenario it covers and a gap is visible as an id with no test.
 
 ## What these tests prove, and what they don't
 
 These are **wrapper** tests. They mock `PublicClient` / `WalletClient` and assert
-on what the client *sends* and how it *interprets* what comes back. They prove:
+on what the client _sends_ and how it _interprets_ what comes back. They prove:
 
 - the right function name, argument order, and argument shape reach the chain
 - USDC fees are approved, and passed as caps, where they must be
@@ -17,7 +17,7 @@ on what the client *sends* and how it *interprets* what comes back. They prove:
 They cannot prove the contract accepts the call. Contract behaviour is already
 covered by the Forge tests in `contracts/solidity/test/` (`forge test`), and the
 two suites meet only in the e2e suites, on a fork of the live chain. When a scenario below
-restates a contract rule, it is because the *client* has to encode or anticipate
+restates a contract rule, it is because the _client_ has to encode or anticipate
 that rule — not to re-test it.
 
 A scenario tagged **[contracts]** is asserted on the contract side and listed here only
@@ -40,63 +40,34 @@ No chain, no anvil, no fixtures beyond these two.
 
 ---
 
-## A. App level — the app owner
+## A. Publisher level
 
-The AppRegistry owns what an "app" is. Every call here is scoped to the client's
-`appId`, which is constructor state, not an argument.
+There is no app registry and no protocol-level ban; commits go straight to the
+DataRegistry and name no app.
 
-| id | scenario |
-|----|----------|
-| **APP-1** | **Claim an app.** `registerApp()` reads `subscriptionFee()`, approves exactly it in USDC when the allowance is short, and sends `[appId, fee]` — the client's own `appId`, and the fee it read as the cap. |
-| **APP-2** | **Claiming makes you your own first publisher.** After `registerApp`, `canPublish(owner)` is true with no second transaction. [contracts] |
-| **APP-3** | **Accept a publisher.** `acceptPublisher(p)` sends `[appId, publisher]` and moves no fee. Only the owner; a publisher already accepted, suspended or not, reverts `AlreadyAccepted`. [contracts] |
-| **APP-8** | **Suspend a member.** `setPublisherSuspended(pub, bool)` sends `[appId, publisher, bool]`. Suspension is per-app: the same publisher under a different `appId` is untouched. Only accepted publishers; never the owner. [contracts] |
-| **APP-9** | **`getAppOwner` on an unclaimed id returns the zero address**, and the client returns it rather than throwing. "Unclaimed" is a legitimate answer for a directory page. |
-| **APP-10** | **Renew one period.** `renewSubscription()` throws before sending when `isRenewable()` is false, and otherwise sends `[tokenId, subscriptionPeriod()]` with `tokenId = BigInt(appId)`, after approving exactly the fee: the standard has no cap argument, so the allowance is the cap. |
+| id         | scenario                                                                                                                                                                                                                                                                                                                       |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **PUB-7**  | **A prepared transaction turns a simulated revert into a sentence.** Simulation rejecting with `/revert/i` → an error naming the function and the contract's reason. A non-revert RPC failure → fall back to a gas ceiling and proceed. A write behind an approval is not simulated: it would revert until the approval lands. |
+| **PUB-8**  | **An update is compare-and-swap per repo, on the DataRegistry.** `update(repo, parent, head)` keys the head by `(sender, repoId(repo))` and names no app; concurrent pushes to _different_ repos do not contend. [contracts]                                                                                                   |
+| **PUB-9**  | **`prepareCommitStateRoot` quotes its own gas and fees.** Assert `gas` is 1.5x the estimate and `maxFeePerGas` is 2x, both hex. Leaving these to the wallet is what surfaces as "Network fee Unavailable" in MetaMask.                                                                                                         |
+| **PUB-10** | **`repoId` matches the contract.** Pinned by `repo-id.test.ts` against a golden fixture. Do not duplicate.                                                                                                                                                                                                                     |
 
-## B. Publisher level
+## B. Consumer level
 
-Per-app membership and the network-wide ban both live in the AppRegistry; commits
-go straight to the DataRegistry and name no app.
+Consumer access is the SettlementRegistry (`register` / `settle` per subject),
+covered by `settlement-registry.test.ts`. Scenarios for it are still to be written.
 
-| id | scenario |
-|----|----------|
-| **PUB-1** | **There is no global registration.** A wallet can claim an app, or be accepted into one, and commit without any other step. The protocol admin's network-wide ban is read with `isGloballySuspended(address)`. |
-| **PUB-7** | **A prepared transaction turns a simulated revert into a sentence.** Simulation rejecting with `/revert/i` → an error naming the function and the contract's reason. A non-revert RPC failure → fall back to a gas ceiling and proceed. A write behind an approval is not simulated: it would revert until the approval lands. |
-| **PUB-8** | **An update is compare-and-swap per repo, on the DataRegistry.** `update(repo, parent, head)` keys the head by `(sender, repoId(repo))` and names no app; concurrent pushes to *different* repos do not contend. [contracts] |
-| **PUB-9** | **`prepareCommitStateRoot` quotes its own gas and fees.** Assert `gas` is 1.5x the estimate and `maxFeePerGas` is 2x, both hex. Leaving these to the wallet is what surfaces as "Network fee Unavailable" in MetaMask. |
-| **PUB-10** | **`repoId` / `appId` match the contract.** Pinned by `repo-id.test.ts` against a golden fixture. Do not duplicate. |
-| **PUB-11** | **An app is its storage subscription.** `registerApp()` and `renewSubscription()` send no value — the fee is pulled in USDC, so the precondition is an ERC-20 `approve`, not attached ETH. The client approves exactly the fee when the allowance is short and skips it when the fee is zero or already covered (`app-registry.test.ts`). |
-| **PUB-12** | **`access()` decodes `(bool, address, uint64)`** into `{ canPublish, owner, expiresAt }`. `owner` is the zero address and `expiresAt` 0 for an unclaimed app. |
-| **PUB-13** | **Expiry is chain state.** Once `expiresAt` has passed, `canPublish` is false and commits and joins revert `SubscriptionExpired`, with no grace period. `joinApp()` checks it against block time before sending. [contracts] |
-| **PUB-14** | **Membership is by invitation.** `joinApp()` throws before sending anything when the wallet's status is NONE — the owner has not called `invitePublisher`. INVITED joins and pays the join fee; ACTIVE on stale terms uses `acceptUpdatedTerms`. |
-| **PUB-15** | **A banned wallet is refused everywhere.** Claiming, being invited, joining and committing revert `PublisherSuspendedGlobal`. A banned owner's app keeps running, but they cannot invite anyone or change its terms or agent card. The CLI checks `isGloballySuspended` first and says so. [contracts] |
+## C. Coordinator — `fangorn.ts`
 
-## C. Consumer level
-
-The SettlementRegistry (per-resource `register`/`settle`) is deprecated and its
-client removed; consumer access is now the MembershipRegistry (`join`/`claim`
-per app and epoch). Scenarios for it are still to be written.
-
-## D. Coordinator — `fangorn.ts`
-
-| id | scenario |
-|----|----------|
-| **CO-1** | **`setAppId` moves every app-scoped client together.** After `setAppId(x)`, both `getDataRegistry().getAppId()` and `getAppRegistry().getAppId()` return `x`. A DataRegistry pointed at one app while the AppRegistry answers for another means membership is checked against the wrong market — and it surfaces as a revert at commit time, far from the cause. |
-| **CO-2** | **`toAppId` accepts both forms.** A 32-byte hex string passes through; anything else is `keccak256(toHex(name))`. |
+| id       | scenario                                                                                                                                                                                           |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **CO-3** | **Clients are constructed from one config object**, so a half-configured `Fangorn` cannot exist with one registry live and another at the zero address. Currently unenforced — see the gaps below. |
 
-## E. Known wrapper gaps
+## D. Known wrapper gaps
 
 Contract functions with no client method, found by diffing each `abi.ts` against
 its `index.ts`. Not bugs; decide each one deliberately rather than by omission.
 
-| contract | missing | note |
-|----------|---------|------|
-| AppRegistry | `admin`, `statusForApp`, `withdrawEth` | `statusForApp` is reachable via `joinInfo`. `withdrawEth` is a rescue path for stuck ETH. |
-| DataRegistry | `seedNamespaceHead`, `setAppRegistry` | Both are migration tools for the AppRegistry redeploy — `seedNamespaceHead` restores heads that would otherwise read empty. Needed before that deploy, not after. |
-
-Also unwired, and the reason `config.ts` is the next step rather than this one:
-`settlementRegistryContractAddress` and `subscriptionRegistryContractAddress` do
-not exist in `AppConfig`, and `appRegistryContractAddress` is still the zero
-address. Neither new client is constructed in `fangorn.ts` yet.
+| contract                         | missing                        | note                                                                                                                                             |
+| -------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| DataRegistry, SettlementRegistry | `setAdmin`, `upgradeToAndCall` | Admin-only. Deliberately unwrapped: the SDK has no admin surface, and moderation is off-chain. Upgrades go through the contracts repo's scripts. |

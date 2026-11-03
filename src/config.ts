@@ -1,15 +1,8 @@
-import { Chain, Hex, keccak256, toHex } from "viem";
-import { arbitrumSepolia, baseSepolia } from "viem/chains";
+import { Chain, Hex } from "viem";
+import { baseSepolia } from "viem/chains";
 
 /**
- * Derive an app id from a human-readable name (keccak256(hex(name)).
- */
-export function appId(name: string): Hex {
-	return keccak256(toHex(name));
-}
-
-/**
- * Blank input means "not set", never an app called "". Returns the trimmed value,
+ * Blank input means "not set", never a value of "". Returns the trimmed value,
  * or undefined when it is missing or only whitespace, so it can sit on the left of
  * a `??` fallback. `??` on the raw value would let "" through: it is not nullish.
  */
@@ -18,26 +11,14 @@ export function nonBlank(value: string | undefined): string | undefined {
 	return trimmed === "" ? undefined : trimmed;
 }
 
-export function toAppId(nameOrId: string): Hex {
-	// A blank name hashes to keccak("") — a valid-looking id for an app nobody
-	// owns. Callers normalise blank to "unset" at their input boundary; anything
-	// that gets here blank is a bug, so say so instead of publishing into a
-	// phantom app (and billing the wrong subscription).
-	const name = nameOrId.trim();
-	if (!name) throw new Error("App name or id must not be blank.");
-	return /^0x[0-9a-fA-F]{64}$/.test(name) ? (name as Hex) : appId(name);
-}
-
-export interface AppConfig {
+export interface NetworkConfig {
 	// The deployed DataRegistry (every repo's head, keyed by publisher and repo)
 	dataRegistryContractAddress: Hex;
-	// The deployed AppRegistry (apps, their subscriptions, membership and exclusions)
-	appRegistryContractAddress: Hex;
-	// The deployed MembershipRegistry (time-limited, unlinkable access to an app's
-	// paid records)
-	membershipRegistryContractAddress: Hex;
-	// The block the AppRegistry was deployed in. Scans of the registry's logs start here.
-	appRegistryFromBlock: bigint;
+	// The deployed SettlementRegistry (per-record prices, referral splits, read access).
+	// Unset where it is not deployed.
+	settlementRegistryContractAddress?: Hex;
+	// The block the DataRegistry was deployed in. Scans of its update log start here.
+	fromBlock: bigint;
 	// The viem chain
 	chain: Chain;
 	// The public rpc address of the chain we are connecting to
@@ -49,52 +30,27 @@ export interface AppConfig {
 	// The most blocks one eth_getLogs call may span on `rpcUrl` (default 1000).
 	// `FANGORN_LOG_WINDOW` overrides it, for a private RPC.
 	logWindow?: bigint;
-	// The hosted upload worker gated on this deployment's AppRegistry. Hosted uploads
+	// The hosted upload worker for this network. Hosted uploads
 	// (`storage: { signedUrl: {} }`) go through it unless given a `workerUrl`.
 	signedUrlWorker?: string;
 }
 
-// Network/deployment settings only. The app is per client:
-// `Fangorn.create({ appId })`, switchable with `fangorn.setAppId(...)`.
-// Addresses are the proxies in contracts/solidity/script/Deployments.sol.
-export const ArbitrumSepoliaConfig = {
-	dataRegistryContractAddress:
-		"0x72B5f83526F3893aF9f1eE0f32A27218EA09f8aE",
-	appRegistryContractAddress:
-		"0x55e6209ea1833ceD900989a3b3b22466934E04A5",
-	membershipRegistryContractAddress:
-		"0xDF17030Cd65435C86eb043F31DDACa99E819E347",
-	appRegistryFromBlock: 319536642n,
-	chain: arbitrumSepolia,
-	rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
-	caip2: 421614,
-	ipfsGateway: 'https://ipfs.io',
-	// Every scan here is filtered by address; the public RPC served 1M-block ranges
-	// of those when measured (2026-10-20).
-	logWindow: 100_000n,
-	// note: no hosted worker here on purpose
-} satisfies AppConfig
-
+// Network/deployment settings only. Addresses are the proxies in contracts/solidity/script/Deployments.sol.
 export const BaseSepoliaConfig = {
-	dataRegistryContractAddress:
-		"0x7a34882568f1b22FC4C4944113B1E4Ca4cF6900f",
-	appRegistryContractAddress:
-		"0x6E07C2c7393963242899e5Fb0eb1B6B787927E81",
-	membershipRegistryContractAddress:
-		"0x9De2C2A6261927f91b246C73e7ca86824a357FA6",
-	appRegistryFromBlock: 51469588n,
+	dataRegistryContractAddress: "0x0F3eb0E62CF610dbaC6B3aD4Bf4cE38Ab50EBCC5",
+	settlementRegistryContractAddress:
+		"0x61A5A195B54F57ada786Ba6689CdB04553cf7fBc",
+	fromBlock: 53592845n,
 	chain: baseSepolia,
 	// Not sepolia.base.org: it caps eth_getLogs at 200 blocks, and Base makes 43,200
 	// a day, so a scan of the registry's history would be hundreds of calls per day
 	// of it. This one caps ranges at 50,000 blocks (measured 2026-10-20).
 	rpcUrl: "https://base-sepolia-rpc.publicnode.com",
 	caip2: 84532,
-	ipfsGateway: 'https://ipfs.io',
+	ipfsGateway: "https://ipfs.io",
 	logWindow: 1_000n,
-	// Its own worker: the Arbitrum one gates on Arbitrum's AppRegistry, so a Base
-	// app's publishers would be refused there.
 	signedUrlWorker: "https://base-sepolia.storage-worker.fangorn.network",
-} satisfies AppConfig
+} satisfies NetworkConfig;
 
 /**
  * The default network: what `Fangorn.create` uses without a `config`, and the CLI
@@ -106,17 +62,19 @@ export const FangornConfig = BaseSepoliaConfig;
 /**
  * The networks supported by Fangorn, by the name `CHAIN_NAME` takes.
  */
-export const SupportedNetworks: Record<string, AppConfig> = {
-	arbitrumSepolia: ArbitrumSepoliaConfig,
+export const SupportedNetworks: Record<string, NetworkConfig> = {
 	baseSepolia: BaseSepoliaConfig,
 };
 
 /**
- * Get a network's deployment by name ("arbitrumSepolia" or "baseSepolia").
+ * Get a network's deployment by name ("baseSepolia").
  * @returns The corresponding config if it is supported, otherwise an error
  */
-export default function getNetwork(name: string): AppConfig {
-	const config = SupportedNetworks[name] as AppConfig | undefined;
-	if (!config) throw new Error(`Chain ${name} is not supported. Use one of: ${Object.keys(SupportedNetworks).join(", ")}`);
+export default function getNetwork(name: string): NetworkConfig {
+	const config = SupportedNetworks[name] as NetworkConfig | undefined;
+	if (!config)
+		throw new Error(
+			`Chain ${name} is not supported. Use one of: ${Object.keys(SupportedNetworks).join(", ")}`,
+		);
 	return config;
 }
