@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import type { Hex } from "viem";
 import { Fangorn } from "./fangorn.js";
-import { ArbitrumSepoliaConfig, BaseSepoliaConfig } from "./config.js";
+import { BaseSepoliaConfig, NetworkConfig } from "./config.js";
 
 const WORKER = "https://worker.example/";
 const KEY = ("0x" + "11".repeat(32)) as Hex;
@@ -42,7 +42,7 @@ describe("signed-url uploads", () => {
 });
 
 describe("signed-url uploads → the network's hosted worker", () => {
-	const create = (config: typeof ArbitrumSepoliaConfig | typeof BaseSepoliaConfig, workerUrl?: string) =>
+	const create = (config: NetworkConfig, workerUrl?: string) =>
 		Fangorn.create({ privateKey: KEY, config, storage: { signedUrl: { workerUrl } } });
 
 	it("uses the network's own worker when none is given", async () => {
@@ -50,8 +50,9 @@ describe("signed-url uploads → the network's hosted worker", () => {
 	});
 
 	it("refuses hosted uploads on a network with no worker, not falling back to another network's", () => {
-		expect(() => create(ArbitrumSepoliaConfig)).toThrow(/no hosted upload worker/);
-		expect(() => create(ArbitrumSepoliaConfig, WORKER)).not.toThrow();
+		const noWorker = { ...BaseSepoliaConfig, signedUrlWorker: undefined };
+		expect(() => create(noWorker)).toThrow(/no hosted upload worker/);
+		expect(() => create(noWorker, WORKER)).not.toThrow();
 	});
 
 	it("treats a blank workerUrl (an unset CLI field) as unset", async () => {

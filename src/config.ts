@@ -1,5 +1,5 @@
 import { Chain, Hex } from "viem";
-import { arbitrumSepolia, baseSepolia } from "viem/chains";
+import { baseSepolia } from "viem/chains";
 
 /**
  * Blank input means "not set", never a value of "". Returns the trimmed value,
@@ -36,20 +36,6 @@ export interface NetworkConfig {
 }
 
 // Network/deployment settings only. Addresses are the proxies in contracts/solidity/script/Deployments.sol.
-export const ArbitrumSepoliaConfig = {
-	dataRegistryContractAddress:
-		"0x72B5f83526F3893aF9f1eE0f32A27218EA09f8aE",
-	fromBlock: 319536642n,
-	chain: arbitrumSepolia,
-	rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
-	caip2: 421614,
-	ipfsGateway: 'https://ipfs.io',
-	// Every scan here is filtered by address; the public RPC served 1M-block ranges
-	// of those when measured (2026-10-20).
-	logWindow: 100_000n,
-	// note: no hosted worker here on purpose
-} satisfies NetworkConfig
-
 export const BaseSepoliaConfig = {
 	dataRegistryContractAddress:
 		"0x0F3eb0E62CF610dbaC6B3aD4Bf4cE38Ab50EBCC5",
@@ -78,12 +64,11 @@ export const FangornConfig = BaseSepoliaConfig;
  * The networks supported by Fangorn, by the name `CHAIN_NAME` takes.
  */
 export const SupportedNetworks: Record<string, NetworkConfig> = {
-	arbitrumSepolia: ArbitrumSepoliaConfig,
 	baseSepolia: BaseSepoliaConfig,
 };
 
 /**
- * Get a network's deployment by name ("arbitrumSepolia" or "baseSepolia").
+ * Get a network's deployment by name ("baseSepolia").
  * @returns The corresponding config if it is supported, otherwise an error
  */
 export default function getNetwork(name: string): NetworkConfig {
