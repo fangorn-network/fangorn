@@ -87,7 +87,9 @@ export function requireWallet(
 	what: string,
 ): WalletClient {
 	if (!walletClient) {
-		throw new Error(`${what} requires a wallet client; this client is read-only`);
+		throw new Error(
+			`${what} requires a wallet client; this client is read-only`,
+		);
 	}
 	return walletClient;
 }
@@ -117,9 +119,11 @@ export async function prepareWrite(
 	args: readonly unknown[],
 	opts: { fallbackGas: bigint; simulate?: boolean },
 ): Promise<PreparedTx> {
-	const data = encodeFunctionData({ abi, functionName, args } as unknown as Parameters<
-		typeof encodeFunctionData
-	>[0]);
+	const data = encodeFunctionData({
+		abi,
+		functionName,
+		args,
+	} as unknown as Parameters<typeof encodeFunctionData>[0]);
 	const fees = await publicClient.estimateFeesPerGas();
 
 	let gas = opts.fallbackGas;

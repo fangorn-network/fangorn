@@ -80,7 +80,13 @@ export interface AccessRequest {
 }
 
 const hkdf32 = (ikm: Uint8Array, info: Hex | Uint8Array) =>
-	hkdf(sha256, ikm, undefined, typeof info === "string" ? hexToBytes(info) : info, 32);
+	hkdf(
+		sha256,
+		ikm,
+		undefined,
+		typeof info === "string" ? hexToBytes(info) : info,
+		32,
+	);
 
 export const statement = (s: PaidScope): Hex =>
 	keccak256(
@@ -93,11 +99,23 @@ export const statement = (s: PaidScope): Hex =>
 				{ type: "bytes32" },
 				{ type: "uint64" },
 			],
-			["fangorn:pay:v1", BigInt(s.chainId), s.registry, s.publisher, s.repo, s.generation],
+			[
+				"fangorn:pay:v1",
+				BigInt(s.chainId),
+				s.registry,
+				s.publisher,
+				s.repo,
+				s.generation,
+			],
 		),
 	);
 
-const scopeOf = (d: Pick<Deposit, "chainId" | "registry" | "publisher" | "repo" | "generation">): PaidScope => ({
+const scopeOf = (
+	d: Pick<
+		Deposit,
+		"chainId" | "registry" | "publisher" | "repo" | "generation"
+	>,
+): PaidScope => ({
 	chainId: d.chainId,
 	registry: d.registry,
 	publisher: d.publisher,
@@ -112,22 +130,44 @@ const scopeOf = (d: Pick<Deposit, "chainId" | "registry" | "publisher" | "repo" 
  */
 export const newRepoKey = (): Uint8Array => getRandomValues(new Uint8Array(32));
 
-export const deriveRecordKey = (kRepo: Uint8Array, stmt: Hex, key: Hex): Uint8Array =>
+export const deriveRecordKey = (
+	kRepo: Uint8Array,
+	stmt: Hex,
+	key: Hex,
+): Uint8Array =>
 	hkdf32(kRepo, concat([stmt, key, toHex("fangorn:record-key")]));
 
-const fieldAad = (stmt: Hex, key: Hex, field: string) => hexToBytes(concat([stmt, key, toHex(field)]));
+const fieldAad = (stmt: Hex, key: Hex, field: string) =>
+	hexToBytes(concat([stmt, key, toHex(field)]));
 
 /** `nonce(12) || AES-256-GCM(kRecord, plaintext, aad = stmt || key || field)` */
-export function encryptField(kRecord: Uint8Array, plaintext: Uint8Array, stmt: Hex, key: Hex, field: string): Uint8Array {
+export function encryptField(
+	kRecord: Uint8Array,
+	plaintext: Uint8Array,
+	stmt: Hex,
+	key: Hex,
+	field: string,
+): Uint8Array {
 	const nonce = getRandomValues(new Uint8Array(GCM_NONCE_LENGTH));
-	const ct = aesGcmEncrypt(kRecord, plaintext, nonce, fieldAad(stmt, key, field));
+	const ct = aesGcmEncrypt(
+		kRecord,
+		plaintext,
+		nonce,
+		fieldAad(stmt, key, field),
+	);
 	const out = new Uint8Array(nonce.length + ct.length);
 	out.set(nonce);
 	out.set(ct, nonce.length);
 	return out;
 }
 
-export function decryptField(kRecord: Uint8Array, ciphertext: Uint8Array, stmt: Hex, key: Hex, field: string): Uint8Array {
+export function decryptField(
+	kRecord: Uint8Array,
+	ciphertext: Uint8Array,
+	stmt: Hex,
+	key: Hex,
+	field: string,
+): Uint8Array {
 	return aesGcmDecrypt(
 		kRecord,
 		ciphertext.slice(GCM_NONCE_LENGTH),
@@ -167,7 +207,13 @@ export async function sealField(p: {
 	storage: Pick<MetadataStorage, "putFile">;
 }): Promise<FieldHandle> {
 	const stmt = statement(p.scope);
-	const ct = encryptField(deriveRecordKey(p.kRepo, stmt, p.key), p.plaintext, stmt, p.key, p.field);
+	const ct = encryptField(
+		deriveRecordKey(p.kRepo, stmt, p.key),
+		p.plaintext,
+		stmt,
+		p.key,
+		p.field,
+	);
 	return {
 		"@type": "handle",
 		gadget: GADGET_FIELD_V1,
@@ -179,10 +225,21 @@ export async function sealField(p: {
 // ── /access ──
 
 /** What the reader signs (EIP-191, raw): the statement, the key asked for, the reply key and the time. */
-export const accessMessage = (stmt: Hex, key: Hex, readerKey: Hex, timestamp: number): Hex =>
+export const accessMessage = (
+	stmt: Hex,
+	key: Hex,
+	readerKey: Hex,
+	timestamp: number,
+): Hex =>
 	keccak256(
 		encodeAbiParameters(
-			[{ type: "string" }, { type: "bytes32" }, { type: "bytes32" }, { type: "bytes32" }, { type: "uint64" }],
+			[
+				{ type: "string" },
+				{ type: "bytes32" },
+				{ type: "bytes32" },
+				{ type: "bytes32" },
+				{ type: "uint64" },
+			],
 			["fangorn:access:v1", stmt, key, readerKey, BigInt(timestamp)],
 		),
 	);
@@ -197,7 +254,12 @@ export async function buildAccessRequest(p: {
 }): Promise<AccessRequest> {
 	const { deposit, key, readerKey } = p;
 	const timestamp = p.timestamp ?? Math.floor(Date.now() / 1000);
-	const raw = accessMessage(statement(scopeOf(deposit)), key, readerKey, timestamp);
+	const raw = accessMessage(
+		statement(scopeOf(deposit)),
+		key,
+		readerKey,
+		timestamp,
+	);
 	return {
 		publisher: deposit.publisher,
 		repo: deposit.repo,
@@ -229,7 +291,10 @@ export async function requestKey(p: {
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(req),
 	});
-	if (!res.ok) throw new Error(`key server refused: ${res.status.toString()} ${await res.text()}`);
+	if (!res.ok)
+		throw new Error(
+			`key server refused: ${res.status.toString()} ${await res.text()}`,
+		);
 	const { sealed } = (await res.json()) as { sealed: Hex };
 	return unseal(hexToBytes(sealed), secret, statement(scopeOf(p.deposit)));
 }
@@ -245,10 +310,22 @@ export async function openField(p: {
 	storage: Pick<MetadataStorage, "getFile">;
 	fetch?: typeof globalThis.fetch;
 }): Promise<Uint8Array> {
-	if (p.handle.generation !== p.deposit.generation) throw new Error("the handle and the deposit are for different generations");
+	if (p.handle.generation !== p.deposit.generation)
+		throw new Error("the handle and the deposit are for different generations");
 	const [kRecord, ct] = await Promise.all([
-		requestKey({ deposit: p.deposit, key: p.key, signer: p.signer, fetch: p.fetch }),
+		requestKey({
+			deposit: p.deposit,
+			key: p.key,
+			signer: p.signer,
+			fetch: p.fetch,
+		}),
 		p.storage.getFile(p.handle.cid),
 	]);
-	return decryptField(kRecord, ct, statement(scopeOf(p.deposit)), p.key, p.field);
+	return decryptField(
+		kRecord,
+		ct,
+		statement(scopeOf(p.deposit)),
+		p.key,
+		p.field,
+	);
 }

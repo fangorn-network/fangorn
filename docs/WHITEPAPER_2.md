@@ -1,6 +1,6 @@
 # Fangorn II: Programmable Access to Verifiable Data
 
-*Working draft, 2026-10-30 · driemworks. The second of two papers. [WP1] gives the data model: data held by untrusted hosts, history ordered by a logical clock, and reads and indexes that anyone can check. This paper adds who may read. Part I is a general model of access as witness encryption. Part II instantiates it, with practical witness encryption built from zero-knowledge proofs and a key-release scheme.*
+_Working draft, 2026-10-30 · driemworks. The second of two papers. [WP1] gives the data model: data held by untrusted hosts, history ordered by a logical clock, and reads and indexes that anyone can check. This paper adds who may read. Part I is a general model of access as witness encryption. Part II instantiates it, with practical witness encryption built from zero-knowledge proofs and a key-release scheme._
 
 ## 0. Introduction
 
@@ -9,6 +9,7 @@ On a platform, the party that serves the data also decides who may read it. So i
 A publisher can make data readable only by those who meet a condition it chooses, without any party deciding, case by case, who may read, and without any party learning who reads. The condition belongs to the publisher's repo, not to any app that presents it: a publisher sets it once, and every app that presents the repo, and every reader who finds it, meets the same condition. An app that leads a reader to a purchase is paid a share of it, so that curating data pays without buying it.
 
 **Part I** gives a general model:
+
 - **Access.** A sealed state, or the sealed fields of a state, are encrypted so that they can be read by exactly those who hold a witness for a condition the publisher sets. This is witness encryption, and the condition may refer to the ordering itself: membership, payment and time are all statements about the ordering.
 - **Referral.** A payment names the app that referred it, and the payment program splits the price between the publisher and that app, at a share the publisher sets.
 - **Security.** Anyone who learns anything about a sealed state beyond its leakage could have satisfied the condition, and reading leaves no trace.
@@ -30,6 +31,7 @@ This paper uses the notation, proof-status tags and algorithm conventions of [WP
 Proofs are over the NP relations of [WP1, §1.4].
 
 **Definition 1.1 (SNARK) [BBBF18, Def. 8; LJKW18, Def. 4].** A **succinct non-interactive argument of knowledge** for $R$ is a triple $\Pi = (\mathsf{Gen}, \mathsf{Prove}, \mathsf{Verify})$ of polynomial-time algorithms, where $\mathsf{Gen}(1^\lambda) \to (\mathit{ek}, \mathit{vk})$, $\mathsf{Prove}(\mathit{ek}, x, w) \to \pi$ and $\mathsf{Verify}(\mathit{vk}, x, \pi) \in \{0, 1\}$. It satisfies:
+
 1. **completeness:** for every $(x, w) \in R$, an honest proof is accepted with probability 1;
 2. **succinctness:** the length of $\pi$, and the running time of $\mathsf{Verify}$, are bounded by $\mathrm{poly}(\lambda, \log(|x| + |w|))$;
 3. **knowledge soundness:** for every adversary $\mathcal{A}$ in a stated class there is an extractor $\mathcal{E}_{\mathcal{A}}$, with a stated bound on its running time, such that for every auxiliary input $z$, the probability that $\mathcal{A}(z, \mathit{ek})$ outputs $(x, \pi)$ with $\mathsf{Verify}(\mathit{vk}, x, \pi) = 1$, while $\mathcal{E}_{\mathcal{A}}(z, \mathit{ek})$ outputs no $w$ with $(x, w) \in R$, is at most $\mathbf{Adv}^{\mathsf{ks}}_\Pi$.
@@ -41,6 +43,7 @@ Proofs are over the NP relations of [WP1, §1.4].
 A proof may also be zero-knowledge and simulation-extractable.
 
 **Definition 1.2 (Zero knowledge and simulation extractability) [informal; not taken from a source read for this document].** A proof may be bound to a message $m$, as $\mathsf{Prove}(\mathit{ek}, x, w, m)$ and $\mathsf{Verify}(\mathit{vk}, x, m, \pi)$.
+
 1. **Zero knowledge:** a simulator that holds a trapdoor of $\mathsf{Gen}$, and is given only $x$ and $m$, outputs proofs indistinguishable from honest ones.
 2. **Simulation extractability:** an adversary that has seen simulated proofs for pairs $(x, m)$ of its choice, and outputs an accepted proof for a pair it was not given, yields a witness for that $x$ through an extractor.
 
@@ -51,20 +54,22 @@ The second property is what stops a proof from being copied onto another message
 [WP1, Definition 1.10] gives the ordering service, with its checkpoints and its logical clock. $\mathsf{Verify}$ sees only $d$ and $\mathcal{O}'$. So what matters about a clock is what an adversary can make it accept.
 
 **Definition 1.3 (Reference clock).** Let $R_{\mathsf{clk}}$ be the relation where $((d, \tau, r), w) \in R_{\mathsf{clk}}$ if $w$ is an extension of the checkpoint $d$ that $\mathsf{Verify}$ accepts, reaches clock value $\tau$, and has a state with root $r$. For a class $\mathcal{C}$ of adversaries, the ordering is:
+
 1. **timely** for $\mathcal{C}$ if no adversary in $\mathcal{C}$ outputs a witness for $(d, \tau, \cdot)$ while the honest clock is below $\tau$, except with negligible probability;
 2. **binding** for $\mathcal{C}$ if no adversary in $\mathcal{C}$ outputs a witness for $(d, \tau, r)$ where $r$ is not the honest root at $\tau$, except with negligible probability.
 
 A clock can be timely without being binding. The class $\mathcal{C}$ is set by what the clock is made of:
 
-| Clock | Made of | $\mathcal{C}$ | Timely | Binding |
-| --- | --- | --- | --- | --- |
-| Computational [LJKW18, Defs. 5–7, 10, 11] | Public, parallel work, as in proof of work | Adversaries with far less computation than the clock | Yes | No |
-| Signed | Attestations under an acceptance rule | Adversaries that cannot produce an accepted attestation the honest signers did not make | Yes | Yes |
-| Sequential [BBBF18, Defs. 1–4] | Chained evaluations of a verifiable delay function | Adversaries whose hardware is not much faster | Yes, [proof sketch] | No |
+| Clock                                     | Made of                                            | $\mathcal{C}$                                                                           | Timely              | Binding |
+| ----------------------------------------- | -------------------------------------------------- | --------------------------------------------------------------------------------------- | ------------------- | ------- |
+| Computational [LJKW18, Defs. 5–7, 10, 11] | Public, parallel work, as in proof of work         | Adversaries with far less computation than the clock                                    | Yes                 | No      |
+| Signed                                    | Attestations under an acceptance rule              | Adversaries that cannot produce an accepted attestation the honest signers did not make | Yes                 | Yes     |
+| Sequential [BBBF18, Defs. 1–4]            | Chained evaluations of a verifiable delay function | Adversaries whose hardware is not much faster                                           | Yes, [proof sketch] | No      |
 
 **Computational.** This is the computational reference clock of [LJKW18], who build time-lock encryption from it. Their notion of breaking the clock, a witness for $\tau$ from fewer operations than the clock spends, is a concrete failure of timeliness. Any chain that meets the relation is a witness, whatever its blocks hold, so the clock is not binding.
 
 **Signed.** Each step carries attestations, and an **acceptance rule** says which attestations suffice. Examples:
+
 - one server's signature;
 - $k$ of $n$ committee signatures;
 - a stake-weighted quorum of validators;
@@ -82,7 +87,7 @@ The clock needs no keys and no honest majority, but its margin is the adversary'
 
 **Lemma 1.5 (A succinct clock keeps its clock's properties) [proof, given knowledge soundness in the concrete form].** If a clock is timely, or binding, for $\mathcal{C}$, then so is a succinct clock over it, up to $\mathbf{Adv}^{\mathsf{ks}}_\Pi$. This needs every adversary in $\mathcal{C}$, together with its extractor, to stay in $\mathcal{C}$.
 
-*Proof.* From an accepted $\pi$, the extractor yields a witness $w$ for the same statement, which the clock's property rules out. This is the pattern of [LJKW18, Thm. 2]. $\square$
+_Proof._ From an accepted $\pi$, the extractor yields a witness $w$ for the same statement, which the clock's property rules out. This is the pattern of [LJKW18, Thm. 2]. $\square$
 
 The hypothesis carries weight when $\pi$ is built by recursion over the clock's steps (§1.2). With a succinct clock, a statement about the contents at $\tau$ costs a constant-size proof plus one opening of $r$ ([WP1, Definition 1.6]).
 
@@ -91,6 +96,7 @@ The hypothesis carries weight when $\pi$ is built by recursion over the clock's 
 ### 1.4 Witness encryption
 
 **Definition 1.6 (Witness encryption [GGSW13]).** A witness encryption scheme for an NP relation $R$ is a pair of algorithms $\mathsf{WE} = (\mathsf{Enc}, \mathsf{Dec})$:
+
 - $\mathsf{Enc}(1^\lambda, x, m)$ encrypts a message $m$ to a statement $x$, and outputs a ciphertext $c$;
 - $\mathsf{Dec}(c, w)$ outputs a message, or $\bot$.
 
@@ -129,6 +135,7 @@ x = (\phi,\ \sigma,\ e,\ d)
 $$
 
 where:
+
 - $\phi$ names the condition;
 - $\sigma$ is the **subject**: a repo $\rho$, or one record of it, $(\rho, k)$, so that a publisher can set a different condition, and a different price, for every record (§2.2);
 - $e$ is an epoch;
@@ -147,6 +154,7 @@ R_{\phi \wedge \psi}(x, (w_1, w_2)) = R_\phi(x, w_1) \wedge R_\psi(x, w_2), \qqu
 $$
 
 Examples:
+
 - **Password.** $R(x, w) = 1$ iff $N(\texttt{pw}, w) = y$, for a value $y$ fixed in $\phi$.
 - **Membership.** $w = (\mathit{sk}, \mathcal{O}')$, where $\mathcal{O}'$ extends the ordering after $d$ and records the enrollment of the commitment to $\mathit{sk}$ in a group for epoch $e$, such as the members of an app $A$ that $\phi$ names. With a succinct clock, $w = (\mathit{sk}, \pi, o)$: $\pi$ proves a clock statement $(d, \tau, r)$, and $o$ opens the state root $r$ at the enrollment.
 - **Payment.** $w = (\mathit{sk}, \mathcal{O}')$, where $\mathcal{O}'$ extends the ordering and records a payment of the price that $\phi$ names for $(\sigma, e)$, bound to the commitment to $\mathit{sk}$. With a succinct clock, the extension is replaced by a proof and an opening, as for membership.
@@ -158,6 +166,7 @@ Examples:
 In every example except the password and the credential, the witness is a piece of the ordering. The ordering is what a reader proves things about. This is why one ordered log is enough to express membership, payment and time as conditions on reading.
 
 **Private forks.** Witness encryption consults no one, so a witness extension $\mathcal{O}'$ is never compared with the honest ordering. An adversary can build a **private fork**: an extension of $d$ that it never publishes, in which it enrolls or pays, followed by $k$ further steps. What stops it is whether the clock is binding (Definition 1.3):
+
 - **If it is binding,** as a signed clock is, the fork needs attestations that the honest signers never made, and under the clock's assumption it cannot be built.
 - **If it is only timely,** as a computational or sequential clock is, the fork is a valid witness once it is built. Building it never gets ahead of the honest clock, so it breaks nothing. It costs the work, or the sequential time, of every step from $d$ to $k$ steps past the entry, and given time any adversary can do it. **[no proof]** Membership and payment are then secure only economically. The depth $k$ must make that cost exceed what the condition is worth, for payment the price. [LJKW18, §1.1.1] make the same comparison for decrypting early.
 
@@ -178,6 +187,7 @@ $$
 signed by the publisher of $\sigma$, naming the subject, the condition, a curator share $s$ (§2.4), a **generation** $n$, and a deadline $t_x$. Terms are not entries of the ordering: the publisher signs them once, publishes them as a public field of the record or of the repo, and anyone who meets the condition carries them to the payment program, which checks the signature (§2.4). Setting a price, or a different price for every record, therefore costs nothing on the chain. The payment program keeps one counter per repo, the generation, which only its publisher may raise, and accepts terms only of the current generation and before their deadline, so that raising it voids every earlier price at once. Each sealed value names, in its statement, the condition it was sealed under, so a new condition applies to what is sealed after it, and never to what was sealed before. A repo with no condition is **public**. A sealed repo has a public directory entry, and its records are part of $\mathcal{G}_t$, but what is sealed in them opens only to a reader holding a key. A repo is sealed in one of two modes, which its publisher chooses.
 
 **State sealing.** For each epoch $e$ in which $\rho$ is written, its publisher:
+
 1. samples a key $k_{\rho,e}$;
 2. encrypts every node of the new state with $\mathsf{SE}.\mathsf{Enc}_{k_{\rho,e}}(\cdot\,; (\rho, e))$, including the records, the internal nodes and the root;
 3. publishes $c_{\rho,e} = \mathsf{WE}.\mathsf{Enc}\big(1^\lambda,\ x_{\rho,e},\ k_{\rho,e}\big)$, where $x_{\rho,e} = (\phi_\rho, \rho, e, d)$ and $d$ is a recent checkpoint.
@@ -193,6 +203,7 @@ The commit itself stays public: its epoch, parent and root are the fields of the
 To read subject $\sigma$ at epoch $e$, a reader holding a witness $w$ for $x_{\sigma,e}$ computes its key with $\mathsf{WE}.\mathsf{Dec}$, then reads as in [WP1, §3.3], decrypting under the same associated data. A witness for a repo opens every record of that repo for the epoch, and nothing of any other repo.
 
 **Leakage.** A sealed commit reveals:
+
 - $\rho$, its position, its epoch and its parent, and the clock value of its update, which the update log records [WP1, §3.2];
 - the number and sizes of the nodes it adds, or under field sealing, of the sealed values;
 - which of those nodes, or values, equal ones already present in the same epoch;
@@ -217,6 +228,7 @@ Under a payment condition, the payment is made to a program on the ordering, whi
 The referrer is not part of the statement $x_{\sigma,e}$, and a witness opens the same key whoever referred the payment. Referral changes who is paid, never who may read.
 
 What this gives each party:
+
 - **A publisher** sets $p$ and $s$ once, and is paid on every sale, by whatever app made it.
 - **An app** is paid for every sale it refers, without buying, holding or reading what it presents. It competes with other apps that present the same data on how well it leads readers to it, since the share is the same for all of them.
 - **A reader** pays $p$, whichever app it came through.
@@ -253,7 +265,7 @@ then an efficient extractor, given what $\mathcal{A}$ was given, outputs a witne
 
 In words, anyone who learns anything about a sealed state beyond its leakage could have satisfied the condition.
 
-*Proof.* Consider a hybrid in which $c_{\sigma,e}$ encrypts an independent random key instead of $k_\sigma$, the subject's key, $k_{\rho,e}$ or $k_{\rho,e,k}$. In the hybrid, $k_\sigma$ appears only as the key of $\mathsf{SE}$. By DAE security, the sealed nodes of $M_0$ and of $M_1$ are each indistinguishable from random strings of the sizes and repetition pattern that $\mathsf{Leak}$ gives, and these are equal by assumption. So in the hybrid, $\mathcal{A}$'s advantage is at most $\mathbf{Adv}^{\mathsf{dae}}_{\mathsf{SE}}$.
+_Proof._ Consider a hybrid in which $c_{\sigma,e}$ encrypts an independent random key instead of $k_\sigma$, the subject's key, $k_{\rho,e}$ or $k_{\rho,e,k}$. In the hybrid, $k_\sigma$ appears only as the key of $\mathsf{SE}$. By DAE security, the sealed nodes of $M_0$ and of $M_1$ are each indistinguishable from random strings of the sizes and repetition pattern that $\mathsf{Leak}$ gives, and these are equal by assumption. So in the hybrid, $\mathcal{A}$'s advantage is at most $\mathbf{Adv}^{\mathsf{dae}}_{\mathsf{SE}}$.
 
 Therefore, if $\mathcal{A}$'s advantage in the real game is at least $1/p(\lambda) + \mathbf{Adv}^{\mathsf{dae}}_{\mathsf{SE}}$, then $\mathcal{A}$, with the rest of its view as auxiliary input, distinguishes $\mathsf{WE}.\mathsf{Enc}(x_{\sigma,e}, k_\sigma)$ from $\mathsf{WE}.\mathsf{Enc}(x_{\sigma,e}, k')$ with advantage at least $1/p(\lambda)$. By extractable security, the extractor outputs a witness for $x_{\sigma,e}$. $\square$
 
@@ -261,7 +273,7 @@ What counts as "could have satisfied the condition" depends on the condition. Fo
 
 **Proposition 3.1 (The time condition reduces to the clock) [proof sketch].** Let the ordering be timely for $\mathcal{C}$ (Definition 1.3). Suppose $\mathsf{WE}$ is extractable relative to the clock, in the concrete form of [LJKW18, Def. 3], with an extractor that stays in $\mathcal{C}$. Then an adversary in $\mathcal{C}$ that distinguishes a state sealed for time $\tau$, in the game of Theorem 1, with advantage beyond $\mathbf{Adv}^{\mathsf{dae}}_{\mathsf{SE}}$, yields a witness for $\tau$ before the honest clock reaches it, which timeliness rules out.
 
-*Sketch.* The hybrid of Theorem 1 reduces the state to the key $k_{\rho,e}$. On the key, run the extractor. For a computational clock this is [LJKW18, Thm. 3]. What is not written out is how the two pieces compose: the hybrid uses Definition 1.8, while the step on the key needs the concrete form. $\square$
+_Sketch._ The hybrid of Theorem 1 reduces the state to the key $k_{\rho,e}$. On the key, run the extractor. For a computational clock this is [LJKW18, Thm. 3]. What is not written out is how the two pieces compose: the hybrid uses Definition 1.8, while the step on the key needs the concrete form. $\square$
 
 With a signed clock, the time condition can also be met directly: the honest signers attest to the required clock value, which is the committee scheme of §4.3, item 4.
 
@@ -269,7 +281,7 @@ With a signed clock, the time condition can also be met directly: the honest sig
 
 **Theorem 2 (Reader privacy) [proof].** Decrypting a sealed subject is a local computation on public values. For any two readers that hold witnesses for $x_{\sigma,e}$, the views of all other parties are identical whether either, both or neither of them decrypts.
 
-*Proof.* $\mathsf{WE}.\mathsf{Dec}$ and $\mathsf{SE}.\mathsf{Dec}$ take only the reader's witness and public values, and send nothing. Fetching nodes by name from public hosts is the same for every reader of the repo. $\square$
+_Proof._ $\mathsf{WE}.\mathsf{Dec}$ and $\mathsf{SE}.\mathsf{Dec}$ take only the reader's witness and public values, and send nothing. Fetching nodes by name from public hosts is the same for every reader of the repo. $\square$
 
 Reading leaves no trace in the general model. Whatever a reader reveals, it reveals while obtaining its witness: the entries a membership or payment witness requires. Reader privacy therefore reduces to the privacy of those entries. For example, an enrollment or a payment can be made under a commitment to a secret, through a relayer, so that the ordering does not link it to the reader.
 
@@ -298,6 +310,7 @@ The construction has two components.
 **A key-release scheme.** A party, or set of parties, that holds the deposited keys and releases them according to the chain.
 
 The construction runs in three steps.
+
 1. **Seal.** The publisher encrypts the state under $k_{\rho,e}$ as in §2.2, and deposits $k_{\rho,e}$ with the release scheme, in place of publishing $c_{\rho,e}$.
 2. **Prove.** A reader with witness $w$ for $x_{\sigma,e}$:
    - generates a fresh key pair $(\mathit{sk}', \mathit{pk}')$;
@@ -305,15 +318,18 @@ The construction runs in three steps.
    - posts $(x_{\sigma,e}, \mathit{pk}', \nu, \pi)$ to the chain, through a relayer, where $\pi$ proves knowledge of $w$ with $R_{\phi_\rho}(x_{\sigma,e}, w) = 1$ and that $\nu$ is computed correctly.
 
    The proof is bound to the message $(\sigma, e, \mathit{pk}')$. The chain verifies $\pi$, rejects a pseudonym it has already seen, and records a **grant** $(\sigma, e, \mathit{pk}')$.
+
 3. **Release.** On a grant, the release scheme publishes the subject's key encrypted to $\mathit{pk}'$: $k_{\rho,e}$ for a repo, or $k_{\rho,e,k}$ for a record, which it derives from the deposited $k_{\rho,e}$.
 
 **Theorem 3 (The construction realizes $\mathcal{F}_{\mathsf{rel}}$) [proof sketch].** If $\Pi$ is simulation-extractable and zero-knowledge, the chain satisfies [WP1, Assumption O], and the release scheme releases keys exactly on grants, then the construction realizes $\mathcal{F}_{\mathsf{rel}}$. Moreover:
+
 1. each key reaches only the holder of $\mathit{sk}'$ for a recorded grant;
 2. each grant comes with an extractable witness for $x_{\sigma,e}$;
 3. the public values of a grant reveal nothing about which witness was used, beyond the condition's anonymity set;
 4. a witness yields one grant per $(\sigma, e)$.
 
-*Sketch.*
+_Sketch._
+
 1. Release happens only on a grant, and only to $\mathit{pk}'$.
 2. A grant is recorded only for a valid proof whose message the chain fixes. A proof not produced by an honest reader is a proof for a new (statement, message) pair, and simulation extractability yields a witness. Because the message includes $\mathit{pk}'$, a copied proof grants a key the copier does not hold.
 3. By zero knowledge, $\pi$ can be simulated from the statement alone, and $\nu$ is a pseudorandom value for a fresh scope.
@@ -341,6 +357,7 @@ The construction leaves one component open: who holds the keys. The schemes belo
    - **Liveness:** any $t$ of the $n$ members suffice.
 
    This is the closest to the general model. The committee replaces the extractor of Definition 1.8 with an honest-threshold assumption, and nobody holds the keys.
+
 4. **Time alone.** For the time condition, a committee signs each tag when the chain's clock reaches its value. No proof from the reader is needed.
 
 **Curation and keys.** An app that stops citing a sealed record [WP1, §2] stops presenting it, but does not change who may read it: the condition is the subject's, not the app's, and a reader that finds the record elsewhere can still meet it. Withholding keys is a matter for the operator of a release scheme (below).
@@ -352,6 +369,7 @@ In all of them, a reader who receives a key can share it, exactly as a reader wh
 ## 5. Scope
 
 **Missing proofs.** These claims are stated without a full proof:
+
 - **Theorem 3.** Only a sketch is given.
 - **Proposition 3.1.** It is a sketch: composing Theorem 1's hybrid with the concrete, oracle form of extractable security of [LJKW18, Def. 3] is not written out.
 - **Private forks under a computational clock (§2.1).** Membership and payment are secure only economically, and how deep an entry must be settled is not derived.
@@ -365,6 +383,7 @@ In all of them, a reader who receives a key can share it, exactly as a reader wh
 - **Clock skew (§3.1).** With the chain's timestamps as the clock [WP1, §5], a proposer can set them ahead within their skew bound, and so meet a time condition early by up to that bound. The bound is assumed. A deployment that cannot accept it can state time conditions in block heights.
 
 This document omits the following, each of which builds on it:
+
 - how to build a succinct clock for the chain of [WP1, §5];
 - the construction of anonymous payment;
 - how the revenue of a bundle (§2.1) is shared among the publishers in it, for example in proportion to the number of members each epoch;
@@ -377,19 +396,19 @@ This document omits the following, each of which builds on it:
 
 ## References
 
-| Key | Reference |
-| --- | --- |
-| [BBBF18] | D. Boneh, J. Bonneau, B. Bünz, B. Fisch. Verifiable Delay Functions. CRYPTO 2018 (ePrint 2018/601, version of 26 June 2019) |
-| [FKK06] | K. Fu, S. Kamara, T. Kohno. Key Regression: Enabling Efficient Key Distribution for Secure Distributed Storage. NDSS 2006 |
-| [GGHW14] | S. Garg, C. Gentry, S. Halevi, D. Wichs. On the Implausibility of Differing-Inputs Obfuscation and Extractable Witness Encryption with Auxiliary Input. CRYPTO 2014 |
-| [GGSW13] | S. Garg, C. Gentry, A. Sahai, B. Waters. Witness Encryption and Its Applications. STOC 2013 |
-| [GKPVZ13] | S. Goldwasser, Y. T. Kalai, R. A. Popa, V. Vaikuntanathan, N. Zeldovich. How to Run Turing Machines on Encrypted Data. CRYPTO 2013 |
-| [GKPW24] | S. Garg, D. Kolonelos, G.-V. Policharla, M. Wang. Threshold Encryption with Silent Setup. CRYPTO 2024 |
-| [LJKW18] | J. Liu, T. Jager, S. A. Kakvi, B. Warinschi. How to Build Time-Lock Encryption. Designs, Codes and Cryptography, 2018 |
-| [MCF24] | N. Döttling, L. Hanzlik, B. Magri, S. Wohnig. McFly: Verifiable Encryption to the Future Made Practical. FC 2024 |
-| [RS06] | P. Rogaway, T. Shrimpton. Deterministic Authenticated-Encryption. Eurocrypt 2006 |
-| [SWE24] | G. Avitabile, N. Döttling, B. Magri, C. Sakkas, S. Wohnig. Signature-based Witness Encryption with Compact Ciphertext. Asiacrypt 2024 |
-| [TEEF25] | TEE.Fail, October 2025 |
-| [WP1] | driemworks. Fangorn I: Verifiable Data without a Platform. Working draft, 2026-10-13 |
-| [WW26] | B. Waters, D. J. Wu. Silent Threshold Cryptography from Pairings. Eurocrypt 2026 |
-| [ZUB19] | S. Zuboff. The Age of Surveillance Capitalism. 2019 |
+| Key       | Reference                                                                                                                                                           |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [BBBF18]  | D. Boneh, J. Bonneau, B. Bünz, B. Fisch. Verifiable Delay Functions. CRYPTO 2018 (ePrint 2018/601, version of 26 June 2019)                                         |
+| [FKK06]   | K. Fu, S. Kamara, T. Kohno. Key Regression: Enabling Efficient Key Distribution for Secure Distributed Storage. NDSS 2006                                           |
+| [GGHW14]  | S. Garg, C. Gentry, S. Halevi, D. Wichs. On the Implausibility of Differing-Inputs Obfuscation and Extractable Witness Encryption with Auxiliary Input. CRYPTO 2014 |
+| [GGSW13]  | S. Garg, C. Gentry, A. Sahai, B. Waters. Witness Encryption and Its Applications. STOC 2013                                                                         |
+| [GKPVZ13] | S. Goldwasser, Y. T. Kalai, R. A. Popa, V. Vaikuntanathan, N. Zeldovich. How to Run Turing Machines on Encrypted Data. CRYPTO 2013                                  |
+| [GKPW24]  | S. Garg, D. Kolonelos, G.-V. Policharla, M. Wang. Threshold Encryption with Silent Setup. CRYPTO 2024                                                               |
+| [LJKW18]  | J. Liu, T. Jager, S. A. Kakvi, B. Warinschi. How to Build Time-Lock Encryption. Designs, Codes and Cryptography, 2018                                               |
+| [MCF24]   | N. Döttling, L. Hanzlik, B. Magri, S. Wohnig. McFly: Verifiable Encryption to the Future Made Practical. FC 2024                                                    |
+| [RS06]    | P. Rogaway, T. Shrimpton. Deterministic Authenticated-Encryption. Eurocrypt 2006                                                                                    |
+| [SWE24]   | G. Avitabile, N. Döttling, B. Magri, C. Sakkas, S. Wohnig. Signature-based Witness Encryption with Compact Ciphertext. Asiacrypt 2024                               |
+| [TEEF25]  | TEE.Fail, October 2025                                                                                                                                              |
+| [WP1]     | driemworks. Fangorn I: Verifiable Data without a Platform. Working draft, 2026-10-13                                                                                |
+| [WW26]    | B. Waters, D. J. Wu. Silent Threshold Cryptography from Pairings. Eurocrypt 2026                                                                                    |
+| [ZUB19]   | S. Zuboff. The Age of Surveillance Capitalism. 2019                                                                                                                 |

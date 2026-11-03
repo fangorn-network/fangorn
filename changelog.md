@@ -24,6 +24,7 @@ no server ever sees plaintext. The contracts were redeployed on Base Sepolia.
 
   `AppConfig` is renamed `NetworkConfig`. A referral goes to whatever address
   the buyer's client names in `register`.
+
 - **MembershipRegistry removed.** `MembershipRegistryClient`,
   `MEMBERSHIP_REGISTRY_ABI`, `membershipRegistryContractAddress` and
   `getMembershipRegistry()` are gone. Use the SettlementRegistry (below).
@@ -56,6 +57,7 @@ no server ever sees plaintext. The contracts were redeployed on Base Sepolia.
 
   Kept: `seal`, `unseal`, `sealSelf`, `unsealSelf` and `GADGET_SELF_HKDF_V1`.
   Paid fields use `field-v1` (below).
+
 - **The harness is removed** (`src/harness`, its hackmd example and its
   export). Build records yourself and pass them to `commit` / `uploadBatch`.
 - **`solc` is no longer a dependency.**
@@ -132,6 +134,7 @@ no server ever sees plaintext. The contracts were redeployed on Base Sepolia.
   - `fromBlock` is `53592845n`.
 
   Repos and apps from the old deployment don't carry over.
+
 - **The package root runs in Workers and browsers.** The engine and the
   storage utilities no longer use Node's `crypto`, `Buffer`, or a
   module-level `process.env`. Only the CLI and `src/repo` use Node.

@@ -85,8 +85,6 @@ describe("seal", () => {
 	it("cannot be opened by the wrong worker secret", () => {
 		const workerPubkey = x25519.getPublicKey(x25519.utils.randomSecretKey());
 		const ct = seal(enc.encode("secret"), workerPubkey, RES_A);
-		expect(() =>
-			unseal(ct, x25519.utils.randomSecretKey(), RES_A),
-		).toThrow();
+		expect(() => unseal(ct, x25519.utils.randomSecretKey(), RES_A)).toThrow();
 	});
 });

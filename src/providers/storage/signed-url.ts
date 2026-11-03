@@ -39,7 +39,7 @@ export interface SignedUrlSigner {
  *
  * Uploads go through the pinata-url-provider Worker. Prove wallet ownership by
  * signing the worker's challenge, and it hands back a short-lived, single-use
- * Pinata presigned upload URL that users POST the file to. 
+ * Pinata presigned upload URL that users POST the file to.
  * Reads need no auth: every Fangorn block is public content, so it's
  * fetched straight from a public IPFS gateway by CID (privacy is cryptographic,
  * not access-controlled). Each upload runs a fresh handshake because the
@@ -97,7 +97,9 @@ export class SignedUrlBackend implements MetadataStorage {
 		return { uploadUrl: grant.uploadUrl, network: grant.network ?? "public" };
 	}
 
-	private async workerJson(body: Record<string, unknown>): Promise<WorkerResponse> {
+	private async workerJson(
+		body: Record<string, unknown>,
+	): Promise<WorkerResponse> {
 		const res = await fetch(this.workerUrl, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
@@ -108,7 +110,11 @@ export class SignedUrlBackend implements MetadataStorage {
 	}
 
 	/** Upload bytes via a fresh one-time presigned URL; returns the pinned CID. */
-	private uploadBytes(bytes: Uint8Array, name: string, type: string): Promise<string> {
+	private uploadBytes(
+		bytes: Uint8Array,
+		name: string,
+		type: string,
+	): Promise<string> {
 		// One idempotency id per logical upload, shared across retries. A transient
 		// failure re-mints a fresh (single-use) URL, but the worker dedupes the
 		// storage-budget debit by this id, so the retry isn't charged again.
@@ -116,7 +122,10 @@ export class SignedUrlBackend implements MetadataStorage {
 		return withUploadRetry(name, async () => {
 			// A fresh URL per attempt: presigned URLs are single-use and short-lived.
 			// Declare the exact byte length so the worker scopes the URL to it.
-			const { uploadUrl, network } = await this.requestUploadUrl(bytes.length, uploadId);
+			const { uploadUrl, network } = await this.requestUploadUrl(
+				bytes.length,
+				uploadId,
+			);
 			const fd = new FormData();
 			fd.append("network", network);
 			fd.append("file", new File([bytes as BlobPart], name, { type }));
@@ -127,12 +136,17 @@ export class SignedUrlBackend implements MetadataStorage {
 			} | null;
 			if (!res.ok) {
 				throw Object.assign(
-					new Error(`Pinata upload failed: ${data ? JSON.stringify(data) : "(no body)"}`),
+					new Error(
+						`Pinata upload failed: ${data ? JSON.stringify(data) : "(no body)"}`,
+					),
 					{ statusCode: res.status },
 				);
 			}
 			const cid = data?.data?.cid;
-			if (!cid) throw new Error(`Pinata upload returned no CID: ${JSON.stringify(data)}`);
+			if (!cid)
+				throw new Error(
+					`Pinata upload returned no CID: ${JSON.stringify(data)}`,
+				);
 			return cid;
 		});
 	}

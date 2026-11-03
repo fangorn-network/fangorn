@@ -1,7 +1,12 @@
 import { describe, it, expect } from "vitest";
 import type { Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { EPOCH_SECONDS, WINDOW, ZERO_HEAD, type CommitUpdate } from "./index.js";
+import {
+	EPOCH_SECONDS,
+	WINDOW,
+	ZERO_HEAD,
+	type CommitUpdate,
+} from "./index.js";
 import { MemRegistry } from "../../test/mem-registry.js";
 import { commitHead } from "../../engine/index.js";
 
@@ -10,14 +15,24 @@ const ref = { publisher: P, repo: "s" };
 
 // The commits DataRegistry.t.sol checks `commitHead` against.
 const E = 493_000;
-const ROOT: Hex = "0xc3a75f27a0777dd37f80e7252ba50f882a088dd9b6e3e602281b9c217375cd9f";
-const CAR: Hex = "0x01551220039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81";
-const FIRST: Hex = "0x745133376af45492027c3773e51c69553b6c728af140de19e4b3489c0e789c94";
-const SECOND: Hex = "0x43eed88abf71cb580f34d4da9a0307977e54039e9a7c335f49040293328fb44e";
-const LONG: Hex = "0xc2d736394f98eeacb72b4f1f2d20961d558ec56ca6fa7a9a90fe3de736ed93f4";
-const SMALL: Hex = "0xa9cbca8f0bd56bab838f43d0dfdb3bf460163017d793b3fe17798837173b6d0b";
+const ROOT: Hex =
+	"0xc3a75f27a0777dd37f80e7252ba50f882a088dd9b6e3e602281b9c217375cd9f";
+const CAR: Hex =
+	"0x01551220039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81";
+const FIRST: Hex =
+	"0x745133376af45492027c3773e51c69553b6c728af140de19e4b3489c0e789c94";
+const SECOND: Hex =
+	"0x43eed88abf71cb580f34d4da9a0307977e54039e9a7c335f49040293328fb44e";
+const LONG: Hex =
+	"0xc2d736394f98eeacb72b4f1f2d20961d558ec56ca6fa7a9a90fe3de736ed93f4";
+const SMALL: Hex =
+	"0xa9cbca8f0bd56bab838f43d0dfdb3bf460163017d793b3fe17798837173b6d0b";
 
-const u = (repo: string, epoch: number, parent: Hex = ZERO_HEAD): CommitUpdate => ({ repo, epoch, parent, root: ROOT, car: CAR });
+const u = (
+	repo: string,
+	epoch: number,
+	parent: Hex = ZERO_HEAD,
+): CommitUpdate => ({ repo, epoch, parent, root: ROOT, car: CAR });
 const at = (epoch: number) => () => epoch * EPOCH_SECONDS + 5;
 
 describe("commitHead", () => {
@@ -51,21 +66,38 @@ describe("MemRegistry (Definition 3.1)", () => {
 
 	it("updateBySig moves the signer's repo, whoever submits it", async () => {
 		const account = privateKeyToAccount(`0x${"22".repeat(32)}`);
-		const publisher = new MemRegistry(account.address, undefined, at(E), account);
+		const publisher = new MemRegistry(
+			account.address,
+			undefined,
+			at(E),
+			account,
+		);
 		const relayer = new MemRegistry(P, publisher.ledger, at(E));
 		const sig = await publisher.signUpdate(u("photos", E));
 		await relayer.updateBySig(account.address, u("photos", E), sig);
-		expect(await relayer.head({ publisher: account.address, repo: "photos" })).toBe(FIRST);
-		expect(await relayer.head({ publisher: P, repo: "photos" })).toBe(ZERO_HEAD);
-		await expect(relayer.updateBySig(account.address, u("photos", E), sig)).rejects.toThrow(/Stale/);
+		expect(
+			await relayer.head({ publisher: account.address, repo: "photos" }),
+		).toBe(FIRST);
+		expect(await relayer.head({ publisher: P, repo: "photos" })).toBe(
+			ZERO_HEAD,
+		);
+		await expect(
+			relayer.updateBySig(account.address, u("photos", E), sig),
+		).rejects.toThrow(/Stale/);
 	});
 
 	it("updateBySig rejects a changed field or another signer", async () => {
 		const account = privateKeyToAccount(`0x${"22".repeat(32)}`);
 		const r = new MemRegistry(account.address, undefined, at(E), account);
 		const sig = await r.signUpdate(u("photos", E));
-		await expect(r.updateBySig(account.address, u("videos", E), sig)).rejects.toThrow(/BadSignature/);
-		await expect(r.updateBySig(account.address, { ...u("photos", E), root: FIRST }, sig)).rejects.toThrow(/BadSignature/);
-		await expect(r.updateBySig(P, u("photos", E), sig)).rejects.toThrow(/BadSignature/);
+		await expect(
+			r.updateBySig(account.address, u("videos", E), sig),
+		).rejects.toThrow(/BadSignature/);
+		await expect(
+			r.updateBySig(account.address, { ...u("photos", E), root: FIRST }, sig),
+		).rejects.toThrow(/BadSignature/);
+		await expect(r.updateBySig(P, u("photos", E), sig)).rejects.toThrow(
+			/BadSignature/,
+		);
 	});
 });

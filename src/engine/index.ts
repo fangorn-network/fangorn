@@ -2,8 +2,18 @@ import { CID } from "multiformats/cid";
 import { sha256 } from "multiformats/hashes/sha2";
 import * as Digest from "multiformats/hashes/digest";
 import * as dagCbor from "@ipld/dag-cbor";
-import { bytesToHex, hexToBytes, type Address, type Hash, type Hex } from "viem";
-import { type CommitUpdate, type Registry, ZERO_HEAD } from "../contracts/index.js";
+import {
+	bytesToHex,
+	hexToBytes,
+	type Address,
+	type Hash,
+	type Hex,
+} from "viem";
+import {
+	type CommitUpdate,
+	type Registry,
+	ZERO_HEAD,
+} from "../contracts/index.js";
 import { MetadataStorage } from "../providers/storage/types.js";
 import {
 	Block,
@@ -89,7 +99,8 @@ export function commitUpdate(commit: CommitBlock): CommitUpdate {
 
 /** The head the registry computes for `u`. */
 export async function commitHead(u: CommitUpdate): Promise<Hex> {
-	const link = (digest: Hex) => CID.createV1(dagCbor.code, Digest.create(sha256.code, hexToBytes(digest)));
+	const link = (digest: Hex) =>
+		CID.createV1(dagCbor.code, Digest.create(sha256.code, hexToBytes(digest)));
 	const block = await encodeBlock({
 		epoch: u.epoch,
 		parent: u.parent === ZERO_HEAD ? null : link(u.parent),
@@ -112,7 +123,9 @@ export function fileCid(uri: string): CID {
 	try {
 		return CID.parse(uri.replace(/^ipfs:\/\//, ""));
 	} catch {
-		throw new Error(`storage returned ${JSON.stringify(uri)} for a CAR file; expected its CID`);
+		throw new Error(
+			`storage returned ${JSON.stringify(uri)} for a CAR file; expected its CID`,
+		);
 	}
 }
 
@@ -124,7 +137,7 @@ export function assertValidRepoName(repo: RepoName): void {
 	if (repo.length > MAX_REPO_NAME_LENGTH) {
 		throw new Error(
 			`repo exceeds the maximum length of ${MAX_REPO_NAME_LENGTH.toString()} characters ` +
-			`(got ${repo.length.toString()}).`,
+				`(got ${repo.length.toString()}).`,
 		);
 	}
 }
@@ -188,7 +201,7 @@ export class FangornEngine {
 	constructor(
 		private storage: MetadataStorage,
 		private registry: Registry,
-	) { }
+	) {}
 
 	/**
 	 * Reconstructs the CID a commit's raw digest hex refers to. The contract only
@@ -227,7 +240,7 @@ export class FangornEngine {
 		if (typeof decoded.epoch !== "number" || typeof decoded.repo !== "string") {
 			throw new Error(
 				`commit ${key} predates the (e, parent, root) commit format. ` +
-				"Reset the on-chain head (`fangorn reset`) and re-publish.",
+					"Reset the on-chain head (`fangorn reset`) and re-publish.",
 			);
 		}
 		return {
@@ -338,7 +351,9 @@ export class FangornEngine {
 
 		// Parent state (empty for a root commit / new repo).
 		if (base && (await this.getCommit(base)).repo !== repo) {
-			throw new Error(`commit ${base.toString()} belongs to another repo than ${repo}`);
+			throw new Error(
+				`commit ${base.toString()} belongs to another repo than ${repo}`,
+			);
 		}
 		const old = base ? await this.stateAt(base) : EMPTY_STATE;
 		const oldRecordCids = new Set([...old.state.values()].map(String));
@@ -372,7 +387,9 @@ export class FangornEngine {
 		// Persist: one CAR upload for the delta, then the commit block naming it.
 		for (const block of carBlocks) this.putLocal(block);
 		const carBytes = await packCar(mst.root, carBlocks);
-		const car = fileCid(await this.storage.putFile(carBytes, `${mst.root.toString()}.car`));
+		const car = fileCid(
+			await this.storage.putFile(carBytes, `${mst.root.toString()}.car`),
+		);
 
 		const commitObj: CommitBlock = {
 			epoch: await this.registry.epoch(),
@@ -400,13 +417,24 @@ export class FangornEngine {
 		commitCid: CID,
 	): Promise<{ txHash: Hash; onChainTip: CID }> {
 		const update = await this.settleable(publisher, repo, commitCid);
-		return { txHash: await this.registry.update(update), onChainTip: commitCid };
+		return {
+			txHash: await this.registry.update(update),
+			onChainTip: commitCid,
+		};
 	}
 
 	/** `pushCommit`, signed by this registry's wallet for anyone to submit with `relayCommit`. */
-	async signCommit(publisher: Address, repo: RepoName, commitCid: CID): Promise<SignedUpdate> {
+	async signCommit(
+		publisher: Address,
+		repo: RepoName,
+		commitCid: CID,
+	): Promise<SignedUpdate> {
 		const update = await this.settleable(publisher, repo, commitCid);
-		return { publisher, update, signature: await this.registry.signUpdate(update) };
+		return {
+			publisher,
+			update,
+			signature: await this.registry.signUpdate(update),
+		};
 	}
 
 	relayCommit(s: SignedUpdate): Promise<Hash> {
@@ -414,10 +442,16 @@ export class FangornEngine {
 	}
 
 	/** The update for `commitCid`, once it is one the registry will take as the next head. */
-	async settleable(publisher: Address, repo: RepoName, commitCid: CID): Promise<CommitUpdate> {
+	async settleable(
+		publisher: Address,
+		repo: RepoName,
+		commitCid: CID,
+	): Promise<CommitUpdate> {
 		const commit = await this.getCommit(commitCid);
 		if (commit.repo !== repo) {
-			throw new Error(`commit ${commitCid.toString()} is a commit of ${commit.repo}, not ${repo}`);
+			throw new Error(
+				`commit ${commitCid.toString()} is a commit of ${commit.repo}, not ${repo}`,
+			);
 		}
 		const update = commitUpdate(commit);
 		if (update.parent !== (await this.registry.head({ publisher, repo }))) {
@@ -426,7 +460,9 @@ export class FangornEngine {
 			);
 		}
 		if ((await commitHead(update)) !== rootHexFromCid(commitCid)) {
-			throw new Error(`commit ${commitCid.toString()} is not in the current commit format — rebuild it`);
+			throw new Error(
+				`commit ${commitCid.toString()} is not in the current commit format — rebuild it`,
+			);
 		}
 		return update;
 	}
@@ -462,7 +498,9 @@ export class FangornEngine {
 	): Promise<StoredRecord> {
 		const r = decodeBlock<RecordBlock>(await this.getBlock(link, hint));
 		if (r.id !== id) {
-			throw new Error(`record ${link.toString()} has id ${r.id}, filed under ${id}`);
+			throw new Error(
+				`record ${link.toString()} has id ${r.id}, filed under ${id}`,
+			);
 		}
 		return { id, cid: link.toString(), type: r.type, payload: r.payload };
 	}
@@ -492,7 +530,8 @@ export class FangornEngine {
 				? this.hexToRootCid(oldRootHex)
 				: null;
 
-		const root = async (c: CID | null) => (c ? (await this.getCommit(c)).root : null);
+		const root = async (c: CID | null) =>
+			c ? (await this.getCommit(c)).root : null;
 		const diff = await diffMst(
 			await root(oldCommit),
 			await root(newCommit),
@@ -500,8 +539,14 @@ export class FangornEngine {
 			(cid) => this.getBlock(cid, newCommit),
 		);
 		const puts: StoredRecord[] = [];
-		if (newCommit) for (const [id, cid] of diff.puts) puts.push(await this.decodeRecord(id, cid, newCommit));
-		return { puts, deletes: diff.deletes, superseded: [...diff.before.values()].map(String) };
+		if (newCommit)
+			for (const [id, cid] of diff.puts)
+				puts.push(await this.decodeRecord(id, cid, newCommit));
+		return {
+			puts,
+			deletes: diff.deletes,
+			superseded: [...diff.before.values()].map(String),
+		};
 	}
 
 	/** Diff a commit against its parent. */
@@ -509,7 +554,9 @@ export class FangornEngine {
 		const commit = await this.getCommit(commitCid);
 		const ns = commit.repo;
 		const child = (await this.stateAt(commitCid)).state;
-		const par = commit.parent ? (await this.stateAt(commit.parent)).state : new Map<string, CID>();
+		const par = commit.parent
+			? (await this.stateAt(commit.parent)).state
+			: new Map<string, CID>();
 
 		const added: string[] = [];
 		const updated: string[] = [];
@@ -519,7 +566,8 @@ export class FangornEngine {
 			if (!prev) added.push(`${ns}/${id}`);
 			else if (prev.toString() !== cid.toString()) updated.push(`${ns}/${id}`);
 		}
-		for (const id of par.keys()) if (!child.has(id)) removed.push(`${ns}/${id}`);
+		for (const id of par.keys())
+			if (!child.has(id)) removed.push(`${ns}/${id}`);
 
 		return {
 			parent: commit.parent?.toString() ?? null,
@@ -533,18 +581,12 @@ export class FangornEngine {
 	}
 
 	/** check if the repo already exists (head resolves) */
-	async repoExists(
-		publisher: Address,
-		repo: RepoName,
-	): Promise<boolean> {
+	async repoExists(publisher: Address, repo: RepoName): Promise<boolean> {
 		return (await this.resolveHeadCommit(publisher, repo)) !== null;
 	}
 
 	/** Lists every record currently committed under a repo, resolved from the on-chain root. */
-	async listRepo(
-		publisher: Address,
-		repo: RepoName,
-	): Promise<RepoContents> {
+	async listRepo(publisher: Address, repo: RepoName): Promise<RepoContents> {
 		return this.listAt(await this.resolveHeadCommit(publisher, repo));
 	}
 

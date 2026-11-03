@@ -9,10 +9,12 @@ Most data on the web lives on platforms. A platform stores the data, declares wh
 We seek the same functions without the platform. In our setting, data is held by hosts whom nobody needs to trust, yet anyone can check that the data they receive is exactly what its publisher committed, and that it is the current version, or a given past one. Anyone may index the data and serve searches over it without thereby becoming a gatekeeper, since what an index serves is a function of public data that anyone can recompute. Data belongs to no app. An app is a curator: a publisher like any other, whose data cites, selects and arranges what other publishers committed. It neither stores nor admits nor gates their data, and two apps that present the same record present the same bytes, checked against the same head.
 
 **Part I** presents a general model in two parts:
+
 1. **Data.** A publisher's state is a Merkle DAG, named by its root.
 2. **History.** Each publisher's commits form a Merkle clock, and an ordering service places every update into a single total order, providing a logical clock. A registry, run over that ordering, keeps one thing: the head of every repo. Together, data and history define one **global state** at every clock value, any slice of which, current or historic, anyone can read and derive views from without trusting the hosts that serve it. An app's curation is itself a repo, so it is read as any slice is, and each record it cites is checked against the head it names. **Indexers** compute and serve views but hold no authority, since a view is a function of public data, which anyone can recompute.
 
 **Part II** instantiates the model:
+
 - the ordering service is a blockchain, which runs the registry and authenticates directories and update logs to light readers;
 - the Merkle DAG for states is a Merkle Search Tree, and the commitment to the update log is a Merkle mountain range.
 
@@ -20,16 +22,16 @@ We seek the same functions without the platform. In our setting, data is held by
 
 ### 0.1 Our Contributions
 
-We introduce Fangorn, a general-purpose protocol for data in an *agentic* era. Fangorn organizes data into **repos**, each holding one publisher's data. Each repo is a Merkle clock with a single writer (§3.1), and an *ordering service* places the heads of every repo into one total order (§3.2). As each repo has one writer, and the order settles which update comes first, publishers never coordinate with one another, and no CRDT merge is needed. Repos belong to no app, and name no rule. Our contributions are as follows.
+We introduce Fangorn, a general-purpose protocol for data in an _agentic_ era. Fangorn organizes data into **repos**, each holding one publisher's data. Each repo is a Merkle clock with a single writer (§3.1), and an _ordering service_ places the heads of every repo into one total order (§3.2). As each repo has one writer, and the order settles which update comes first, publishers never coordinate with one another, and no CRDT merge is needed. Repos belong to no app, and name no rule. Our contributions are as follows.
 
 1. **One ordering of every publisher's heads.** The registry is a deterministic state machine over the ordering with a single operation, an update (Definition 3.1). Anyone who holds the ordering computes the same heads. Every head was set by its publisher (Theorem 2), and each repo's history is a single chain in which no head occurs twice, so that a signed update applies at most once (Theorem 3). A past global state is as well defined as the present one.
-2. **Reads proven current and complete to a light reader.** A reader holding only a checkpoint of the ordering can read a *slice* of any publisher's data, and even if every host and server is adversarial, it obtains exactly that slice, or $\mathsf{fail}$ (Theorem 4). Whereas a signed commit alone proves what a repo holds, this proves that it is the latest, and that nothing in the slice was left out. The update log is a Merkle mountain range, so a slice as of any past time costs a few logarithmic openings against the latest checkpoint (Proposition 3.8, Corollary 4.1).
+2. **Reads proven current and complete to a light reader.** A reader holding only a checkpoint of the ordering can read a _slice_ of any publisher's data, and even if every host and server is adversarial, it obtains exactly that slice, or $\mathsf{fail}$ (Theorem 4). Whereas a signed commit alone proves what a repo holds, this proves that it is the latest, and that nothing in the slice was left out. The update log is a Merkle mountain range, so a slice as of any past time costs a few logarithmic openings against the latest checkpoint (Proposition 3.8, Corollary 4.1).
 3. **Curation as data.** An app is a repo whose records **cite** records of other repos at named heads (§2). A reader checks a citation with one log opening and one state opening (Proposition 3.5), so an app can neither forge nor alter what it presents, while choosing, arranging and annotating it as it likes, and withdrawing it by an ordinary update. Validation is curation too: a validator is a publisher whose citations carry a verdict. No app admits a publisher, and no publisher needs an app to publish.
 4. **Indexers without authority.** A view is a deterministic function of public data, a **lens** (§3.4), so every honest party that computes it obtains the same root (Proposition 3.10), and anyone can check an indexer by recomputing, or by asking another (§3.5). For pointwise, key-revealing lenses, a wrong view also has a fraud proof of one opening and one point read (Appendix C).
 5. **Search by meaning that can be checked.** An embedding view can be served as a **bundle** of shards, each checked against the view's root, so that a reader ranks every record itself, exactly, and its query never leaves its device. For a view too large to fetch whole, a **bounded tree** lets a reader find the closest records without fetching every vector, exactly on a sound tree (Lemma 3.15). Appendix A applies the same bounds one level up, to clustered views, so that an agent finds the closest records across every view on the network.
 6. **An instantiation, with costs.** Part II runs the registry as a program on a blockchain (§5). States are Merkle Search Trees, with a bound on node size that turns shape attacks into malformed trees, which harm only the party that chose the keys (§6). The update log is a Merkle mountain range kept as peaks in contract storage, and a light reader proves heads and logs with storage proofs, requiring no prover. §3.6 gives the cost of every operation.
 
-Fangorn does not keep data available; that is left to hosts, and any storage network may serve as one (§2). Nor does it decide who may *read* data, which [WP2] gives. Each result is tagged with its status (§1.1), and §7 lists every claim that lacks a full proof.
+Fangorn does not keep data available; that is left to hosts, and any storage network may serve as one (§2). Nor does it decide who may _read_ data, which [WP2] gives. Each result is tagged with its status (§1.1), and §7 lists every claim that lacks a full proof.
 
 ### 0.2 Related Work and Further Applications
 
@@ -62,6 +64,7 @@ Almost every element of this design is rooted in existing work. What we have not
 $\lambda$ is the security parameter. "Efficient" means probabilistic polynomial-time in $\lambda$, and $\mathsf{negl}(\lambda)$ is a negligible function. $\mathsf{enc}$ is a canonical, injective encoding of structured values. For any function $F$, $F(x_1, \ldots, x_n)$ means $F(\mathsf{enc}(x_1, \ldots, x_n))$, so two different argument lists never give the same input. A finite partial map from $K$ to $V$ is written $K \rightharpoonup V$.
 
 Each result is tagged with its status:
+
 - **[proof]**: proven in full;
 - **[proof sketch]**: the argument is outlined, not complete;
 - **[no proof]**: stated without one;
@@ -82,6 +85,7 @@ In other words, naming functions are binding when they are collision resistant (
 ### 1.3 Merkle DAGs
 
 A directed acyclic graph (DAG) is a set of nodes, each containing a payload and a set of directed edges (links) to other nodes (containing no cycles). A **Merkle DAG** is a DAG where every node's name is the hash of its payload and the names of its children [MCRDT20]. Merkle DAGs satisfy the following properties:
+
 - a node's name can only be computed once its children are defined, so a Merkle DAG must be built from the leaves up
 - every node is the root of a sub-DAG
 - nodes are immutable
@@ -91,10 +95,12 @@ A directed acyclic graph (DAG) is a set of nodes, each containing a payload and 
 Note: we define links as an ordered sequence rather than a set since we want to be able to 'name' a node based on its payload and links. If the links are not ordered, then there is no canonical name, so we enforce order as a convenience.
 
 **Definition 1.3 (Merkle DAG).** A **Merkle DAG** is a finite set $\mathcal{N}$ of nodes such that:
+
 1. **closure:** for every $(v, C) \in \mathcal{N}$ and every $c$ in $C$, $\mathcal{N}$ contains a node named $c$;
 2. **distinct names:** no two different nodes of $\mathcal{N}$ have the same name.
 
 The following terms describe its shape:
+
 - **Links.** Write $n_\beta \to n_\alpha$ if $\alpha$ is a link of $n_\beta$.
 - **Descent.** $n_\alpha$ **descends** from $n_\beta$, written $n_\alpha < n_\beta$, if there is a path $n_\beta \to \cdots \to n_\alpha$ of one or more links.
 - **Roots.** A **root** of $\mathcal{N}$ is a node that no node of $\mathcal{N}$ links to.
@@ -104,13 +110,14 @@ Lemma 1.4 shows that $<$ is a strict partial order, and hence that $n_\alpha$ is
 
 **Lemma 1.4 (Merkle DAGs are acyclic) [proof, with $N$ modelled as a random oracle].** Let an adversary make $q$ queries to $N$, counting those needed to check the names in its output. It outputs a Merkle DAG with a cycle of links with probability at most $q^2 / 2^{2\lambda}$.
 
-*Proof.* Suppose $\mathcal{N}$ has a cycle $n_{\alpha_1} \to n_{\alpha_2} \to \cdots \to n_{\alpha_k} \to n_{\alpha_1}$. Take the node $n_{\alpha_i}$ on it whose name was queried first. Its input contains the link $\alpha_{i+1}$, indices taken mod $k$. $\alpha_{i+1}$ is the output of a query made later. So some query's input contains the output of a later query. For any one pair of queries, that happens with probability at most $2^{-2\lambda}$. There are at most $q^2$ pairs. $\square$
+_Proof._ Suppose $\mathcal{N}$ has a cycle $n_{\alpha_1} \to n_{\alpha_2} \to \cdots \to n_{\alpha_k} \to n_{\alpha_1}$. Take the node $n_{\alpha_i}$ on it whose name was queried first. Its input contains the link $\alpha_{i+1}$, indices taken mod $k$. $\alpha_{i+1}$ is the output of a query made later. So some query's input contains the output of a later query. For any one pair of queries, that happens with probability at most $2^{-2\lambda}$. There are at most $q^2$ pairs. $\square$
 
 Binding alone (Definition 1.1) does not yield Lemma 1.4. A cycle requires not a collision but a value that contains its own name, whether directly or through other nodes, and ruling it out requires that outputs of $N$ cannot be predicted before they are computed. This is the formal content of the phrase "built from the leaves up".
 
 **Lemma 1.5 (A name identifies its sub-DAG) [proof].** Let $\mathcal{N}$ and $\mathcal{N}'$ be Merkle DAGs that both contain a node named $\alpha$. If $\mathcal{N}{\downarrow}\alpha \neq \mathcal{N}'{\downarrow}\alpha$, then $\mathcal{N} \cup \mathcal{N}'$ contains two different nodes with the same name, which is a collision of $N$.
 
-*Proof.* Without loss of generality, some node $m$ of $\mathcal{N}{\downarrow}\alpha$ is not in $\mathcal{N}'{\downarrow}\alpha$. Take a path $n_\alpha = m_0 \to m_1 \to \cdots \to m_j = m$ in $\mathcal{N}$. We build, step by step, nodes $m'_0, m'_1, \ldots$ of $\mathcal{N}'{\downarrow}\alpha$, with $m'_i$ named like $m_i$:
+_Proof._ Without loss of generality, some node $m$ of $\mathcal{N}{\downarrow}\alpha$ is not in $\mathcal{N}'{\downarrow}\alpha$. Take a path $n_\alpha = m_0 \to m_1 \to \cdots \to m_j = m$ in $\mathcal{N}$. We build, step by step, nodes $m'_0, m'_1, \ldots$ of $\mathcal{N}'{\downarrow}\alpha$, with $m'_i$ named like $m_i$:
+
 - $m'_0$ is the node of $\mathcal{N}'$ named $\alpha$.
 - If $m'_i = m_i$, then the two have the same links. So $\mathcal{N}'$ contains a node $m'_{i+1}$ with the name of $m_{i+1}$, by closure, and it is reachable from $n_\alpha$.
 
@@ -121,6 +128,7 @@ If $m'_i = m_i$ for every $i \le j$, then $m = m'_j$ is in $\mathcal{N}'{\downar
 We commit to a finite map with a Merkle DAG built over its entries. Let $\mathsf{Com}$ be a function that takes a finite map, builds a deterministic (single-root) Merkle DAG whose payloads are the map's entries, and returns its root.
 
 **Definition 1.6 (Map commitment).** $\mathsf{Com}$ is a map commitment if:
+
 1. **binding:** no efficient adversary outputs $D \neq D'$ with $\mathsf{Com}(D) = \mathsf{Com}(D')$, except with negligible probability;
 2. **unique representation:** $\mathsf{Com}(D)$ depends only on $D$, not on how $D$ was built;
 3. **openings:** keys are totally ordered, and for every interval $I$ of keys there are algorithms $\mathsf{Open}(D, I) \to \pi$ and $\mathsf{Check}(\mathit{root}, I, D', \pi) \in \{0, 1\}$, with:
@@ -132,6 +140,7 @@ The second property means that two publishers who reach the same state through d
 We also commit to sequences that only grow. Let $\mathsf{LCom}$ be a function that takes a finite sequence $L = (l_1, \ldots, l_M)$ and returns a root.
 
 **Definition 1.7 (Log commitment).** $\mathsf{LCom}$ is a log commitment if:
+
 1. **binding:** no efficient adversary outputs $L \neq L'$ with $\mathsf{LCom}(L) = \mathsf{LCom}(L')$, except with negligible probability. In particular, the root fixes the length $M$;
 2. **positional openings:** there are algorithms $\mathsf{Prove}(L, j) \to \pi$ and $\mathsf{Verify}(\mathit{root}, j, l, \pi) \in \{0, 1\}$ such that $\mathsf{Verify}(\mathsf{LCom}(L), j, l_j, \mathsf{Prove}(L, j)) = 1$, with **position binding**: no efficient adversary outputs $\mathit{root}$, $j$ and accepted openings of position $j$ to two different values, except with negligible probability $\mathbf{Adv}^{\mathsf{pos}}_{\mathsf{LCom}}$;
 3. **incremental appends:** there is a small state $\mathsf{st}(L)$, which fixes the length $M$, and algorithms $\mathsf{Root}(\mathsf{st}(L)) = \mathsf{LCom}(L)$ and $\mathsf{Append}(\mathsf{st}(L), l) = \mathsf{st}(L \Vert l)$.
@@ -143,6 +152,7 @@ Together, binding and incremental appends let a reader follow a log whose source
 A relation $R \subseteq \{0,1\}^* \times \{0,1\}^*$ is a set of pairs $(x, w)$. We call $x$ a **statement** and $w$ a **witness** for $x$.
 
 **Definition 1.8 (NP relation) [AB09, Def. 2.1; G01].** A relation $R$ is an **NP relation** if:
+
 1. **short witnesses:** there is a polynomial $p$ such that $|w| \le p(|x|)$ for every $(x, w) \in R$;
 2. **efficient checking:** there is a deterministic algorithm that, given $(x, w)$, decides whether $(x, w) \in R$ in time polynomial in $|x|$.
 
@@ -159,6 +169,7 @@ A **Merkle clock** records events in a Merkle DAG, so that the DAG itself shows 
 A Merkle clock gives a partial order, in the sense of Lamport's happened-before relation [L78], that anyone can check from the nodes alone. A single writer's events form a chain, while events of different writers may be concurrent, in which case neither happened before the other. A system with several writers must nonetheless decide what its data is when writes are concurrent. One way to do so without a central server is through CRDTs, data types whose concurrent updates always merge to the same result [MCRDT20]. We take another path: each repo has one writer, and an **ordering service** places every writer's updates into one total order and decides when they are final.
 
 **Definition 1.10 (Ordering service).** An ordering service maintains a sequence of entries $\mathcal{O} = (o_1, o_2, \ldots)$ and a logical clock, and offers:
+
 - $\mathsf{Submit}(o)$, which proposes an entry;
 - $\mathsf{Read}(t)$, which returns the prefix of $\mathcal{O}$ up to clock value $t$;
 - $\mathsf{Verify}(d, \mathcal{O}')$, which decides whether $\mathcal{O}'$ is a valid extension of the checkpoint $d$.
@@ -166,6 +177,7 @@ A Merkle clock gives a partial order, in the sense of Lamport's happened-before 
 Each entry $o_i = (t_i, a_i, d_i, \mathit{op}_i)$ has a clock value $t_i$, an author $a_i$, a **destination** $d_i$, and an operation $\mathit{op}_i$. The clock value is assigned by the ordering service, while the destination (the identifier of the registry to which the entry is addressed, §3.2) and the operation are chosen by the author. An **epoch** is $e(t) = \lfloor t / \eta \rfloor$ for a fixed length $\eta$.
 
 **Assumption O (Ordering).**
+
 1. **Agreement:** all honest parties obtain the same sequence, up to a finality delay $\delta$: an entry more than $\delta$ clock steps old is never revised.
 2. **Authorship:** for every efficient adversary, the probability that it outputs an entry $(t, a, d, \mathit{op})$ accepted by $\mathsf{Verify}$, where $a$ never signed the pair $(d, \mathit{op})$, is negligible.
 3. **Clock:** clock values never decrease along the sequence.
@@ -211,13 +223,14 @@ Every node of every DAG is held by untrusted hosts and fetched by name, and what
 ### 3.1 Each repo is a Merkle clock
 
 A **commit** is an event $\gamma = (e, \mathit{parent}, \mathit{root})$:
+
 - $e$ is the epoch in which it was made, which the registry checks against the ordering's clock (§3.2);
 - $\mathit{parent}$ is the name of the previous commit, or $\bot$, which the registry also checks;
 - $\mathit{root}$ is the root of the new state.
 
 A repo's commits form a Merkle clock with one writer, and hence a chain. A repo's **head** is the name $N(\gamma)$ of its current commit. For a head $h$, $M_h$ is the state committed by its commit's root, and $M_\bot = \emptyset$. A reader holding a head thereby holds, by name, the repo's whole history and its current state.
 
-What the Merkle clock cannot say on its own is whether a head is the *latest*. A host can withhold newer commits, and nothing in the DAG reveals that it has done so. It is the ordering service that answers this question. A publisher whose data changes faster than the ordering accepts entries may commit between anchors, with signed micro-commits that settle at the next anchor (Appendix B).
+What the Merkle clock cannot say on its own is whether a head is the _latest_. A host can withhold newer commits, and nothing in the DAG reveals that it has done so. It is the ordering service that answers this question. A publisher whose data changes faster than the ordering accepts entries may commit between anchors, with signed micro-commits that settle at the next anchor (Appendix B).
 
 ### 3.2 The ordering service orders heads
 
@@ -230,6 +243,7 @@ R = (\mathcal{H},\ \mathcal{U})
 $$
 
 where:
+
 - $\mathcal{H}$ maps a repo $\rho$ to its position and its head, $(\mathit{pos}, h)$, with $\mathcal{H}(\rho) = (0, \bot)$ for a repo never written;
 - $\mathcal{U}$ is the **update log**, a sequence of entries, one for each valid update of any repo.
 
@@ -278,6 +292,7 @@ The global state is a function of $\mathsf{Read}(t)$ and of values fetched by na
 **Directories.** A reader finds heads through **directories**, which spare it from replaying the ordering.
 
 **Definition 3.2 (Directory).** A **directory** is a state $D$ whose records are pairs $(e, c)$, not both $\bot$:
+
 - $e$ is a **repo entry**, a head together with the position that locates it in the update log, or $\bot$;
 - $c$ is the root $\mathsf{Com}(D')$ of a **subdirectory** $D'$, or $\bot$.
 
@@ -298,6 +313,7 @@ There is no directory of every publisher. A read names its publisher (Definition
 **Why these trees.** A party that chooses a tree's keys can choose its shape, and with it the cost of reading the tree (§6). A publisher chooses its repo names, and nobody else's, so a bad shape costs only that publisher's readers. A directory of every publisher would have its keys chosen by everyone who publishes, which is why there is none.
 
 **Nesting within a publisher.** A publisher may name its repos by paths, $s = (s_1, \ldots, s_d)$, in which case its directory nests one level for each component: $D_{P,t}(s_1)$ has a subdirectory holding the names that begin with $s_1$, and so on down. Everything below a publisher is still chosen by that publisher, so the argument above continues to hold. Names are compared component by component, lexicographically, so that the repos below a prefix $(s_1, \ldots, s_j)$ form an interval of names, and a selector can name a folder of repos (Definition 3.6).
+
 - **Cost.** Each level adds one tree to a repo's path, so finding one repo entry costs $h + 1$ nodes per level, and at most $(d + 1)(h + 1)$ for depth $d$. **[no proof]** An interval spanning many subdirectories opens each of them, by Lemma 6.2 applied to each, but no bound for the whole interval is given here.
 - **Scope.** Nesting changes how directories are committed, not the map from paths to repo entries, so realizations that prove repo entries without committing to directories, such as the storage proofs of §5, are unaffected.
 
@@ -305,7 +321,7 @@ We write $D_{P,t}(s)$ for the repo entry at path $s$, whether or not the publish
 
 **Lemma 3.3 (Directories only grow) [proof].** For $t \le t'$ and every repo $\rho$, $\mathit{pos}_t(\rho) \le \mathit{pos}_{t'}(\rho)$. Two authenticated entries for $\rho$ with the same position are equal.
 
-*Proof.* A position changes only on a valid update of $\rho$, which increments it and appends one head to $\rho$'s history. By Assumption O, every honest party sees the same ordering, so the history at $t'$ extends that at $t$, and each position holds the same head in both. $\square$
+_Proof._ A position changes only on a valid update of $\rho$, which increments it and appends one head to $\rho$'s history. By Assumption O, every honest party sees the same ordering, so the history at $t'$ extends that at $t$, and each position holds the same head in both. $\square$
 
 Two readers that hold directory entries from different sources can therefore merge them by keeping, for each repo, the entry with the higher position.
 
@@ -313,11 +329,11 @@ Two readers that hold directory entries from different sources can therefore mer
 
 **Lemma 3.4 (The log locates every head) [proof].** For each repo $\rho$ and each $1 \le i \le \mathit{pos}_t(\rho)$, $\mathcal{U}_t$ has exactly one entry for $(\rho, i)$, and the entries for $\rho$ appear in increasing order of position. Clock values do not decrease along the log.
 
-*Proof.* Each valid update of $\rho$ sets the next position (Theorem 3), and appears once in $\mathcal{U}$, in the order of $\mathcal{O}$. Clock values do not decrease along $\mathcal{O}$ (Assumption O). $\square$
+_Proof._ Each valid update of $\rho$ sets the next position (Theorem 3), and appears once in $\mathcal{U}$, in the order of $\mathcal{O}$. Clock values do not decrease along $\mathcal{O}$ (Assumption O). $\square$
 
 **Proposition 3.5 (Citations are checkable) [proof].** Let a citation name $(\rho, i, h, k)$, and let $\ell = \mathsf{log}_t$ for a final $t$. A reader takes from any source an index $j$, an entry $(\rho, i, h', t_u)$ and an opening $\pi$, requires $\mathsf{Verify}(\ell, j, (\rho, i, h', t_u), \pi) = 1$, and calls the citation **true** if $h' = h$ and **false** otherwise. It then fetches the commit named $h$, and opens its state on $[k, k]$. Except with probability $\mathbf{Adv}^{\mathsf{pos}}_{\mathsf{LCom}} + \mathbf{Adv}^{\mathsf{bind}}_N + \mathbf{Adv}^{\mathsf{open}}_{\mathsf{Com}}$, a true citation yields exactly $M_h(k)$, which is the record at $k$ of $\rho$ at position $i$, and a false one names a head that $\rho$ never had at position $i$. If $i > \mathit{pos}_t(\rho)$, no source can supply the entry, and the read fails.
 
-*Proof.* By position binding, the entry accepted is the log's true entry at $j$. By Lemma 3.4 it is the only entry for $(\rho, i)$, so $h'$ is the head of $\rho$ at position $i$, and $h = h'$ exactly when the citation names it. By Theorem 1 and opening binding, the opening yields $M_h(k)$. $\square$
+_Proof._ By position binding, the entry accepted is the log's true entry at $j$. By Lemma 3.4 it is the only entry for $(\rho, i)$, so $h'$ is the head of $\rho$ at position $i$, and $h = h'$ exactly when the citation names it. By Theorem 1 and opening binding, the opening yields $M_h(k)$. $\square$
 
 **Cost.** One log opening, at most $2\lfloor \log_2 M \rfloor$ names (Lemma 6.3), one commit, $O(h+1)$ nodes of the state (Lemma 6.2), and one record. A citation is a fact about history, so later updates of $\rho$ never make it false. A reader that wants to know whether a newer version exists compares $i$ with $\mathit{pos}_t(\rho)$, from one directory entry. A false citation is the curator's error, and every reader can see it, and skip it.
 
@@ -332,6 +348,7 @@ A reader rarely wants all of a global state; more often, they want a slice.
 - TODO: Investigate sets instead of intervals
 
 Examples:
+
 - **one record:** $[P, P] \times [s, s] \times [k, k]$;
 - **one repo:** the same box, with every key;
 - **one publisher's data:** $[P, P]$, with every repo name and every key;
@@ -342,6 +359,7 @@ Selectors are built from intervals for two reasons: openings are defined on inte
 **Full and light readers.** A **full** reader holds $\mathsf{Read}(t)$ and maintains the directories itself as it replays the valid entries. A **light** reader holds only roots, and needs one thing more from the ordering service.
 
 **Definition 3.7 (Authenticated directories and log).** Let a light reader hold a checkpoint $d$ of $\mathcal{O}$ at a final $t$ (§1.5), and nothing else. It has two queries. Each asks an untrusted server for an answer and a proof, checks the proof against $d$, and returns the answer, or $\mathsf{fail}$ if the check fails:
+
 1. $\mathsf{Dir}(d, B)$, for a **box** $B = [P, P] \times I_s$, returns $\{\, (P, s) \mapsto D_{P,t}(s) : s \in I_s \,\}$, which lists every repo in $B$ that has a head, with its repo entry, and no other repo.
 2. $\mathsf{Log}(d)$ returns $\mathsf{st}(\mathcal{U}_t)$, the append state of the update log (Definition 1.7). From it the reader computes the log's length and its root. It checks openings of the log against that root, to read history and check citations, and appends to the state, to follow changes.
 
@@ -371,6 +389,7 @@ $$
 The repos of a box are read in parallel, as are the fetches within a line. Line 5 fails only if no source serves the value named $h$, and since every head in a directory is the name of a commit (Definition 3.1), there is nothing else to check. Theorem 4 shows that the result is exactly $\mathcal{G}_t|_S$, with nothing added and nothing left out.
 
 **Cost.** Let the box hold $r$ repos and $m$ records, and let $h$ bound the trees' heights. Line 3 costs what §5 states, while lines 5 to 7 fetch:
+
 - $r$ commits;
 - at most $r(h+1) + m/(2^b - 1)$ tree nodes in expectation, and $r(h+1) + mh$ in the worst case (Lemma 6.2);
 - $m$ records.
@@ -378,6 +397,7 @@ The repos of a box are read in parallel, as are the fetches within a line. Line 
 Nothing depends on the size of the rest of the global state. If a host serves each opening as one bundle, the read takes four round trips, for lines 3, 5, 6, and 7, whatever the slice's size, with every repo read in parallel.
 
 **History.** The **history** of a repo is the sequence of its entries in the update log, which is the sequence of heads of Theorem 3. It is also the chain of parents its commits name, because the guard of an update requires its commit's parent to be the head (Definition 3.1). A reader that wants it by position or by time takes it from the log. With $M$ the length of the log, it can read history at an authenticated $t$ in four ways:
+
 - **One position.** To learn the head of $\rho$ at position $i$, the reader takes an index $j$ from any source, and checks an opening of $\mathsf{log}_t$ at $j$ to an entry for $(\rho, i)$, as for a citation (Proposition 3.5). Cost: one opening, at most $2\lfloor \log_2 M \rfloor$ names (Lemma 6.3).
 - **As of an earlier $t' \le t$.** $H_{t'}(\rho)$ is the head of the last entry for $\rho$ in $\mathcal{U}$ whose clock value is at most $t'$. The reader runs $\mathsf{ReadAt}$, below. Cost: the directory entry, two openings, and no old state of the ordering.
 - **A slice at an earlier $t'$.** The reader reads the directory at $t$ for the box, which lists every repo that had a head at $t'$, and possibly more. It then runs $\mathsf{ReadAt}$ for each repo, and lines 5 to 7 of $\mathsf{ReadSlice}$ for the heads it returns. Cost: the directory at $t$, plus two openings per repo, plus those lines (Corollary 4.1).
@@ -403,7 +423,7 @@ $\mathsf{ReadAt}(d, \rho, t')$, for $\rho = (P, s)$ and a checkpoint $d$ at a fi
 
 **Proposition 3.8 (History reads are sound) [proof].** Given the true log root and track length at $t$, $\mathsf{LastAt}(\ell, n, \sigma, t')$ returns the value of the last entry of $\sigma$ with clock value at most $t'$, or $\bot$ if there is none, or $\mathsf{fail}$, except with probability $2\,\mathbf{Adv}^{\mathsf{pos}}_{\mathsf{LCom}}$. It is **complete**: an honest source makes it return that value, not $\mathsf{fail}$. So $\mathsf{ReadAt}(d, \rho, t')$ returns $H_{t'}(\rho)$, with $\bot$ if there was no head at $t'$, or $\mathsf{fail}$, except with probability $2\,\mathbf{Adv}^{\mathsf{dir}} + 2\,\mathbf{Adv}^{\mathsf{pos}}_{\mathsf{LCom}}$, and it is complete.
 
-*Proof.* By position binding, each entry accepted at lines 2 and 4 is the log's true entry at its index. By Lemma 3.4, the track's entries carry the indices $1, \ldots, n$ in order, with clock values that do not decrease. If line 3 returns, the track's first entry is later than $t'$, so every entry is, and $\bot$ is right. Otherwise $t_u \le t'$, and the next entry of the track, if there is one, is later than $t'$ (line 4). So entry $i$ is the last with clock value at most $t'$. For completeness, the log holds an entry for every index from $1$ to $n$ (Lemma 3.4). The honest source opens the last entry at or before $t'$, or the first entry if there is none, and the next entry if $i < n$. Every check then passes. For $\mathsf{ReadAt}$, $\mathsf{Log}$ and $\mathsf{Dir}$ give the true root and track length, except with $\mathbf{Adv}^{\mathsf{dir}}$ each. If $\rho$ has no head at $t$, it had none at $t' \le t$ (Lemma 3.3). Otherwise the last entry of its track at or before $t'$ carries the head as of $t'$, because the directories are a fold of the log. $\square$
+_Proof._ By position binding, each entry accepted at lines 2 and 4 is the log's true entry at its index. By Lemma 3.4, the track's entries carry the indices $1, \ldots, n$ in order, with clock values that do not decrease. If line 3 returns, the track's first entry is later than $t'$, so every entry is, and $\bot$ is right. Otherwise $t_u \le t'$, and the next entry of the track, if there is one, is later than $t'$ (line 4). So entry $i$ is the last with clock value at most $t'$. For completeness, the log holds an entry for every index from $1$ to $n$ (Lemma 3.4). The honest source opens the last entry at or before $t'$, or the first entry if there is none, and the next entry if $i < n$. Every check then passes. For $\mathsf{ReadAt}$, $\mathsf{Log}$ and $\mathsf{Dir}$ give the true root and track length, except with $\mathbf{Adv}^{\mathsf{dir}}$ each. If $\rho$ has no head at $t$, it had none at $t' \le t$ (Lemma 3.3). Otherwise the last entry of its track at or before $t'$ carries the head as of $t'$, because the directories are a fold of the log. $\square$
 
 **Change.** A reader that follows a box keeps a cursor, consisting of the box, the append state $\mathit{st}$ of the update log (which is $O(\log M)$ names), and the box's directory entries $E$. A first $\mathsf{ReadSlice}$, together with $\mathsf{Log}$, gives the cursor at $t$, and to move to $t' > t$, the reader runs $\mathsf{Follow}$:
 
@@ -426,6 +446,7 @@ $$
 $\mathsf{Diff}(e, e', I)$ returns the keys in $I$ whose records differ between the state of $e$ and the state of $e'$, where an absent entry gives the empty state. It fetches the commits of the heads in $e$ and $e'$, and walks their two state trees together from the roots, skipping every pair of subtrees with equal names, and every subtree outside $I$. The log holds the updates of every publisher, of which $\mathsf{Follow}$ passes over those outside $B$.
 
 **Cost.** Let the log have $\Delta_\mathcal{U}$ entries between $t$ and $t'$, let $c'$ repos of the box have a new head, and let $\Delta$ count the keys of the box whose record changes.
+
 - lines 1 to 3 fetch $\Delta_\mathcal{U}$ entries, and hash at most $2\Delta_\mathcal{U} + \lfloor \log_2 M \rfloor + 1$ times (Lemma 6.3);
 - line 5 is $O(\Delta_\mathcal{U})$ lookups;
 - line 6 fetches at most $2c'$ commits, $O((\Delta + c')(h+1))$ nodes, and $\Delta$ records.
@@ -453,14 +474,14 @@ What stops an indexer from signing the wrong $R$ is that anyone can recompute it
 
 The same property keeps views cheap to maintain. When a record changes, only its own entry in a pointwise view changes, by deleting the old entry and inserting the new one (Proposition 3.12). Filters, indexes, curation, embeddings, and per-publisher sub-logs are all pointwise. Counts and sums are not, but they can be updated in step with each change, while joins and general code are neither, and this paper gives no succinct fraud proof for them (§7).
 
-| Term | What it is | Familiar analogue |
-|---|---|---|
-| selector $S$ | which data goes in | a `FROM … WHERE` clause |
-| lens $L = (S, f)$ | a named, deterministic query | a view definition in SQL |
-| view $V_L(t)$ | the result at $t$, a state with a root | a materialized view |
-| claim | an indexer's signed "$V_L(t)$ has root $R$" | an AppView's answer, but signed and checkable |
-| watcher | anyone who recomputes the view (Appendix C) | an auditor |
-| fraud proof | $(y,\ $opening of $R$ at $y,\ x,\ $point read at $x)$ (Appendix C) | a counterexample |
+| Term              | What it is                                                         | Familiar analogue                             |
+| ----------------- | ------------------------------------------------------------------ | --------------------------------------------- |
+| selector $S$      | which data goes in                                                 | a `FROM … WHERE` clause                       |
+| lens $L = (S, f)$ | a named, deterministic query                                       | a view definition in SQL                      |
+| view $V_L(t)$     | the result at $t$, a state with a root                             | a materialized view                           |
+| claim             | an indexer's signed "$V_L(t)$ has root $R$"                        | an AppView's answer, but signed and checkable |
+| watcher           | anyone who recomputes the view (Appendix C)                        | an auditor                                    |
+| fraud proof       | $(y,\ $opening of $R$ at $y,\ x,\ $point read at $x)$ (Appendix C) | a counterexample                              |
 
 An indexer here thus plays the role of an AT Protocol AppView or labeller, but with no authority: its input is public, and its function is named in its claims, so anyone can compute the same answer.
 
@@ -478,13 +499,14 @@ A selector may span publishers, and a lens may also take an app's citations as i
 
 **Proposition 3.10 (Views are determined) [proof].** For every lens $L$ and final $t$, every honest party that computes $V_L(t)$ gets the same root, except with the probability bounded in Theorem 4.
 
-*Proof.* By Theorem 4, every honest party obtains $\mathcal{G}_t|_S$. $f$ is deterministic, and by unique representation $\mathsf{Com}(V_L(t))$ depends only on $V_L(t)$. $\square$
+_Proof._ By Theorem 4, every honest party obtains $\mathcal{G}_t|_S$. $f$ is deterministic, and by unique representation $\mathsf{Com}(V_L(t))$ depends only on $V_L(t)$. $\square$
 
 A claim that "the view of $L$ at $t$ has root $r$" therefore contains its own check, since anyone can recompute the view from public data. A lens has no producer; many lenses can read the same global state, and none of them is privileged. A host that serves a view is merely a cache, and anyone who recomputes it detects a wrong one.
 
 Computing a view from nothing costs reading its slice, plus running $f$, which is unavoidable once. What matters is the cost of keeping a view current, and that depends on the form of $f$.
 
 **Definition 3.11 (Pointwise lens).** A lens is **pointwise** if there are functions $\tau$ and $g$ such that:
+
 - $\tau(x, r)$ is a key of the view, and is injective in $x$: $\tau(x, r) = \tau(x', r')$ implies $x = x'$;
 - $g(r)$ is a record, or $\bot$;
 - the view of every slice $Z$ is
@@ -496,14 +518,16 @@ $$
 Here $x$ ranges over the keys of the slice, which are tuples $(P, s, k)$.
 
 **Proposition 3.12 (Pointwise update) [proof].** Let $L$ be pointwise, and let slices $Z$ and $Z'$ differ on a set $X$ of keys. Then $f(Z')$ is obtained from $f(Z)$ in two passes:
+
 1. for each $x \in X$ with $Z(x)$ defined and $g(Z(x)) \neq \bot$, delete the key $\tau(x, Z(x))$;
 2. for each $x \in X$ with $Z'(x)$ defined and $g(Z'(x)) \neq \bot$, insert $\tau(x, Z'(x)) \mapsto g(Z'(x))$.
 
-*Proof.* By injectivity, every entry of the view comes from exactly one key of the slice. Entries that come from keys outside $X$ are the same in both views. An entry deleted in pass 1 and one inserted in pass 2 for a different key of $X$ have different view keys, by injectivity, so pass 1 never removes what pass 2 adds. $\square$
+_Proof._ By injectivity, every entry of the view comes from exactly one key of the slice. Entries that come from keys outside $X$ are the same in both views. An entry deleted in pass 1 and one inserted in pass 2 for a different key of $X$ have different view keys, by injectivity, so pass 1 never removes what pass 2 adds. $\square$
 
 **Cost.** $|X|$ deletions and $|X|$ insertions, each rewriting at most $2(h+1)$ nodes of the view's tree (Lemma 6.1). Together with $\mathsf{Follow}$ (§3.3), whose $\Delta$ is at least $|X|$, a pointwise view follows its slice at a cost of $O((\Delta + c')(h+1))$ node reads and writes, for $c'$ as defined there. This does not depend on the size of the slice or the view.
 
 Examples, with the cost of keeping each one current:
+
 - **Filter.** Keep the records of type $\theta$. Take $\tau(x, r) = x$, and $g(r) = r$ if $r$ has type $\theta$, otherwise $\bot$. It is pointwise.
 - **Validation.** Keep the records that satisfy a deterministic predicate $\varphi$ on one record, such as conformance to a schema. Take $\tau(x, r) = x$, and $g(r) = r$ if $\varphi(r)$, otherwise $\bot$. It is pointwise and key-revealing, so a view that presents a record failing $\varphi$, or omits one that passes, has a fraud proof (Proposition C.2). This validates at read time, as anyone may, whatever an app cites, and a failing record stays in the committed state. A rule over several records, such as uniqueness of a field or a reference that must resolve, is an aggregate or a join, and has no succinct fraud proof here (§7).
 - **Curation.** Drop the repos in a set $\mathcal{X}$, taking $\tau(x, r) = x$, and $g(r) = r$ unless $x$ lies in a repo in $\mathcal{X}$. For a fixed $\mathcal{X}$, it is pointwise. If $\mathcal{X}$ is itself read from the global state, for example from a curator's repo, adding a repo to $\mathcal{X}$ removes that repo's records from the view at a cost proportional to their number, which is exactly how much the view changes. Any reader or indexer can thereby apply a curator's choices, or its own, to data that nobody curated.
@@ -517,6 +541,7 @@ Examples, with the cost of keeping each one current:
 - **General $f$.** It must be recomputed, at $O(|\mathcal{G}_t|_S|)$ reads plus the cost of $f$. A lens on which other lenses depend should therefore be built from pointwise lenses and aggregates, so that every view on top of it stays proportional to change.
 
 **Trusting a view.** A reader can hold a view in one of three ways:
+
 1. **recompute it** from the slice, trusting nothing beyond Theorem 4. This costs the slice once, then the change after that, for pointwise lenses and aggregates;
 2. **accept it from a host**, trusting the host, but keeping the ability to check it later by recomputing. This costs the part of the view it reads. Appendix C makes the host accountable;
 3. **check a proof** that its root is $\mathsf{Com}(f(\mathcal{G}_t|_S))$, against the directories. This costs the view plus verifying the proof (§7).
@@ -526,6 +551,7 @@ A publisher that commits a view as a repo makes it authenticated data from that 
 ### 3.5 Indexers
 
 A view has to be computed by someone, and served. An **indexer** is a party that follows the global state, maintains views, and serves them to readers. It plays the role of an AT Protocol AppView, feed generator, or labeller, with two differences:
+
 - **It has no authority.** Its input, namely the global state and the update log, is public and authenticated, so anyone can recompute what it serves.
 - **Completeness is checkable.** What AT Protocol must trust a relay for, namely that it saw every event, is here the on-chain update log.
 
@@ -544,6 +570,7 @@ where $\ell.P$ is the update's author. The lens is pointwise (Definition 3.11), 
 **Definition 3.13 (Claim).** A **claim** is a value $c = (\iota,\ N(\texttt{lens}, L),\ t,\ R)$ signed by an indexer, for the registry $\iota$ whose ordering $t$ refers to. It asserts that $R = \mathsf{Com}(V_L(t))$. For a lens over a log, $t$ is replaced by the length $M$ of the log it reads.
 
 **Following one publisher.** A reader that follows $P$ does three things:
+
 1. it takes a claim for the sub-log lens at length $M'$;
 2. it proves the length $M$ of the update log from the chain (§5), to learn how far behind the claim is;
 3. it reads the slice of $R$ on the keys $(P, j)$ with $j$ beyond its cursor.
@@ -551,6 +578,7 @@ where $\ell.P$ is the update's author. The lens is pointwise (Definition 3.11), 
 This costs one slot proof, one signature, and $O(h + \Delta_P)$ nodes for $\Delta_P$ new entries (Lemma 6.2), independent of every other publisher. The reader can also check any entry against the update log, at $O(\log M)$ each, which catches forged entries but not omitted ones; omissions are caught by cross-checking, and proven by fraud proofs (Appendix C).
 
 **Trusting an indexer.** A reader can trust an indexer at one of five levels, from cheapest to strongest:
+
 1. **Trust it.** This is the AT Protocol model.
 2. **Hold it to account.** Wrong claims are cheap to prove (Appendix C), which requires one honest watcher that sees the reader's root.
 3. **Cross-check $k$ independent indexers.** The view is correct unless all $k$ are wrong in the same way, and no watcher is needed.
@@ -566,6 +594,7 @@ An indexer can still lag, which the reader detects by comparing $M'$ with $M$, a
 For a query $q \in \mathbb{R}^d$ with $\Vert q \Vert \le 1$, the score of a vector $v$ is $\langle q, v \rangle$.
 
 **Definition 3.14 (Bounded tree).** A **bounded tree** over an embedding view $V$ is a Merkle DAG with two kinds of node:
+
 - each **leaf** holds an entry $(x, v)$ of $V$;
 - each **internal node** holds a centre $\mu \in \mathbb{R}^d$, a radius $\varepsilon \ge 0$, and the names of its children.
 
@@ -591,19 +620,21 @@ $$
 
 **Lemma 3.15 (Sound bounds prune exactly) [proof].** If a node with centre $\mu$ and radius $\varepsilon$ is sound, then every leaf $v$ below it has $\langle q, v \rangle \le \langle q, \mu \rangle + \varepsilon$. Consequently, on a sound tree, $\mathsf{Search}(\alpha, q, j)$ returns $j$ leaves of highest score, or every leaf if there are fewer.
 
-*Proof.* $\langle q, v \rangle = \langle q, \mu \rangle + \langle q, v - \mu \rangle \le \langle q, \mu \rangle + \Vert q \Vert\, \Vert v - \mu \Vert \le \langle q, \mu \rangle + \varepsilon$, by Cauchy–Schwarz, $\Vert q \Vert \le 1$, and soundness. Every leaf not yet reached lies below a node in $Q$, so its score is at most that node's bound, which is at most $\beta(n)$ for the node $n$ of line 3. When line 4 returns, that is below every score in $T$. $\square$
+_Proof._ $\langle q, v \rangle = \langle q, \mu \rangle + \langle q, v - \mu \rangle \le \langle q, \mu \rangle + \Vert q \Vert\, \Vert v - \mu \Vert \le \langle q, \mu \rangle + \varepsilon$, by Cauchy–Schwarz, $\Vert q \Vert \le 1$, and soundness. Every leaf not yet reached lies below a node in $Q$, so its score is at most that node's bound, which is at most $\beta(n)$ for the node $n$ of line 3. When line 4 returns, that is below every score in $T$. $\square$
 
 Quantization, and any other approximation, is absorbed into $\varepsilon$ and needs no separate argument.
 
 **Not a view.** A bounded tree need not be a function of $V$: any centres and radii are allowed, and two honest indexers may build different trees. A tree is checked instead by its soundness, which is a local property: a false bound or a forged leaf has a short proof (Appendix C), while an omitted entry has none given here (§7). A sound tree gives no false negatives among its leaves.
 
 **Cost of a bounded tree:**
+
 - **Inserting a leaf:** descend from the root, enlarging the radius of each node on the way down, for $O(\mathit{depth})$ node rewrites, each $O(d)$.
 - **Deleting a leaf** keeps every node sound, because soundness quantifies only over the leaves present. Bounds grow looser as leaves are deleted, and an occasional rebuild, at $O(|V|)$, tightens them again.
 - **Shape.** The indexer chooses the tree's shape. A deep or loose tree is slow to search, but it is not fraud, and readers choose between indexers by the results they get.
 - **[no proof] Search.** How many nodes a search visits depends on how tight the bounds are near the query, and may be every node. No bound on the expected number is given here.
 
 **Searching on the reader's side.** An indexer can serve search in one of three ways:
+
 - **Serving the bundle,** in which case the reader ranks every record itself, and the hosts learn nothing about the query.
 - **Serving the tree,** in which case the reader runs the search of Lemma 3.15 itself, and the query never leaves its device. Nodes are named by $N$, so any host can serve them, not only the indexer.
 - **Answering queries,** in which case the indexer sees every query, and learns what each reader searches for.
@@ -614,46 +645,47 @@ Serving the bundle is the default for a view small enough to fetch whole, servin
 
 $h$ is a tree's height and $2^b$ its expected fanout, and every node has at most $B_{\max}$ entries (§6). For keys whose names are random, $h \approx \log_{2^b} n$ for $n$ entries. A party that chooses keys can raise $h$ to $\ell$ by trying about $2^{b\ell}$ candidates, though $h \le 2\lambda / b$ always.
 
-| Operation | Cost | Status |
-| --- | --- | --- |
-| Maintain directories, per valid update | $\le 2(h+1)$ node rewrites per tree | Lemma 6.1 [proof] |
-| Read a slice of $r$ repos and $m$ records | directory (§5), plus $r$ commits, $r(h+1) + m/(2^b-1)$ nodes in expectation, $m$ records; 4 round trips | Lemma 6.2 [proof; expectation for random names] |
-| Append to the log of $M$ entries, per valid update | fewer than 2 hashes on average, at most $\lfloor \log_2 M \rfloor$ | Lemma 6.3 [proof] |
-| Head of a repo at a position, or as of an earlier $t'$ | 1 or 2 openings, each at most $2\lfloor \log_2 M \rfloor$ names; no old state | Proposition 3.8, Lemma 6.3 [proof] |
-| Read a slice as of an earlier $t'$ | a current read, plus 2 openings per repo | Corollary 4.1 [proof] |
-| Check a citation | 1 log opening, at most $2\lfloor \log_2 M \rfloor$ names; 1 commit; $O(h+1)$ nodes; 1 record | Proposition 3.5 [proof] |
-| Follow a slice from $t$ to $t'$, with $\Delta_\mathcal{U}$ log entries, $c'$ repos changed, and $\Delta$ keys changed | $\Delta_\mathcal{U}$ log entries and $O(\Delta_\mathcal{U} + \log M)$ hashes, plus $2c'$ commits, $O((\Delta + c')(h+1))$ nodes and $\Delta$ records | Definition 1.7, Lemmas 6.1, 6.2 and 6.3 [proof] |
-| Follow a pointwise view | following its slice, plus $O(\lvert X \rvert (h+1))$ node rewrites, $\lvert X \rvert \le \Delta$ | Proposition 3.12, Lemma 6.1 [proof] |
-| Read by field value, through an index | $O(h + j)$ nodes for $j$ matches | Lemma 6.2 [proof] |
-| Follow an aggregate in a group | $O(\lvert X \rvert)$ | [proof: one line, above] |
-| Follow a join | $O(\lvert X \rvert (h + j))$ | **[no proof]** |
-| Follow one publisher through an indexer | 1 slot proof, 1 signature, $O(h + \Delta_P)$ nodes | Lemma 6.2 [proof]; trust as in §3.5 |
-| Follow an embedding view | one evaluation of $E$, plus $O(h+1)$ node rewrites, per changed record | Definition 3.11, Lemma 6.1 [proof]; determinism [assumption] |
-| Insert into a bounded tree, or delete from it | $O(\mathit{depth} \cdot d)$ to insert; deleting needs no change of bounds | Definition 3.14 [proof] |
-| Search a bounded tree | between $O(\mathit{depth})$ nodes and every node, depending on the bounds | Lemma 3.15 [proof of exactness]; **[no proof]** of expected cost |
-| Check a fraud proof against a bounded tree | one node per level, plus one distance or one point read | Appendix C [proof] |
-| Check a fraud proof against a pointwise, key-revealing lens | 1 map opening plus 1 point read: over a log, $O(h + \log M)$ names | Proposition C.2 [proof, given opening binding] |
-| Any other lens | the whole slice, plus the cost of $f$ | — |
+| Operation                                                                                                             | Cost                                                                                                                                                 | Status                                                           |
+| --------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Maintain directories, per valid update                                                                                | $\le 2(h+1)$ node rewrites per tree                                                                                                                  | Lemma 6.1 [proof]                                                |
+| Read a slice of $r$ repos and $m$ records                                                                             | directory (§5), plus $r$ commits, $r(h+1) + m/(2^b-1)$ nodes in expectation, $m$ records; 4 round trips                                              | Lemma 6.2 [proof; expectation for random names]                  |
+| Append to the log of $M$ entries, per valid update                                                                    | fewer than 2 hashes on average, at most $\lfloor \log_2 M \rfloor$                                                                                   | Lemma 6.3 [proof]                                                |
+| Head of a repo at a position, or as of an earlier $t'$                                                                | 1 or 2 openings, each at most $2\lfloor \log_2 M \rfloor$ names; no old state                                                                        | Proposition 3.8, Lemma 6.3 [proof]                               |
+| Read a slice as of an earlier $t'$                                                                                    | a current read, plus 2 openings per repo                                                                                                             | Corollary 4.1 [proof]                                            |
+| Check a citation                                                                                                      | 1 log opening, at most $2\lfloor \log_2 M \rfloor$ names; 1 commit; $O(h+1)$ nodes; 1 record                                                         | Proposition 3.5 [proof]                                          |
+| Follow a slice from $t$ to $t'$, with $\Delta_\mathcal{U}$ log entries, $c'$ repos changed, and $\Delta$ keys changed | $\Delta_\mathcal{U}$ log entries and $O(\Delta_\mathcal{U} + \log M)$ hashes, plus $2c'$ commits, $O((\Delta + c')(h+1))$ nodes and $\Delta$ records | Definition 1.7, Lemmas 6.1, 6.2 and 6.3 [proof]                  |
+| Follow a pointwise view                                                                                               | following its slice, plus $O(\lvert X \rvert (h+1))$ node rewrites, $\lvert X \rvert \le \Delta$                                                     | Proposition 3.12, Lemma 6.1 [proof]                              |
+| Read by field value, through an index                                                                                 | $O(h + j)$ nodes for $j$ matches                                                                                                                     | Lemma 6.2 [proof]                                                |
+| Follow an aggregate in a group                                                                                        | $O(\lvert X \rvert)$                                                                                                                                 | [proof: one line, above]                                         |
+| Follow a join                                                                                                         | $O(\lvert X \rvert (h + j))$                                                                                                                         | **[no proof]**                                                   |
+| Follow one publisher through an indexer                                                                               | 1 slot proof, 1 signature, $O(h + \Delta_P)$ nodes                                                                                                   | Lemma 6.2 [proof]; trust as in §3.5                              |
+| Follow an embedding view                                                                                              | one evaluation of $E$, plus $O(h+1)$ node rewrites, per changed record                                                                               | Definition 3.11, Lemma 6.1 [proof]; determinism [assumption]     |
+| Insert into a bounded tree, or delete from it                                                                         | $O(\mathit{depth} \cdot d)$ to insert; deleting needs no change of bounds                                                                            | Definition 3.14 [proof]                                          |
+| Search a bounded tree                                                                                                 | between $O(\mathit{depth})$ nodes and every node, depending on the bounds                                                                            | Lemma 3.15 [proof of exactness]; **[no proof]** of expected cost |
+| Check a fraud proof against a bounded tree                                                                            | one node per level, plus one distance or one point read                                                                                              | Appendix C [proof]                                               |
+| Check a fraud proof against a pointwise, key-revealing lens                                                           | 1 map opening plus 1 point read: over a log, $O(h + \log M)$ names                                                                                   | Proposition C.2 [proof, given opening binding]                   |
+| Any other lens                                                                                                        | the whole slice, plus the cost of $f$                                                                                                                | —                                                                |
 
 ## 4. Security of data and history
 
 **Theorem 1 (Binding) [proof].** No efficient adversary controlling every host can make an honest reader accept, for head $h$, any state other than the one committed by $h$, except with probability $\mathbf{Adv}^{\mathsf{bind}}_N + \mathbf{Adv}^{\mathsf{bind}}_{\mathsf{Com}}$.
 
-*Proof.* Every node is accepted only if its name matches, so substituting a node finds a collision in $N$. The reader recomputes $\mathsf{root}$ over the records it received, so two different states accepted for one root break binding of $\mathsf{Com}$. $\square$
+_Proof._ Every node is accepted only if its name matches, so substituting a node finds a collision in $N$. The reader recomputes $\mathsf{root}$ over the records it received, so two different states accepted for one root break binding of $\mathsf{Com}$. $\square$
 
 **Theorem 2 (Authenticity) [proof].** Under Assumption O, except with negligible probability, every head in the history of repo $(P, s)$ was set by an entry authored by $P$.
 
-*Proof.* Heads change only through valid updates. An update moves the head of $(P, s)$ only when its author is $P$ (line 1 of $\mathsf{Apply}$), and an accepted entry with author $P$ that $P$ did not make contradicts authorship. $\square$
+_Proof._ Heads change only through valid updates. An update moves the head of $(P, s)$ only when its author is $P$ (line 1 of $\mathsf{Apply}$), and an accepted entry with author $P$ that $P$ did not make contradicts authorship. $\square$
 
 **Theorem 3 (Linear history) [proof].** Under Assumption O, for every repo, the valid updates form one sequence. The $i$-th sets the head at position $i$ to the name of a commit whose parent is the head at position $i - 1$. No head occurs twice, except with probability $\mathbf{Adv}^{\mathsf{bind}}_N$.
 
-*Proof.* The ordering is total. By its guard (Definition 3.1), an update is valid only if its commit's parent is the current head at its place in the order, and line 2 sets the head to that commit's name. Induct on $\mathcal{O}$. Write $h_0 = \bot$, and suppose $h_i = h_j$ with $i > j \ge 1$, for the least such $j$. The commits named $h_i$ and $h_j$ are $(e_i, h_{i-1}, \mathit{root}_i)$ and $(e_j, h_{j-1}, \mathit{root}_j)$. If they differ, they are a collision of $N$. Otherwise $h_{i-1} = h_{j-1}$. If $j = 1$, that says $h_{i-1} = \bot$, but every head at a position of at least $1$ is a name. Otherwise it contradicts the choice of $j$. $\square$
+_Proof._ The ordering is total. By its guard (Definition 3.1), an update is valid only if its commit's parent is the current head at its place in the order, and line 2 sets the head to that commit's name. Induct on $\mathcal{O}$. Write $h_0 = \bot$, and suppose $h_i = h_j$ with $i > j \ge 1$, for the least such $j$. The commits named $h_i$ and $h_j$ are $(e_i, h_{i-1}, \mathit{root}_i)$ and $(e_j, h_{j-1}, \mathit{root}_j)$. If they differ, they are a collision of $N$. Otherwise $h_{i-1} = h_{j-1}$. If $j = 1$, that says $h_{i-1} = \bot$, but every head at a position of at least $1$ is a name. Otherwise it contradicts the choice of $j$. $\square$
 
 Because the registry computes each head from its commit's fields, the order of Theorem 3 and the chain of parents that the commits name are one and the same history.
 
 **Theorem 4 (Slice soundness) [proof, given opening binding].** Let $t$ be final, and $S$ a selector with $q$ boxes. No efficient adversary controlling every host and server can make $\mathsf{ReadSlice}(d, S)$ return any map other than $\mathcal{G}_t|_S$, except with probability at most $q\,\mathbf{Adv}^{\mathsf{dir}} + \mathbf{Adv}^{\mathsf{bind}}_N + \mathbf{Adv}^{\mathsf{open}}_{\mathsf{Com}}$.
 
-*Proof.* Fix a box $[P, P] \times I_s \times I_k$.
+_Proof._ Fix a box $[P, P] \times I_s \times I_k$.
+
 1. **Line 3** yields the true restriction of $P$'s directory, except with $\mathbf{Adv}^{\mathsf{dir}}$. So $E$ holds exactly the repos of the box that have a head, with their true heads.
 2. **Lines 5 and 6.** $\mathsf{Get}$ accepts the commit only if it matches its name $h$, so it is the commit whose name the registry computed (Definition 3.1). By correctness, $M_h|_{I_k}$ has an accepting opening against the commit's state root. If the reader accepts any other map, then two different maps have accepted openings for the same root and interval, which breaks opening binding.
 3. **Line 7.** $\mathsf{Get}$ accepts each record only if it matches its name.
@@ -662,11 +694,11 @@ Apart from the $q$ directory failures, any substitution is a collision in $N$, o
 
 **Corollary 4.1 (Historic slices) [proof, given opening binding].** Let $t$ be final, $t' \le t$, and $S$ a selector with $q$ boxes and $r$ repos. For each box, let the reader run line 3 of $\mathsf{ReadSlice}$ and $\mathsf{Log}(d)$; for each repo listed, $\mathsf{LastAt}$ with that log root and the repo's position; and for each head $h \neq \bot$ returned, lines 5 to 7 of $\mathsf{ReadSlice}$. No efficient adversary controlling every host and server can make the result differ from $\mathcal{G}_{t'}|_S$, except with probability at most $2q\,\mathbf{Adv}^{\mathsf{dir}} + 2r\,\mathbf{Adv}^{\mathsf{pos}}_{\mathsf{LCom}} + \mathbf{Adv}^{\mathsf{bind}}_N + \mathbf{Adv}^{\mathsf{open}}_{\mathsf{Com}}$.
 
-*Proof.* Step 1 of Theorem 4 applies to line 3, and $\mathsf{Log}$ adds one more query per box. By Lemma 3.3, every repo with a head at $t'$ has one at $t$, so the directory at $t$ lists every repo of the box on which $\mathcal{G}_{t'}$ can be defined. For each, Proposition 3.8 shows that $\mathsf{LastAt}$ gives the head of $\rho$ as of $t'$, or $\bot$ if there is none, except with $2\mathbf{Adv}^{\mathsf{pos}}_{\mathsf{LCom}}$. Steps 2 and 3 of Theorem 4 then apply to that head. $\square$
+_Proof._ Step 1 of Theorem 4 applies to line 3, and $\mathsf{Log}$ adds one more query per box. By Lemma 3.3, every repo with a head at $t'$ has one at $t$, so the directory at $t$ lists every repo of the box on which $\mathcal{G}_{t'}$ can be defined. For each, Proposition 3.8 shows that $\mathsf{LastAt}$ gives the head of $\rho$ as of $t'$, or $\bot$ if there is none, except with $2\mathbf{Adv}^{\mathsf{pos}}_{\mathsf{LCom}}$. Steps 2 and 3 of Theorem 4 then apply to that head. $\square$
 
 **Corollary 4.2 (Reading an app) [proof, given opening binding].** Let a reader read an app's repo with $\mathsf{ReadSlice}$, and check each citation it holds by Proposition 3.5. Then, except with the probabilities of Theorem 4 and Proposition 3.5, it obtains exactly the citations the curator committed at $t$, and for each true one, exactly the record it names, as its publisher committed it.
 
-*Proof.* Theorem 4 for the curator's repo, then Proposition 3.5 for each citation. $\square$
+_Proof._ Theorem 4 for the curator's repo, then Proposition 3.5 for each citation. $\square$
 
 An app can therefore choose what to present, but not alter it, and a reader learns which of its citations are false. What a curator chooses, and why, is its own affair.
 
@@ -679,6 +711,7 @@ Theorem 4 gives completeness as well as inclusion. A host can refuse to serve pa
 ## 5. The ordering service as a blockchain
 
 A public blockchain is an ordering service: its blocks are the sequence, its block timestamps the logical clock, and $\mathsf{Verify}$ its validity rule, whether proof of work or the signatures of its validators. Assumption O then holds under the chain's own consensus assumptions:
+
 - agreement, with $\delta$ the chain's finality delay for the kind of reader in question (below);
 - authorship, from its signature scheme;
 - a clock, from block timestamps, which consensus keeps non-decreasing and within a bounded skew of real time. Epochs are then measured in time, and do not move when block times change. Skew shifts the window of Definition 3.1 by at most its bound, and can only cause an update to fail, which costs liveness. The bound is assumed, not derived.
@@ -698,6 +731,7 @@ The chain's commitment to its state proves any slot the reader names, but cannot
 **Ceiling.** The lists are in the order in which repos were created, not in key order, so a reader that wants a narrow $I_s$ within a publisher that has many repos pays for all of that publisher's repos. Storage proofs need no prover.
 
 **Logs.** For the update log, the program keeps the length $M$ of the log, and the peaks of a Merkle mountain range over it (§6), in one slot per peak height. Each valid update appends the leaf for $(P, s, i, h', t_u)$ to the update log, where $t_u$ is the block timestamp. On chain, $\mathsf{LCom}$ uses keccak-256 in place of $N$, over $\texttt{abi.encode}$ of a fixed schema for the entry, and keeps the tags $\texttt{leaf}$, $\texttt{node}$, and $\texttt{mmr}$. Since Definition 1.7 needs only binding, Lemma 6.3 holds with keccak-256 for $N$. $\texttt{abi.encodePacked}$ is not injective, and must not be used.
+
 - **Cost.** Two storage writes per log entry, one peak and $M$, plus fewer than one storage read and two hashes on average, and at most $\lfloor \log_2 M \rfloor$ of each (Lemma 6.3). **[estimate]** A write to an existing peak slot costs about 5k gas, and a write to a new height about 22k, which happens at most $\lfloor \log_2 M \rfloor + 1$ times in a log's life.
 - **Reading.** A light reader proves $M$ and the live peak slots against one header, at most $\lfloor \log_2 M \rfloor + 1$ slots given by the set bits of $M$, and computes the log's root itself.
 - **Why no root is stored.** Storing it would cost every update another write, and a hash over every peak, to save each reader at most $\log_2 M$ slot proofs. Writes are paid on every update, whereas reads are paid only by readers.
@@ -707,6 +741,7 @@ With the log, a light reader reads histories and earlier slices against the head
 ## 6. Instantiating the Merkle DAGs
 
 The naming function $N$ is SHA-256 over a canonical encoding (CIDv1). The map commitment $\mathsf{Com}$ is a **Merkle Search Tree** [AT19]:
+
 - Each key $k$ has a level $\lfloor \mathsf{lz}(N(k)) / b \rfloor$, where $\mathsf{lz}$ counts leading zero bits and $2^b$ is the expected fanout.
 - A node at level $\ell$ holds, in order, the keys of level exactly $\ell$ in its range, with their values.
 - Between neighbouring keys, a child pointer names the level $\ell - 1$ subtree of the keys between them.
@@ -714,6 +749,7 @@ The naming function $N$ is SHA-256 over a canonical encoding (CIDv1). The map co
 The level-$\ell$ nodes correspond one to one with the **gaps** between consecutive keys of level above $\ell$, together with the two ends, and the node for a gap $(a, b)$ is a function of $\ell$ and of the map restricted to $(a, b)$. The tree is therefore a function of the map alone, which gives unique representation, and its nodes are named by $N$, which gives binding. The height $h$ is the highest level of any key.
 
 **Well-formedness.** A node is **well-formed** if:
+
 - its keys are sorted;
 - they lie inside its gap;
 - each has level exactly $\ell$;
@@ -723,9 +759,10 @@ A reader accepts a tree, or part of one, only if every node it fetches is well-f
 
 **Lemma 6.0 (Honest nodes are small) [proof, with $N$ modelled as a random oracle].** If the names of the keys are uniformly random, a node holds $m$ or more entries with probability at most $(1 - 2^{-b})^m$. For $b = 4$ and $B_{\max} = 1024$, that is about $2^{-95}$ per node.
 
-*Proof.* Take the keys of level at least $\ell$ in order. Each has level above $\ell$ independently, with probability $2^{-b}$. A level-$\ell$ node's entries are a maximal run of keys of level exactly $\ell$, so its length is geometric. $\square$
+_Proof._ Take the keys of level at least $\ell$ in order. Each has level above $\ell$ independently, with probability $2^{-b}$. A level-$\ell$ node's entries are a maximal run of keys of level exactly $\ell$, so its length is geometric. $\square$
 
 **Shape.** Names are random only if the party that chooses the keys does not search for them. A party that does choose keys can do two things:
+
 - **raise the height:** it places a key at level $\ell$ by trying about $2^{b\ell}$ candidates. The height never exceeds $2\lambda / b$, because a name has $2\lambda$ bits.
 - **fill a node:** it chooses keys of level 0, which costs nothing, since a fraction $1 - 2^{-b}$ of all keys have level 0. With the bound $B_{\max}$, however, such a tree is malformed rather than slow.
 
@@ -733,11 +770,12 @@ A party that chooses all of a tree's keys can thus make the tree costly to read,
 
 **Lemma 6.1 (Locality) [proof].** Let maps $D$ and $D'$ differ on a set $K$ of $\Delta$ keys, and let $h$ be the larger of their heights. Then at most $2\Delta(h+1)$ nodes of each tree are absent from the other.
 
-*Proof.* Fix a level $\ell$. Take a level-$\ell$ node of $D$'s tree, with gap $(a, b)$, such that no key of $K$ lies in the closed interval $[a, b]$. Levels depend only on keys, so $a$ and $b$ are still consecutive keys of level above $\ell$ in $D'$, and $D'$ agrees with $D$ on $(a, b)$. So $D'$'s tree has the same node. A key of $K$ lies in the closed gap of at most two level-$\ell$ nodes: one if it is inside a gap, two if it is an end. So at most $2\Delta$ level-$\ell$ nodes are absent from the other tree. Sum over the $h + 1$ levels, and argue symmetrically for $D'$. $\square$
+_Proof._ Fix a level $\ell$. Take a level-$\ell$ node of $D$'s tree, with gap $(a, b)$, such that no key of $K$ lies in the closed interval $[a, b]$. Levels depend only on keys, so $a$ and $b$ are still consecutive keys of level above $\ell$ in $D'$, and $D'$ agrees with $D$ on $(a, b)$. So $D'$'s tree has the same node. A key of $K$ lies in the closed gap of at most two level-$\ell$ nodes: one if it is inside a gap, two if it is an end. So at most $2\Delta$ level-$\ell$ nodes are absent from the other tree. Sum over the $h + 1$ levels, and argue symmetrically for $D'$. $\square$
 
 An update thus rewrites at most $2(h+1)$ nodes. Walking two trees together, and skipping pairs of subtrees with equal names, fetches $O(\Delta(h+1))$ nodes, because names are compared in the parent without fetching the child.
 
 **Lemma 6.2 (Openings) [proof].** Let $I$ be an interval that holds $m$ keys of $D$. The nodes whose gaps meet $I$ form an opening of $D$ on $I$. $\mathsf{Check}$ accepts it if:
+
 - every node is well-formed;
 - every node matches the name its parent gives, up to the root;
 - every child pointer whose gap meets $I$ was followed.
@@ -750,13 +788,14 @@ $$
 
 such nodes. That is at most $(h+1)(m+1)$ in the worst case, and $(h+1) + m/(2^b - 1)$ in expectation when names are random.
 
-*Counting.* At level $\ell$, the gaps that meet $I$ are separated by keys in $I$ of level above $\ell$, so there are at most one more than the number of such keys. Summing over levels gives $h + 1$, plus each key in $I$ counted once for every level below its own. For random names, $\mathbb{E}[\mathsf{level}(k)] = \sum_{j \ge 1} 2^{-bj} = 1/(2^b - 1)$.
+_Counting._ At level $\ell$, the gaps that meet $I$ are separated by keys in $I$ of level above $\ell$, so there are at most one more than the number of such keys. Summing over levels gives $h + 1$, plus each key in $I$ counted once for every level below its own. For random names, $\mathbb{E}[\mathsf{level}(k)] = \sum_{j \ge 1} 2^{-bj} = 1/(2^b - 1)$.
 
-*Binding.* Given the root, each node that $\mathsf{Check}$ reaches is fixed by its name, except with $\mathbf{Adv}^{\mathsf{bind}}_N$. Define the map a root commits to, $D_{\mathit{root}}(k)$, as what $\mathsf{Check}$ accepts on $[k, k]$, for any root, whoever built it. We show that every accepted opening on $I$ is $D_{\mathit{root}}|_I$, by induction over the nodes $\mathsf{Check}$ reaches. Each reached node passes the well-formedness checks, so its keys are sorted inside its gap, and a successful check below a node returns only keys inside that node's gap. For a key $k \in I$, the walk on $[k, k]$ follows exactly the child whose gap contains $k$. That gap meets $I$, so the walk on $I$ follows it too, and by induction both return the same value at $k$. Every other child the walk on $I$ follows returns no value at $k$, because $k$ is outside its gap. So the two openings agree at every key of $I$, and two accepted openings on one interval are equal. Correctness holds for the tree built from a sorted map: $\mathsf{Check}$ accepts every interval, with the map's restriction, so $D_{\mathsf{Com}(D)} = D$. A tree that fails the checks on some interval is **malformed**, and a read of it fails.
+_Binding._ Given the root, each node that $\mathsf{Check}$ reaches is fixed by its name, except with $\mathbf{Adv}^{\mathsf{bind}}_N$. Define the map a root commits to, $D_{\mathit{root}}(k)$, as what $\mathsf{Check}$ accepts on $[k, k]$, for any root, whoever built it. We show that every accepted opening on $I$ is $D_{\mathit{root}}|_I$, by induction over the nodes $\mathsf{Check}$ reaches. Each reached node passes the well-formedness checks, so its keys are sorted inside its gap, and a successful check below a node returns only keys inside that node's gap. For a key $k \in I$, the walk on $[k, k]$ follows exactly the child whose gap contains $k$. That gap meets $I$, so the walk on $I$ follows it too, and by induction both return the same value at $k$. Every other child the walk on $I$ follows returns no value at $k$, because $k$ is outside its gap. So the two openings agree at every key of $I$, and two accepted openings on one interval are equal. Correctness holds for the tree built from a sorted map: $\mathsf{Check}$ accepts every interval, with the map's restriction, so $D_{\mathsf{Com}(D)} = D$. A tree that fails the checks on some interval is **malformed**, and a read of it fails.
 
 AT Protocol repositories use the same structure, but without the bound $B_{\max}$.
 
 **The log commitment.** $\mathsf{LCom}$ is a **Merkle mountain range** [T16]:
+
 - A leaf is $N(\texttt{leaf}, l_j)$, and an inner node is $N(\texttt{node}, \mathit{left}, \mathit{right})$.
 - Write $M = 2^{e_1} + 2^{e_2} + \cdots$, with $e_1 > e_2 > \cdots$. The log is split, from left to right, into perfect binary trees of $2^{e_1}, 2^{e_2}, \ldots$ leaves. Their roots are the **peaks**.
 - The root is $N(\texttt{mmr}, M, \mathit{peaks})$, and $\mathsf{st}(L) = (M, \mathit{peaks})$.
@@ -766,12 +805,14 @@ Appending a leaf adds a tree of one leaf, then merges the two rightmost trees fo
 Unlike the tree for maps, the shape of a mountain range is fixed by $M$ alone; since nobody chooses it, nobody can grind it.
 
 **Lemma 6.3 (Mountain ranges) [proof].** For a log of $M$ entries:
+
 1. $\mathsf{LCom}$ is binding, and position binding holds, except with $\mathbf{Adv}^{\mathsf{bind}}_N$;
 2. the state has at most $\lfloor \log_2 M \rfloor + 1$ peaks;
 3. an opening of position $j$, made of the sibling path in its tree and the other peaks, has at most $2\lfloor \log_2 M \rfloor$ names, and is checked with as many hashes;
 4. an append that makes the log $M$ entries long costs at most $\lfloor \log_2 M \rfloor$ merges. Appending $\Delta$ entries to a log of $M$ costs at most $\Delta + \lfloor \log_2 M \rfloor$ merges. So an append costs less than one merge on average.
 
-*Proof.*
+_Proof._
+
 1. The root fixes $M$, and so the shape and every peak. Each peak is the root of a binary tree whose shape $M$ fixes. Two different logs of length $M$ differ at some leaf, and the paths from it to the root give two different inputs to $N$ with one output. Position binding is the same argument along one path. The tags $\texttt{leaf}$, $\texttt{node}$ and $\texttt{mmr}$ keep a leaf from being read as a node.
 2. Peaks correspond to the set bits of $M$.
 3. The sibling path has length $e \le \lfloor \log_2 M \rfloor$, and there are at most $\lfloor \log_2 M \rfloor$ other peaks.
@@ -782,6 +823,7 @@ $\square$
 ## 7. Scope
 
 **Missing proofs.** The following claims are stated without a full proof:
+
 - **Embedding models (§3.4).** They are assumed to be deterministic to the bit.
 - **Commit epochs (§3.2).** An honest publisher's update is valid only if the ordering includes it within $W$ epochs of making the commit. That delay is assumed, not analysed. A late update fails, and its publisher commits again.
 - **Bounded trees (§3.5).** There is no succinct proof that an entry was omitted, no bound on the expected cost of a search, and no analysis of what the pattern of fetched nodes reveals about a query.
@@ -793,6 +835,7 @@ $\square$
 - **Appendix C.** Fraud proofs for lenses that are not pointwise and key-revealing are not given, and the conditions under which a watcher's proof reaches a reader are argued, not proven.
 
 This document omits the following, each of which builds upon it:
+
 - how a light reader verifies block headers;
 - proofs that a view is correct (§3.4), for lenses too large to recompute;
 - validators' evidence: proofs that a state satisfies a rule, including rules relating its records, incrementally from a state already validated, and validators that attest to their code;
@@ -809,6 +852,7 @@ This appendix sketches how a software agent uses the protocol: how it finds, amo
 ### A.1 One server for every app
 
 An agent connects to one server, and through it to every app. The server does three things:
+
 1. **It lists apps.** It finds them through a lens over the update log that selects the repos holding a manifest (§3.5), and reads each app's **manifest** (§2): what the app is for, the validators it relies on, and the views it serves, each named by its lens $N(\texttt{lens}, L)$, with recent claims for it (Definition 3.13). A manifest is a record of the app's own repo, so the agent reads it as it reads any record, and its history is public.
 2. **It mounts views.** It fetches a view's nodes from any host, and checks them against a claim's root.
 3. **It offers the same tools for every view:** describe what a view holds, search it by meaning, get one record, find records similar to one, count the values of a field, and browse without a query.
@@ -819,7 +863,7 @@ What remains is to choose which views to mount. A network may hold millions of v
 
 ### A.2 The semantic CDN
 
-A content delivery network serves data from wherever it is cached, by name. Every node in Fangorn is named by its content (§1.3), so any host can already serve as such a network, and a reader checks what it receives. What such a network cannot do is say *which* names to ask for. A **semantic CDN** adds that: it routes a query to the data closest to it in meaning, and then delivers that data by name, while the routing, like the data, can be checked rather than trusted.
+A content delivery network serves data from wherever it is cached, by name. Every node in Fangorn is named by its content (§1.3), so any host can already serve as such a network, and a reader checks what it receives. What such a network cannot do is say _which_ names to ask for. A **semantic CDN** adds that: it routes a query to the data closest to it in meaning, and then delivers that data by name, while the routing, like the data, can be checked rather than trusted.
 
 It rests on two structures, a clustered view and its coverage, and one algorithm.
 
@@ -832,6 +876,7 @@ $$
 so that each record is filed, with its vector, under its nearest centre, and ties go to the lowest index. Its **cluster** $i$ is the set of its entries whose keys begin with $i$.
 
 The lens is pointwise and key-revealing (Definitions 3.11 and C.1), since $x$ is part of each key, so it inherits everything Part I gives such lenses. In particular:
+
 - **A cluster is one opening.** Its keys form an interval, so one opening of the view's root returns the whole cluster, with proof that no entry was added or left out (Definition 1.6). This is what the bounded tree lacks: a tree ordered by geometry cannot prove that an entry is absent (Appendix C), whereas a clustered view, being ordered by key, can.
 - **A wrong view has a fraud proof.** A record filed under the wrong cluster, given a wrong vector, or omitted is refuted by one opening and one point read (Proposition C.2), given the determinism of $E$ that §3.4 assumes. Computing $\kappa$ in the fixed-point arithmetic of $E$ makes it deterministic as well.
 - **It follows by change.** A changed record moves at most one entry (Proposition 3.12).
@@ -850,7 +895,7 @@ A coverage is small: $m$ centres and radii, a few kilobytes for $m = 8$ and $d =
 
 **Proposition A.3 (Coverages are checkable) [proof].** If a coverage is not sound, a single opening of $R$ at one entry proves it. If it is sound, then for every $v$ in cluster $i$, $\langle q, v \rangle \le \beta_i(q)$.
 
-*Proof.* If some $v$ in cluster $i$ has $\Vert v - \mu_i \Vert > \varepsilon_i$, the opening of $R$ at its key shows $v$, and the key shows $i$. Anyone checks the distance, as for a false bound in a bounded tree (Appendix C). The second claim is Lemma 3.15 applied to the cluster. $\square$
+_Proof._ If some $v$ in cluster $i$ has $\Vert v - \mu_i \Vert > \varepsilon_i$, the opening of $R$ at its key shows $v$, and the key shows $i$. Anyone checks the distance, as for a false bound in a bounded tree (Appendix C). The second claim is Lemma 3.15 applied to the cluster. $\square$
 
 A radius can be honest and still loose. That is not fraud, but it draws queries to the cluster that it cannot answer well. An indexer that keeps a coverage current grows a radius when a far vector arrives, and tightens it by recomputing.
 
@@ -874,7 +919,7 @@ $$
 
 **Proposition A.4 (Routing is exact and complete) [proof].** On sound coverages, $\mathsf{Route}(q, j)$ returns $j$ entries of highest score among all entries of all the views, or all of them if there are fewer, except with the probability that opening binding fails. Every cluster it opens has a bound at least the $j$-th best score.
 
-*Proof.* By opening binding, line 5 yields exactly cluster $i$ of $V$, every entry and no other. Every entry not yet seen lies in a cluster still in $Q$, and by Proposition A.3 its score is at most that cluster's bound, which is at most $\beta$ at line 3. When line 4 returns, every unseen entry therefore scores below every entry of $T$. A cluster is opened only if line 4 did not return, that is, only if its bound is at least the current $j$-th best score, which never decreases. $\square$
+_Proof._ By opening binding, line 5 yields exactly cluster $i$ of $V$, every entry and no other. Every entry not yet seen lies in a cluster still in $Q$, and by Proposition A.3 its score is at most that cluster's bound, which is at most $\beta$ at line 3. When line 4 returns, every unseen entry therefore scores below every entry of $T$. A cluster is opened only if line 4 did not return, that is, only if its bound is at least the current $j$-th best score, which never decreases. $\square$
 
 **Recursion.** The coverages are themselves data. The **directory** of a semantic CDN is a view whose entries are the clusters of the views it lists, each keyed by $(N(\texttt{lens}, L), i)$, with value $(\mu_i, \varepsilon_i)$ and the coverage it comes from. It is a lens over manifests and claims, and like any view it can be clustered in turn. Let an upper centre $\nu$ gather lower clusters $i$ with centres $\mu_i$ and radii $\varepsilon_i$, and give it the radius
 
@@ -887,6 +932,7 @@ By the triangle inequality, every vector of every gathered cluster lies within $
 Nor is there one directory. Each is a lens over public manifests, and whoever builds one chooses which views it lists, as a curation. Agents choose among directories as readers choose among indexers (§3.5). A directory may list every view that some app cites, or every repo that some validator passed.
 
 **What the semantic CDN guarantees.** Together, these give an agent four properties that a search engine does not:
+
 - **No authority.** Every structure it reads is a view or a claim, so a wrong routing decision is either a false radius, refuted by one opening, or a loose one, which costs the agent fetches but not correctness.
 - **Exactness.** On sound coverages, the agent finds the best records in the network without opening any cluster that cannot hold one (Proposition A.4).
 - **Privacy.** The agent embeds its query on its own device and ranks every record itself, and no host sees the query. Hosts see which clusters it opens, which reveals roughly where the query lies, as for a bounded tree (§3.5). An agent that fetches a fixed number of clusters, or a whole view as a bundle, reveals less.
@@ -897,6 +943,7 @@ Nor is there one directory. Each is a lens over public manifests, and whoever bu
 ### A.3 Cartridges
 
 A mounted view is a **cartridge**: a lens name, a clock value $t$, a root, and the clusters or shards of it that the agent has fetched. An agent's working knowledge is the set of cartridges it has mounted, which has four properties:
+
 - **Hot-swappable.** An agent mounts a view when a task needs it, and drops it when the task ends, with nothing installed and no server run, by anyone.
 - **Composable.** An agent may hold several cartridges at once, and put one query to all of them. Their scores are comparable when the views name the same embedding model; otherwise the agent compares their records, not their scores.
 - **Pinned.** An answer cites the root and clock value it was drawn from, so that another agent, or a person, can read exactly the same data, and check the answer, at any later time (Corollary 4.1).
@@ -923,10 +970,13 @@ No merge is needed. A repo still has one writer (§1.5), so its micro-commits fo
 ### B.1 Micro-commits
 
 **Definition B.1 (Micro-commit).** Let repo $\rho = (P, s)$ have position $i$ at the time of writing, so that its head $h_i$ is fixed by the update log (Lemma 3.4). A **micro-commit on base $i$** is a value
+
 $$
 \mu = (\iota,\ \rho,\ i,\ j,\ a,\ \mathit{root},\ \tau)
 $$
+
 together with $P$'s signature on it, where:
+
 - $j \ge 1$ is its index;
 - $a = \mathsf{LCom}(\mu_1, \ldots, \mu_{j-1})$ is the log commitment of the micro-commits before it on the same base, the empty log's commitment if $j = 1$;
 - $\mathit{root}$ is the root of the state after it;
@@ -939,9 +989,11 @@ A micro-commit is a commit that is never submitted. It is linked to its predeces
 ### B.2 Anchors
 
 **Definition B.2 (Anchor).** An **anchor** of $\rho$ is an update whose commit is
+
 $$
 \gamma = (e,\ h_i,\ \mathit{root},\ a)
 $$
+
 where $a = \mathsf{LCom}(\mu_1, \ldots, \mu_k)$ commits a sub-log on base $i$ with $k \ge 1$, and $\mathit{root}$ is the root of $\mu_k$. Its name is $N(e, h_i, \mathit{root}, a)$. A commit with no sub-log is the case $a = \bot$, encoded as in §3.1, so an ordinary update is unchanged.
 
 The registry needs one change. An update carries $a$, and line 2 of $\mathsf{Apply}$ computes $h' = N(e, \mathit{parent}, \mathit{root})$ when $a = \bot$, and $h' = N(e, \mathit{parent}, \mathit{root}, a)$ otherwise. The guard is unchanged: the anchor's parent is the on-chain head $h_i$, and not any micro-commit. The registry never sees a micro-commit and checks nothing about one, just as it never fetches a commit or a state (§3.2).
@@ -953,6 +1005,7 @@ What the registry does not enforce is the publisher's obligation: **an anchor on
 ### B.3 Pre-confirmation, and its faults
 
 **Definition B.3 (Faults).** A **fault** of $P$ on base $i$ of $\rho$ is one of:
+
 - **(F1) Double signing.** Two micro-commits on base $i$ with the same index $j$, both signed by $P$, that differ.
 - **(F2) Omission or substitution.** A micro-commit $\mu$ on base $i$ with index $j$, signed by $P$, while the update at position $i + 1$ commits a sub-log of length $k < j$, or one whose opening at position $j$ is a value other than $\mu$. An ordinary update, with $a = \bot$, counts as a sub-log of length $0$.
 - **(F3) Wrong root.** The update at position $i + 1$ has a root other than that of the micro-commit at position $k$ of its sub-log.
@@ -961,11 +1014,12 @@ The evidence for F1 is the two signed values. The evidence for F2 and F3 is the 
 
 **Proposition B.4 (Pre-confirmations bind) [proof].** Let $P$ sign a micro-commit $\mu$ at index $j$ on base $i$ of $\rho$, and let the update at position $i + 1$ be final. Then, except with probability $\mathbf{Adv}^{\mathsf{bind}}_N + \mathbf{Adv}^{\mathsf{pos}}_{\mathsf{LCom}}$, either that update commits a sub-log whose position $j$ opens to $\mu$, or a fault F2 exists and can be checked with one positional opening. Two readers who hold micro-commits signed by $P$ at the same index on the same base hold the same value, or between them hold a fault F1.
 
-*Proof.* By Theorem 3, position $i + 1$ holds one head, the name of one commit, which by binding of $N$ fixes $a$. By binding of $\mathsf{LCom}$, $a$ fixes its length $k$. If $k < j$, that is F2. Otherwise, by position binding, exactly one value opens at position $j$, and if it is not $\mu$, that is F2. The second claim is the definition of F1. $\square$
+_Proof._ By Theorem 3, position $i + 1$ holds one head, the name of one commit, which by binding of $N$ fixes $a$. By binding of $\mathsf{LCom}$, $a$ fixes its length $k$. If $k < j$, that is F2. Otherwise, by position binding, exactly one value opens at position $j$, and if it is not $\mu$, that is F2. The second claim is the definition of F1. $\square$
 
 Proposition B.4 is what makes data that has not yet been anchored sellable. A buyer who holds $\mu_j$ knows that $P$ said it, in this order, after $h_i$. Once an anchor lands and is final, the buyer either finds $\mu_j$ at index $j$ of the history at position $i + 1$, or holds a proof that $P$ broke its word.
 
 What a soft head does not give is exactly what a Merkle clock does not give (§3.1):
+
 - **currency:** a newer micro-commit may exist;
 - **liveness:** $P$ may never anchor;
 - **availability:** no host is obliged to serve it.
@@ -979,6 +1033,7 @@ The first two are recovered by anchoring, and §B.4 adds an incentive for the se
 ### B.4 Accountability
 
 A fault convinces anyone who checks it, so it needs no contract. For compensation, $P$ may post a **bond** to a contract that pays out to the first valid fault, as an indexer does (Appendix C).
+
 - **F1** costs two signature checks on chain.
 - **F2 and F3** cost the anchor's commit fields, from which the contract computes its name and checks it against the update log by a positional opening of $\mathcal{U}$, plus one opening of $a$. That is $O(\log M + \log k)$ hashes. **[estimate]** The gas is not given here.
 
@@ -1010,13 +1065,14 @@ If every device holds $P$'s key, compromising one device compromises all of them
 
 # Appendix C — Accountable indexers
 
-Section 3.5 lets a reader check an indexer by recomputing a view, or by asking another indexer for it. This appendix lets anyone *prove* an indexer wrong, for the lenses that matter most, with one opening and one point read and no arbiter. Nothing in Part I depends on it. Its results are tagged as in §1.1.
+Section 3.5 lets a reader check an indexer by recomputing a view, or by asking another indexer for it. This appendix lets anyone _prove_ an indexer wrong, for the lenses that matter most, with one opening and one point read and no arbiter. Nothing in Part I depends on it. Its results are tagged as in §1.1.
 
 ### C.1 Fraud proofs
 
 A lens is pointwise (Definition 3.11) if each input record contributes at most one entry to the view, which depends on that record alone. A wrong view is then wrong at some particular key, and what the view should hold there depends on a single record.
 
 **Point reads.** A **point read** of an input at a key $x$ returns the input's value at $x$, or $\bot$, together with what is needed to check it.
+
 - **For a slice of the global state,** a point read at $x = (P, s, k)$ as of $t$, against a checkpoint at any final clock value from $t$ on, consists of $\mathsf{ReadAt}$ for the head of $(P, s)$ as of $t$, and lines 6 and 7 of $\mathsf{ReadSlice}$ on $[k, k]$. It returns $\mathcal{G}_t(P, s, k)$, by Proposition 3.8, binding of $N$, and opening binding, and a later update does not change it.
 - **For a log,** it is a positional opening when $j \le M$, and $\bot$ when $j > M$, checked by position binding.
 
@@ -1041,20 +1097,22 @@ $$
 $$
 
 **Proposition C.2 (Succinct fraud proofs) [proof, given opening binding].** Let $L$ be pointwise and key-revealing.
+
 1. **Completeness:** if $R \neq \mathsf{Com}(V_L(t))$, and every head the lens reads commits to a well-formed state (§6), there is a fraud proof $\mathit{fp}$ with $\mathsf{CheckFraud}(c, \mathit{fp}) = \mathsf{true}$. It holds one opening of $R$ and one point read, and checking it evaluates $\tau$ and $g$ once.
 2. **Soundness:** no efficient adversary outputs $\mathit{fp}$ with $\mathsf{CheckFraud}(c, \mathit{fp}) = \mathsf{true}$ when $R = \mathsf{Com}(V_L(t))$, except with the probability bounded by opening binding, binding of $N$ and Proposition 3.8. This holds for a claim at any $t$, however old, because the point read is taken as of $t$.
 
-*Proof.* Let $V = V_L(t)$. By line 4, and the definition of a pointwise view, $U = V|_{[y, y]}$ whenever $z$ is the true input value at $x$ and $y = \tau(x, z)$ or $y \notin V$.
+_Proof._ Let $V = V_L(t)$. By line 4, and the definition of a pointwise view, $U = V|_{[y, y]}$ whenever $z$ is the true input value at $x$ and $y = \tau(x, z)$ or $y \notin V$.
 
-*Completeness.* The opening of $R$ at $[y, y]$ exists by correctness (Definition 1.6), and the point read at $x$ succeeds and returns the true value, by completeness of $\mathsf{ReadAt}$ (Proposition 3.8) and correctness of the state's opening. Let $V'' \neq V$ be the map $R$ commits to, and let $y$ be a key where they differ. If $y \in V$, then $y = \tau(x, r)$ for an input entry $x \mapsto r$. Take that $x$. If $V''$ holds $y$, line 2 recomputes the same $x$, because the lens is key-revealing. Either way $U = \{y \mapsto V(y)\} \neq V''|_{[y,y]} = V'$. If $y \notin V$, then $V''$ holds some $y \mapsto v$, and line 2 computes $x$ from $y$. If line 4 gave $U = \{y \mapsto v\}$, then $y$ would be in $V$ with value $v$. So $U \neq V'$.
+_Completeness._ The opening of $R$ at $[y, y]$ exists by correctness (Definition 1.6), and the point read at $x$ succeeds and returns the true value, by completeness of $\mathsf{ReadAt}$ (Proposition 3.8) and correctness of the state's opening. Let $V'' \neq V$ be the map $R$ commits to, and let $y$ be a key where they differ. If $y \in V$, then $y = \tau(x, r)$ for an input entry $x \mapsto r$. Take that $x$. If $V''$ holds $y$, line 2 recomputes the same $x$, because the lens is key-revealing. Either way $U = \{y \mapsto V(y)\} \neq V''|_{[y,y]} = V'$. If $y \notin V$, then $V''$ holds some $y \mapsto v$, and line 2 computes $x$ from $y$. If line 4 gave $U = \{y \mapsto v\}$, then $y$ would be in $V$ with value $v$. So $U \neq V'$.
 
-*Soundness.* Let $R = \mathsf{Com}(V)$. By opening binding, $V' = V|_{[y, y]}$. By Proposition 3.8, binding of $N$ and opening binding, $z$ is the true value at $x$ as of $t$. If $y \in V$, then $x$ is the key $y$ reveals, by line 2, so $y = \tau(x, z)$ and $U = V|_{[y,y]}$. If $y \notin V$, then $U$ is empty, because otherwise $y$ would be in $V$. Either way $U = V'$, and $\mathsf{CheckFraud}$ returns $\mathsf{false}$. $\square$
+_Soundness._ Let $R = \mathsf{Com}(V)$. By opening binding, $V' = V|_{[y, y]}$. By Proposition 3.8, binding of $N$ and opening binding, $z$ is the true value at $x$ as of $t$. If $y \in V$, then $x$ is the key $y$ reveals, by line 2, so $y = \tau(x, z)$ and $U = V|_{[y,y]}$. If $y \notin V$, then $U$ is empty, because otherwise $y$ would be in $V$. Either way $U = V'$, and $\mathsf{CheckFraud}$ returns $\mathsf{false}$. $\square$
 
 To find $y$, someone must compute $V$, namely a **watcher** (below), and every other reader then pays two openings to check the proof.
 
 Indexing networks such as The Graph [TG] ask an indexer to commit to the sequence of writes it made, its "proof of indexing". A mismatch between two indexers then shows only that they disagree, and a dispute goes to an arbitrator appointed by governance. A claim here, by contrast, commits to the view itself, so that a mismatch can be walked down to the key where the two disagree (Lemma 6.1), and $\mathsf{CheckFraud}$ decides which one is wrong, with no arbiter.
 
 **Cost of a fraud proof:**
+
 - **for a lens over a log:** one map opening, $O(h+1)$ nodes (Lemma 6.2), plus one log opening, at most $2\lfloor \log_2 M \rfloor$ names (Lemma 6.3);
 - **for a lens over a slice:** the map opening, plus a point read as of $t$: two log openings for the head, and one opening of the state (Proposition 3.8, Lemma 6.2).
 
@@ -1076,10 +1134,10 @@ Indexing networks such as The Graph [TG] ask an indexer to commit to the sequenc
 
 **Shape.** The keys of a sub-log view are $(P, j)$, where the ordering assigns $j$. A publisher picks its own address, but not the indices its updates land at. **[no proof]** A publisher could choose its address, or time its updates to land at chosen indices, and whether either helps an attack on shape is not analysed.
 
-
 ### C.3 Bounded trees
 
 A bounded tree (Definition 3.14) need not be a function of $V$, so it cannot be recomputed and compared. Its soundness, however, is a local property:
+
 - **A false bound** has a fraud proof [proof], consisting of a node, a path of child names from it to a leaf $(x, v)$, and the fact that $\Vert v - \mu \Vert > \varepsilon$. Names fix every node on the path, so the proof costs one node per level and one distance.
 - **A forged leaf**, whose $(x, v)$ is not an entry of $V$, has a fraud proof [proof], consisting of the leaf, the path to it, and a point read of the embedding view at $x$ (Proposition C.2).
 - **[open] An omitted entry,** that is, an entry of $V$ with no leaf, has no succinct fraud proof given here. The tree is ordered by geometry rather than by key, so one opening cannot show that $x$ is absent. A count of leaves in each node, checked against the size of $V$, would turn an omission into a duplicate or a forged leaf somewhere, but the size of $V$ is an aggregate, and locating the fault is not shown to be succinct.
@@ -1089,6 +1147,7 @@ A sound tree therefore gives no false negatives among its leaves, and none at al
 ### C.4 Bonds
 
 **Bonds.** Holding an indexer to account (C.1) needs no contract, since a fraud proof convinces anyone who checks it. If readers want compensation, however, an indexer can post a bond to a contract that pays out to the first valid fraud proof against a claim the indexer signed.
+
 - **For lenses over an update log,** the contract checks the log opening against the current peaks of the log the lens reads. A position stays at the same index as the log grows, so a proof against an old claim remains valid forever. The contract also rebuilds the map opening, at $O(h+1)$ nodes.
 - **[estimate]** The gas cost is dominated by hashing the map nodes. Each node has about $2^b$ entries in expectation, and at most $B_{\max}$.
 - **For lenses over slices,** the point read needs directory and state openings, and while checking those on-chain is possible, its cost is not given here.
@@ -1100,21 +1159,21 @@ A sound tree therefore gives no false negatives among its leaves, and none at al
 
 ## References
 
-| Key | Reference |
-| --- | --- |
-| [AB09] | S. Arora, B. Barak. Computational Complexity: A Modern Approach. Cambridge University Press, 2009 |
-| [AT19] | A. Auvolat, F. Taïani. Merkle Search Trees: Efficient State-Based CRDTs in Open Networks. SRDS 2019 |
-| [CER] | Ceramic. Protocol documentation, legacy specification, and the rust-ceramic pipeline design. developers.ceramic.network, github.com/ceramicnetwork, accessed 2026-10-13 |
-| [CIP124] | Ceramic. CIP-124: Recon, tunable eventually-consistent event sharing. cips.ceramic.network, draft |
-| [FC] | Farcaster. Protocol specification and Snapchain documentation. github.com/farcasterxyz, accessed 2026-10-13 |
-| [G01] | O. Goldreich. Foundations of Cryptography, Volume 1: Basic Tools. Cambridge University Press, 2001 |
-| [IPNS] | IPFS. IPNS record and protocol specification. specs.ipfs.tech/ipns, accessed 2026-10-13 |
-| [KFH+24] | M. Kleppmann, P. Frazee, J. Gold, J. Graber, D. Holmgren, D. Ivy, J. Johnson, B. Newbold, J. Volpert. Bluesky and the AT Protocol: Usable Decentralized Social Media. ACM CoNEXT Workshop on the Decentralization of the Internet (DIN '24), 2024. arXiv:2402.03239 |
-| [L78] | L. Lamport. Time, Clocks, and the Ordering of Events in a Distributed System. CACM 21(7), 1978 |
-| [LLK13] | B. Laurie, A. Langley, E. Kasper. Certificate Transparency. RFC 6962, 2013 |
-| [MBB+15] | M. Melara, A. Blankstein, J. Bonneau, E. Felten, M. Freedman. CONIKS: Bringing Key Transparency to End Users. USENIX Security 2015 |
-| [MCRDT20] | H. Sanjuán, S. Pöyhtäri, P. Teixeira, I. Psaras. Merkle-CRDTs: Merkle-DAGs meet CRDTs. arXiv:2004.00107, 2020 |
-| [NIP01] | Nostr. NIP-01: Basic protocol flow description. github.com/nostr-protocol/nips |
-| [T16] | P. Todd. Merkle Mountain Ranges. OpenTimestamps, 2016 |
-| [TG] | The Graph. Documentation: indexing overview and glossary. thegraph.com/docs, accessed 2026-10-13 |
-| [TBL] | Tableland. Documentation. docs.tableland.xyz, accessed 2026-10-13 |
+| Key       | Reference                                                                                                                                                                                                                                                           |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [AB09]    | S. Arora, B. Barak. Computational Complexity: A Modern Approach. Cambridge University Press, 2009                                                                                                                                                                   |
+| [AT19]    | A. Auvolat, F. Taïani. Merkle Search Trees: Efficient State-Based CRDTs in Open Networks. SRDS 2019                                                                                                                                                                 |
+| [CER]     | Ceramic. Protocol documentation, legacy specification, and the rust-ceramic pipeline design. developers.ceramic.network, github.com/ceramicnetwork, accessed 2026-10-13                                                                                             |
+| [CIP124]  | Ceramic. CIP-124: Recon, tunable eventually-consistent event sharing. cips.ceramic.network, draft                                                                                                                                                                   |
+| [FC]      | Farcaster. Protocol specification and Snapchain documentation. github.com/farcasterxyz, accessed 2026-10-13                                                                                                                                                         |
+| [G01]     | O. Goldreich. Foundations of Cryptography, Volume 1: Basic Tools. Cambridge University Press, 2001                                                                                                                                                                  |
+| [IPNS]    | IPFS. IPNS record and protocol specification. specs.ipfs.tech/ipns, accessed 2026-10-13                                                                                                                                                                             |
+| [KFH+24]  | M. Kleppmann, P. Frazee, J. Gold, J. Graber, D. Holmgren, D. Ivy, J. Johnson, B. Newbold, J. Volpert. Bluesky and the AT Protocol: Usable Decentralized Social Media. ACM CoNEXT Workshop on the Decentralization of the Internet (DIN '24), 2024. arXiv:2402.03239 |
+| [L78]     | L. Lamport. Time, Clocks, and the Ordering of Events in a Distributed System. CACM 21(7), 1978                                                                                                                                                                      |
+| [LLK13]   | B. Laurie, A. Langley, E. Kasper. Certificate Transparency. RFC 6962, 2013                                                                                                                                                                                          |
+| [MBB+15]  | M. Melara, A. Blankstein, J. Bonneau, E. Felten, M. Freedman. CONIKS: Bringing Key Transparency to End Users. USENIX Security 2015                                                                                                                                  |
+| [MCRDT20] | H. Sanjuán, S. Pöyhtäri, P. Teixeira, I. Psaras. Merkle-CRDTs: Merkle-DAGs meet CRDTs. arXiv:2004.00107, 2020                                                                                                                                                       |
+| [NIP01]   | Nostr. NIP-01: Basic protocol flow description. github.com/nostr-protocol/nips                                                                                                                                                                                      |
+| [T16]     | P. Todd. Merkle Mountain Ranges. OpenTimestamps, 2016                                                                                                                                                                                                               |
+| [TG]      | The Graph. Documentation: indexing overview and glossary. thegraph.com/docs, accessed 2026-10-13                                                                                                                                                                    |
+| [TBL]     | Tableland. Documentation. docs.tableland.xyz, accessed 2026-10-13                                                                                                                                                                                                   |

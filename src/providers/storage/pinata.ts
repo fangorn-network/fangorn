@@ -85,7 +85,7 @@ export class PinataBackend implements MetadataStorage {
 			const block = await encode({
 				value: item.data,
 				codec: dagCbor,
-				hasher: sha256
+				hasher: sha256,
 			});
 
 			blocks.push(block);
@@ -97,7 +97,7 @@ export class PinataBackend implements MetadataStorage {
 		const rootBlock = await encode({
 			value: uriByName,
 			codec: dagCbor,
-			hasher: sha256
+			hasher: sha256,
 		});
 		blocks.push(rootBlock);
 
@@ -108,8 +108,8 @@ export class PinataBackend implements MetadataStorage {
 		const label = `car[${items.length.toString()}f/${(bytes.length / 1e6).toFixed(1)}MB]`;
 		await withUploadRetry(label, async () => {
 			const file = new File([bytes.buffer as ArrayBuffer], "data.car", {
-                type: "application/vnd.ipld.car",
-            });
+				type: "application/vnd.ipld.car",
+			});
 			await this.pinata.upload.public.file(file).car();
 		});
 
@@ -183,9 +183,7 @@ export class PinataBackend implements MetadataStorage {
 	 * the exact bytes (never pre-decoded) plus enough context for get<T>() to
 	 * decide how to decode them.
 	 */
-	private async fetchRaw(
-		uri: string,
-	): Promise<{
+	private async fetchRaw(uri: string): Promise<{
 		bytes: Uint8Array;
 		isDagCborCid: boolean;
 		contentType: string | null | undefined;
@@ -219,11 +217,12 @@ export class PinataBackend implements MetadataStorage {
 							: data instanceof Uint8Array
 								? data
 								: new TextEncoder().encode(
-									typeof data === "string" ? data : JSON.stringify(data),
-								);
+										typeof data === "string" ? data : JSON.stringify(data),
+									);
 
 				return { bytes, isDagCborCid, contentType };
-			} catch (error: unknown) { // Fixed: Changed catch binding from 'any' to 'unknown'
+			} catch (error: unknown) {
+				// Fixed: Changed catch binding from 'any' to 'unknown'
 				// If it's a Pinata replication lag error (ERR_ID:00006 or 403/404), back off and retry
 				lastError = error; // Safe assignment because both sides are now 'unknown'
 				attempts--;
@@ -236,12 +235,13 @@ export class PinataBackend implements MetadataStorage {
 		}
 
 		// Cleanly resolve the error string using type-safe runtime checks
-		const internalMessage = lastError instanceof Error
-			? lastError.message
-			: typeof lastError === "string"
-				? lastError
-				// eslint-disable-next-line @typescript-eslint/no-base-to-string
-				: String(lastError ?? "");
+		const internalMessage =
+			lastError instanceof Error
+				? lastError.message
+				: typeof lastError === "string"
+					? lastError
+					: // eslint-disable-next-line @typescript-eslint/no-base-to-string
+						String(lastError ?? "");
 
 		throw new Error(
 			`Pinata SDK failed to retrieve block ${uri} after multiple attempts. Internal Error: ${internalMessage}`,

@@ -8,7 +8,9 @@ import { repoId } from "./data-registry/index.js";
 // head reads as zero and every update lands where nobody watches — silently.
 describe("id derivation", () => {
 	it("matches the contract's golden fixture", () => {
-		expect(repoId("docs")).toBe("0x6bf9054545420e9e9f4aa4f353a32c7d0d52c11dbcdda56c53be8375cafeebb1");
+		expect(repoId("docs")).toBe(
+			"0x6bf9054545420e9e9f4aa4f353a32c7d0d52c11dbcdda56c53be8375cafeebb1",
+		);
 	});
 
 	it("hashes names as UTF-8 bytes, not as hex", () => {

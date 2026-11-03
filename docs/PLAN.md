@@ -32,12 +32,12 @@ Rules every part keeps:
 
 ## Contracts (Base Sepolia, 84532)
 
-| Contract | Address |
-|---|---|
-| DataRegistry | `0x0F3eb0E62CF610dbaC6B3aD4Bf4cE38Ab50EBCC5` |
+| Contract           | Address                                      |
+| ------------------ | -------------------------------------------- |
+| DataRegistry       | `0x0F3eb0E62CF610dbaC6B3aD4Bf4cE38Ab50EBCC5` |
 | SettlementRegistry | `0x61A5A195B54F57ada786Ba6689CdB04553cf7fBc` |
-| Semaphore v4 | `0x8A1fd199516489B0Fb7153EB5f075cDAC83c693D` |
-| USDC | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
+| Semaphore v4       | `0x8A1fd199516489B0Fb7153EB5f075cDAC83c693D` |
+| USDC               | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
 
 They were deployed in blocks 53592845 to 53592851. The SDK's `FangornConfig`
 carries all of these.
@@ -87,11 +87,11 @@ flowchart LR
 There are three Workers, one per secret. Each deploys on its own, and none
 calls another.
 
-| Worker | Package in `~/fangorn/webworker` | Job | Secret | State |
-|---|---|---|---|---|
-| Storage worker | `pinata-url-provider` (exists) | presigned IPFS uploads under a per-publisher quota; serves hot copies of IPFS objects from R2 | Pinata JWT | KV: quotas. R2: hot copies |
-| App worker | `fangorn-app` (new) | the catalog, and the relayer that sends transactions | treasury private key | KV: rate limits. R2: `catalog.json` |
-| Key server | `fangorn-access-worker` (exists, gets smaller) | releases a paid field's key to a buyer `canRead` allows | X25519 secret | none |
+| Worker         | Package in `~/fangorn/webworker`               | Job                                                                                           | Secret               | State                               |
+| -------------- | ---------------------------------------------- | --------------------------------------------------------------------------------------------- | -------------------- | ----------------------------------- |
+| Storage worker | `pinata-url-provider` (exists)                 | presigned IPFS uploads under a per-publisher quota; serves hot copies of IPFS objects from R2 | Pinata JWT           | KV: quotas. R2: hot copies          |
+| App worker     | `fangorn-app` (new)                            | the catalog, and the relayer that sends transactions                                          | treasury private key | KV: rate limits. R2: `catalog.json` |
+| Key server     | `fangorn-access-worker` (exists, gets smaller) | releases a paid field's key to a buyer `canRead` allows                                       | X25519 secret        | none                                |
 
 Splitting them this way buys two things:
 
@@ -189,9 +189,17 @@ The publisher seals `kRepo` to a key server once per statement, and commits it
 as a public record with id `@deposit/<generation>`:
 
 ```json
-{ "@type": "deposit", "gadget": "field-v1", "chainId": 84532, "registry": "0x…",
-  "publisher": "0x…", "repo": "0x…", "generation": "0",
-  "keyServer": "https://keys.fangorn.network", "sealed": "0x…" }
+{
+	"@type": "deposit",
+	"gadget": "field-v1",
+	"chainId": 84532,
+	"registry": "0x…",
+	"publisher": "0x…",
+	"repo": "0x…",
+	"generation": "0",
+	"keyServer": "https://keys.fangorn.network",
+	"sealed": "0x…"
+}
 ```
 
 `sealed = seal(kRepo, keyServerPubkey, stmt)` (`makeDeposit`). Moving to another
@@ -220,8 +228,16 @@ data goes in public fields. A sealed field is always for sale.
 **`POST /access`** takes (`buildAccessRequest`):
 
 ```json
-{ "publisher": "0x…", "repo": "0x…", "generation": "0", "key": "0x…",
-  "readerKey": "0x…", "sealed": "0x…", "timestamp": 1793640000, "signature": "0x…" }
+{
+	"publisher": "0x…",
+	"repo": "0x…",
+	"generation": "0",
+	"key": "0x…",
+	"readerKey": "0x…",
+	"sealed": "0x…",
+	"timestamp": 1793640000,
+	"signature": "0x…"
+}
 ```
 
 - `key` is the record's key, or `WHOLE_REPO` to ask for the repo key.
@@ -289,11 +305,11 @@ an entry of their own, with `key` set to `WHOLE_REPO` and no `id`.
 **Relay routes** each return `{ "tx": "0x…" }`, or 4xx with the revert reason
 from simulation:
 
-| Route | Body | What the worker does |
-|---|---|---|
-| `POST /relay/commit` | `SignedUpdate` (bigints as strings) | limit per signer, simulate, `relayCommit` |
-| `POST /relay/register` | `register`'s arguments without `referrer` | set `referrer` to the treasury address (`TREASURY`, a plain var); limit free (`price == 0`) registers per payer; simulate; send |
-| `POST /relay/settle` | `settle`'s arguments | simulate, send |
+| Route                  | Body                                      | What the worker does                                                                                                                                                |
+| ---------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /relay/commit`   | `SignedUpdate` (bigints as strings)       | limit per signer, simulate, `relayCommit`                                                                                                                           |
+| `POST /relay/register` | `register`'s arguments without `referrer` | set `referrer` to the treasury address (`TREASURY`, a plain var); limit free (`price == 0`) registers per IP (nothing in them is signed by a payer); simulate; send |
+| `POST /relay/settle`   | `settle`'s arguments                      | simulate, send                                                                                                                                                      |
 
 Every call is simulated first, because a reverted transaction still costs the
 treasury gas. The limits per address per day are 100 commits and 20 free
@@ -307,27 +323,27 @@ the gas.
 
 ### SDK
 
-| # | Task | Needs | Done when |
-|---|---|---|---|
-| S1 | ✅ `accessMessage` and `buildAccessRequest`. `verifyAccessRequest` and `serveAccess` moved to the access worker (2026-11-03) | — | the worker's `test/access.spec.ts`: a changed field, another chain or registry, or a stale timestamp fails |
-| S2 | ✅ `statement`, `newRepoKey`, `deriveRecordKey`, `makeDeposit`, `sealField` (uploads through `MetadataStorage.putFile`), `termsToJson` / `termsFromJson` | — | a field opens only under its own record key, statement, record and field name |
-| S3 | ✅ The test chain (`src/test/testbed.ts`) also deploys SettlementRegistry with `MockUSDC` and `MockSemaphore` from the contracts repo's `test/Mocks.sol` | — | `src/e2e/paid.e2e.test.ts` |
-| S4 | ✅ `requestKey` and `openField` | S1, S2 | `src/e2e/paid.e2e.test.ts`: 403 before settle, plaintext after, 403 for another record, the publisher and referrer paid; a whole-repo buyer opens every record; a takedown stops release |
-| S5 | ✅ The package root imports nothing from Node (`crypto`, `Buffer` and a module-level `process.env` removed from the engine and storage) | — | a Worker importing the root bundles with `wrangler deploy --dry-run` and answers `/access` under `wrangler dev` |
-| S6 | ✅ Deleted `worker-usdc-v1`, `encryptAndUpload`, `decryptHandle`, `HandleFieldInput`, `accessMessageHash` and `objectKey`. Kept `seal`, `unseal`, `sealSelf`, `unsealSelf` | S4 | westmarch imports only `seal`; the website imports none of them |
-| S7 | Publish an SDK release | S1–S6 | the Workers install it from npm |
+| #   | Task                                                                                                                                                                       | Needs  | Done when                                                                                                                                                                                |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S1  | ✅ `accessMessage` and `buildAccessRequest`. `verifyAccessRequest` and `serveAccess` moved to the access worker (2026-11-03)                                               | —      | the worker's `test/access.spec.ts`: a changed field, another chain or registry, or a stale timestamp fails                                                                               |
+| S2  | ✅ `statement`, `newRepoKey`, `deriveRecordKey`, `makeDeposit`, `sealField` (uploads through `MetadataStorage.putFile`), `termsToJson` / `termsFromJson`                   | —      | a field opens only under its own record key, statement, record and field name                                                                                                            |
+| S3  | ✅ The test chain (`src/test/testbed.ts`) also deploys SettlementRegistry with `MockUSDC` and `MockSemaphore` from the contracts repo's `test/Mocks.sol`                   | —      | `src/e2e/paid.e2e.test.ts`                                                                                                                                                               |
+| S4  | ✅ `requestKey` and `openField`                                                                                                                                            | S1, S2 | `src/e2e/paid.e2e.test.ts`: 403 before settle, plaintext after, 403 for another record, the publisher and referrer paid; a whole-repo buyer opens every record; a takedown stops release |
+| S5  | ✅ The package root imports nothing from Node (`crypto`, `Buffer` and a module-level `process.env` removed from the engine and storage)                                    | —      | a Worker importing the root bundles with `wrangler deploy --dry-run` and answers `/access` under `wrangler dev`                                                                          |
+| S6  | ✅ Deleted `worker-usdc-v1`, `encryptAndUpload`, `decryptHandle`, `HandleFieldInput`, `accessMessageHash` and `objectKey`. Kept `seal`, `unseal`, `sealSelf`, `unsealSelf` | S4     | westmarch imports only `seal`; the website imports none of them                                                                                                                          |
+| S7  | ✅ (2026.11.3-dev) Publish an SDK release                                                                                                                                  | S1–S6  | the Workers install it from npm                                                                                                                                                          |
 
 ### Workers
 
-| # | Task | Needs | Done when |
-|---|---|---|---|
-| W1 | Storage worker: a lifetime limit of 1 GB per publisher, next to the daily one. Keep `application/octet-stream` allowed | — | an upload past the lifetime limit is refused even when the day's quota has room |
-| W2 | Storage worker: `GET /ipfs/:cid`, reading from R2 with the IPFS gateway as fallback, adding the R2 binding | — | the first read fills R2, the second is served from it, and an unknown CID returns 404 |
-| W3 | ✅ Key server, removing storage: delete `/ct`, `/upload`, `DELETE /upload`, the R2 binding, key minting, `FREE_BYTES` and upload tokens. Make `WORKER_X25519_SECRET` required. Delete `SETTLEMENT_REGISTRY_ADDRESS` and `ARBITRUM_SEPOLIA_RPC` from `wrangler.toml`, which override the SDK's addresses | — | the remaining tests pass and the deleted routes return 404 |
-| W4 | ✅ (SDK linked locally until S7) Key server: the new `/access` (Formats, Key server): parse the body, call `serveAccess` (`src/access.ts`) with `canRead` from `SettlementRegistryClient`, map `AccessError.status` to the response. `/pubkey` serves the public half of `WORKER_X25519_SECRET` | W3, S7 | tests: 403 before settle and 200 after; 400 for a deposit made for another repo; 400 for a stale timestamp |
-| W5 | App worker: a new package with the relay routes. The treasury key is a secret; the limits are in KV, following the storage worker's `RATE_KV`; every call is simulated first; the referrer is the `TREASURY` var | — | tests: a call that would revert is never sent; the limit holds; a `referrer` in the body is ignored |
-| W6 | App worker: the catalog. A cron trigger (every 10 minutes) lists repos with `fangorn.repos()` and reads their records. It keeps those with `"@terms"`, leaves handles out of `public`, attaches the repo's deposit, collects each repo's `@card` record into `cards`, and writes `catalog.json` to R2. `/index` serves that file and makes no chain calls | W5, S5 | tests: a record with terms appears, one without doesn't, and `If-None-Match` returns 304 |
-| W7 | End-to-end test on anvil: `sealField`, `/relay/commit`, the catalog cron, `/index`, `/access` refused, `/relay/register`, `/relay/settle`, `/access`, `openField` returning the plaintext | S2–S4, W2, W4–W6 | passes in CI |
+| #   | Task                                                                                                                                                                                                                                                                                                                                                      | Needs            | Done when                                                                                                  |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- | ---------------------------------------------------------------------------------------------------------- |
+| W1  | Storage worker: a lifetime limit of 1 GB per publisher, next to the daily one. Keep `application/octet-stream` allowed                                                                                                                                                                                                                                    | —                | an upload past the lifetime limit is refused even when the day's quota has room                            |
+| W2  | Storage worker: `GET /ipfs/:cid`, reading from R2 with the IPFS gateway as fallback, adding the R2 binding                                                                                                                                                                                                                                                | —                | the first read fills R2, the second is served from it, and an unknown CID returns 404                      |
+| W3  | ✅ Key server, removing storage: delete `/ct`, `/upload`, `DELETE /upload`, the R2 binding, key minting, `FREE_BYTES` and upload tokens. Make `WORKER_X25519_SECRET` required. Delete `SETTLEMENT_REGISTRY_ADDRESS` and `ARBITRUM_SEPOLIA_RPC` from `wrangler.toml`, which override the SDK's addresses                                                   | —                | the remaining tests pass and the deleted routes return 404                                                 |
+| W4  | ✅ Key server: the new `/access` (Formats, Key server): parse the body, call `serveAccess` (`src/access.ts`) with `canRead` from `SettlementRegistryClient`, map `AccessError.status` to the response. `/pubkey` serves the public half of `WORKER_X25519_SECRET`                                                                                         | W3, S7           | tests: 403 before settle and 200 after; 400 for a deposit made for another repo; 400 for a stale timestamp |
+| W5  | ✅ (`barliman`; free registers are limited per IP, since nothing in them is signed by a payer) App worker: a new package with the relay routes. The treasury key is a secret; the limits are in KV, following the storage worker's `RATE_KV`; every call is simulated first; the referrer is the `TREASURY` var                                           | —                | tests: a call that would revert is never sent; the limit holds; a `referrer` in the body is ignored        |
+| W6  | App worker: the catalog. A cron trigger (every 10 minutes) lists repos with `fangorn.repos()` and reads their records. It keeps those with `"@terms"`, leaves handles out of `public`, attaches the repo's deposit, collects each repo's `@card` record into `cards`, and writes `catalog.json` to R2. `/index` serves that file and makes no chain calls | W5, S5           | tests: a record with terms appears, one without doesn't, and `If-None-Match` returns 304                   |
+| W7  | End-to-end test on anvil: `sealField`, `/relay/commit`, the catalog cron, `/index`, `/access` refused, `/relay/register`, `/relay/settle`, `/access`, `openField` returning the plaintext                                                                                                                                                                 | S2–S4, W2, W4–W6 | passes in CI                                                                                               |
 
 W1, W2, W3 and W5 can all start on day one. W4 and W6 follow S7. W7 comes
 last.
@@ -361,3 +377,32 @@ last.
 - Chunked ciphertext, for streaming media.
 - A minimum price, so the 5% covers gas on mainnet.
 - Splitting the catalog by topic, once it's too large to download whole.
+
+To deploy W4:
+cd ~/fangorn/webworker/fangorn-access-worker
+openssl rand -hex 32 | tee ~/fangorn-ks-secret.txt | npx wrangler secret put WORKER_X25519_SECRET
+npx wrangler deploy
+Store that secret somewhere safe, then delete the local copy. Every deposit is sealed to it, so losing it makes every paid repo unopenable.
+
+---
+
+W5
+
+Where I departed from the plan (PLAN.md is updated, and S7, W4 and W5 are marked done):
+
+- Free registers are limited per IP, not per payer. A free register carries no payer signature, so a per-payer limit could be dodged by changing from. Paid registers and settles aren't limited, as the plan says.
+- The worker refuses every request until TREASURY is set to a real address. That's a variable in wrangler.toml. I first put a zero-address placeholder there and removed it: a referrer of zero would quietly drop Fangorn's 5% on every register.
+
+Known limits:
+
+- Simultaneous sends can collide. Each send asks the RPC for the treasury's next transaction number, so two sends at the same instant can get the same one and one will fail. The fix, if it shows up, is a Durable Object that sends one transaction at a time.
+- KV counters can overshoot slightly under a burst of requests, the same as in the storage worker.
+
+Before deploying:
+cd ~/fangorn/webworker/fangorn-app
+npx wrangler secret put TREASURY_KEY # fund it with Base Sepolia ETH
+
+# set TREASURY = "0x…" in wrangler.toml
+
+npx wrangler deploy # creates RATE_KV on first deploy
+deploy.sh doesn't know about fangorn-app yet, so deploy it from its own folder.

@@ -1,6 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { encodeAbiParameters, keccak256, stringToHex, type Hex } from "viem";
-import { DATA_REGISTRY_ABI, repoId, type UpdateEntry } from "../contracts/index.js";
+import {
+	DATA_REGISTRY_ABI,
+	repoId,
+	type UpdateEntry,
+} from "../contracts/index.js";
 import { chainNetwork, type ChainNetwork, skipChain } from "../test/testbed.js";
 
 // An entry read from the log is the leaf the contract committed to: its
@@ -9,8 +13,22 @@ const tag = (s: string) => stringToHex(s, { size: 32 });
 const leaf = (e: UpdateEntry): Hex =>
 	keccak256(
 		encodeAbiParameters(
-			[{ type: "bytes32" }, { type: "address" }, { type: "bytes32" }, { type: "uint64" }, { type: "bytes32" }, { type: "uint64" }],
-			[tag("leaf"), e.publisher, repoId(e.repo), BigInt(e.pos), e.head, e.timestamp],
+			[
+				{ type: "bytes32" },
+				{ type: "address" },
+				{ type: "bytes32" },
+				{ type: "uint64" },
+				{ type: "bytes32" },
+				{ type: "uint64" },
+			],
+			[
+				tag("leaf"),
+				e.publisher,
+				repoId(e.repo),
+				BigInt(e.pos),
+				e.head,
+				e.timestamp,
+			],
 		),
 	);
 
@@ -33,7 +51,10 @@ describe.skipIf(skipChain)("The update log (contracts on anvil)", () => {
 			abi: DATA_REGISTRY_ABI,
 			functionName: "logRoot",
 		});
-		const mmr = encodeAbiParameters([{ type: "bytes32" }, { type: "uint64" }, { type: "bytes32[]" }], [tag("mmr"), 1n, [leaf(entry)]]);
+		const mmr = encodeAbiParameters(
+			[{ type: "bytes32" }, { type: "uint64" }, { type: "bytes32[]" }],
+			[tag("mmr"), 1n, [leaf(entry)]],
+		);
 		expect(keccak256(mmr)).toBe(root);
 	}, 60_000);
 });

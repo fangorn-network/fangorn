@@ -4,66 +4,66 @@ import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
 
 export default defineConfig(
-    {
-        ignores: [
-            "**/*.snap",
-            "coverage",
-            "dist",
-            "lib",
-            "node_modules",
-            "examples/**",
-            "pnpm-lock.yaml",
-            "src/lit-actions/**",
-            "src/e2e.test.ts",
-            "src/modules.test.ts",
-            "src/modules/encryption/aes.test.ts",
-            "tsconfig*.json",
-            "*.config.*s",
-        ],
-    },
-    { linterOptions: { reportUnusedDisableDirectives: "error" } },
-    {
-        extends: [
-            eslint.configs.recommended,
-            tseslint.configs.strictTypeChecked,
-            tseslint.configs.stylisticTypeChecked,
-        ],
-        files: ["**/*.{js,ts}"],
-        languageOptions: {
-            parserOptions: {
-                projectService: {
-                    allowDefaultProject: ["*.config.*s"],
-                    defaultProject: "tsconfig.json",
-                },
-                tsconfigRootDir: import.meta.dirname,
-            },
-        },
-        // Honor the repo-wide convention: a leading underscore marks an
-        // intentionally-unused binding (interface-required params, ignored
-        // destructured fields, ignored catch vars).
-        rules: {
-            "@typescript-eslint/no-unused-vars": [
-                "error",
-                {
-                    argsIgnorePattern: "^_",
-                    varsIgnorePattern: "^_",
-                    caughtErrorsIgnorePattern: "^_",
-                    destructuredArrayIgnorePattern: "^_",
-                },
-            ],
-        },
-    },
-    {
-        extends: [vitest.configs.recommended],
-        files: ["**/*.test.*"],
-        languageOptions: {
-            parserOptions: {
-                projectService: false,
-                project: ["./tsconfig.test.json"],
-                tsconfigRootDir: import.meta.dirname,
-            },
-        },
-        rules: { "@typescript-eslint/no-unsafe-assignment": "off" },
-        settings: { vitest: { typecheck: true } },
-    },
+	{
+		ignores: [
+			"**/*.snap",
+			"coverage",
+			"dist",
+			"lib",
+			"node_modules",
+			"examples/**",
+			"pnpm-lock.yaml",
+			"src/lit-actions/**",
+			"src/e2e.test.ts",
+			"src/modules.test.ts",
+			"src/modules/encryption/aes.test.ts",
+			"tsconfig*.json",
+			"*.config.*s",
+		],
+	},
+	{ linterOptions: { reportUnusedDisableDirectives: "error" } },
+	{
+		extends: [
+			eslint.configs.recommended,
+			tseslint.configs.strictTypeChecked,
+			tseslint.configs.stylisticTypeChecked,
+		],
+		files: ["**/*.{js,ts}"],
+		languageOptions: {
+			parserOptions: {
+				projectService: {
+					allowDefaultProject: ["*.config.*s"],
+					defaultProject: "tsconfig.json",
+				},
+				tsconfigRootDir: import.meta.dirname,
+			},
+		},
+		// Honor the repo-wide convention: a leading underscore marks an
+		// intentionally-unused binding (interface-required params, ignored
+		// destructured fields, ignored catch vars).
+		rules: {
+			"@typescript-eslint/no-unused-vars": [
+				"error",
+				{
+					argsIgnorePattern: "^_",
+					varsIgnorePattern: "^_",
+					caughtErrorsIgnorePattern: "^_",
+					destructuredArrayIgnorePattern: "^_",
+				},
+			],
+		},
+	},
+	{
+		extends: [vitest.configs.recommended],
+		files: ["**/*.test.*"],
+		languageOptions: {
+			parserOptions: {
+				projectService: false,
+				project: ["./tsconfig.test.json"],
+				tsconfigRootDir: import.meta.dirname,
+			},
+		},
+		rules: { "@typescript-eslint/no-unsafe-assignment": "off" },
+		settings: { vitest: { typecheck: true } },
+	},
 );

@@ -6,6 +6,7 @@ import {
 	formatEther,
 	http,
 	isAddress,
+	parseUnits,
 	type Address,
 	type Hex,
 } from "viem";
@@ -22,6 +23,7 @@ import { homedir } from "os";
 import "dotenv/config";
 
 import { Fangorn } from "../fangorn.js";
+import { sealRecords } from "./sell.js";
 import { handleCancel } from "./index.js";
 import getNetwork, { NetworkConfig, nonBlank } from "../config.js";
 import { StorageConfig } from "../types/index.js";
@@ -99,7 +101,7 @@ function loadConfig(): Config {
 		if (!privateKey) {
 			throw new Error(
 				"Incomplete environment configuration. Missing: ETH_PRIVATE_KEY\n" +
-				"Set it or run `fangorn init` to use a config file.",
+					"Set it or run `fangorn init` to use a config file.",
 			);
 		}
 
@@ -116,7 +118,7 @@ function loadConfig(): Config {
 
 	throw new Error(
 		"No configuration found. Run `fangorn init` or set ETH_PRIVATE_KEY\n" +
-		"(with no config, uploads go to Fangorn's shared Pinata account; files may be unpinned without notice. Set PINATA_JWT + PINATA_GATEWAY to use your own storage).",
+			"(with no config, uploads go to Fangorn's shared Pinata account; files may be unpinned without notice. Set PINATA_JWT + PINATA_GATEWAY to use your own storage).",
 	);
 }
 
@@ -129,15 +131,19 @@ function network(name: string): NetworkConfig {
 	const cfg = getNetwork(name);
 	const address = (variable: string): Hex | undefined => {
 		const value = nonBlank(process.env[variable]);
-		if (value !== undefined && !isAddress(value)) throw new Error(`${variable} is not an address: "${value}"`);
+		if (value !== undefined && !isAddress(value))
+			throw new Error(`${variable} is not an address: "${value}"`);
 		return value;
 	};
 	return {
 		...cfg,
 		rpcUrl: nonBlank(process.env.FANGORN_RPC_URL) ?? cfg.rpcUrl,
-		dataRegistryContractAddress: address("FANGORN_DATA_REGISTRY") ?? cfg.dataRegistryContractAddress,
+		dataRegistryContractAddress:
+			address("FANGORN_DATA_REGISTRY") ?? cfg.dataRegistryContractAddress,
 		settlementRegistryContractAddress:
-			address("FANGORN_SETTLEMENT_REGISTRY") ?? cfg.settlementRegistryContractAddress,
+			address("FANGORN_SETTLEMENT_REGISTRY") ??
+			cfg.settlementRegistryContractAddress,
+		keyServer: nonBlank(process.env.FANGORN_KEY_SERVER) ?? cfg.keyServer,
 	};
 }
 
@@ -160,11 +166,11 @@ function getFangorn(): Fangorn {
 	const storage: StorageConfig = cfg.pinataJwt
 		? { pinata: { jwt: cfg.pinataJwt, gateway: cfg.pinataGateway } }
 		: {
-			signedUrl: {
-				workerUrl: cfg.signedUrlWorkerUrl,
-				gateway: cfg.pinataGateway,
-			},
-		};
+				signedUrl: {
+					workerUrl: cfg.signedUrlWorkerUrl,
+					gateway: cfg.pinataGateway,
+				},
+			};
 
 	_fangorn = Fangorn.create({
 		privateKey: cfg.privateKey,
@@ -187,7 +193,7 @@ class LocalRepo {
 	private constructor(
 		private readonly dir: string,
 		private state: RepoState,
-	) { }
+	) {}
 
 	private static path(dir: string): string {
 		return join(dir, ".fangorn", "repo.json");
@@ -278,12 +284,14 @@ program
 		// Storage: either your own Pinata JWT + gateway, or the access worker for
 		// signed-url uploads (no JWT). Leave the JWT blank to use signed URLs.
 		const pinataJwt = await text({
-			message: "Pinata JWT — leave blank to use Fangorn's shared Pinata account (testnet convenience; files may be unpinned without notice):",
+			message:
+				"Pinata JWT — leave blank to use Fangorn's shared Pinata account (testnet convenience; files may be unpinned without notice):",
 		});
 		handleCancel(pinataJwt);
 
 		const pinataGateway = await text({
-			message: "Pinata Gateway URL (optional; blank uses a public IPFS gateway):",
+			message:
+				"Pinata Gateway URL (optional; blank uses a public IPFS gateway):",
 			placeholder: "https://your-gateway.mypinata.cloud",
 		});
 		handleCancel(pinataGateway);
@@ -292,7 +300,8 @@ program
 		// upload URLs. Optional — blank uses the hosted default, so no JWT is
 		// needed to upload via signed URLs.
 		const signedUrlWorkerUrl = await text({
-			message: "Presigned-URL worker URL (optional; blank uses the hosted default):",
+			message:
+				"Presigned-URL worker URL (optional; blank uses the hosted default):",
 			placeholder: "https://pinata-url-provider.your-subdomain.workers.dev",
 		});
 		handleCancel(signedUrlWorkerUrl);
@@ -315,15 +324,23 @@ program
 
 program
 	.command("card")
-	.description("Point a repo at its agent card, and register the card as an ERC-8004 agent")
+	.description(
+		"Point a repo at its agent card, and register the card as an ERC-8004 agent",
+	)
 	.argument(
 		"[cardUrl]",
 		"The agent card URL; or pass --access-worker to use its /.well-known/agent-card.json",
 	)
-	.option("--repo <name>", "The repo the card speaks for (default: the repo tracked here)")
+	.option(
+		"--repo <name>",
+		"The repo the card speaks for (default: the repo tracked here)",
+	)
 	.option("--access-worker <url>", "The access worker serving the agent card")
 	.option("--mcp <url>", "An MCP endpoint to index alongside the card")
-	.option("--skip-register", "Only commit the @card record, for a card already registered with ERC-8004")
+	.option(
+		"--skip-register",
+		"Only commit the @card record, for a card already registered with ERC-8004",
+	)
 	.option(
 		"--update <agentId>",
 		"Update an agent already registered (e.g. 84532:10323) from the card as it is now: a new registration file, pointed to by setAgentURI; mints nothing",
@@ -331,7 +348,13 @@ program
 	.action(
 		async (
 			cardUrl: string | undefined,
-			opts: { repo?: string; accessWorker?: string; mcp?: string; skipRegister?: boolean; update?: string },
+			opts: {
+				repo?: string;
+				accessWorker?: string;
+				mcp?: string;
+				skipRegister?: boolean;
+				update?: string;
+			},
 		) => {
 			try {
 				const cfg = loadConfig();
@@ -341,23 +364,42 @@ program
 
 				const s = spinner();
 				const chainId = cfg.cfg.caip2;
-				const update = opts.update ? parseAgentId(opts.update, chainId) : undefined;
-				s.start(opts.skipRegister ? `Pointing ${repo} at its card` : update !== undefined ? `Updating ERC-8004 agent ${opts.update ?? ""}` : "Registering with the ERC-8004 identity registry");
+				const update = opts.update
+					? parseAgentId(opts.update, chainId)
+					: undefined;
+				s.start(
+					opts.skipRegister
+						? `Pointing ${repo} at its card`
+						: update !== undefined
+							? `Updating ERC-8004 agent ${opts.update ?? ""}`
+							: "Registering with the ERC-8004 identity registry",
+				);
 				const fangorn = getFangorn();
 				let result: Awaited<ReturnType<Fangorn["registerAgent"]>>;
 				try {
-					result = await fangorn.registerAgent(url, { repo, mcp: opts.mcp, update, skipRegister: opts.skipRegister });
+					result = await fangorn.registerAgent(url, {
+						repo,
+						mcp: opts.mcp,
+						update,
+						skipRegister: opts.skipRegister,
+					});
 				} catch (e) {
 					s.stop();
 					const minted = (e as { agentId?: bigint }).agentId;
 					throw minted !== undefined
-						? new Error(`${(e as Error).message.replace(/; finish it with .*/, "")}. Finish it with: fangorn card ${url} --repo ${repo} --update ${String(chainId)}:${String(minted)}`)
+						? new Error(
+								`${(e as Error).message.replace(/; finish it with .*/, "")}. Finish it with: fangorn card ${url} --repo ${repo} --update ${String(chainId)}:${String(minted)}`,
+							)
 						: e;
 				}
 				s.stop();
 				// The @card record is a commit: move the tracked head along with it.
-				if (local && result.txHash) local.setHead(await fangorn.onChainTip(fangorn.getAddress(), repo));
-				const agentId = result.agentId !== undefined ? `${String(chainId)}:${String(result.agentId)}` : undefined;
+				if (local && result.txHash)
+					local.setHead(await fangorn.onChainTip(fangorn.getAddress(), repo));
+				const agentId =
+					result.agentId !== undefined
+						? `${String(chainId)}:${String(result.agentId)}`
+						: undefined;
 
 				if (agentId) console.log(`Agent ID:  ${agentId}`);
 				console.log(`Repo:      ${repo}`);
@@ -388,21 +430,31 @@ program
 			const s = spinner();
 
 			s.start("Reading balance...");
-			const publicClient = createPublicClient({ transport: http(cfg.cfg.rpcUrl) });
-			const balance = await publicClient.getBalance({ address: account.address });
+			const publicClient = createPublicClient({
+				transport: http(cfg.cfg.rpcUrl),
+			});
+			const balance = await publicClient.getBalance({
+				address: account.address,
+			});
 			s.stop();
 
 			console.log(`Address:     ${account.address}`);
 			console.log(`Public key:  ${account.publicKey}`);
 			console.log(`Balance:     ${formatEther(balance)} ETH`);
-			console.log(`Network:     ${cfg.cfg.chain.name} (${cfg.cfg.caip2.toString()})`);
-			console.log(`Config:      ${existsSync(CONFIG_PATH) ? CONFIG_PATH : "(from environment)"}`);
+			console.log(
+				`Network:     ${cfg.cfg.chain.name} (${cfg.cfg.caip2.toString()})`,
+			);
+			console.log(
+				`Config:      ${existsSync(CONFIG_PATH) ? CONFIG_PATH : "(from environment)"}`,
+			);
 
 			// Printing a key to a terminal puts it in scrollback, shell logs and any
 			// screen share, so it takes an explicit flag — never the default output.
 			if (opts.reveal) {
 				console.log(`\nPrivate key: ${cfg.privateKey}`);
-				console.log(`Anyone with that key controls this wallet. Do not share it.`);
+				console.log(
+					`Anyone with that key controls this wallet. Do not share it.`,
+				);
 			} else {
 				console.log(`\nPrivate key: hidden — pass --reveal to print it`);
 			}
@@ -427,7 +479,9 @@ repoCmd
 			s.start(`Initializing namespace "${namespace}"...`);
 			const result = await fangorn.initRepo(namespace);
 			// Whether we just created it or it already existed, HEAD tracks the on-chain tip.
-			const head = result.alreadyInitialized ? await fangorn.onChainTip(owner, namespace) : result.commitCid;
+			const head = result.alreadyInitialized
+				? await fangorn.onChainTip(owner, namespace)
+				: result.commitCid;
 			const repo = LocalRepo.init({ namespace, owner, head });
 			s.stop();
 
@@ -461,20 +515,75 @@ program
 		"--replace",
 		"Snapshot semantics: the file replaces the namespace's previous contents (omitted entries are removed)",
 	)
+	.option(
+		"--paid <fields>",
+		"Comma-separated payload fields to sell: sealed (field-v1) and priced with signed terms",
+	)
+	.option("--price <usdc>", "Price of each paid record, in USDC (e.g. 0.01)")
+	.option(
+		"--share <percent>",
+		"Share of each sale paid to the referrer (Fangorn's treasury, via its relay)",
+		"5",
+	)
+	.option("--deadline-days <days>", "Days the signed terms stay buyable", "365")
 	.action(
-		async (file: string, options: { replace?: boolean }) => {
+		async (
+			file: string,
+			options: {
+				replace?: boolean;
+				paid?: string;
+				price?: string;
+				share: string;
+				deadlineDays: string;
+			},
+		) => {
 			try {
 				if (!existsSync(file)) throw new Error(`file not found: ${file}`);
 				const data = JSON.parse(readFileSync(file, "utf-8")) as CommitFile;
-				const records = data.records ?? [];
+				let records = data.records ?? [];
 				const deletes = data.deletes ?? [];
-				if (!Array.isArray(records) || !Array.isArray(deletes) || records.length + deletes.length === 0) {
-					throw new Error(`${file} must contain a non-empty "records" or "deletes" array`);
+				if (
+					!Array.isArray(records) ||
+					!Array.isArray(deletes) ||
+					records.length + deletes.length === 0
+				) {
+					throw new Error(
+						`${file} must contain a non-empty "records" or "deletes" array`,
+					);
 				}
 
 				const repo = LocalRepo.open();
 				const fangorn = getFangorn();
 				const parent = repo.head() ?? undefined;
+				if (options.paid) {
+					if (!options.price) throw new Error("--paid needs --price");
+					// The deposit is read from the on-chain head: sealing on top of unpushed commits could make a second one.
+					if (
+						parent &&
+						parent !==
+							(await fangorn.onChainTip(fangorn.getAddress(), repo.namespace()))
+					) {
+						throw new Error(
+							"push your local commits before committing paid records",
+						);
+					}
+					const shareBps = Math.round(Number(options.share) * 100);
+					const days = Number(options.deadlineDays);
+					if (!Number.isFinite(days) || days <= 0)
+						throw new Error(
+							`--deadline-days must be a positive number, got ${options.deadlineDays}`,
+						);
+					records = await sealRecords(fangorn, repo.namespace(), records, {
+						fields: options.paid
+							.split(",")
+							.map((f) => f.trim())
+							.filter(Boolean),
+						price: parseUnits(options.price, 6),
+						shareBps,
+						deadline: BigInt(Math.floor(Date.now() / 1000 + days * 86400)),
+						keyServer: fangorn.getConfig().keyServer,
+					});
+				}
 				const s = spinner();
 				s.start(
 					parent
@@ -522,10 +631,7 @@ program
 			const s = spinner();
 
 			s.start("Pushing...");
-			const { txHash, onChainTip } = await fangorn.push(
-				repo.namespace(),
-				head,
-			);
+			const { txHash, onChainTip } = await fangorn.push(repo.namespace(), head);
 			s.stop();
 
 			console.log(`Tx:  ${txHash}`);
@@ -734,7 +840,9 @@ program
 					if (options.fromStart) return 0n;
 					if (options.fromBlock !== undefined) return options.fromBlock;
 					if (existsSync(cursorPath)) {
-						const val = JSON.parse(readFileSync(cursorPath, "utf-8")) as { lastBlock?: string | number | bigint };
+						const val = JSON.parse(readFileSync(cursorPath, "utf-8")) as {
+							lastBlock?: string | number | bigint;
+						};
 						const numInput = val.lastBlock ?? 0;
 						return BigInt(numInput) + 1n;
 					}
@@ -759,36 +867,40 @@ program
 				// Status/logging on stderr so stdout stays a clean JSON-lines stream for piping.
 				console.error(
 					`Subscribing to "${namespace ?? "*"}" @ ${owner ?? "*"} ` +
-					(fromBlock !== undefined
-						? `from block ${fromBlock.toString()}`
-						: "(live from current tip)") +
-					` — Ctrl-C to stop.`,
+						(fromBlock !== undefined
+							? `from block ${fromBlock.toString()}`
+							: "(live from current tip)") +
+						` — Ctrl-C to stop.`,
 				);
 
 				const controller = new AbortController();
-				process.on("SIGINT", () => { controller.abort(); });
-				process.on("SIGTERM", () => { controller.abort(); });
+				process.on("SIGINT", () => {
+					controller.abort();
+				});
+				process.on("SIGTERM", () => {
+					controller.abort();
+				});
 
 				// --all widens the filter to every repo; namespace/owner, when given, narrow
 				// it back down. Without it the filter is one exact publisher and repo.
 				const stream = options.all
 					? fangorn.subscribeAll({
-						repo: namespace,
-						owner,
-						fromBlock,
-						signal: controller.signal,
-					})
+							repo: namespace,
+							owner,
+							fromBlock,
+							signal: controller.signal,
+						})
 					: fangorn.subscribe({
-						repo: namespace ?? "",
-						owner,
-						fromBlock,
-						signal: controller.signal,
-					});
+							repo: namespace ?? "",
+							owner,
+							fromBlock,
+							signal: controller.signal,
+						});
 
 				for await (const change of stream) {
 					process.stdout.write(
 						JSON.stringify(change, bigintReplacer, options.pretty ? 2 : 0) +
-						"\n",
+							"\n",
 					);
 					writeCursor(change.blockNumber);
 				}
@@ -802,9 +914,7 @@ program
 
 program
 	.command("read")
-	.description(
-		"List every record committed under a namespace, as JSON",
-	)
+	.description("List every record committed under a namespace, as JSON")
 	.argument("[namespace]", "Namespace name (default: current repo)")
 	.option(
 		"--owner <address>",

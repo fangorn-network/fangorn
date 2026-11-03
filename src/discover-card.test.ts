@@ -27,9 +27,17 @@ function cardWith(params: Record<string, unknown>) {
 
 /** Serve `body` from fetch and answer the repo's `@card` record with `bound` (null: none). */
 function setup(body: unknown, bound: string | null = CARD_URL, status = 200) {
-	vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response(JSON.stringify(body), { status }))));
+	vi.stubGlobal(
+		"fetch",
+		vi.fn(() =>
+			Promise.resolve(new Response(JSON.stringify(body), { status })),
+		),
+	);
 	// Throwaway key: discoverCard never signs, and the record read is stubbed.
-	const f = Fangorn.create({ privateKey: `0x${"11".repeat(32)}`, config: FangornConfig });
+	const f = Fangorn.create({
+		privateKey: `0x${"11".repeat(32)}`,
+		config: FangornConfig,
+	});
 	const cardOf = vi.spyOn(f, "cardOf").mockResolvedValue(bound ?? undefined);
 	return { f, cardOf };
 }
@@ -42,13 +50,23 @@ describe("discoverCard", () => {
 	it("resolves a card its repo points back at", async () => {
 		const card = cardWith({});
 		const { f, cardOf } = setup(card);
-		expect(await f.discoverCard(CARD_URL)).toEqual({ card, publisher: PUBLISHER, repo: "catalog" });
+		expect(await f.discoverCard(CARD_URL)).toEqual({
+			card,
+			publisher: PUBLISHER,
+			repo: "catalog",
+		});
 		expect(cardOf).toHaveBeenCalledWith(PUBLISHER, "catalog");
 	});
 
 	it("accepts a registry address in any case", async () => {
-		const { f } = setup(cardWith({ dataRegistry: FangornConfig.dataRegistryContractAddress.toLowerCase() }));
-		await expect(f.discoverCard(CARD_URL)).resolves.toMatchObject({ repo: "catalog" });
+		const { f } = setup(
+			cardWith({
+				dataRegistry: FangornConfig.dataRegistryContractAddress.toLowerCase(),
+			}),
+		);
+		await expect(f.discoverCard(CARD_URL)).resolves.toMatchObject({
+			repo: "catalog",
+		});
 	});
 
 	it("rejects a card that cannot be fetched", async () => {
@@ -57,7 +75,10 @@ describe("discoverCard", () => {
 	});
 
 	it("rejects a card with no Fangorn extension", async () => {
-		const { f, cardOf } = setup({ name: "plain A2A agent", capabilities: { extensions: [{ uri: "https://other/ext" }] } });
+		const { f, cardOf } = setup({
+			name: "plain A2A agent",
+			capabilities: { extensions: [{ uri: "https://other/ext" }] },
+		});
 		await expect(f.discoverCard(CARD_URL)).rejects.toThrow(/no .* extension/);
 		expect(cardOf).not.toHaveBeenCalled();
 	});
@@ -86,7 +107,10 @@ describe("discoverCard", () => {
 
 	it.each([
 		["repo has no card", null],
-		["repo bound to another card", "https://elsewhere.example/.well-known/agent-card.json"],
+		[
+			"repo bound to another card",
+			"https://elsewhere.example/.well-known/agent-card.json",
+		],
 		// Exact match on purpose: no URL normalization to widen what counts as the card.
 		["trailing slash differs", `${CARD_URL}/`],
 	])("rejects a card its repo does not point back at: %s", async (_, bound) => {

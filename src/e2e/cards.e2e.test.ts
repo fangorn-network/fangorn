@@ -24,7 +24,12 @@ describe.skipIf(skipChain)("Repo agent cards (contracts on anvil)", () => {
 			extensions: [
 				{
 					uri: FANGORN_REPO_EXTENSION,
-					params: { chainId: net.config.caip2, dataRegistry: net.config.dataRegistryContractAddress, publisher, repo },
+					params: {
+						chainId: net.config.caip2,
+						dataRegistry: net.config.dataRegistryContractAddress,
+						publisher,
+						repo,
+					},
 				},
 			],
 		},
@@ -35,7 +40,9 @@ describe.skipIf(skipChain)("Repo agent cards (contracts on anvil)", () => {
 		server = createServer((req, res) => {
 			const body = cards[req.url ?? ""];
 			if (!body) return res.writeHead(404).end();
-			res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(body));
+			res
+				.writeHead(200, { "Content-Type": "application/json" })
+				.end(JSON.stringify(body));
 		});
 		await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
 		origin = `http://127.0.0.1:${String((server.address() as AddressInfo).port)}`;
@@ -54,18 +61,27 @@ describe.skipIf(skipChain)("Repo agent cards (contracts on anvil)", () => {
 
 		const cardUrl = `${origin}/.well-known/agent-card.json`;
 		cards["/.well-known/agent-card.json"] = card(owner.getAddress(), REPO);
-		const bound = await owner.registerAgent(cardUrl, { repo: REPO, skipRegister: true });
+		const bound = await owner.registerAgent(cardUrl, {
+			repo: REPO,
+			skipRegister: true,
+		});
 		expect(bound.txHash).toBeDefined();
 		expect(await owner.cardOf(owner.getAddress(), REPO)).toBe(cardUrl);
 		// Already bound: nothing is committed.
-		expect((await owner.registerAgent(cardUrl, { repo: REPO, skipRegister: true })).txHash).toBeUndefined();
+		expect(
+			(await owner.registerAgent(cardUrl, { repo: REPO, skipRegister: true }))
+				.txHash,
+		).toBeUndefined();
 
 		// A stranger holding only the URL.
 		const reader = await net.client();
 		const found = await reader.discoverCard(cardUrl);
 		expect(found).toMatchObject({ publisher: owner.getAddress(), repo: REPO });
 		const { contents } = await reader.readRepo(found.publisher, found.repo);
-		expect(contents.records.map((r) => r.id).sort()).toEqual([CARD_RECORD, "e1"]);
+		expect(contents.records.map((r) => r.id).sort()).toEqual([
+			CARD_RECORD,
+			"e1",
+		]);
 	}, 60_000);
 
 	// Anyone can serve a card naming any repo; only the publisher commits `@card`.
@@ -73,6 +89,8 @@ describe.skipIf(skipChain)("Repo agent cards (contracts on anvil)", () => {
 		const owner = await net.client();
 		cards["/forged.json"] = card(owner.getAddress(), "never-written");
 		const reader = await net.client();
-		await expect(reader.discoverCard(`${origin}/forged.json`)).rejects.toThrow(/not bound/);
+		await expect(reader.discoverCard(`${origin}/forged.json`)).rejects.toThrow(
+			/not bound/,
+		);
 	}, 60_000);
 });

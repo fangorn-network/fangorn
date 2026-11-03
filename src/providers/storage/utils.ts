@@ -45,13 +45,13 @@ export function serialize(data: unknown): string {
 }
 
 export function deserialize(text: string): unknown {
-    return JSON.parse(text, (key, value: unknown) => {
-        for (const reviver of REVIVERS) {
-            const result = reviver(key, value);
-            if (result !== value) return result;
-        }
-        return value;
-    });
+	return JSON.parse(text, (key, value: unknown) => {
+		for (const reviver of REVIVERS) {
+			const result = reviver(key, value);
+			if (result !== value) return result;
+		}
+		return value;
+	});
 }
 
 // Pinata's upload endpoint intermittently drops connections (HTTP 408 "client
@@ -59,8 +59,13 @@ export function deserialize(text: string): unknown {
 // modest uplink. A single chunk failing would otherwise abort an entire
 // multi-chunk publish, so retry transient upload errors with exponential backoff.
 // `process` is absent in Workers and browsers.
-const env = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env;
-export const MAX_UPLOAD_ATTEMPTS = Math.max(1, Number(env?.PINATA_UPLOAD_RETRIES ?? 6));
+const env = (
+	globalThis as { process?: { env: Record<string, string | undefined> } }
+).process?.env;
+export const MAX_UPLOAD_ATTEMPTS = Math.max(
+	1,
+	Number(env?.PINATA_UPLOAD_RETRIES ?? 6),
+);
 
 export function isTransientUpload(err: unknown): boolean {
 	const e = err as { statusCode?: number; code?: string; message?: string };
@@ -107,7 +112,10 @@ export async function fetchRawByCid(
 	let fetchCid = cid.replace(/^ipfs:\/\//, "");
 	if (fetchCid.startsWith("bafyrei")) {
 		try {
-			fetchCid = CID.createV1(RAW_CODE, CID.parse(fetchCid).multihash).toString();
+			fetchCid = CID.createV1(
+				RAW_CODE,
+				CID.parse(fetchCid).multihash,
+			).toString();
 		} catch {
 			/* not a parseable CID — fetch it verbatim */
 		}
@@ -120,10 +128,13 @@ export async function fetchRawByCid(
 	let lastError: unknown;
 	for (let attempt = 0; attempt < retries; attempt++) {
 		const controller = new AbortController();
-		const timeout = setTimeout(() => { controller.abort(); }, timeoutMs);
+		const timeout = setTimeout(() => {
+			controller.abort();
+		}, timeoutMs);
 		try {
 			const res = await fetch(url, { signal: controller.signal });
-			if (!res.ok) throw new Error(`HTTP ${res.status.toString()} ${res.statusText}`);
+			if (!res.ok)
+				throw new Error(`HTTP ${res.status.toString()} ${res.statusText}`);
 			return new Uint8Array(await res.arrayBuffer());
 		} catch (err) {
 			lastError = err;
@@ -156,10 +167,13 @@ export async function retrieveByCid<T>(
 	const path = cid.replace(/^ipfs:\/\//, "");
 	const url = `${origin}/ipfs/${path}`;
 	const controller = new AbortController();
-	const timeout = setTimeout(() => { controller.abort(); }, timeoutSecond);
+	const timeout = setTimeout(() => {
+		controller.abort();
+	}, timeoutSecond);
 	try {
 		const res = await fetch(url, { signal: controller.signal });
-		if (!res.ok) throw new Error(`Failed to retrieve ${cid}: ${res.statusText}`);
+		if (!res.ok)
+			throw new Error(`Failed to retrieve ${cid}: ${res.statusText}`);
 		return deserialize(await res.text()) as T;
 	} catch (err) {
 		if ((err as Error).name === "AbortError") {

@@ -46,9 +46,7 @@ jobs:
       - uses: ./.github/actions/prepare
       - run: pnpm tsc
 
-
 name: CI
-
 
 on:
   pull_request: ~

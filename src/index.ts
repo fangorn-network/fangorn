@@ -6,3 +6,4 @@ export * from "./config.js";
 export * from "./types/index.js";
 export * from "./crypto/encryption.js";
 export * from "./crypto/paid.js";
+export * from "./cli/sell.js";

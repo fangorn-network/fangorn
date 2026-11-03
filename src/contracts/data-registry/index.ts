@@ -12,7 +12,12 @@ import {
 
 import { DATA_REGISTRY_ABI } from "./abi.js";
 import { getLogsInWindows } from "../logs.js";
-import { type PreparedTx, prepareWrite, requireWallet, sendWrite } from "../write.js";
+import {
+	type PreparedTx,
+	prepareWrite,
+	requireWallet,
+	sendWrite,
+} from "../write.js";
 
 /** A repo's on-chain id: keccak256 of its name's UTF-8 bytes, never of the name as hex. */
 export function repoId(repo: string): Hex {
@@ -66,7 +71,10 @@ export const UPDATE_TYPES = {
 	],
 } as const;
 
-export const dataDomain = (chainId: number, registry: Address): TypedDataDomain => ({
+export const dataDomain = (
+	chainId: number,
+	registry: Address,
+): TypedDataDomain => ({
 	name: "Fangorn Data",
 	version: "1",
 	chainId,
@@ -122,7 +130,11 @@ export interface Registry {
 	/** The signer's EIP-712 signature over `u`, for `updateBySig`. */
 	signUpdate(u: CommitUpdate): Promise<Hex>;
 	/** `update` for `publisher`, on its signature. Anyone may submit it. */
-	updateBySig(publisher: Address, u: CommitUpdate, signature: Hex): Promise<Hash>;
+	updateBySig(
+		publisher: Address,
+		u: CommitUpdate,
+		signature: Hex,
+	): Promise<Hash>;
 	/** The entries of a log between two clock values, oldest first. */
 	log(filter: LogFilter, from: bigint, to?: bigint): Promise<UpdateEntry[]>;
 	/** Follow the log live. Returns an unsubscribe function. */
@@ -193,7 +205,8 @@ export class ChainRegistry implements Registry {
 
 	async signUpdate(u: CommitUpdate): Promise<Hex> {
 		const wallet = requireWallet(this.walletClient, "signUpdate");
-		if (!wallet.account) throw new Error("signUpdate: the wallet client has no account");
+		if (!wallet.account)
+			throw new Error("signUpdate: the wallet client has no account");
 		return wallet.signTypedData({
 			account: wallet.account,
 			domain: dataDomain(await this.publicClient.getChainId(), this.data),
@@ -203,29 +216,64 @@ export class ChainRegistry implements Registry {
 		});
 	}
 
-	updateBySig(publisher: Address, u: CommitUpdate, signature: Hex): Promise<Hash> {
+	updateBySig(
+		publisher: Address,
+		u: CommitUpdate,
+		signature: Hex,
+	): Promise<Hash> {
 		return this.write("updateBySig", [publisher, ...updateArgs(u), signature]);
 	}
 
 	private write(fn: string, args: readonly unknown[]): Promise<Hash> {
-		return sendWrite(this.publicClient, requireWallet(this.walletClient, fn), this.data, DATA_REGISTRY_ABI as unknown as Abi, fn, args);
+		return sendWrite(
+			this.publicClient,
+			requireWallet(this.walletClient, fn),
+			this.data,
+			DATA_REGISTRY_ABI as unknown as Abi,
+			fn,
+			args,
+		);
 	}
 
 	/** U's `Updated` events, narrowed on-chain by publisher and repo. */
 	private source(filter: LogFilter) {
-		const ids = filter.repo === undefined ? {} : { repo_id: repoId(filter.repo) };
-		const who = filter.publisher === undefined ? {} : { publisher: filter.publisher };
-		return { address: this.data, abi: DATA_REGISTRY_ABI, eventName: "Updated", args: { ...who, ...ids } };
+		const ids =
+			filter.repo === undefined ? {} : { repo_id: repoId(filter.repo) };
+		const who =
+			filter.publisher === undefined ? {} : { publisher: filter.publisher };
+		return {
+			address: this.data,
+			abi: DATA_REGISTRY_ABI,
+			eventName: "Updated",
+			args: { ...who, ...ids },
+		};
 	}
 
-	async log(filter: LogFilter, from: bigint, to?: bigint): Promise<UpdateEntry[]> {
-		const logs = await getLogsInWindows(this.publicClient, from, to, (fromBlock, toBlock) =>
-			this.publicClient.getContractEvents({ ...this.source(filter), fromBlock, toBlock, strict: true } as never),
+	async log(
+		filter: LogFilter,
+		from: bigint,
+		to?: bigint,
+	): Promise<UpdateEntry[]> {
+		const logs = await getLogsInWindows(
+			this.publicClient,
+			from,
+			to,
+			(fromBlock, toBlock) =>
+				this.publicClient.getContractEvents({
+					...this.source(filter),
+					fromBlock,
+					toBlock,
+					strict: true,
+				} as never),
 			this.logWindow,
 		);
 		// Windows arrive oldest first, but order within a window is the node's choice.
 		const sorted = (logs as unknown as EntryLog[]).sort((a, b) =>
-			a.blockNumber === b.blockNumber ? a.logIndex - b.logIndex : a.blockNumber < b.blockNumber ? -1 : 1,
+			a.blockNumber === b.blockNumber
+				? a.logIndex - b.logIndex
+				: a.blockNumber < b.blockNumber
+					? -1
+					: 1,
 		);
 		return this.withTimestamps(sorted);
 	}
@@ -235,7 +283,13 @@ export class ChainRegistry implements Registry {
 		const blocks = [...new Set(logs.map((l) => l.blockNumber))];
 		const times = new Map(
 			await Promise.all(
-				blocks.map(async (n) => [n, (await this.publicClient.getBlock({ blockNumber: n })).timestamp] as const),
+				blocks.map(
+					async (n) =>
+						[
+							n,
+							(await this.publicClient.getBlock({ blockNumber: n })).timestamp,
+						] as const,
+				),
 			),
 		);
 		return logs.map((l) => toEntry(l, times.get(l.blockNumber) ?? 0n));
@@ -276,7 +330,13 @@ function updateArgs(u: CommitUpdate) {
 
 /** An `Updated` log. */
 interface EntryLog {
-	args: { publisher: Address; repo: string; pos: bigint | number; parent: Hex; head: Hex };
+	args: {
+		publisher: Address;
+		repo: string;
+		pos: bigint | number;
+		parent: Hex;
+		head: Hex;
+	};
 	blockNumber: bigint;
 	transactionHash: Hash;
 	logIndex: number;

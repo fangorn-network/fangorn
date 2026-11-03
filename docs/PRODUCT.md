@@ -1,7 +1,7 @@
 # Product: one loop, one surface each
 
-*Working plan for the testnet release. [BACKING.md](BACKING.md) covers what
-comes after it.*
+_Working plan for the testnet release. [BACKING.md](BACKING.md) covers what
+comes after it._
 
 ## 1. The loop
 
@@ -18,12 +18,12 @@ chain.
 
 Each party gets one surface. Fangorn runs everything they don't see.
 
-| Party | Surface | Sees | Fangorn runs for them |
-|---|---|---|---|
-| Publisher | fangorn.network | Upload, public or paid, price, earnings | Storage (1 GB), custodian, relayer, gas |
-| Consumer | fangorn-mcp in Claude; any app's site | Answers, a monthly budget, receipts | The Fangorn app: the catalog, key sales |
-| App builder | fangorn.network/#/build | Publish a repo, build, bind a card | Nothing; they run their own Worker |
-| Sovereign publisher | One setting: "Hold my own keys" | A deploy button and a URL field | Nothing; they run their own custodian |
+| Party               | Surface                               | Sees                                    | Fangorn runs for them                   |
+| ------------------- | ------------------------------------- | --------------------------------------- | --------------------------------------- |
+| Publisher           | fangorn.network                       | Upload, public or paid, price, earnings | Storage (1 GB), custodian, relayer, gas |
+| Consumer            | fangorn-mcp in Claude; any app's site | Answers, a monthly budget, receipts     | The Fangorn app: the catalog, key sales |
+| App builder         | fangorn.network/#/build               | Publish a repo, build, bind a card      | Nothing; they run their own Worker      |
+| Sovereign publisher | One setting: "Hold my own keys"       | A deploy button and a URL field         | Nothing; they run their own custodian   |
 
 No chain, wallet, repo, Worker or key appears on the publisher's or the
 consumer's surface unless they look for it.
@@ -187,25 +187,25 @@ The exact shapes (the statement, the handle, the deposit, `/access`, `/index`,
 the relay routes) are in [PLAN.md](PLAN.md), under Formats, fixed first so the work in §8 runs in
 parallel. In short:
 
-| Route | Part | Does |
-|---|---|---|
-| `GET /index` | catalog | every record for sale: public fields, price, signed terms; with an ETag |
-| `GET /pubkey` | custodian | the X25519 key deposits are sealed to |
-| `POST /access` | custodian | checks the reader's signature and `canRead`, returns the record's key (or the repo key) sealed to the reader |
-| `POST /relay/commit`, `/relay/register`, `/relay/settle` | relayer | simulates, then sends, paying the gas; sets the referrer itself |
+| Route                                                    | Part      | Does                                                                                                         |
+| -------------------------------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------ |
+| `GET /index`                                             | catalog   | every record for sale: public fields, price, signed terms; with an ETag                                      |
+| `GET /pubkey`                                            | custodian | the X25519 key deposits are sealed to                                                                        |
+| `POST /access`                                           | custodian | checks the reader's signature and `canRead`, returns the record's key (or the repo key) sealed to the reader |
+| `POST /relay/commit`, `/relay/register`, `/relay/settle` | relayer   | simulates, then sends, paying the gas; sets the referrer itself                                              |
 
 A sealed field is always paid; free data goes in public fields.
 
 ## 8. Work
 
-| # | Stream | Lives in | Owner | Needs | Done when |
-|---|---|---|---|---|---|
-| A | ✅ Deploy SettlementRegistry on Base Sepolia, with Semaphore; add its address to the network config | contracts, SDK | contracts/SDK | — | `canRead` reads from the SDK's default config |
-| B | ✅ SDK: `sealField`, `openField`, deposits, a workerd-safe root (`serveAccess` now lives in the access worker), the testbed's SettlementRegistry. Tasks S1–S6 in [PLAN.md](PLAN.md); S7 (publish) remains | SDK | contracts/SDK | — | `src/e2e/paid.e2e.test.ts` on anvil |
-| C | Workers: the key server made stateless and gated on `canRead`, the new app worker (catalog, relayer), the storage worker's 1 GB cap and R2 hot copies. Tasks W1–W7 in [PLAN.md](PLAN.md) | `~/fangorn/webworker` | colleague | B's request format (stubbed until merged); A on anvil | an anvil e2e: commit, register, settle, `/access` succeed through them; `/access` refuses before settle; `/index` lists the record |
-| D | Buyer path in fangorn-mcp: a cached catalog with local keyword search, and a `buy` tool doing §6 Buy, under the budget | westmarch `src/agent/mcp.js` | agent | §7 shapes; C on anvil | the same anvil e2e driven from the MCP tools |
-| E | Website publisher flow: upload, public or paid, price, earnings (with sales as demand); apps move to `/build` | website | agent | §7 shapes; the publisher's uncommitted edits merged first | a second wallet buys a record uploaded from the page, against anvil or testnet |
-| F | Testnet release: deploy C, set the treasury address, fund the treasury's relayer key, publish fangorn-mcp, deploy the website | all | contracts/SDK | A–E | §1's done-when, on Base Sepolia |
+| #   | Stream                                                                                                                                                                                                    | Lives in                     | Owner         | Needs                                                     | Done when                                                                                                                          |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- | ------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| A   | ✅ Deploy SettlementRegistry on Base Sepolia, with Semaphore; add its address to the network config                                                                                                       | contracts, SDK               | contracts/SDK | —                                                         | `canRead` reads from the SDK's default config                                                                                      |
+| B   | ✅ SDK: `sealField`, `openField`, deposits, a workerd-safe root (`serveAccess` now lives in the access worker), the testbed's SettlementRegistry. Tasks S1–S6 in [PLAN.md](PLAN.md); S7 (publish) remains | SDK                          | contracts/SDK | —                                                         | `src/e2e/paid.e2e.test.ts` on anvil                                                                                                |
+| C   | Workers: the key server made stateless and gated on `canRead`, the new app worker (catalog, relayer), the storage worker's 1 GB cap and R2 hot copies. Tasks W1–W7 in [PLAN.md](PLAN.md)                  | `~/fangorn/webworker`        | colleague     | B's request format (stubbed until merged); A on anvil     | an anvil e2e: commit, register, settle, `/access` succeed through them; `/access` refuses before settle; `/index` lists the record |
+| D   | Buyer path in fangorn-mcp: a cached catalog with local keyword search, and a `buy` tool doing §6 Buy, under the budget                                                                                    | westmarch `src/agent/mcp.js` | agent         | §7 shapes; C on anvil                                     | the same anvil e2e driven from the MCP tools                                                                                       |
+| E   | Website publisher flow: upload, public or paid, price, earnings (with sales as demand); apps move to `/build`                                                                                             | website                      | agent         | §7 shapes; the publisher's uncommitted edits merged first | a second wallet buys a record uploaded from the page, against anvil or testnet                                                     |
+| F   | Testnet release: deploy C, set the treasury address, fund the treasury's relayer key, publish fangorn-mcp, deploy the website                                                                             | all                          | contracts/SDK | A–E                                                       | §1's done-when, on Base Sepolia                                                                                                    |
 
 A and B are done (B's publish, S7, remains). C and D start against stubs and anvil the same
 day; E starts once the website's pending edits are in.

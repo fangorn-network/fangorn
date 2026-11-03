@@ -33,12 +33,14 @@ export interface NetworkConfig {
 	// The hosted upload worker for this network. Hosted uploads
 	// (`storage: { signedUrl: {} }`) go through it unless given a `workerUrl`.
 	signedUrlWorker?: string;
+	// The key server new paid repos deposit their key with (see `sealRecords`). Unset until
+	// one is deployed at a stable URL: a deposit names its key server for good.
+	keyServer?: string;
 }
 
 // Network/deployment settings only. Addresses are the proxies in contracts/solidity/script/Deployments.sol.
 export const BaseSepoliaConfig = {
-	dataRegistryContractAddress:
-		"0x0F3eb0E62CF610dbaC6B3aD4Bf4cE38Ab50EBCC5",
+	dataRegistryContractAddress: "0x0F3eb0E62CF610dbaC6B3aD4Bf4cE38Ab50EBCC5",
 	settlementRegistryContractAddress:
 		"0x61A5A195B54F57ada786Ba6689CdB04553cf7fBc",
 	fromBlock: 53592845n,
@@ -48,10 +50,10 @@ export const BaseSepoliaConfig = {
 	// of it. This one caps ranges at 50,000 blocks (measured 2026-10-20).
 	rpcUrl: "https://base-sepolia-rpc.publicnode.com",
 	caip2: 84532,
-	ipfsGateway: 'https://ipfs.io',
+	ipfsGateway: "https://ipfs.io",
 	logWindow: 1_000n,
 	signedUrlWorker: "https://base-sepolia.storage-worker.fangorn.network",
-} satisfies NetworkConfig
+} satisfies NetworkConfig;
 
 /**
  * The default network: what `Fangorn.create` uses without a `config`, and the CLI
@@ -73,6 +75,9 @@ export const SupportedNetworks: Record<string, NetworkConfig> = {
  */
 export default function getNetwork(name: string): NetworkConfig {
 	const config = SupportedNetworks[name] as NetworkConfig | undefined;
-	if (!config) throw new Error(`Chain ${name} is not supported. Use one of: ${Object.keys(SupportedNetworks).join(", ")}`);
+	if (!config)
+		throw new Error(
+			`Chain ${name} is not supported. Use one of: ${Object.keys(SupportedNetworks).join(", ")}`,
+		);
 	return config;
 }

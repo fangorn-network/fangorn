@@ -27,6 +27,9 @@ describe("Fangorn subscriptions (in memory only)", () => {
 		const reader = await net.client(generatePrivateKey(), LossyRegistry);
 
 		const changes = await take(reader.subscribeAll({ fromBlock: 0n }), 2);
-		expect(changes.map((c) => c.puts.map((r) => r.id).sort())).toEqual([["a"], ["b", "c"]]);
+		expect(changes.map((c) => c.puts.map((r) => r.id).sort())).toEqual([
+			["a"],
+			["b", "c"],
+		]);
 	});
 });

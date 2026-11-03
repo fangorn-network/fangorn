@@ -4,7 +4,7 @@ export interface AesEncryptedData {
 	authTag: Uint8Array<ArrayBuffer>;
 	salt: Uint8Array<ArrayBuffer>;
 }
- 
+
 export interface DecryptedPayload {
 	data: Uint8Array;
 }

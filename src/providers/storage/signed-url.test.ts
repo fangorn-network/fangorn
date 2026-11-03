@@ -83,7 +83,11 @@ describe("SignedUrlBackend", () => {
 				hosts.add(new URL(target).origin);
 				const body = JSON.parse(init?.body as string) as { signature?: string };
 				if (!body.signature) return jsonRes({ challenge: "SIGN ME" });
-				return jsonRes({ ok: true, uploadUrl: `${target}put`, network: "public" });
+				return jsonRes({
+					ok: true,
+					uploadUrl: `${target}put`,
+					network: "public",
+				});
 			}),
 		);
 		// Empty string (an unset CLI field) must also use the default.

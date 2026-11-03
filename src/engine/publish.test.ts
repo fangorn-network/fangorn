@@ -6,7 +6,6 @@ import {
 } from "./index.js";
 import { MemStorage, PUBLISHER, newRegistry, rootHex } from "./test-helpers.js";
 
-
 // ── Publish scalability & cost ───────────────────────────────────────────────
 //
 // The pail-era data layer failed a real publish (quickbeam ingesting a
@@ -32,9 +31,17 @@ function robinhoodRecords(T: number): RecordInput[] {
 		W = 868;
 	const records: RecordInput[] = [];
 	for (let i = 0; i < A; i++)
-		records.push({ id: `asset:${i.toString()}`, type: "Asset", payload: { sym: `A${i.toString()}` } });
+		records.push({
+			id: `asset:${i.toString()}`,
+			type: "Asset",
+			payload: { sym: `A${i.toString()}` },
+		});
 	for (let i = 0; i < W; i++)
-		records.push({ id: `wallet:${i.toString()}`, type: "Wallet", payload: { addr: `0x${i.toString()}` } });
+		records.push({
+			id: `wallet:${i.toString()}`,
+			type: "Wallet",
+			payload: { addr: `0x${i.toString()}` },
+		});
 	const rel = (type: string, src: string, dst: string): RecordInput => ({
 		id: `${src}>${type}>${dst}`,
 		type,
@@ -42,7 +49,11 @@ function robinhoodRecords(T: number): RecordInput[] {
 	});
 	for (let i = 0; i < T; i++) {
 		const x = `xfer:${i.toString()}`;
-		records.push({ id: x, type: "Transfer", payload: { hash: `0xtx${i.toString()}`, v: i } });
+		records.push({
+			id: x,
+			type: "Transfer",
+			payload: { hash: `0xtx${i.toString()}`, v: i },
+		});
 		records.push(rel("hasTransfer", `asset:${(i % A).toString()}`, x));
 		records.push(rel("sentBy", x, `wallet:${(i % W).toString()}`));
 		records.push(rel("receivedBy", x, `wallet:${((i + 1) % W).toString()}`));
@@ -157,7 +168,12 @@ describe("publish scalability & cost", () => {
 		});
 
 		// keep everything except transfer 0 and its 3 relation records
-		const kept = records.filter((r) => !r.id?.includes("xfer:0>") && !r.id?.endsWith(">xfer:0") && r.id !== "xfer:0");
+		const kept = records.filter(
+			(r) =>
+				!r.id?.includes("xfer:0>") &&
+				!r.id?.endsWith(">xfer:0") &&
+				r.id !== "xfer:0",
+		);
 		const writesBefore = storage.writes;
 		const { commitCid: c2 } = await engine.createCommit({
 			repo: NS,
@@ -198,7 +214,9 @@ describe("publish scalability & cost", () => {
 		await engine.pushCommit(PUBLISHER, NS, a);
 		await engine.pushCommit(PUBLISHER, "other", b);
 
-		expect(await registry.head({ publisher: PUBLISHER, repo: NS })).toBe(rootHex(a));
+		expect(await registry.head({ publisher: PUBLISHER, repo: NS })).toBe(
+			rootHex(a),
+		);
 		expect(await registry.head({ publisher: PUBLISHER, repo: "other" })).toBe(
 			rootHex(b),
 		);

@@ -70,7 +70,7 @@ export class CommitFeed {
 						}
 					}
 				} catch (err) {
-						if (stopped()) return;
+					if (stopped()) return;
 					for (const l of [...this.listeners]) l.onError?.(asError(err));
 				}
 				// The watch ending is not terminal — an RPC hiccup shouldn't leave a

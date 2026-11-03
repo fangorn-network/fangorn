@@ -2,7 +2,7 @@
 // It builds a registration file, pins it with the client's storage (a Pinata JWT,
 // or signed URLs billed to the publisher, so a browser wallet can do it too),
 // and handles the identity registry's `register` and `setAgentURI` functions.
-// 
+//
 // The file is identitcal agent0-sdk's format, so the
 // agents it minted and the ones minted here read the same to 8004scan.
 //
@@ -47,16 +47,17 @@ interface Service {
 /**
  * Get the agent card URL based on the access worker if defined, else return the carUrl
  * Both params are optional, but at least one must be defined.
- * 
+ *
  * Agent cards must live at accessWorker/.well-known/agent-card.json
- * 
+ *
  * @param cardUrl The cardUrl (passthrough when defined)
- * @param accessWorker The (optional) access worker url 
- * @returns 
+ * @param accessWorker The (optional) access worker url
+ * @returns
  */
 export function agentCardUrl(cardUrl?: string, accessWorker?: string): string {
 	if (cardUrl) return cardUrl;
-	if (!accessWorker) throw new Error("No card URL. Pass one, or pass --access-worker <url>.");
+	if (!accessWorker)
+		throw new Error("No card URL. Pass one, or pass --access-worker <url>.");
 	return `${accessWorker.replace(/\/$/, "")}/.well-known/agent-card.json`;
 }
 
@@ -94,8 +95,8 @@ export async function mcpTools(
 }
 
 /**
- * Build a registration file 
- * Since it desfines its own agent id, 
+ * Build a registration file
+ * Since it desfines its own agent id,
  * first registration mints without an agent URI and must be set retroactively.
  */
 export function registrationFile(opts: {
@@ -177,12 +178,21 @@ export interface Erc8004Clients {
 // A public RPC behind a load balancer can hand the next transaction the nonce of one that just
 // confirmed on another node: "replacement transaction underpriced". Sent again a moment later,
 // it gets the right one. Only nonce errors are retried; anything else is an answer.
-export async function retryNonce<T>(f: () => Promise<T>, tries = 4): Promise<T> {
+export async function retryNonce<T>(
+	f: () => Promise<T>,
+	tries = 4,
+): Promise<T> {
 	for (let i = 0; ; i++) {
 		try {
 			return await f();
 		} catch (e) {
-			if (i >= tries - 1 || !/underpriced|nonce too low|nonce has already been used|already known/i.test((e as Error).message)) throw e;
+			if (
+				i >= tries - 1 ||
+				!/underpriced|nonce too low|nonce has already been used|already known/i.test(
+					(e as Error).message,
+				)
+			)
+				throw e;
 			await new Promise((ok) => setTimeout(ok, 3000 * (i + 1)));
 		}
 	}

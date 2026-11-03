@@ -1,7 +1,7 @@
 # Backing: markets for data revenue
 
-*Design note, exploratory. Nothing here is built or decided, and the legal
-questions in §7 are open. Not legal advice.*
+_Design note, exploratory. Nothing here is built or decided, and the legal
+questions in §7 are open. Not legal advice._
 
 ## 1. The idea
 
@@ -26,13 +26,13 @@ What backing gives the rest of the network:
 
 ## 2. Parties
 
-| Party | Does | Paid by | Sees backers |
-|---|---|---|---|
-| Consumer (a person or their agent) | Pays per read over x402 | — | Never. The price is the publisher's. |
-| Publisher (a repo of its own records) | Publishes records, sets terms | Its sales; optionally, an advance | Only as an offer of an advance |
-| App (a repo citing other publishers' records) | Curates, routes buyers | Referral on the sales it routes; optionally, an advance | Only as an offer of an advance |
-| Backer | Buys and trades repo shares | The share of income it holds | Everything |
-| Protocol | Settles sales, records shares | A fee, if any | — |
+| Party                                         | Does                          | Paid by                                                 | Sees backers                         |
+| --------------------------------------------- | ----------------------------- | ------------------------------------------------------- | ------------------------------------ |
+| Consumer (a person or their agent)            | Pays per read over x402       | —                                                       | Never. The price is the publisher's. |
+| Publisher (a repo of its own records)         | Publishes records, sets terms | Its sales; optionally, an advance                       | Only as an offer of an advance       |
+| App (a repo citing other publishers' records) | Curates, routes buyers        | Referral on the sales it routes; optionally, an advance | Only as an offer of an advance       |
+| Backer                                        | Buys and trades repo shares   | The share of income it holds                            | Everything                           |
+| Protocol                                      | Settles sales, records shares | A fee, if any                                           | —                                    |
 
 Producers and consumers never deal with backers. A publisher's whole
 experience of backing is choosing to sell part of its income for money now.
@@ -95,12 +95,12 @@ The referral (step 2) is in turn split between the app and its shareholders.
 Example: a $1.00 sale with a 1% fee, routed through an app taking 10% of what
 remains as referral. The app has sold 20% of its income, the publisher 30%.
 
-| Recipient | Amount |
-|---|---|
-| Protocol | $0.0100 |
-| App | $0.0792 |
-| App's shareholders | $0.0198 |
-| Publisher | $0.6237 |
+| Recipient                | Amount  |
+| ------------------------ | ------- |
+| Protocol                 | $0.0100 |
+| App                      | $0.0792 |
+| App's shareholders       | $0.0198 |
+| Publisher                | $0.6237 |
 | Publisher's shareholders | $0.2673 |
 
 ## 6. Standard terms
@@ -157,12 +157,12 @@ Every party reaches the network through one MCP server, installed in an AI
 client (Claude first). Everything else is invisible: no chain, repo or licence
 shows unless the person looks for it.
 
-| Mode | The person sees | Underneath |
-|---|---|---|
-| Publish | Their agent proposes "worth selling, at $0.05?"; they say yes | A record in their repo, with signed terms and an x402 price |
-| Curate | Their agent keeps lists of good finds | An app: a repo of citations, paid referral on the sales it routes |
-| Spend | Better answers, within a monthly budget they set | Discovery ranks publishers; the agent pays per read |
-| Back (opt-in) | Scout mode: their agent backs repos it expects to sell | Repo shares (§4) |
+| Mode          | The person sees                                               | Underneath                                                        |
+| ------------- | ------------------------------------------------------------- | ----------------------------------------------------------------- |
+| Publish       | Their agent proposes "worth selling, at $0.05?"; they say yes | A record in their repo, with signed terms and an x402 price       |
+| Curate        | Their agent keeps lists of good finds                         | An app: a repo of citations, paid referral on the sales it routes |
+| Spend         | Better answers, within a monthly budget they set              | Discovery ranks publishers; the agent pays per read               |
+| Back (opt-in) | Scout mode: their agent backs repos it expects to sell        | Repo shares (§4)                                                  |
 
 Sign-in is an email; the wallet is embedded; payouts arrive in dollars.
 

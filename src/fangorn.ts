@@ -17,7 +17,14 @@ import {
 	StorageConfig,
 } from "./types/index.js";
 import { MetadataStorage } from "./providers/storage/types.js";
-import { mcpTools, mintAgent, registrationFile, retryNonce, setAgentFile, type AgentCard as Erc8004Card } from "./erc8004.js";
+import {
+	mcpTools,
+	mintAgent,
+	registrationFile,
+	retryNonce,
+	setAgentFile,
+	type AgentCard as Erc8004Card,
+} from "./erc8004.js";
 import { PinataBackend } from "./providers/storage/pinata.js";
 import {
 	SignedUrlBackend,
@@ -105,7 +112,8 @@ function resolveStorage(
 	if ("signedUrl" in storage) {
 		// The hosted worker, which bills the signing publisher's quota. Blank (an
 		// unset CLI field) counts as unset.
-		const workerUrl = nonBlank(storage.signedUrl.workerUrl) ?? nonBlank(config.signedUrlWorker);
+		const workerUrl =
+			nonBlank(storage.signedUrl.workerUrl) ?? nonBlank(config.signedUrlWorker);
 		if (!workerUrl) {
 			throw new Error(
 				`no hosted upload worker on chain ${config.caip2.toString()}: pass storage.signedUrl.workerUrl, or bring your own storage ({ pinata } or { backend })`,
@@ -150,7 +158,6 @@ export interface AgentCard {
 }
 
 export class Fangorn {
-
 	private readonly ctx: FangornContext;
 
 	private _engine: FangornEngine | null = null;
@@ -159,7 +166,7 @@ export class Fangorn {
 
 	private _settlement: SettlementRegistryClient | null = null;
 
-	/** 
+	/**
 	 * The repo cache
 	 * Insertion order = LRU order
 	 */
@@ -188,8 +195,8 @@ export class Fangorn {
 
 	/**
 	 * Static creation of a new Fangorn client
-	 * 
-	 * @param options 
+	 *
+	 * @param options
 	 * @returns the client
 	 */
 	static create(options: FangornCreateOptions): Fangorn {
@@ -217,7 +224,9 @@ export class Fangorn {
 			walletClient,
 			publicClient,
 			metadataStorage: undefined,
-			registry: options.registry ?? new ChainRegistry(config, publicClient, walletClient),
+			registry:
+				options.registry ??
+				new ChainRegistry(config, publicClient, walletClient),
 		};
 		ctx.metadataStorage = resolveStorage(options.storage, walletClient, config);
 		return new Fangorn(ctx);
@@ -255,7 +264,9 @@ export class Fangorn {
 				id: r.id,
 				type: r.type,
 				payload:
-					r.payload && typeof r.payload === "object" && !Array.isArray(r.payload)
+					r.payload &&
+					typeof r.payload === "object" &&
+					!Array.isArray(r.payload)
 						? (r.payload as Record<string, unknown>)
 						: { value: r.payload },
 			})),
@@ -263,7 +274,7 @@ export class Fangorn {
 	}
 
 	/**
-	 * Allocates a repo in the publisher's root map. 
+	 * Allocates a repo in the publisher's root map.
 	 * A no-op (no on-chain tx) if the repo is already initialized.
 	 */
 	async initRepo(repoName: string) {
@@ -456,7 +467,10 @@ export class Fangorn {
 		assertValidRepoName(opts.repo);
 		const registry = this.ctx.registry;
 
-		const oldRoot = await registry.head({ publisher: opts.owner, repo: opts.repo });
+		const oldRoot = await registry.head({
+			publisher: opts.owner,
+			repo: opts.repo,
+		});
 		const { commitCid, recordCids } = await this.createCommit({
 			repo: opts.repo,
 			base:
@@ -477,7 +491,10 @@ export class Fangorn {
 				records: opts.records?.length ?? 0,
 				deletes: opts.deletes?.length ?? 0,
 			},
-			tx: await registry.prepareUpdate(opts.owner, commitUpdate(await this.engine.getCommit(commitCid))),
+			tx: await registry.prepareUpdate(
+				opts.owner,
+				commitUpdate(await this.engine.getCommit(commitCid)),
+			),
 			recordCids,
 		};
 	}
@@ -504,7 +521,11 @@ export class Fangorn {
 	 * `relayPush`, paying the gas.
 	 */
 	async signPush(repo: string, commitCid: string): Promise<SignedUpdate> {
-		return this.engine.signCommit(this.getAddress(), repo, CID.parse(commitCid));
+		return this.engine.signCommit(
+			this.getAddress(),
+			repo,
+			CID.parse(commitCid),
+		);
 	}
 
 	relayPush(signed: SignedUpdate): Promise<Hash> {
@@ -560,7 +581,9 @@ export class Fangorn {
 	/** The commit at a repo's head, or null for a repo never written. */
 	private async headCommit(ref: RepoRef): Promise<string | null> {
 		const head = await this.ctx.registry.head(ref);
-		return head === ZERO_BYTES32 ? null : this.engine.commitCidFromRootHex(head);
+		return head === ZERO_BYTES32
+			? null
+			: this.engine.commitCidFromRootHex(head);
 	}
 
 	/**
@@ -579,7 +602,10 @@ export class Fangorn {
 			opts.fromBlock ?? this.ctx.config.fromBlock,
 		);
 		// Entries arrive oldest-first, so the last update per repo wins.
-		const latest = new Map<string, { owner: Hex; repo: string; root: Hex; blockNumber: bigint }>();
+		const latest = new Map<
+			string,
+			{ owner: Hex; repo: string; root: Hex; blockNumber: bigint }
+		>();
 		for (const e of entries) {
 			latest.set(`${e.publisher.toLowerCase()}/${e.repo}`, {
 				owner: e.publisher,
@@ -600,18 +626,30 @@ export class Fangorn {
 	 * back at this exact URL. The comparison is exact string equality, so a
 	 * trailing slash or a different host counts as a different card.
 	 */
-	async discoverCard(cardUrl: string): Promise<{ card: AgentCard; publisher: Hex; repo: string }> {
+	async discoverCard(
+		cardUrl: string,
+	): Promise<{ card: AgentCard; publisher: Hex; repo: string }> {
 		const res = await fetch(cardUrl, { signal: AbortSignal.timeout(10_000) });
-		if (!res.ok) throw new Error(`agent card ${cardUrl}: HTTP ${String(res.status)}`);
+		if (!res.ok)
+			throw new Error(`agent card ${cardUrl}: HTTP ${String(res.status)}`);
 		const card = (await res.json()) as AgentCard;
 
-		const ext = card.capabilities?.extensions?.find((e) => e.uri === FANGORN_REPO_EXTENSION);
-		if (!ext) throw new Error(`agent card ${cardUrl} has no ${FANGORN_REPO_EXTENSION} extension`);
+		const ext = card.capabilities?.extensions?.find(
+			(e) => e.uri === FANGORN_REPO_EXTENSION,
+		);
+		if (!ext)
+			throw new Error(
+				`agent card ${cardUrl} has no ${FANGORN_REPO_EXTENSION} extension`,
+			);
 		const p = ext.params ?? {};
-		if (typeof p.publisher !== "string" || !/^0x[0-9a-fA-F]{40}$/.test(p.publisher)) {
+		if (
+			typeof p.publisher !== "string" ||
+			!/^0x[0-9a-fA-F]{40}$/.test(p.publisher)
+		) {
 			throw new Error(`agent card ${cardUrl}: publisher is not an address`);
 		}
-		if (typeof p.repo !== "string" || !p.repo) throw new Error(`agent card ${cardUrl}: repo is not a repo name`);
+		if (typeof p.repo !== "string" || !p.repo)
+			throw new Error(`agent card ${cardUrl}: repo is not a repo name`);
 		// Checked before the binding: a card from another deployment would
 		// otherwise fail as "not bound", which sends the reader looking for a forgery.
 		const registry = this.ctx.config.dataRegistryContractAddress;
@@ -638,7 +676,8 @@ export class Fangorn {
 	/** The card URL a repo's `@card` record points at, or undefined for none. */
 	async cardOf(publisher: Hex, repo: string): Promise<string | undefined> {
 		if (!(await this.headCommit({ publisher, repo }))) return undefined;
-		const url = (await this.engine.readRecord(publisher, repo, CARD_RECORD))?.payload.url;
+		const url = (await this.engine.readRecord(publisher, repo, CARD_RECORD))
+			?.payload.url;
 		return typeof url === "string" ? url : undefined;
 	}
 
@@ -647,8 +686,11 @@ export class Fangorn {
 	 * Returns the transaction, or undefined if it already points there.
 	 */
 	async setCard(repo: string, cardUrl: string): Promise<Hash | undefined> {
-		if ((await this.cardOf(this.getAddress(), repo)) === cardUrl) return undefined;
-		const { txHash } = await this.uploadBatch(repo, [{ id: CARD_RECORD, type: "card", payload: { url: cardUrl } }]);
+		if ((await this.cardOf(this.getAddress(), repo)) === cardUrl)
+			return undefined;
+		const { txHash } = await this.uploadBatch(repo, [
+			{ id: CARD_RECORD, type: "card", payload: { url: cardUrl } },
+		]);
 		return txHash;
 	}
 
@@ -731,10 +773,7 @@ export class Fangorn {
 	subscribeAll(
 		opts: Omit<SubscribeOptions, "repo"> & { repo?: string } = {},
 	): AsyncGenerator<RepoChange> {
-		return this.streamCommits(
-			{ publisher: opts.owner, repo: opts.repo },
-			opts,
-		);
+		return this.streamCommits({ publisher: opts.owner, repo: opts.repo }, opts);
 	}
 
 	/** Shared catch-up-then-live loop behind `subscribe` and `subscribeAll`. */
@@ -877,7 +916,8 @@ export class Fangorn {
 
 	getSettlementRegistry(): SettlementRegistryClient {
 		const address = this.ctx.config.settlementRegistryContractAddress;
-		if (!address) throw new Error("No SettlementRegistry is deployed on this network.");
+		if (!address)
+			throw new Error("No SettlementRegistry is deployed on this network.");
 		this._settlement ??= new SettlementRegistryClient(
 			address,
 			this.ctx.publicClient,
@@ -897,20 +937,35 @@ export class Fangorn {
 	 */
 	async registerAgent(
 		cardUrl: string,
-		opts: { repo: string; mcp?: string; update?: bigint; skipRegister?: boolean },
+		opts: {
+			repo: string;
+			mcp?: string;
+			update?: bigint;
+			skipRegister?: boolean;
+		},
 	): Promise<{ card: Erc8004Card; agentId?: bigint; txHash?: Hash }> {
 		const res = await fetch(cardUrl);
-		if (!res.ok) throw new Error(`card at ${cardUrl} returned ${String(res.status)}`);
+		if (!res.ok)
+			throw new Error(`card at ${cardUrl} returned ${String(res.status)}`);
 		const card = (await res.json()) as Partial<Erc8004Card>;
-		if (!card.name || !card.description) throw new Error("card is missing `name` or `description`");
+		if (!card.name || !card.description)
+			throw new Error("card is missing `name` or `description`");
 		const named = { ...card, name: card.name, description: card.description };
 
 		let agentId: bigint | undefined;
 		if (!opts.skipRegister) {
-			const c = { chain: this.ctx.config.chain, publicClient: this.ctx.publicClient, walletClient: this.ctx.walletClient, storage: this.getStorage() };
+			const c = {
+				chain: this.ctx.config.chain,
+				publicClient: this.ctx.publicClient,
+				walletClient: this.ctx.walletClient,
+				storage: this.getStorage(),
+			};
 			const chainId = this.ctx.config.caip2;
-			const mcp = opts.mcp ? { endpoint: opts.mcp, tools: await mcpTools(opts.mcp) } : undefined;
-			const file = (id: bigint) => registrationFile({ cardUrl, card: named, chainId, agentId: id, mcp });
+			const mcp = opts.mcp
+				? { endpoint: opts.mcp, tools: await mcpTools(opts.mcp) }
+				: undefined;
+			const file = (id: bigint) =>
+				registrationFile({ cardUrl, card: named, chainId, agentId: id, mcp });
 			const { update } = opts;
 			if (update !== undefined) {
 				agentId = update;
@@ -923,8 +978,10 @@ export class Fangorn {
 					await retryNonce(() => setAgentFile(c, id, file(id)));
 				} catch (e) {
 					throw Object.assign(
-						new Error(`agent ${String(chainId)}:${String(agentId)} was minted but its registration file was not set (${(e as Error).message}); ` +
-							`finish it with registerAgent(cardUrl, { update: ${String(agentId)}n })`),
+						new Error(
+							`agent ${String(chainId)}:${String(agentId)} was minted but its registration file was not set (${(e as Error).message}); ` +
+								`finish it with registerAgent(cardUrl, { update: ${String(agentId)}n })`,
+						),
 						{ agentId },
 					);
 				}

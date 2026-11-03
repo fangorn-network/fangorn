@@ -1,11 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { execFile } from "node:child_process";
-import {
-	mkdirSync,
-	mkdtempSync,
-	rmSync,
-	writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -90,7 +85,11 @@ describe.skipIf(skipChain)("CLI (contracts on anvil)", () => {
 	// The card flow itself is in cards.e2e.test.ts; here, only what the CLI adds.
 	it("card needs a repo: --repo, or the one tracked here", async () => {
 		const u = await user();
-		const out = await u.run(["card", "https://example.invalid/card.json", "--skip-register"]);
+		const out = await u.run([
+			"card",
+			"https://example.invalid/card.json",
+			"--skip-register",
+		]);
 		expect(out.code).toBe(1);
 		expect(out.out).toContain("not a fangorn repo");
 	}, 60_000);

@@ -25,7 +25,12 @@ import { Fangorn, FangornConfig } from "@fangorn-network/sdk";
 
 const fangorn = Fangorn.create({
 	privateKey: "0x...",
-	storage: { pinata: { jwt: process.env.PINATA_JWT!, gateway: process.env.PINATA_GATEWAY! } },
+	storage: {
+		pinata: {
+			jwt: process.env.PINATA_JWT!,
+			gateway: process.env.PINATA_GATEWAY!,
+		},
+	},
 	config: FangornConfig, // the default, Base Sepolia
 });
 ```
@@ -83,7 +88,11 @@ fangorn push --force              # push even if it doesn't fast-forward the on-
 ```json
 {
 	"records": [
-		{ "id": "t1", "type": "track", "payload": { "title": "Locura", "artist": "Alice" } },
+		{
+			"id": "t1",
+			"type": "track",
+			"payload": { "title": "Locura", "artist": "Alice" }
+		},
 		{ "id": "a1", "type": "artist", "payload": { "name": "Alice" } }
 	],
 	"deletes": ["t0"]
@@ -105,7 +114,12 @@ const c1 = await fangorn.commit({
 });
 await fangorn.push("rusty-anchor", c1.commitCid);
 
-const c2 = await fangorn.commit({ repo: "rusty-anchor", parent: c1.commitCid, records: [], deletes: ["t1"] });
+const c2 = await fangorn.commit({
+	repo: "rusty-anchor",
+	parent: c1.commitCid,
+	records: [],
+	deletes: ["t1"],
+});
 await fangorn.push("rusty-anchor", c2.commitCid);
 ```
 
@@ -113,7 +127,11 @@ await fangorn.push("rusty-anchor", c2.commitCid);
 
 ```ts
 await fangorn.upload("rusty-anchor", { title: "Locura" }, "track");
-await fangorn.uploadBatch("rusty-anchor", [{ id: "t1", type: "track", payload: { title: "Locura" } }], ["t0"]);
+await fangorn.uploadBatch(
+	"rusty-anchor",
+	[{ id: "t1", type: "track", payload: { title: "Locura" } }],
+	["t0"],
+);
 ```
 
 To have a relayer pay gas, call `signPush(repo, commitCid)` and give the result to `relayPush(signed)`.
@@ -146,7 +164,7 @@ const tip = await fangorn.onChainTip("0x...", "rusty-anchor");
 for await (const c of fangorn.log(tip!)) console.log(c.cid, c.epoch);
 const { puts, deletes } = await fangorn.show(tip!);
 
-const { records } = await fangorn.inspectRepo("rusty-anchor");    // your own repo
+const { records } = await fangorn.inspectRepo("rusty-anchor"); // your own repo
 const { tip: head, contents } = await fangorn.readRepo("0x...", "rusty-anchor"); // anyone's
 ```
 
@@ -177,23 +195,35 @@ Each change is one JSON line:
 	"oldRoot": "0x...",
 	"newRoot": "0x...",
 	"blockNumber": "12345678", // persist this to resume
-	"puts": [{ "id": "t1", "cid": "bafy...", "type": "track", "payload": { "title": "Locura" } }],
-	"deletes": ["t0"]
+	"puts": [
+		{
+			"id": "t1",
+			"cid": "bafy...",
+			"type": "track",
+			"payload": { "title": "Locura" },
+		},
+	],
+	"deletes": ["t0"],
 }
 ```
 
 ```ts
 const controller = new AbortController();
-for await (const change of fangorn.subscribe({ repo: "rusty-anchor", owner: "0x...", fromBlock: saved, signal: controller.signal })) {
+for await (const change of fangorn.subscribe({
+	repo: "rusty-anchor",
+	owner: "0x...",
+	fromBlock: saved,
+	signal: controller.signal,
+})) {
 	for (const r of change.puts) index.upsert(r.id, r.payload);
 	for (const id of change.deletes) index.remove(id);
 	persistCursor(change.blockNumber);
 }
 
-fangorn.subscribeAll({ repo: "reviews" });  // every publisher's "reviews" repo
-fangorn.subscribeAll({ owner: "0x..." });   // every repo of one publisher
-fangorn.feed();                             // one shared stream for many consumers
-await fangorn.repos({ repo: "reviews" });   // every matching repo's latest head
+fangorn.subscribeAll({ repo: "reviews" }); // every publisher's "reviews" repo
+fangorn.subscribeAll({ owner: "0x..." }); // every repo of one publisher
+fangorn.feed(); // one shared stream for many consumers
+await fangorn.repos({ repo: "reviews" }); // every matching repo's latest head
 ```
 
 ---
@@ -206,17 +236,24 @@ A repo can point at an A2A agent card so that agents can find it. The pointer is
 {
 	"name": "Picks",
 	"capabilities": {
-		"extensions": [{
-			"uri": "https://fangorn.network/a2a/repo/v1",
-			"params": { "chainId": 84532, "dataRegistry": "0x…", "publisher": "0x…", "repo": "picks" }
-		}]
-	}
+		"extensions": [
+			{
+				"uri": "https://fangorn.network/a2a/repo/v1",
+				"params": {
+					"chainId": 84532,
+					"dataRegistry": "0x…",
+					"publisher": "0x…",
+					"repo": "picks",
+				},
+			},
+		],
+	},
 }
 ```
 
 ```ts
 await fangorn.registerAgent(cardUrl, { repo: "picks" }); // commits @card and registers with ERC-8004
-await fangorn.setCard("picks", cardUrl);                 // commits @card only
+await fangorn.setCard("picks", cardUrl); // commits @card only
 const { card, publisher, repo } = await fangorn.discoverCard(cardUrl); // verifies both directions
 ```
 
@@ -228,21 +265,21 @@ The CLI equivalent is `fangorn card <url> [--repo picks] [--skip-register]`.
 
 You bring your own storage. Each commit is stored as one CAR file plus one commit block, and the chain holds only the commit pointer. Pass one of these to `Fangorn.create`:
 
-| `storage`                        | Notes                                                                                           |
-| -------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `{ signedUrl: {} }`              | Hosted uploads through the network's worker. No JWT is needed, and uploads count against the signer's quota. |
-| `{ pinata: { jwt, gateway } }`   | Your own Pinata account.                                                                        |
-| `{ backend }`                    | Any `MetadataStorage` implementation. The backend never needs to understand IPLD.               |
+| `storage`                      | Notes                                                                                                        |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| `{ signedUrl: {} }`            | Hosted uploads through the network's worker. No JWT is needed, and uploads count against the signer's quota. |
+| `{ pinata: { jwt, gateway } }` | Your own Pinata account.                                                                                     |
+| `{ backend }`                  | Any `MetadataStorage` implementation. The backend never needs to understand IPLD.                            |
 
 ---
 
 ## Sealed and paid fields
 
-Records, ids and types are always public. A field's *value* can be sealed: the record then holds an opaque reference to it, and a **gadget** says how the value opens.
+Records, ids and types are always public. A field's _value_ can be sealed: the record then holds an opaque reference to it, and a **gadget** says how the value opens.
 
-| Gadget         | Key                                 | Who can open it                                              |
-| -------------- | ----------------------------------- | ------------------------------------------------------------ |
-| `self-hkdf-v1` | HKDF from your own 32-byte secret   | Only you. No server is involved.                             |
+| Gadget         | Key                                 | Who can open it                                                                  |
+| -------------- | ----------------------------------- | -------------------------------------------------------------------------------- |
+| `self-hkdf-v1` | HKDF from your own 32-byte secret   | Only you. No server is involved.                                                 |
 | `field-v1`     | a per-repo key held by a key server | Anyone who paid for the record, or for the whole repo, in the SettlementRegistry |
 
 ### `self-hkdf-v1`: private to you
@@ -250,28 +287,75 @@ Records, ids and types are always public. A field's *value* can be sealed: the r
 You seal the value before committing and unseal it after reading. Fangorn sees only ciphertext.
 
 ```ts
-import { sealSelf, unsealSelf, GADGET_SELF_HKDF_V1 } from "@fangorn-network/sdk";
+import {
+	sealSelf,
+	unsealSelf,
+	GADGET_SELF_HKDF_V1,
+} from "@fangorn-network/sdk";
 import { keccak256, stringToBytes, hexToBytes, bytesToHex } from "viem";
 
 const secret = hexToBytes(privateKey);
 const resourceId = keccak256(stringToBytes("rusty-anchor:secret-msg"));
-const ciphertext = sealSelf(new TextEncoder().encode("the eagles are coming"), secret, resourceId);
+const ciphertext = sealSelf(
+	new TextEncoder().encode("the eagles are coming"),
+	secret,
+	resourceId,
+);
 
-await fangorn.upload("rusty-anchor", { gadget: GADGET_SELF_HKDF_V1, resourceId, ciphertext: bytesToHex(ciphertext) }, "secret-msg");
+await fangorn.upload(
+	"rusty-anchor",
+	{
+		gadget: GADGET_SELF_HKDF_V1,
+		resourceId,
+		ciphertext: bytesToHex(ciphertext),
+	},
+	"secret-msg",
+);
 
-const plaintext = unsealSelf(hexToBytes(stored.ciphertext), secret, stored.resourceId);
+const plaintext = unsealSelf(
+	hexToBytes(stored.ciphertext),
+	secret,
+	stored.resourceId,
+);
 ```
 
 ### `field-v1`: paid fields
 
-**Keys.** Each repo has one random repo key per *generation*. Raising the generation with `raiseGeneration` voids old prices. A separate key is derived from the repo key for every record, so selling one record reveals nothing about the others. The publisher seals the repo key to a key server and commits the result as a public record, `@deposit/<generation>`.
+**Keys.** Each repo has one random repo key per _generation_. Raising the generation with `raiseGeneration` voids old prices. A separate key is derived from the repo key for every record, so selling one record reveals nothing about the others. The publisher seals the repo key to a key server and commits the result as a public record, `@deposit/<generation>`.
 
 After a buyer pays, the key server releases either the record key or, for a whole-repo purchase, the repo key. It seals the key to a throwaway key the buyer generates. The key server stores nothing and checks `canRead` on every request. Every key and deposit is bound to `(chainId, settlementRegistry, publisher, repo, generation)`.
 
-**Publish.** The record holds a handle (`{ "@type": "handle", "gadget": "field-v1", "generation": "0", "cid": "bafy…" }`) and the publisher's signed terms. The terms set the price and the referral share (`shareBps`), which goes to whichever app (citing publisher) referred the sale.
+**Publish, the short way.** `sealRecords` does every step below in one call: it reuses the repo's deposit or makes one, seals the named fields (each value as JSON), and signs terms for each record. The CLI does it on commit:
+
+```sh
+FANGORN_KEY_SERVER=https://… fangorn commit records.json --paid body --price 0.01   # --share 5 (percent), --deadline-days 365
+fangorn push
+```
 
 ```ts
-import { makeDeposit, newRepoKey, recordKey, repoId, sealField, termsToJson } from "@fangorn-network/sdk";
+const records = await sealRecords(fangorn, "rusty-anchor", input, {
+	fields: ["body"],
+	price: 10_000n,
+	shareBps: 500,
+	deadline,
+	keyServer,
+});
+await fangorn.uploadBatch("rusty-anchor", records);
+```
+
+Push before sealing more: the deposit is read from the on-chain head, so the CLI refuses a paid commit on top of unpushed ones. `shareBps` goes to the sale's referrer, which is Fangorn's treasury when the sale goes through its relay.
+
+**Publish, step by step.** The record holds a handle (`{ "@type": "handle", "gadget": "field-v1", "generation": "0", "cid": "bafy…" }`) and the publisher's signed terms. The terms set the price and the referral share (`shareBps`), which goes to whichever app (citing publisher) referred the sale.
+
+```ts
+import {
+	makeDeposit,
+	newRepoKey,
+	recordKey,
+	repoId,
+	sealField,
+	termsToJson,
+} from "@fangorn-network/sdk";
 
 const settlement = fangorn.getSettlementRegistry();
 const repo = repoId("rusty-anchor");
@@ -284,15 +368,34 @@ const scope = {
 };
 
 const kRepo = newRepoKey();
-const deposit = makeDeposit({ kRepo, keyServerPubkey, keyServer: KEY_SERVER_URL, scope });
+const deposit = makeDeposit({
+	kRepo,
+	keyServerPubkey,
+	keyServer: KEY_SERVER_URL,
+	scope,
+});
 const body = await sealField({
 	plaintext: new TextEncoder().encode("the eagles are coming"),
-	kRepo, scope, key: recordKey("a"), field: "body", storage: fangorn.getStorage(),
+	kRepo,
+	scope,
+	key: recordKey("a"),
+	field: "body",
+	storage: fangorn.getStorage(),
 });
-const terms = await settlement.signTerms({ repo, key: recordKey("a"), price: 10_000n, shareBps: 500, deadline });
+const terms = await settlement.signTerms({
+	repo,
+	key: recordKey("a"),
+	price: 10_000n,
+	shareBps: 500,
+	deadline,
+});
 
 await fangorn.uploadBatch("rusty-anchor", [
-	{ id: "a", type: "note", payload: { title: "a paid note", body, "@terms": termsToJson(terms) } },
+	{
+		id: "a",
+		type: "note",
+		payload: { title: "a paid note", body, "@terms": termsToJson(terms) },
+	},
 	{ id: `@deposit/${deposit.generation}`, type: "deposit", payload: deposit },
 ]);
 ```
@@ -302,7 +405,14 @@ You don't need to keep `kRepo`. The key server always serves a request the publi
 **Buy and read.** The buyer calls `register` with the signed terms, an ERC-3009 USDC authorization and a Semaphore identity commitment. The buyer then calls `settle` with a Semaphore proof that names the reading address. Anyone can submit either transaction. After that:
 
 ```ts
-const plaintext = await openField({ handle: record.body, deposit, key: recordKey("a"), field: "body", signer, storage });
+const plaintext = await openField({
+	handle: record.body,
+	deposit,
+	key: recordKey("a"),
+	field: "body",
+	signer,
+	storage,
+});
 ```
 
 A whole-repo buyer calls `requestKey` once, then calls `deriveRecordKey` and `decryptField` for each record.

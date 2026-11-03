@@ -33,9 +33,15 @@ await fangorn.uploadBatch("rusty-anchor", [
 ]);
 
 // Anyone, from the head alone:
-const { contents } = await fangorn.readRepo(fangorn.getAddress(), "rusty-anchor");
+const { contents } = await fangorn.readRepo(
+	fangorn.getAddress(),
+	"rusty-anchor",
+);
 
-for await (const change of fangorn.subscribe({ repo: "rusty-anchor", owner: fangorn.getAddress() })) {
+for await (const change of fangorn.subscribe({
+	repo: "rusty-anchor",
+	owner: fangorn.getAddress(),
+})) {
 	console.log(change.puts, change.deletes);
 }
 ```

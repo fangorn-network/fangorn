@@ -64,7 +64,16 @@ export interface SettleArgs {
 	merkleTreeDepth: bigint;
 	merkleTreeRoot: bigint;
 	nullifier: bigint;
-	points: readonly [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint];
+	points: readonly [
+		bigint,
+		bigint,
+		bigint,
+		bigint,
+		bigint,
+		bigint,
+		bigint,
+		bigint,
+	];
 }
 
 const ZERO_PAYMENT: SettlementPayment = {
@@ -90,7 +99,10 @@ export const TERMS_TYPES = {
 	],
 } as const;
 
-export const settlementDomain = (chainId: number, registry: Address): TypedDataDomain => ({
+export const settlementDomain = (
+	chainId: number,
+	registry: Address,
+): TypedDataDomain => ({
 	name: "Fangorn Settlement",
 	version: "1",
 	chainId,
@@ -100,16 +112,33 @@ export const settlementDomain = (chainId: number, registry: Address): TypedDataD
 /** A record's key within its repo. */
 export const recordKey = (id: string): Hex => keccak256(toHex(id));
 
-export const subjectOf = (publisher: Address, repo: Hex, key: Hex = WHOLE_REPO): Hex =>
+export const subjectOf = (
+	publisher: Address,
+	repo: Hex,
+	key: Hex = WHOLE_REPO,
+): Hex =>
 	keccak256(
-		encodeAbiParameters([{ type: "address" }, { type: "bytes32" }, { type: "bytes32" }], [publisher, repo, key]),
+		encodeAbiParameters(
+			[{ type: "address" }, { type: "bytes32" }, { type: "bytes32" }],
+			[publisher, repo, key],
+		),
 	);
 
 /** The nonce a payer signs for `register`. */
-export const registerNonce = (subject: Hex, commitment: bigint, referrer: Address, salt: Hex): Hex =>
+export const registerNonce = (
+	subject: Hex,
+	commitment: bigint,
+	referrer: Address,
+	salt: Hex,
+): Hex =>
 	keccak256(
 		encodeAbiParameters(
-			[{ type: "bytes32" }, { type: "uint256" }, { type: "address" }, { type: "bytes32" }],
+			[
+				{ type: "bytes32" },
+				{ type: "uint256" },
+				{ type: "address" },
+				{ type: "bytes32" },
+			],
 			[subject, commitment, referrer, salt],
 		),
 	);
@@ -143,7 +172,10 @@ export class SettlementRegistryClient {
 		);
 	}
 
-	private read<T>(functionName: string, args: readonly unknown[] = []): Promise<T> {
+	private read<T>(
+		functionName: string,
+		args: readonly unknown[] = [],
+	): Promise<T> {
 		return this.publicClient.readContract({
 			address: this.contractAddress,
 			abi: SETTLEMENT_REGISTRY_ABI as unknown as Abi,
@@ -160,18 +192,29 @@ export class SettlementRegistryClient {
 	): Promise<{ terms: Terms; signature: Hex }> {
 		const wallet = requireWallet(this.walletClient, "signTerms");
 		const account = wallet.account;
-		if (!account) throw new Error("signTerms: the wallet client has no account");
-		if (!Number.isInteger(t.shareBps) || t.shareBps < 0 || t.shareBps > 10_000) {
-			throw new Error(`signTerms: shareBps must be an integer in 0..10000, got ${String(t.shareBps)}`);
+		if (!account)
+			throw new Error("signTerms: the wallet client has no account");
+		if (
+			!Number.isInteger(t.shareBps) ||
+			t.shareBps < 0 ||
+			t.shareBps > 10_000
+		) {
+			throw new Error(
+				`signTerms: shareBps must be an integer in 0..10000, got ${String(t.shareBps)}`,
+			);
 		}
 		const terms: Terms = {
 			...t,
 			publisher: account.address,
-			generation: t.generation ?? (await this.generationOf(account.address, t.repo)),
+			generation:
+				t.generation ?? (await this.generationOf(account.address, t.repo)),
 		};
 		const signature = await wallet.signTypedData({
 			account,
-			domain: settlementDomain(await this.publicClient.getChainId(), this.contractAddress),
+			domain: settlementDomain(
+				await this.publicClient.getChainId(),
+				this.contractAddress,
+			),
 			types: TERMS_TYPES,
 			primaryType: "Terms",
 			message: terms,
@@ -190,7 +233,8 @@ export class SettlementRegistryClient {
 	/** Takes down (or restores) one of this wallet's own subjects. */
 	setDisabled(repo: Hex, key: Hex, disabled: boolean): Promise<Hash> {
 		const account = requireWallet(this.walletClient, "setDisabled").account;
-		if (!account) throw new Error("setDisabled: the wallet client has no account");
+		if (!account)
+			throw new Error("setDisabled: the wallet client has no account");
 		return this.write("setDisabled", [account.address, repo, key, disabled]);
 	}
 
@@ -198,11 +242,25 @@ export class SettlementRegistryClient {
 
 	register(a: RegisterArgs): Promise<Hash> {
 		const payment = a.terms.price === 0n ? ZERO_PAYMENT : a.payment;
-		return this.write("register", [a.terms, a.signature, a.commitment, a.referrer, a.salt, payment]);
+		return this.write("register", [
+			a.terms,
+			a.signature,
+			a.commitment,
+			a.referrer,
+			a.salt,
+			payment,
+		]);
 	}
 
 	settle(a: SettleArgs): Promise<Hash> {
-		return this.write("settle", [a.subject, a.reader, a.merkleTreeDepth, a.merkleTreeRoot, a.nullifier, a.points]);
+		return this.write("settle", [
+			a.subject,
+			a.reader,
+			a.merkleTreeDepth,
+			a.merkleTreeRoot,
+			a.nullifier,
+			a.points,
+		]);
 	}
 
 	// ── Reads ──
@@ -228,18 +286,33 @@ export class SettlementRegistryClient {
 	}
 
 	/** Settled for the record or the whole repo, and neither is disabled. */
-	canRead(reader: Address, publisher: Address, repo: Hex, key: Hex): Promise<boolean> {
+	canRead(
+		reader: Address,
+		publisher: Address,
+		repo: Hex,
+		key: Hex,
+	): Promise<boolean> {
 		return this.read("canRead", [reader, publisher, repo, key]);
 	}
 }
 
 /** Signed terms as a record carries them under `"@terms"`: bigints as decimal strings. */
 export interface TermsJson {
-	terms: Omit<Terms, "price" | "generation" | "deadline"> & { price: string; generation: string; deadline: string };
+	terms: Omit<Terms, "price" | "generation" | "deadline"> & {
+		price: string;
+		generation: string;
+		deadline: string;
+	};
 	signature: Hex;
 }
 
-export const termsToJson = ({ terms, signature }: { terms: Terms; signature: Hex }): TermsJson => ({
+export const termsToJson = ({
+	terms,
+	signature,
+}: {
+	terms: Terms;
+	signature: Hex;
+}): TermsJson => ({
 	terms: {
 		...terms,
 		price: terms.price.toString(),
@@ -249,7 +322,15 @@ export const termsToJson = ({ terms, signature }: { terms: Terms; signature: Hex
 	signature,
 });
 
-export const termsFromJson = ({ terms, signature }: TermsJson): { terms: Terms; signature: Hex } => ({
-	terms: { ...terms, price: BigInt(terms.price), generation: BigInt(terms.generation), deadline: BigInt(terms.deadline) },
+export const termsFromJson = ({
+	terms,
+	signature,
+}: TermsJson): { terms: Terms; signature: Hex } => ({
+	terms: {
+		...terms,
+		price: BigInt(terms.price),
+		generation: BigInt(terms.generation),
+		deadline: BigInt(terms.deadline),
+	},
 	signature,
 });

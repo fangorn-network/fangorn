@@ -195,7 +195,11 @@ export async function buildMst(
 	let root = await build(items, top);
 	if (!root) {
 		// the empty state is one empty node
-		const empty = await encodeBlock({ level: 0, left: null, entries: [] } satisfies MstNode);
+		const empty = await encodeBlock({
+			level: 0,
+			left: null,
+			entries: [],
+		} satisfies MstNode);
 		nodes.push(empty);
 		root = empty.cid;
 	}
@@ -216,7 +220,10 @@ export async function readMst(
 	const nodeCids = new Set<string>();
 
 	const walk = async (cid: CID, depth: number): Promise<void> => {
-		if (depth > MAX_DEPTH) throw new Error(`MST at ${root.toString()} is deeper than ${MAX_DEPTH.toString()}`);
+		if (depth > MAX_DEPTH)
+			throw new Error(
+				`MST at ${root.toString()} is deeper than ${MAX_DEPTH.toString()}`,
+			);
 		nodeCids.add(cid.toString());
 		const node = decodeBlock<Partial<MstNode>>(await getBlock(cid));
 		if (!Array.isArray(node.entries)) {
@@ -254,7 +261,11 @@ export async function diffMst(
 	newRoot: CID | null,
 	getOld: (cid: CID) => Promise<Uint8Array>,
 	getNew: (cid: CID) => Promise<Uint8Array>,
-): Promise<{ puts: Map<string, CID>; deletes: string[]; before: Map<string, CID> }> {
+): Promise<{
+	puts: Map<string, CID>;
+	deletes: string[];
+	before: Map<string, CID>;
+}> {
 	type Item = { sub: CID; level: number } | { key: string; value: CID };
 	// Stacks, head last. A root's level is unknown until read: Infinity opens both roots first.
 	const a: Item[] = oldRoot ? [{ sub: oldRoot, level: Infinity }] : [];
@@ -262,29 +273,48 @@ export async function diffMst(
 	const open = async (s: Item[], get: (cid: CID) => Promise<Uint8Array>) => {
 		const { sub } = s.pop() as { sub: CID };
 		const node = decodeBlock<MstNode>(await get(sub));
-		const items: Item[] = node.left ? [{ sub: node.left, level: node.level - 1 }] : [];
+		const items: Item[] = node.left
+			? [{ sub: node.left, level: node.level - 1 }]
+			: [];
 		for (const e of node.entries) {
 			items.push({ key: e.key, value: e.value });
 			if (e.right) items.push({ sub: e.right, level: node.level - 1 });
 		}
 		s.push(...items.reverse());
 	};
-	const puts = new Map<string, CID>(), before = new Map<string, CID>(), deletes: string[] = [];
+	const puts = new Map<string, CID>(),
+		before = new Map<string, CID>(),
+		deletes: string[] = [];
 	for (let steps = 0; a.length || b.length; steps++) {
 		if (steps > 1e8) throw new Error("MST diff did not terminate");
-		const x = a.at(-1), y = b.at(-1);
+		const x = a.at(-1),
+			y = b.at(-1);
 		if (x && y && "sub" in x && "sub" in y) {
-			if (x.sub.equals(y.sub)) { a.pop(); b.pop(); }
-			else if (x.level > y.level) await open(a, getOld);
+			if (x.sub.equals(y.sub)) {
+				a.pop();
+				b.pop();
+			} else if (x.level > y.level) await open(a, getOld);
 			else if (y.level > x.level) await open(b, getNew);
-			else { await open(a, getOld); await open(b, getNew); }
+			else {
+				await open(a, getOld);
+				await open(b, getNew);
+			}
 		} else if (x && "sub" in x) await open(a, getOld);
 		else if (y && "sub" in y) await open(b, getNew);
-		else if (x && (!y || x.key < y.key)) { a.pop(); deletes.push(x.key); before.set(x.key, x.value); }
-		else if (y && (!x || y.key < x.key)) { b.pop(); puts.set(y.key, y.value); }
-		else if (x && y) {
-			a.pop(); b.pop();
-			if (!x.value.equals(y.value)) { puts.set(y.key, y.value); before.set(x.key, x.value); }
+		else if (x && (!y || x.key < y.key)) {
+			a.pop();
+			deletes.push(x.key);
+			before.set(x.key, x.value);
+		} else if (y && (!x || y.key < x.key)) {
+			b.pop();
+			puts.set(y.key, y.value);
+		} else if (x && y) {
+			a.pop();
+			b.pop();
+			if (!x.value.equals(y.value)) {
+				puts.set(y.key, y.value);
+				before.set(x.key, x.value);
+			}
 		}
 	}
 	return { puts, deletes, before };
