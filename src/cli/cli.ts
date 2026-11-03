@@ -143,7 +143,6 @@ function network(name: string): NetworkConfig {
 		settlementRegistryContractAddress:
 			address("FANGORN_SETTLEMENT_REGISTRY") ??
 			cfg.settlementRegistryContractAddress,
-		keyServer: nonBlank(process.env.FANGORN_KEY_SERVER) ?? cfg.keyServer,
 	};
 }
 
@@ -526,6 +525,11 @@ program
 		"5",
 	)
 	.option("--deadline-days <days>", "Days the signed terms stay buyable", "365")
+	.option(
+		"--key-server <url>",
+		"Key server a new deposit is sealed to (an existing deposit keeps its own)",
+		"https://keys-test.fangorn.network",
+	)
 	.action(
 		async (
 			file: string,
@@ -535,6 +539,7 @@ program
 				price?: string;
 				share: string;
 				deadlineDays: string;
+				keyServer: string;
 			},
 		) => {
 			try {
@@ -581,7 +586,7 @@ program
 						price: parseUnits(options.price, 6),
 						shareBps,
 						deadline: BigInt(Math.floor(Date.now() / 1000 + days * 86400)),
-						keyServer: fangorn.getConfig().keyServer,
+						keyServer: options.keyServer,
 					});
 				}
 				const s = spinner();

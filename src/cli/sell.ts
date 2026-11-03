@@ -26,7 +26,7 @@ export interface SellOptions {
 	shareBps: number;
 	/** Unix seconds after which the terms can't be bought. */
 	deadline: bigint;
-	/** Key server for a new deposit. An existing deposit keeps the key server it names. */
+	/** Key server for a new deposit; the deposit names it for good. An existing deposit keeps its own. */
 	keyServer?: string;
 }
 
@@ -75,7 +75,7 @@ export async function sealRecords(
 	} else {
 		if (!o.keyServer)
 			throw new Error(
-				"no key server: set keyServer in the network config (CLI: FANGORN_KEY_SERVER)",
+				"no key server: pass keyServer (CLI: --key-server)",
 			);
 		const res = await fetch(`${o.keyServer}/pubkey`);
 		if (!res.ok)

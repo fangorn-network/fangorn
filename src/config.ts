@@ -33,9 +33,6 @@ export interface NetworkConfig {
 	// The hosted upload worker for this network. Hosted uploads
 	// (`storage: { signedUrl: {} }`) go through it unless given a `workerUrl`.
 	signedUrlWorker?: string;
-	// The key server new paid repos deposit their key with (see `sealRecords`). Unset until
-	// one is deployed at a stable URL: a deposit names its key server for good.
-	keyServer?: string;
 }
 
 // Network/deployment settings only. Addresses are the proxies in contracts/solidity/script/Deployments.sol.
