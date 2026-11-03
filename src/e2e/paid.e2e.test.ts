@@ -15,7 +15,6 @@ import {
 	type TermsJson,
 } from "../contracts/settlement-registry/index.js";
 import {
-	AccessError,
 	decryptField,
 	deriveRecordKey,
 	makeDeposit,
@@ -23,7 +22,6 @@ import {
 	newRepoKey,
 	requestKey,
 	sealField,
-	serveAccess,
 	statement,
 	type AccessRequest,
 	type Deposit,
@@ -31,11 +29,12 @@ import {
 	type PaidScope,
 } from "../crypto/paid.js";
 import type { Fangorn } from "../fangorn.js";
+import { testKeyServer } from "../test/key-server.js";
 import { chainNetwork, skipChain, type ChainNetwork } from "../test/testbed.js";
 
 // Selling a record, end to end on anvil: the publisher seals a field, deposits
 // the repo key and commits the record with its signed terms; a buyer registers
-// and settles on the SettlementRegistry; a key server (serveAccess over HTTP,
+// and settles on the SettlementRegistry; a key server (testKeyServer over HTTP,
 // reading canRead from the chain) releases the key; the buyer decrypts.
 // USDC and Semaphore are the contracts repo's mocks.
 
@@ -59,15 +58,14 @@ describe.skipIf(skipChain)("paid records (contracts on anvil)", () => {
 			let body = "";
 			req.on("data", (c: Buffer) => (body += c.toString()));
 			req.on("end", () => {
-				serveAccess(JSON.parse(body) as AccessRequest, {
+				testKeyServer(JSON.parse(body) as AccessRequest, {
 					secret: ksSecret,
 					chainId,
 					registry: registry.getAddress(),
 					canRead: (r, p, repo, key) => registry.canRead(r, p, repo, key),
 				}).then(
-					(out) => res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(out)),
-					(e: unknown) =>
-						e instanceof AccessError ? res.writeHead(e.status).end(e.message) : res.writeHead(500).end(String(e)),
+					async (out) => res.writeHead(out.status, { "Content-Type": "application/json" }).end(await out.text()),
+					(e: unknown) => res.writeHead(500).end(String(e)),
 				);
 			});
 		});

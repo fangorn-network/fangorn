@@ -307,7 +307,7 @@ const plaintext = await openField({ handle: record.body, deposit, key: recordKey
 
 A whole-repo buyer calls `requestKey` once, then calls `deriveRecordKey` and `decryptField` for each record.
 
-**Run a key server.** `serveAccess(body, { secret, chainId, registry, canRead })` implements the whole `POST /access` route. Your Worker or server only parses the body and maps `AccessError.status` (400 or 403) to the response.
+**Run a key server.** Deploy [fangorn-access-worker](https://github.com/fangorn-network/webworker/tree/main/fangorn-access-worker). Its `POST /access` is the whole key server.
 
 **Trust model.** A key server could unseal any deposit made to it. It is trusted not to do that, and not to release keys to anyone who hasn't paid. It never sees the content itself. If you don't want to trust the hosted key server, run your own and commit a deposit that names it.
 

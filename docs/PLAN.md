@@ -234,9 +234,9 @@ data goes in public fields. A sealed field is always for sale.
 keccak256(abi.encode(string "fangorn:access:v1", bytes32 stmt, bytes32 key, bytes32 readerKey, uint64 timestamp))
 ```
 
-`serveAccess(body, { secret, chainId, registry, canRead })` is the whole route;
-the Worker only parses the body and maps `AccessError.status` (400 or 403) to
-the response. It:
+The route is `serveAccess` in the access worker (`fangorn-access-worker/src/access.ts`).
+The SDK keeps only what both sides share (`statement`, `accessMessage`, `seal`/`unseal`)
+and a test copy in `src/test/key-server.ts`. It:
 
 1. returns 400 if `|now - timestamp| > 60`;
 2. recomputes `stmt` from **its own** chain id and registry, and recovers
@@ -309,7 +309,7 @@ the gas.
 
 | # | Task | Needs | Done when |
 |---|---|---|---|
-| S1 | ✅ `accessMessage`, `buildAccessRequest`, `verifyAccessRequest`, and `serveAccess`, the whole `/access` route | — | `src/crypto/paid.test.ts`: a changed field, another chain or registry, or a stale timestamp fails |
+| S1 | ✅ `accessMessage` and `buildAccessRequest`. `verifyAccessRequest` and `serveAccess` moved to the access worker (2026-11-03) | — | the worker's `test/access.spec.ts`: a changed field, another chain or registry, or a stale timestamp fails |
 | S2 | ✅ `statement`, `newRepoKey`, `deriveRecordKey`, `makeDeposit`, `sealField` (uploads through `MetadataStorage.putFile`), `termsToJson` / `termsFromJson` | — | a field opens only under its own record key, statement, record and field name |
 | S3 | ✅ The test chain (`src/test/testbed.ts`) also deploys SettlementRegistry with `MockUSDC` and `MockSemaphore` from the contracts repo's `test/Mocks.sol` | — | `src/e2e/paid.e2e.test.ts` |
 | S4 | ✅ `requestKey` and `openField` | S1, S2 | `src/e2e/paid.e2e.test.ts`: 403 before settle, plaintext after, 403 for another record, the publisher and referrer paid; a whole-repo buyer opens every record; a takedown stops release |
@@ -323,8 +323,8 @@ the gas.
 |---|---|---|---|
 | W1 | Storage worker: a lifetime limit of 1 GB per publisher, next to the daily one. Keep `application/octet-stream` allowed | — | an upload past the lifetime limit is refused even when the day's quota has room |
 | W2 | Storage worker: `GET /ipfs/:cid`, reading from R2 with the IPFS gateway as fallback, adding the R2 binding | — | the first read fills R2, the second is served from it, and an unknown CID returns 404 |
-| W3 | Key server, removing storage: delete `/ct`, `/upload`, `DELETE /upload`, the R2 binding, key minting, `FREE_BYTES` and upload tokens. Make `WORKER_X25519_SECRET` required. Delete `SETTLEMENT_REGISTRY_ADDRESS` and `ARBITRUM_SEPOLIA_RPC` from `wrangler.toml`, which override the SDK's addresses | — | the remaining tests pass and the deleted routes return 404 |
-| W4 | Key server: the new `/access` (Formats, Key server): parse the body, call the SDK's `serveAccess` with `canRead` from `SettlementRegistryClient`, map `AccessError.status` to the response. `/pubkey` serves the public half of `WORKER_X25519_SECRET` | W3, S7 | tests: 403 before settle and 200 after; 400 for a deposit made for another repo; 400 for a stale timestamp |
+| W3 | ✅ Key server, removing storage: delete `/ct`, `/upload`, `DELETE /upload`, the R2 binding, key minting, `FREE_BYTES` and upload tokens. Make `WORKER_X25519_SECRET` required. Delete `SETTLEMENT_REGISTRY_ADDRESS` and `ARBITRUM_SEPOLIA_RPC` from `wrangler.toml`, which override the SDK's addresses | — | the remaining tests pass and the deleted routes return 404 |
+| W4 | ✅ (SDK linked locally until S7) Key server: the new `/access` (Formats, Key server): parse the body, call `serveAccess` (`src/access.ts`) with `canRead` from `SettlementRegistryClient`, map `AccessError.status` to the response. `/pubkey` serves the public half of `WORKER_X25519_SECRET` | W3, S7 | tests: 403 before settle and 200 after; 400 for a deposit made for another repo; 400 for a stale timestamp |
 | W5 | App worker: a new package with the relay routes. The treasury key is a secret; the limits are in KV, following the storage worker's `RATE_KV`; every call is simulated first; the referrer is the `TREASURY` var | — | tests: a call that would revert is never sent; the limit holds; a `referrer` in the body is ignored |
 | W6 | App worker: the catalog. A cron trigger (every 10 minutes) lists repos with `fangorn.repos()` and reads their records. It keeps those with `"@terms"`, leaves handles out of `public`, attaches the repo's deposit, collects each repo's `@card` record into `cards`, and writes `catalog.json` to R2. `/index` serves that file and makes no chain calls | W5, S5 | tests: a record with terms appears, one without doesn't, and `If-None-Match` returns 304 |
 | W7 | End-to-end test on anvil: `sealField`, `/relay/commit`, the catalog cron, `/index`, `/access` refused, `/relay/register`, `/relay/settle`, `/access`, `openField` returning the plaintext | S2–S4, W2, W4–W6 | passes in CI |

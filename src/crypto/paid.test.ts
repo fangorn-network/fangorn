@@ -3,11 +3,10 @@ import { x25519 } from "@noble/curves/ed25519";
 import { bytesToHex, type Address, type Hex } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { MemStorage } from "../engine/test-helpers.js";
+import { testKeyServer } from "../test/key-server.js";
 import { WHOLE_REPO, recordKey } from "../contracts/settlement-registry/index.js";
 import {
-	AccessError,
 	accessMessage,
-	buildAccessRequest,
 	decryptField,
 	deriveRecordKey,
 	encryptField,
@@ -16,9 +15,7 @@ import {
 	openField,
 	requestKey,
 	sealField,
-	serveAccess,
 	statement,
-	verifyAccessRequest,
 	type AccessRequest,
 	type PaidScope,
 } from "./paid.js";
@@ -42,23 +39,16 @@ const KEY_B = recordKey("b");
 const serverSecret = x25519.utils.randomSecretKey();
 const server = { url: "https://keys.test", pubkey: x25519.getPublicKey(serverSecret) };
 
-/** A key server in memory: serveAccess behind `fetch`, allowing whatever `allowed` holds. */
+/** A key server in memory behind `fetch`, allowing whatever `allowed` holds. */
 function keyServer(allowed: Set<string>) {
-	const fetch = async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
+	const fetch = (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
 		expect(url).toBe(`${server.url}/access`);
-		try {
-			const body = JSON.parse(init?.body as string) as AccessRequest;
-			const out = await serveAccess(body, {
-				secret: serverSecret,
-				chainId: scope.chainId,
-				registry: REGISTRY,
-				canRead: (r, _p, _repo, key) => Promise.resolve(allowed.has(`${r}:${key}`) || allowed.has(`${r}:${WHOLE_REPO}`)),
-			});
-			return Response.json(out);
-		} catch (e) {
-			if (e instanceof AccessError) return new Response(e.message, { status: e.status });
-			throw e;
-		}
+		return testKeyServer(JSON.parse(init?.body as string) as AccessRequest, {
+			secret: serverSecret,
+			chainId: scope.chainId,
+			registry: REGISTRY,
+			canRead: (r, _p, _repo, key) => Promise.resolve(allowed.has(`${r}:${key}`) || allowed.has(`${r}:${WHOLE_REPO}`)),
+		});
 	};
 	return fetch as typeof globalThis.fetch;
 }
@@ -92,34 +82,7 @@ describe("paid fields", () => {
 	});
 
 	describe("access requests", () => {
-		const deposit = makeDeposit({ kRepo: newRepoKey(), keyServerPubkey: server.pubkey, keyServer: server.url, scope });
 		const readerKey = bytesToHex(x25519.getPublicKey(x25519.utils.randomSecretKey()));
-		const verify = { chainId: scope.chainId, registry: REGISTRY };
-
-		it("recover the reader that signed them", async () => {
-			const req = await buildAccessRequest({ signer: reader, deposit, key: KEY_A, readerKey });
-			expect(await verifyAccessRequest(req, verify)).toBe(reader.address);
-		});
-
-		it("fail when a signed field changes", async () => {
-			const req = await buildAccessRequest({ signer: reader, deposit, key: KEY_A, readerKey });
-			for (const changed of [
-				{ ...req, key: KEY_B },
-				{ ...req, generation: "1" },
-				{ ...req, publisher: reader.address },
-				{ ...req, readerKey: ("0x" + "00".repeat(32)) as Hex },
-			]) {
-				expect(await verifyAccessRequest(changed, verify).catch(() => null)).not.toBe(reader.address);
-			}
-			// The same request checked against another chain or registry names someone else.
-			expect(await verifyAccessRequest(req, { ...verify, chainId: 1 }).catch(() => null)).not.toBe(reader.address);
-		});
-
-		it("fail when stale", async () => {
-			const req = await buildAccessRequest({ signer: reader, deposit, key: KEY_A, readerKey, timestamp: 1000 });
-			await expect(verifyAccessRequest(req, { ...verify, now: 1061 })).rejects.toMatchObject({ status: 400 });
-			expect(await verifyAccessRequest(req, { ...verify, now: 1060 })).toBe(reader.address);
-		});
 
 		it("hash every field they carry", () => {
 			const stmt = statement(scope);

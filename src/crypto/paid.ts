@@ -7,12 +7,10 @@ import {
 	encodeAbiParameters,
 	hexToBytes,
 	keccak256,
-	recoverMessageAddress,
 	toHex,
 	type Address,
 	type Hex,
 } from "viem";
-import { WHOLE_REPO } from "../contracts/settlement-registry/index.js";
 import type { MetadataStorage } from "../providers/storage/types.js";
 import { aesGcmDecrypt, aesGcmEncrypt, GCM_NONCE_LENGTH } from "./aes.js";
 import { seal, unseal, type AccessSigner } from "./encryption.js";
@@ -80,19 +78,6 @@ export interface AccessRequest {
 	timestamp: number;
 	signature: Hex;
 }
-
-/** A refusal, with the HTTP status a key server answers it with. */
-export class AccessError extends Error {
-	constructor(
-		readonly status: 400 | 403,
-		message: string,
-	) {
-		super(message);
-	}
-}
-
-/** How far a request's timestamp may be from the key server's clock, in seconds. */
-export const ACCESS_WINDOW = 60;
 
 const hkdf32 = (ikm: Uint8Array, info: Hex | Uint8Array) =>
 	hkdf(sha256, ikm, undefined, typeof info === "string" ? hexToBytes(info) : info, 32);
@@ -223,58 +208,6 @@ export async function buildAccessRequest(p: {
 		timestamp,
 		signature: await p.signer.signMessage({ message: { raw } }),
 	};
-}
-
-/** The reader who signed `body`, against the key server's own chain and registry. */
-export async function verifyAccessRequest(
-	body: AccessRequest,
-	at: { chainId: number; registry: Address; now?: number },
-): Promise<Address> {
-	const now = at.now ?? Math.floor(Date.now() / 1000);
-	if (!Number.isSafeInteger(body.timestamp) || Math.abs(now - body.timestamp) > ACCESS_WINDOW) {
-		throw new AccessError(400, "stale timestamp");
-	}
-	const stmt = statement({ ...at, publisher: body.publisher, repo: body.repo, generation: BigInt(body.generation) });
-	try {
-		return await recoverMessageAddress({
-			message: { raw: accessMessage(stmt, body.key, body.readerKey, body.timestamp) },
-			signature: body.signature,
-		});
-	} catch {
-		throw new AccessError(400, "bad signature");
-	}
-}
-
-/**
- * A key server's `/access`: check the request, ask the registry, and return
- * the key the reader may have, sealed to `readerKey`. The publisher may always
- * have its own keys. Throws {@link AccessError}.
- *
- * `sealed` is not signed: swapping it can only unseal a deposit for this same
- * statement, whose keys the registry already lets the reader have.
- */
-export async function serveAccess(
-	body: AccessRequest,
-	ks: {
-		secret: Uint8Array;
-		chainId: number;
-		registry: Address;
-		canRead(reader: Address, publisher: Address, repo: Hex, key: Hex): Promise<boolean>;
-		now?: number;
-	},
-): Promise<{ sealed: Hex }> {
-	const reader = await verifyAccessRequest(body, ks);
-	const own = reader.toLowerCase() === body.publisher.toLowerCase();
-	if (!own && !(await ks.canRead(reader, body.publisher, body.repo, body.key))) throw new AccessError(403, "not settled");
-	const stmt = statement({ ...ks, publisher: body.publisher, repo: body.repo, generation: BigInt(body.generation) });
-	let kRepo: Uint8Array;
-	try {
-		kRepo = unseal(hexToBytes(body.sealed), ks.secret, stmt);
-	} catch {
-		throw new AccessError(400, "deposit was not made for this repo, generation and registry");
-	}
-	const out = body.key === WHOLE_REPO ? kRepo : deriveRecordKey(kRepo, stmt, body.key);
-	return { sealed: bytesToHex(seal(out, hexToBytes(body.readerKey), stmt)) };
 }
 
 /** Ask the deposit's key server for `key`'s key: the record key, or the repo key for `WHOLE_REPO`. */
