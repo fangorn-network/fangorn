@@ -1,7 +1,7 @@
 import { verifyTypedData, type Address, type Hash, type Hex, type LocalAccount } from "viem";
-import { type PreparedTx } from "../contracts/index.js";
 import { commitHead } from "../engine/index.js";
 import {
+	type PreparedTx,
 	type CommitUpdate,
 	type LogFilter,
 	type Registry,
@@ -13,7 +13,7 @@ import {
 	dataDomain,
 	epochOf,
 	updateMessage,
-} from "../registry.js";
+} from "../contracts/index.js";
 
 /** The EIP-712 domain a MemRegistry signs under. */
 export const MEM_DOMAIN = dataDomain(31337, "0x000000000000000000000000000000000000da7a");
@@ -101,7 +101,7 @@ export class MemRegistry implements Registry {
 		const head = await commitHead(u);
 		const pos = (this.ledger.heads.get(refKey(ref))?.pos ?? 0) + 1;
 		this.ledger.heads.set(refKey(ref), { pos, head });
-		this.ledger.append({ publisher, repo: u.repo, pos, parent: u.parent, head });
+		this.ledger.append({ publisher, repo: u.repo, pos, parent: u.parent, head, timestamp: BigInt(this.now()) });
 		return "0x00";
 	}
 

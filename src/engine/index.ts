@@ -3,7 +3,7 @@ import { sha256 } from "multiformats/hashes/sha2";
 import * as Digest from "multiformats/hashes/digest";
 import * as dagCbor from "@ipld/dag-cbor";
 import { bytesToHex, hexToBytes, type Address, type Hash, type Hex } from "viem";
-import { type CommitUpdate, type Registry, ZERO_HEAD } from "../registry.js";
+import { type CommitUpdate, type Registry, ZERO_HEAD } from "../contracts/index.js";
 import { MetadataStorage } from "../providers/storage/types.js";
 import {
 	Block,

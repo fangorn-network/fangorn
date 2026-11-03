@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { bytesToHex, hexToBytes, keccak256, stringToBytes, type Hex } from "viem";
 import { generatePrivateKey } from "viem/accounts";
-import { ZERO_HEAD } from "../registry.js";
+import { ZERO_HEAD } from "../contracts/index.js";
 import { sealSelf, unsealSelf, GADGET_SELF_HKDF_V1 } from "../crypto/encryption.js";
 import type { Fangorn, RepoChange } from "../fangorn.js";
 import type { Network } from "./testbed.js";

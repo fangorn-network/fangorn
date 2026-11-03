@@ -36,15 +36,13 @@ import {
 import {
 	PreparedTx,
 	SettlementRegistryClient,
-} from "./contracts/index.js";
-import {
 	ChainRegistry,
 	LogFilter,
 	Registry,
 	RepoRef,
 	UpdateEntry,
 	ZERO_HEAD,
-} from "./registry.js";
+} from "./contracts/index.js";
 import { CommitFeed } from "./feed.js";
 
 const ZERO_BYTES32 = ZERO_HEAD;

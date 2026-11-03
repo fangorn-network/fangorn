@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import type { Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { EPOCH_SECONDS, WINDOW, ZERO_HEAD, type CommitUpdate } from "./registry.js";
-import { MemRegistry } from "./test/mem-registry.js";
-import { commitHead } from "./engine/index.js";
+import { EPOCH_SECONDS, WINDOW, ZERO_HEAD, type CommitUpdate } from "./index.js";
+import { MemRegistry } from "../../test/mem-registry.js";
+import { commitHead } from "../../engine/index.js";
 
 const P: Hex = "0x0000000000000000000000000000000000000001";
 const ref = { publisher: P, repo: "s" };

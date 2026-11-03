@@ -5,7 +5,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { decodeBlock, encodeBlock } from "./records.js";
 import { MemLedger, MemRegistry } from "../test/mem-registry.js";
 import { MemStorage, PUBLISHER, newRegistry, rootHex } from "./test-helpers.js";
-import { ZERO_HEAD, epochOf } from "../registry.js";
+import { ZERO_HEAD, epochOf } from "../contracts/index.js";
 
 // The commit model of WHITEPAPER_1 §3.1: γ = (e, parent, root), one repo per
 // commit, and a head that moves one commit at a time (Theorem 3).

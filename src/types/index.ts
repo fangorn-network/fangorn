@@ -1,7 +1,7 @@
 import { Hex, PublicClient, WalletClient } from "viem";
 import { NetworkConfig } from "../config.js";
 import { MetadataStorage } from "../providers/storage/types.js";
-import { Registry } from "../registry.js";
+import { Registry } from "../contracts/index.js";
 
 export interface FangornContext {
     config: NetworkConfig;

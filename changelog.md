@@ -119,6 +119,9 @@ no server ever sees plaintext. The contracts were redeployed on Base Sepolia.
   - shapes: `SignedUpdate`, `CommitUpdate`, `commitUpdate`, `commitHead`,
     `UPDATE_TYPES`, `dataDomain`, `updateMessage`, and `WINDOW`, the epochs a
     commit may lag the chain's clock.
+- `UpdateEntry.timestamp`: the timestamp of the entry's block, which is what
+  the DataRegistry's log leaf hashes. `t` is still the block number. A log read
+  costs one extra block read per block that has updates.
 - `aesGcmEncrypt` / `aesGcmDecrypt` take optional associated data.
 
 ### Changed
@@ -171,7 +174,9 @@ no server ever sees plaintext. The contracts were redeployed on Base Sepolia.
   unless its repo's `@card` record points back at it. The admin suite is gone.
 - The CLI, registry and SDK suites are rewritten for relayed commits and the
   new commit format.
-- 128 unit tests and 19 e2e tests pass. The e2e count includes the live
+- `src/e2e/log.e2e.test.ts` (anvil) rebuilds the contract's log root from
+  `log()` alone.
+- 128 unit tests and 20 e2e tests pass. The e2e count includes the live
   read-only check that `fromBlock` is the DataRegistry's deployment.
 - One full sale was run by hand on Base Sepolia, against the deployed
   contracts. The steps were: publish a paid record, get 403, `register` with
