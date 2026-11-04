@@ -24,6 +24,7 @@ import "dotenv/config";
 
 import { Fangorn } from "../fangorn.js";
 import { sealRecords } from "./sell.js";
+import { fileToRecords, walk, type Staged } from "./stage.js";
 import { handleCancel } from "./index.js";
 import getNetwork, { NetworkConfig, nonBlank } from "../config.js";
 import { StorageConfig } from "../types/index.js";
@@ -251,6 +252,26 @@ class LocalRepo {
 	setHead(cid: string | null): void {
 		this.state.head = cid;
 		this.save();
+	}
+
+	root(): string {
+		return this.dir;
+	}
+
+	/** The staging area: what the next `fangorn commit` (no file) will commit. */
+	staged(): Staged {
+		const p = join(this.dir, ".fangorn", "index.json");
+		return existsSync(p)
+			? (JSON.parse(readFileSync(p, "utf-8")) as Staged)
+			: { records: [], deletes: [] };
+	}
+
+	setStaged(s: Staged): void {
+		writeFileSync(
+			join(this.dir, ".fangorn", "index.json"),
+			JSON.stringify(s, null, 2),
+			"utf-8",
+		);
 	}
 }
 
@@ -502,13 +523,80 @@ repoCmd
 	});
 
 program
+	.command("add")
+	.description(
+		"Stage files as records: csv/jsonl/json arrays → a record per row, other text → one record per file",
+	)
+	.argument("<paths...>", "Files or directories (dot entries skipped)")
+	.option(
+		"--type <type>",
+		'Record type (default: file name, or "file" for text)',
+	)
+	.option("--id-column <col>", "Column/field holding the record id", "id")
+	.action((paths: string[], options: { type?: string; idColumn: string }) => {
+		try {
+			const repo = LocalRepo.open();
+			const staged = repo.staged();
+			let n = 0;
+			for (const p of paths) {
+				for (const rel of walk(repo.root(), join(process.cwd(), p))) {
+					const got = fileToRecords(repo.root(), rel, options);
+					if (!got) {
+						console.warn(`skipped (binary): ${rel}`);
+						continue;
+					}
+					// Re-adding replaces a staged record with the same id and un-stages its delete.
+					const ids = new Set(got.records.map((r) => r.id));
+					staged.records = staged.records
+						.filter((r) => !r.id || !ids.has(r.id))
+						.concat(got.records);
+					staged.deletes = staged.deletes
+						.filter((d) => !ids.has(d))
+						.concat(got.deletes);
+					n += got.records.length + got.deletes.length;
+					console.log(
+						`added ${rel} (${got.records.length.toString()} record(s))`,
+					);
+				}
+			}
+			repo.setStaged(staged);
+			console.log(`${n.toString()} change(s) staged. Run \`fangorn commit\`.`);
+			process.exit(0);
+		} catch (err) {
+			console.error("Failed:", (err as Error).message);
+			process.exit(1);
+		}
+	});
+
+program
+	.command("rm")
+	.description("Stage record deletes (and drop them from the staging area)")
+	.argument("<ids...>", "Record ids")
+	.action((ids: string[]) => {
+		try {
+			const repo = LocalRepo.open();
+			const staged = repo.staged();
+			staged.records = staged.records.filter(
+				(r) => !r.id || !ids.includes(r.id),
+			);
+			staged.deletes = [...new Set([...staged.deletes, ...ids])];
+			repo.setStaged(staged);
+			console.log(`${ids.length.toString()} delete(s) staged.`);
+			process.exit(0);
+		} catch (err) {
+			console.error("Failed:", (err as Error).message);
+			process.exit(1);
+		}
+	});
+
+program
 	.command("commit")
 	.description(
 		"Put/delete a namespace's records in a new local commit (does not push)",
 	)
 	.argument(
-		"<file>",
-		'JSON file: {"records":[{"id","type","payload"}],"deletes":["id"]}',
+		"[file]",
+		'JSON file: {"records":[{"id","type","payload"}],"deletes":["id"]} (default: the staging area, see `fangorn add`)',
 	)
 	.option(
 		"--replace",
@@ -521,8 +609,8 @@ program
 	.option("--price <usdc>", "Price of each paid record, in USDC (e.g. 0.01)")
 	.option(
 		"--share <percent>",
-		"Share of each sale paid to the referrer (Fangorn's treasury, via its relay)",
-		"5",
+		"Share of each sale paid to the referrer (Fangorn takes none by default)",
+		"0",
 	)
 	.option("--deadline-days <days>", "Days the signed terms stay buyable", "365")
 	.option(
@@ -532,7 +620,7 @@ program
 	)
 	.action(
 		async (
-			file: string,
+			file: string | undefined,
 			options: {
 				replace?: boolean;
 				paid?: string;
@@ -543,8 +631,12 @@ program
 			},
 		) => {
 			try {
-				if (!existsSync(file)) throw new Error(`file not found: ${file}`);
-				const data = JSON.parse(readFileSync(file, "utf-8")) as CommitFile;
+				const repo = LocalRepo.open();
+				if (file && !existsSync(file))
+					throw new Error(`file not found: ${file}`);
+				const data = file
+					? (JSON.parse(readFileSync(file, "utf-8")) as CommitFile)
+					: repo.staged();
 				let records = data.records ?? [];
 				const deletes = data.deletes ?? [];
 				if (
@@ -553,11 +645,12 @@ program
 					records.length + deletes.length === 0
 				) {
 					throw new Error(
-						`${file} must contain a non-empty "records" or "deletes" array`,
+						file
+							? `${file} must contain a non-empty "records" or "deletes" array`
+							: "nothing staged — run `fangorn add <paths>` first",
 					);
 				}
 
-				const repo = LocalRepo.open();
 				const fangorn = getFangorn();
 				const parent = repo.head() ?? undefined;
 				if (options.paid) {
@@ -604,6 +697,7 @@ program
 				});
 				s.stop();
 				repo.setHead(result.commitCid);
+				if (!file) repo.setStaged({ records: [], deletes: [] });
 
 				console.log(`Commit:  ${result.commitCid}`);
 				console.log(`Parent:  ${result.parent ?? "(root)"}`);
@@ -675,6 +769,10 @@ program
 			console.log(`Local HEAD:   ${localHead ?? "(none)"}`);
 			console.log(`On-chain tip: ${onChainTip ?? "(none)"}`);
 			console.log(`Status:       ${state}`);
+			const staged = repo.staged();
+			console.log(
+				`Staged:       ${staged.records.length.toString()} put(s) / ${staged.deletes.length.toString()} delete(s)`,
+			);
 			process.exit(0);
 		} catch (err) {
 			console.error("Failed:", (err as Error).message);
