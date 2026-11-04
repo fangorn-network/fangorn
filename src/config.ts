@@ -47,8 +47,8 @@ export const BaseSepoliaConfig = {
 	// of it. This one caps ranges at 50,000 blocks (measured 2026-10-20).
 	rpcUrl: "https://base-sepolia-rpc.publicnode.com",
 	caip2: 84532,
-	// Fangorn's dedicated Pinata gateway: it serves what the storage worker pins. ipfs.io answers 429.
-	ipfsGateway: "https://green-reasonable-heron-957.mypinata.cloud",
+	// Fangorn's gateway (a custom domain on its dedicated Pinata gateway). ipfs.io answers 429.
+	ipfsGateway: "https://ipfs-test.fangorn.network",
 	logWindow: 50_000n,
 	signedUrlWorker: "https://base-sepolia.storage-worker.fangorn.network",
 } satisfies NetworkConfig;
