@@ -41,7 +41,7 @@ const fangorn = Fangorn.create({
 
 - the wallet private key
 - a Pinata JWT. Leave it blank to use hosted signed-URL uploads, a testnet convenience: files may be unpinned without notice.
-- a Pinata gateway. Leave it blank to use a public IPFS gateway.
+- a Pinata gateway. Leave it blank to use the network's gateway.
 - a presigned-URL worker. Leave it blank to use the network's hosted worker.
 
 Environment variables take precedence over the config file:
