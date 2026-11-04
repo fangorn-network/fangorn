@@ -281,26 +281,18 @@ does the request, fetches the ciphertext and decrypts. A whole-repo buyer calls
   from the IPFS gateway, stores the object in R2, and returns it. Responses are
   immutable (`Cache-Control: public, max-age=31536000, immutable`).
 
-### App worker
+### The explorer
 
-**`GET /index`** returns the catalog, with `ETag`; `If-None-Match` returns 304:
+The catalog is the explorer, an app built with westmarch (`apps/explorer`, at
+https://explorer.fangorn.network), not a route on any of the three Workers. It has no
+sources, so its Worker presents every repo on chain: its cron reads the update log from
+where it stopped and indexes every publisher's records into R2. Its `/mcp` serves
+`describe` (each publisher's repos, with row counts), `search` (each hit names its
+publisher, and a sold one carries `sale`), and `get`. `/paid/<publisher>/<repo>/<id>`
+quotes a sold record from its signed terms, settled through Barliman. Readers
+(fangorn-mcp) ask it and never scan the chain.
 
-```json
-{ "block": "53600000",
-  "cards": [{ "publisher": "0x…", "repo": "picks", "url": "https://…/agent-card.json" }],
-  "entries": [
-    { "publisher": "0x…", "repo": "notes", "repoId": "0x…", "key": "0x…", "id": "record-id",
-      "public": { "title": "…" }, "paid": ["body"], "price": "10000",
-      "terms": { … }, "signature": "0x…", "deposit": { … } } ] }
-```
-
-`cards` lists every repo's `@card` record. It's only a list of candidates:
-a reader checks a card with `discoverCard(url)`, which reads the record
-itself, so a wrong catalog can't make a card look bound.
-
-`deposit` is the repo's `@deposit/<generation>` record for the handles'
-generation; the buyer passes it straight to `openField`. Whole-repo terms get
-an entry of their own, with `key` set to `WHOLE_REPO` and no `id`.
+### Barliman (relayer)
 
 **Relay routes** each return `{ "tx": "0x…" }`, or 4xx with the revert reason
 from simulation:
@@ -342,8 +334,8 @@ the gas.
 | W3  | ✅ Key server, removing storage: delete `/ct`, `/upload`, `DELETE /upload`, the R2 binding, key minting, `FREE_BYTES` and upload tokens. Make `WORKER_X25519_SECRET` required. Delete `SETTLEMENT_REGISTRY_ADDRESS` and `ARBITRUM_SEPOLIA_RPC` from `wrangler.toml`, which override the SDK's addresses                                                   | —                | the remaining tests pass and the deleted routes return 404                                                 |
 | W4  | ✅ Key server: the new `/access` (Formats, Key server): parse the body, call `serveAccess` (`src/access.ts`) with `canRead` from `SettlementRegistryClient`, map `AccessError.status` to the response. `/pubkey` serves the public half of `WORKER_X25519_SECRET`                                                                                         | W3, S7           | tests: 403 before settle and 200 after; 400 for a deposit made for another repo; 400 for a stale timestamp |
 | W5  | ✅ (`barliman`; free registers are limited per IP, since nothing in them is signed by a payer) App worker: a new package with the relay routes. The treasury key is a secret; the limits are in KV, following the storage worker's `RATE_KV`; every call is simulated first; the referrer is the `TREASURY` var                                           | —                | tests: a call that would revert is never sent; the limit holds; a `referrer` in the body is ignored        |
-| W6  | App worker: the catalog. A cron trigger (every 10 minutes) lists repos with `fangorn.repos()` and reads their records. It keeps those with `"@terms"`, leaves handles out of `public`, attaches the repo's deposit, collects each repo's `@card` record into `cards`, and writes `catalog.json` to R2. `/index` serves that file and makes no chain calls | W5, S5           | tests: a record with terms appears, one without doesn't, and `If-None-Match` returns 304                   |
-| W7  | End-to-end test on anvil: `sealField`, `/relay/commit`, the catalog cron, `/index`, `/access` refused, `/relay/register`, `/relay/settle`, `/access`, `openField` returning the plaintext                                                                                                                                                                 | S2–S4, W2, W4–W6 | passes in CI                                                                                               |
+| W6  | ◐ The explorer (`apps/explorer`, https://explorer.fangorn.network): a westmarch app with no sources, so it presents every publisher's repos. Its Worker's cron reads the update log from where it stopped and indexes into R2; `/mcp` serves `describe` (each publisher's repos), `search`, `get`; `/paid/<publisher>/<repo>/<id>` quotes any sold record through Barliman. fangorn-mcp asks it (`search`, `publishers`, `get`, `buy`) and never scans the chain. Not Barliman: Barliman is only the facilitator | W5, S5 | `explorer-live`: a record published on Base Sepolia is found by meaning, listed under its publisher, and bought through the explorer's quote |
+| W7  | ◐ (`westmarch/scripts/e2e-paid.mjs`, `npm run e2e:paid`: sealRecords, the app's quote, register through Barliman, settle, the key server, the 5% split, with mock USDC and Semaphore. Not yet: `/relay/commit`, the catalog cron, real proofs) End-to-end test on anvil: `sealField`, `/relay/commit`, the catalog cron, `/index`, `/access` refused, `/relay/register`, `/relay/settle`, `/access`, `openField` returning the plaintext                                                                                                                                                                 | S2–S4, W2, W4–W6 | passes in CI                                                                                               |
 
 W1, W2, W3 and W5 can all start on day one. W4 and W6 follow S7. W7 comes
 last.

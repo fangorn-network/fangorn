@@ -328,7 +328,7 @@ After a buyer pays, the key server releases either the record key or, for a whol
 **Publish, the short way.** `sealRecords` does every step below in one call: it reuses the repo's deposit or makes one, seals the named fields (each value as JSON), and signs terms for each record. The CLI does it on commit:
 
 ```sh
-FANGORN_KEY_SERVER=https://… fangorn commit records.json --paid body --price 0.01   # --share 5 (percent), --deadline-days 365
+fangorn commit records.json --paid body --price 0.01   # --share 5 (percent), --deadline-days 365, --key-server <url>
 fangorn push
 ```
 

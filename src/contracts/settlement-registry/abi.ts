@@ -339,6 +339,25 @@ export const SETTLEMENT_REGISTRY_ABI = [
 	},
 	{
 		type: "function",
+		name: "membersOf",
+		inputs: [
+			{
+				name: "subject",
+				type: "bytes32",
+				internalType: "bytes32",
+			},
+		],
+		outputs: [
+			{
+				name: "",
+				type: "uint256[]",
+				internalType: "uint256[]",
+			},
+		],
+		stateMutability: "view",
+	},
+	{
+		type: "function",
 		name: "proxiableUUID",
 		inputs: [],
 		outputs: [
