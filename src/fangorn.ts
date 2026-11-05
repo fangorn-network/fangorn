@@ -107,8 +107,12 @@ function resolveStorage(
 ): MetadataStorage | undefined {
 	if (!storage) return undefined;
 	if ("backend" in storage) return storage.backend;
+	// A blank gateway (an unset CLI field) means the network's: public ipfs.io answers 429.
 	if ("pinata" in storage)
-		return new PinataBackend(storage.pinata.jwt, storage.pinata.gateway);
+		return new PinataBackend(
+			storage.pinata.jwt,
+			nonBlank(storage.pinata.gateway) ?? config.ipfsGateway,
+		);
 	if ("signedUrl" in storage) {
 		// The hosted worker, which bills the signing publisher's quota. Blank (an
 		// unset CLI field) counts as unset.
@@ -122,7 +126,7 @@ function resolveStorage(
 		return new SignedUrlBackend(
 			workerUrl,
 			walletSigner(walletClient),
-			storage.signedUrl.gateway ?? config.ipfsGateway,
+			nonBlank(storage.signedUrl.gateway) ?? config.ipfsGateway,
 		);
 	}
 	throw new Error(

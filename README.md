@@ -52,7 +52,8 @@ for await (const change of fangorn.subscribe({
 npm i -g @fangorn-network/sdk
 fangorn init                       # wallet key, storage → ~/.fangorn/config.json
 fangorn repo init rusty-anchor     # create on chain, track in ./.fangorn
-fangorn commit records.json        # local commit (IPFS only)
+fangorn add .                      # stage files: csv/json rows → records, text files → one record each
+fangorn commit                     # local commit (IPFS only)
 fangorn push                       # move the on-chain head
 fangorn subscribe --owner 0x... rusty-anchor   # stream diffs as JSON lines
 ```

@@ -57,13 +57,11 @@ describe.skipIf(skipChain)("paid records (contracts on anvil)", () => {
 		const registry = ks.getSettlementRegistry();
 		server = createServer((req, res) => {
 			if (req.url === "/pubkey") {
-				res
-					.writeHead(200, { "Content-Type": "application/json" })
-					.end(
-						JSON.stringify({
-							pubkey: bytesToHex(x25519.getPublicKey(ksSecret)),
-						}),
-					);
+				res.writeHead(200, { "Content-Type": "application/json" }).end(
+					JSON.stringify({
+						pubkey: bytesToHex(x25519.getPublicKey(ksSecret)),
+					}),
+				);
 				return;
 			}
 			let body = "";
@@ -195,6 +193,9 @@ describe.skipIf(skipChain)("paid records (contracts on anvil)", () => {
 				s: `0x${"00".repeat(32)}`,
 			},
 		});
+		// The group's members are on chain, in order: a buyer proves from them without a log scan.
+		const members = await s.membersOf(subject);
+		expect(members[members.length - 1]).toBe(commitment);
 		await s.settle({
 			subject,
 			reader,

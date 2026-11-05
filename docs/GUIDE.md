@@ -41,7 +41,7 @@ const fangorn = Fangorn.create({
 
 - the wallet private key
 - a Pinata JWT. Leave it blank to use hosted signed-URL uploads, a testnet convenience: files may be unpinned without notice.
-- a Pinata gateway. Leave it blank to use a public IPFS gateway.
+- a Pinata gateway. Leave it blank to use the network's gateway.
 - a presigned-URL worker. Leave it blank to use the network's hosted worker.
 
 Environment variables take precedence over the config file:
@@ -75,15 +75,34 @@ Blocks are content-addressed, so a record that hasn't changed is reused across c
 
 ### CLI
 
-`fangorn repo init` creates the repo with an empty first commit, pushes it, and starts tracking it in `./.fangorn/`. That directory holds only a HEAD ref, because the commits live in IPFS.
+`fangorn repo init` creates the repo with an empty first commit, pushes it, and starts tracking it in `./.fangorn/`. That directory holds only a HEAD ref and the staging area (`index.json`), because the commits live in IPFS.
+
+Work like git: stage files, commit, push.
 
 ```sh
 fangorn repo init rusty-anchor
-fangorn commit records.json       # additive by default
-fangorn commit records.json --replace   # the file *is* the new state; history is kept
+fangorn add .                     # stage files and folders (dot entries skipped)
+fangorn rm t0                     # stage a delete, by record id
+fangorn status                    # local vs on-chain tip, and what's staged
+fangorn commit                    # commit the staging area (additive), then clear it
+fangorn commit --replace          # the staged records *are* the new state; history is kept
 fangorn push
 fangorn push --force              # push even if it doesn't fast-forward the on-chain head
 ```
+
+`add` turns each file into records:
+
+| File                                      | Records                                                                                                                  |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `.csv`, `.jsonl`/`.ndjson`, `.json` array | One per row. `id` from the `id` column (`--id-column`), else `path#row`. Type is the file name (`tracks.csv` → `tracks`) |
+| `.json` object                            | One record, `id` = its path                                                                                              |
+| `.json` with `records`/`deletes`          | Passed through as-is (format below)                                                                                      |
+| Any other text (`.txt`, `.md`, …)         | One record: `id` = its path, type `file`, payload `{ path, text }`                                                       |
+| Binary                                    | Skipped with a warning                                                                                                   |
+
+`--type <type>` sets the type for everything added. Re-adding a file replaces the staged records with the same ids. CSV values stay strings. Ids are paths relative to the repo root, with spaces made `_`. Deleting a file doesn't stage a delete; to make the folder the whole state, `fangorn add . && fangorn commit --replace`. To unstage everything, delete `.fangorn/index.json`.
+
+You can also skip staging and commit a file directly: `fangorn commit records.json`.
 
 ```json
 {
@@ -328,7 +347,7 @@ After a buyer pays, the key server releases either the record key or, for a whol
 **Publish, the short way.** `sealRecords` does every step below in one call: it reuses the repo's deposit or makes one, seals the named fields (each value as JSON), and signs terms for each record. The CLI does it on commit:
 
 ```sh
-FANGORN_KEY_SERVER=https://… fangorn commit records.json --paid body --price 0.01   # --share 5 (percent), --deadline-days 365
+fangorn commit records.json --paid body --price 0.01   # --share 0 (percent), --deadline-days 365, --key-server <url>
 fangorn push
 ```
 
@@ -336,14 +355,14 @@ fangorn push
 const records = await sealRecords(fangorn, "rusty-anchor", input, {
 	fields: ["body"],
 	price: 10_000n,
-	shareBps: 500,
+	shareBps: 0,
 	deadline,
 	keyServer,
 });
 await fangorn.uploadBatch("rusty-anchor", records);
 ```
 
-Push before sealing more: the deposit is read from the on-chain head, so the CLI refuses a paid commit on top of unpushed ones. `shareBps` goes to the sale's referrer, which is Fangorn's treasury when the sale goes through its relay.
+Push before sealing more: the deposit is read from the on-chain head, so the CLI refuses a paid commit on top of unpushed ones. `shareBps` goes to the sale's referrer. Fangorn's relay names its treasury as referrer, but takes nothing unless the publisher signs a share; the default is 0.
 
 **Publish, step by step.** The record holds a handle (`{ "@type": "handle", "gadget": "field-v1", "generation": "0", "cid": "bafy…" }`) and the publisher's signed terms. The terms set the price and the referral share (`shareBps`), which goes to whichever app (citing publisher) referred the sale.
 
@@ -386,7 +405,7 @@ const terms = await settlement.signTerms({
 	repo,
 	key: recordKey("a"),
 	price: 10_000n,
-	shareBps: 500,
+	shareBps: 0,
 	deadline,
 });
 

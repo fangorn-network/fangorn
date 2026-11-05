@@ -277,6 +277,11 @@ export class SettlementRegistryClient {
 		return this.read("isDisabled", [subject]);
 	}
 
+	/** Every commitment in the subject's group, in the order it was added: what a Semaphore proof is built from. */
+	membersOf(subject: Hex): Promise<readonly bigint[]> {
+		return this.read("membersOf", [subject]);
+	}
+
 	isRegistered(subject: Hex, commitment: bigint): Promise<boolean> {
 		return this.read("isRegistered", [subject, commitment]);
 	}
