@@ -1,6 +1,6 @@
 {
 	"name": "@fangorn-network/sdk",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"description": "decentralized, verifiable and platformless content management framework",
 	"repository": {
 		"type": "git",
