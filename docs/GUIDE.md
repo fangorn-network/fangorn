@@ -454,7 +454,7 @@ Fangorn runs on Base Sepolia (the default) and Arbitrum Sepolia, each with its o
 
 Base Sepolia's default RPC is `base-sepolia-rpc.publicnode.com`. The official `sepolia.base.org` endpoint caps `eth_getLogs` at 200 blocks, which is too few to scan the registry's history. Each config's `logWindow` is the largest block range one log query may span on its RPC.
 
-Arbitrum Sepolia has no hosted upload worker yet. `storage: { signedUrl: {} }` is refused there unless you pass a `workerUrl`; use Pinata (`storage: { pinata: … }`) instead. Its USDC is Circle's (`0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d`), whose EIP-712 name is `"USD Coin"`, not Base's `"USDC"`. Read the name from the token rather than hardcoding it when you sign a payment.
+Each network has its own hosted upload worker (`signedUrlWorker`) and key server (`keyServer`). `fangorn commit --paid` seals new deposits to the network's key server unless you pass `--key-server`. A key server only releases keys for purchases on its own network's SettlementRegistry. Arbitrum Sepolia's USDC is Circle's (`0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d`), whose EIP-712 name is `"USD Coin"`, not Base's `"USDC"`. Read the name from the token rather than hardcoding it when you sign a payment.
 
 ---
 

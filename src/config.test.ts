@@ -17,6 +17,17 @@ describe("supported networks", () => {
 		});
 	}
 
+	it("gives each network its own key server and upload worker", () => {
+		// A key server answers for one SettlementRegistry: sharing one across networks
+		// would seal deposits a buyer on the other network can never open.
+		const nets = Object.values(SupportedNetworks);
+		for (const field of ["keyServer", "signedUrlWorker"] as const) {
+			const urls = nets.map((c) => c[field]);
+			expect(urls.every(Boolean)).toBe(true);
+			expect(new Set(urls).size).toBe(nets.length);
+		}
+	});
+
 	it("refuses an unknown name, listing the supported ones", () => {
 		expect(() => getNetwork("mainnet")).toThrow(/baseSepolia, arbitrumSepolia/);
 	});

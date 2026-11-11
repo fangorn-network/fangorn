@@ -33,6 +33,9 @@ export interface NetworkConfig {
 	// The hosted upload worker for this network. Hosted uploads
 	// (`storage: { signedUrl: {} }`) go through it unless given a `workerUrl`.
 	signedUrlWorker?: string;
+	// The key server paid fields on this network are sealed to by default. It releases a
+	// key only once this network's SettlementRegistry says the reader paid.
+	keyServer?: string;
 }
 
 // Network/deployment settings only. Addresses are the proxies in contracts/solidity/script/Deployments.sol.
@@ -51,6 +54,7 @@ export const BaseSepoliaConfig = {
 	ipfsGateway: "https://ipfs-test.fangorn.network",
 	logWindow: 50_000n,
 	signedUrlWorker: "https://base-sepolia.storage-worker.fangorn.network",
+	keyServer: "https://keys-test.fangorn.network",
 } satisfies NetworkConfig;
 
 export const ArbitrumSepoliaConfig = {
@@ -66,8 +70,10 @@ export const ArbitrumSepoliaConfig = {
 	// Every scan here is filtered by address; the public RPC served 1M-block ranges
 	// of those when measured (2026-10-20).
 	logWindow: 100_000n,
-	// ponytail: no hosted upload worker yet. Hosted uploads are refused here unless given a
-	// `workerUrl`; add one when a storage worker is gated on this DataRegistry.
+	// webworker's `[env.arbitrum]` deployments: pinata-url-provider-arbitrum and
+	// fangorn-access-worker-arbitrum.
+	signedUrlWorker: "https://arbitrum-sepolia.storage-worker.fangorn.network",
+	keyServer: "https://arbitrum-sepolia.keys-test.fangorn.network",
 } satisfies NetworkConfig;
 
 /**

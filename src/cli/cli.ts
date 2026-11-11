@@ -616,8 +616,7 @@ program
 	.option("--deadline-days <days>", "Days the signed terms stay buyable", "365")
 	.option(
 		"--key-server <url>",
-		"Key server a new deposit is sealed to (an existing deposit keeps its own)",
-		"https://keys-test.fangorn.network",
+		"Key server a new deposit is sealed to (an existing deposit keeps its own; default: the network's)",
 	)
 	.action(
 		async (
@@ -628,7 +627,7 @@ program
 				price?: string;
 				share: string;
 				deadlineDays: string;
-				keyServer: string;
+				keyServer?: string;
 			},
 		) => {
 			try {
