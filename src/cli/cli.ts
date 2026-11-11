@@ -25,7 +25,7 @@ import "dotenv/config";
 import { Fangorn } from "../fangorn.js";
 import { sealRecords } from "./sell.js";
 import { fileToRecords, walk, type Staged } from "./stage.js";
-import { handleCancel } from "./index.js";
+import { handleCancel, selectChain } from "./index.js";
 import getNetwork, { NetworkConfig, nonBlank } from "../config.js";
 import { StorageConfig } from "../types/index.js";
 import { agentCardUrl, parseAgentId } from "../erc8004.js";
@@ -86,9 +86,11 @@ function loadConfig(): Config {
 
 	if (existsSync(CONFIG_PATH)) {
 		const stored = readStoredConfig();
+		// CLIs before 2026.11 stored the display name.
+		const storedChain = stored.chainName === "Arbitrum Sepolia" ? "arbitrumSepolia" : stored.chainName;
 		_config = {
 			privateKey: stored.privateKey,
-			cfg: network(envChain ?? stored.chainName),
+			cfg: network(envChain ?? storedChain),
 			pinataJwt: stored.pinataJwt,
 			pinataGateway: stored.pinataGateway,
 			signedUrlWorkerUrl: stored.signedUrlWorkerUrl ?? "",
@@ -287,7 +289,7 @@ program
 	.action(async () => {
 		intro("Fangorn Setup");
 
-		const chainName = "baseSepolia"; // ponytail: one network; restore a picker when there is a second
+		const chainName = await selectChain();
 
 		const privateKey = await text({
 			message: "Wallet private key (stored locally, never transmitted):",

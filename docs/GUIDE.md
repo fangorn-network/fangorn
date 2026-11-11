@@ -39,6 +39,7 @@ const fangorn = Fangorn.create({
 
 `fangorn init` prompts for the following values and writes them to `~/.fangorn/config.json`:
 
+- the network: Base Sepolia or Arbitrum Sepolia
 - the wallet private key
 - a Pinata JWT. Leave it blank to use hosted signed-URL uploads, a testnet convenience: files may be unpinned without notice.
 - a Pinata gateway. Leave it blank to use the network's gateway.
@@ -51,6 +52,7 @@ ETH_PRIVATE_KEY=0x...
 PINATA_JWT=...
 PINATA_GATEWAY=https://your-gateway.mypinata.cloud
 SIGNED_URL_WORKER_URL=...       # optional
+CHAIN_NAME=arbitrumSepolia      # optional: baseSepolia (default) or arbitrumSepolia
 FANGORN_RPC_URL=...             # optional overrides, e.g. for a local anvil
 FANGORN_DATA_REGISTRY=0x...
 FANGORN_SETTLEMENT_REGISTRY=0x...
@@ -444,13 +446,15 @@ A whole-repo buyer calls `requestKey` once, then calls `deriveRecordKey` and `de
 
 ## Network config
 
-Fangorn runs on Base Sepolia. `BaseSepoliaConfig` (also exported as `FangornConfig`) is in [`src/config.ts`](../src/config.ts). Any other deployment, such as anvil, is a `NetworkConfig` you pass yourself. The contracts work as follows:
+Fangorn runs on Base Sepolia (the default) and Arbitrum Sepolia, each with its own DataRegistry and SettlementRegistry. The two deployments share nothing: a repo committed on one isn't visible on the other. The configs are in [`src/config.ts`](../src/config.ts): `BaseSepoliaConfig` (also exported as `FangornConfig`) and `ArbitrumSepoliaConfig`. Pass one to `Fangorn.create({ config })`, or look one up by name with `getNetwork("arbitrumSepolia")`. Any other deployment, such as anvil, is a `NetworkConfig` you pass yourself. The contracts work as follows:
 
 - **DataRegistry** holds every repo's head and the update log.
 - **SettlementRegistry** holds signed per-record prices, referral splits, and read access (USDC and Semaphore).
 - The two contracts don't call each other.
 
 Base Sepolia's default RPC is `base-sepolia-rpc.publicnode.com`. The official `sepolia.base.org` endpoint caps `eth_getLogs` at 200 blocks, which is too few to scan the registry's history. Each config's `logWindow` is the largest block range one log query may span on its RPC.
+
+Arbitrum Sepolia has no hosted upload worker yet. `storage: { signedUrl: {} }` is refused there unless you pass a `workerUrl`; use Pinata (`storage: { pinata: … }`) instead. Its USDC is Circle's (`0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d`), whose EIP-712 name is `"USD Coin"`, not Base's `"USDC"`. Read the name from the token rather than hardcoding it when you sign a payment.
 
 ---
 
