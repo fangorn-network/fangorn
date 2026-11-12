@@ -1,5 +1,5 @@
 import { Chain, Hex } from "viem";
-import { baseSepolia } from "viem/chains";
+import { arbitrumSepolia, baseSepolia } from "viem/chains";
 
 /**
  * Blank input means "not set", never a value of "". Returns the trimmed value,
@@ -33,6 +33,9 @@ export interface NetworkConfig {
 	// The hosted upload worker for this network. Hosted uploads
 	// (`storage: { signedUrl: {} }`) go through it unless given a `workerUrl`.
 	signedUrlWorker?: string;
+	// The key server paid fields on this network are sealed to by default. It releases a
+	// key only once this network's SettlementRegistry says the reader paid.
+	keyServer?: string;
 }
 
 // Network/deployment settings only. Addresses are the proxies in contracts/solidity/script/Deployments.sol.
@@ -51,12 +54,31 @@ export const BaseSepoliaConfig = {
 	ipfsGateway: "https://ipfs-test.fangorn.network",
 	logWindow: 50_000n,
 	signedUrlWorker: "https://base-sepolia.storage-worker.fangorn.network",
+	keyServer: "https://keys-test.fangorn.network",
+} satisfies NetworkConfig;
+
+export const ArbitrumSepoliaConfig = {
+	dataRegistryContractAddress: "0x44B5a9C43F5905699747e062A126a588816436C4",
+	settlementRegistryContractAddress:
+		"0xC248Ef78e38bCa33708B3Fd9A21375E0AA10cf27",
+	fromBlock: 328303800n,
+	chain: arbitrumSepolia,
+	rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
+	caip2: 421614,
+	// The same Pinata gateway as Base: content addressing is not per chain.
+	ipfsGateway: "https://ipfs-test.fangorn.network",
+	// Every scan here is filtered by address; the public RPC served 1M-block ranges
+	// of those when measured (2026-10-20).
+	logWindow: 100_000n,
+	// webworker's `[env.arbitrum]` deployments: pinata-url-provider-arbitrum and
+	// fangorn-access-worker-arbitrum.
+	signedUrlWorker: "https://arbitrum-sepolia.storage-worker.fangorn.network",
+	keyServer: "https://arbitrum-sepolia.keys-test.fangorn.network",
 } satisfies NetworkConfig;
 
 /**
  * The default network: what `Fangorn.create` uses without a `config`, and the CLI
- * without `CHAIN_NAME`. Base Sepolia, which runs the contracts this SDK's ABIs are
- * built from.
+ * without `CHAIN_NAME`. Base Sepolia; Arbitrum Sepolia runs the same contracts.
  */
 export const FangornConfig = BaseSepoliaConfig;
 
@@ -65,10 +87,11 @@ export const FangornConfig = BaseSepoliaConfig;
  */
 export const SupportedNetworks: Record<string, NetworkConfig> = {
 	baseSepolia: BaseSepoliaConfig,
+	arbitrumSepolia: ArbitrumSepoliaConfig,
 };
 
 /**
- * Get a network's deployment by name ("baseSepolia").
+ * Get a network's deployment by name ("baseSepolia" or "arbitrumSepolia").
  * @returns The corresponding config if it is supported, otherwise an error
  */
 export default function getNetwork(name: string): NetworkConfig {

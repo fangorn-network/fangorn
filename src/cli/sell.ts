@@ -73,21 +73,24 @@ export async function sealRecords(
 	if (existing) {
 		kRepo = await requestKey({ deposit: existing, key: WHOLE_REPO, signer });
 	} else {
-		if (!o.keyServer)
+		// The network's own: another network's key server checks another SettlementRegistry,
+		// so a buyer here could never open the deposit.
+		const keyServer = o.keyServer ?? fangorn.getConfig().keyServer;
+		if (!keyServer)
 			throw new Error(
 				"no key server: pass keyServer (CLI: --key-server)",
 			);
-		const res = await fetch(`${o.keyServer}/pubkey`);
+		const res = await fetch(`${keyServer}/pubkey`);
 		if (!res.ok)
 			throw new Error(
-				`key server ${o.keyServer}/pubkey: HTTP ${res.status.toString()}`,
+				`key server ${keyServer}/pubkey: HTTP ${res.status.toString()}`,
 			);
 		const { pubkey } = (await res.json()) as { pubkey: Hex };
 		kRepo = newRepoKey();
 		const deposit = makeDeposit({
 			kRepo,
 			keyServerPubkey: hexToBytes(pubkey),
-			keyServer: o.keyServer,
+			keyServer,
 			scope,
 		});
 		out.push({

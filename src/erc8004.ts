@@ -22,6 +22,8 @@ import type { MetadataStorage } from "./providers/storage/types.js";
 export const IDENTITY_REGISTRY: Record<number, Address> = {
 	// Base Sepolia
 	84532: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+	// Arbitrum Sepolia: the same proxy and implementation (checked 2026-11-11)
+	421614: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
 };
 
 const ABI = parseAbi([

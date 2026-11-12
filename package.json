@@ -1,6 +1,6 @@
 {
 	"name": "@fangorn-network/sdk",
-	"version": "0.1.0",
+	"version": "0.1.4",
 	"description": "decentralized, verifiable and platformless content management framework",
 	"repository": {
 		"type": "git",
@@ -17,6 +17,7 @@
 	],
 	"scripts": {
 		"build": "tsdown",
+		"prepack": "pnpm build",
 		"format": "prettier . --write",
 		"lint": "eslint . --max-warnings 0",
 		"prepare": "husky",
