@@ -62,7 +62,7 @@ The [Guide](docs/GUIDE.md) covers the full flow: commit vs push, epochs, history
 
 ## Network
 
-Fangorn runs on **Base Sepolia**. The DataRegistry, SettlementRegistry, and hosted upload worker are all deployed there. Addresses are in [`src/config.ts`](src/config.ts) (`BaseSepoliaConfig`). To use a local anvil or a private deployment, pass your own `NetworkConfig` to `Fangorn.create`, or set the `FANGORN_*` overrides for the CLI (see the [Guide](docs/GUIDE.md#configure)). Contract sources are in [fangorn-network/contracts](https://github.com/fangorn-network/contracts).
+Fangorn runs on **Base Sepolia** (the default) and **Arbitrum Sepolia**. Each has its own DataRegistry, SettlementRegistry, hosted upload worker and key server. Addresses are in [`src/config.ts`](src/config.ts) (`BaseSepoliaConfig`, `ArbitrumSepoliaConfig`). The CLI asks for the network in `fangorn init`, and `CHAIN_NAME=arbitrumSepolia` overrides it. To use a local anvil or a private deployment, pass your own `NetworkConfig` to `Fangorn.create`, or set the `FANGORN_*` overrides for the CLI (see the [Guide](docs/GUIDE.md#configure)). Contract sources are in [fangorn-network/contracts](https://github.com/fangorn-network/contracts).
 
 ## Development
 

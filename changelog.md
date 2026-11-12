@@ -1,6 +1,18 @@
 # Changelog
 
-## Unreleased (since 2026.10.28)
+## Unreleased
+
+### Added
+
+- **A key server per network.** `NetworkConfig.keyServer` names the key server a
+  network's paid fields are sealed to. `sealRecords` and `fangorn commit --paid`
+  default to it instead of always using Base's `keys-test.fangorn.network`, so
+  sales on Arbitrum Sepolia can be opened by their buyers.
+- `ArbitrumSepoliaConfig` has a hosted upload worker
+  (`arbitrum-sepolia.storage-worker.fangorn.network`) and a key server
+  (`arbitrum-sepolia.keys-test.fangorn.network`).
+
+## 0.1.2 and earlier (since 2026.10.28)
 
 There is no app registry: an app is a publisher's repo, and agent cards attach
 to repos. Records are sold one by one (or a whole repo at
@@ -61,8 +73,12 @@ no server ever sees plaintext. The contracts were redeployed on Base Sepolia.
 - **The harness is removed** (`src/harness`, its hackmd example and its
   export). Build records yourself and pass them to `commit` / `uploadBatch`.
 - **`solc` is no longer a dependency.**
-- **Arbitrum Sepolia** is no longer documented in the README. Its config is
-  still exported, with the old contract addresses and no SettlementRegistry.
+- **Arbitrum Sepolia moved to a fresh deployment** of the current contracts,
+  a DataRegistry and a SettlementRegistry like Base Sepolia's. Nothing on the
+  old Arbitrum DataRegistry (`0x72B5…f8aE`) carries over. `ArbitrumSepoliaConfig`
+  has its own hosted upload worker and key server. `fangorn init` asks for the network again, and
+  configs that stored `"Arbitrum Sepolia"` still load. The ERC-8004 identity
+  registry is known on 421614, so `fangorn card` can mint agents there.
 
 ### Added
 
