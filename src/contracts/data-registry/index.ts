@@ -54,6 +54,8 @@ export interface CommitUpdate {
 	epoch: number;
 	/** digest of the parent commit, or ZERO_HEAD */
 	parent: Hex;
+	/** digest of the event's diff tree */
+	diff: Hex;
 	/** digest of the state root */
 	root: Hex;
 	/** the CAR's CID, as bytes */
@@ -66,6 +68,7 @@ export const UPDATE_TYPES = {
 		{ name: "repo", type: "string" },
 		{ name: "epoch", type: "uint64" },
 		{ name: "parent", type: "bytes32" },
+		{ name: "diff", type: "bytes32" },
 		{ name: "root", type: "bytes32" },
 		{ name: "car", type: "bytes" },
 	],
@@ -86,6 +89,7 @@ export const updateMessage = (publisher: Address, u: CommitUpdate) => ({
 	repo: u.repo,
 	epoch: BigInt(u.epoch),
 	parent: u.parent,
+	diff: u.diff,
 	root: u.root,
 	car: u.car,
 });
@@ -123,6 +127,8 @@ export interface Registry {
 	epoch(): Promise<number>;
 	/** H(ρ): the committed head, or ZERO_HEAD for a repo never written. */
 	head(ref: RepoRef): Promise<Hex>;
+	/** H(ρ) with its position (the repo's generation, from 1); (0, ZERO_HEAD) if never written. */
+	headAt(ref: RepoRef): Promise<{ pos: number; head: Hex }>;
 	/** Moves the signer's repo to the commit `u`. Valid only while `u.parent` is the head (Theorem 3). */
 	update(u: CommitUpdate): Promise<Hash>;
 	/** `update` as an unsigned transaction for `publisher` to sign. */
@@ -135,6 +141,8 @@ export interface Registry {
 		u: CommitUpdate,
 		signature: Hex,
 	): Promise<Hash>;
+	/** The update log's mountain range root as of clock `at` (default: now). */
+	logRoot(at?: bigint): Promise<Hex>;
 	/** The entries of a log between two clock values, oldest first. */
 	log(filter: LogFilter, from: bigint, to?: bigint): Promise<UpdateEntry[]>;
 	/** Follow the log live. Returns an unsubscribe function. */
@@ -178,13 +186,26 @@ export class ChainRegistry implements Registry {
 	}
 
 	async head(ref: RepoRef): Promise<Hex> {
-		const [, head] = await this.publicClient.readContract({
+		return (await this.headAt(ref)).head;
+	}
+
+	async headAt(ref: RepoRef): Promise<{ pos: number; head: Hex }> {
+		const [pos, head] = await this.publicClient.readContract({
 			address: this.data,
 			abi: DATA_REGISTRY_ABI,
 			functionName: "getHead",
 			args: [ref.publisher, repoId(ref.repo)],
 		});
-		return head;
+		return { pos: Number(pos), head };
+	}
+
+	logRoot(at?: bigint): Promise<Hex> {
+		return this.publicClient.readContract({
+			address: this.data,
+			abi: DATA_REGISTRY_ABI,
+			functionName: "logRoot",
+			...(at === undefined ? {} : { blockNumber: at }),
+		});
 	}
 
 	update(u: CommitUpdate): Promise<Hash> {
@@ -325,7 +346,7 @@ export class ChainRegistry implements Registry {
 }
 
 function updateArgs(u: CommitUpdate) {
-	return [u.repo, BigInt(u.epoch), u.parent, u.root, u.car] as const;
+	return [u.repo, BigInt(u.epoch), u.parent, u.diff, u.root, u.car] as const;
 }
 
 /** An `Updated` log. */

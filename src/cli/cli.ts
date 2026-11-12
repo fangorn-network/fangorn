@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { Command } from "commander";
+import { createRequire } from "node:module";
 import { intro, outro, text, spinner, confirm } from "@clack/prompts";
 import {
 	createPublicClient,
@@ -104,7 +105,7 @@ function loadConfig(): Config {
 		if (!privateKey) {
 			throw new Error(
 				"Incomplete environment configuration. Missing: ETH_PRIVATE_KEY\n" +
-					"Set it or run `fangorn init` to use a config file.",
+				"Set it or run `fangorn init` to use a config file.",
 			);
 		}
 
@@ -121,7 +122,7 @@ function loadConfig(): Config {
 
 	throw new Error(
 		"No configuration found. Run `fangorn init` or set ETH_PRIVATE_KEY\n" +
-			"(with no config, uploads go to Fangorn's shared Pinata account; files may be unpinned without notice. Set PINATA_JWT + PINATA_GATEWAY to use your own storage).",
+		"(with no config, uploads go to Fangorn's shared Pinata account; files may be unpinned without notice. Set PINATA_JWT + PINATA_GATEWAY to use your own storage).",
 	);
 }
 
@@ -167,11 +168,11 @@ function getFangorn(): Fangorn {
 	const storage: StorageConfig = cfg.pinataJwt
 		? { pinata: { jwt: cfg.pinataJwt, gateway: cfg.pinataGateway } }
 		: {
-				signedUrl: {
-					workerUrl: cfg.signedUrlWorkerUrl,
-					gateway: cfg.pinataGateway,
-				},
-			};
+			signedUrl: {
+				workerUrl: cfg.signedUrlWorkerUrl,
+				gateway: cfg.pinataGateway,
+			},
+		};
 
 	_fangorn = Fangorn.create({
 		privateKey: cfg.privateKey,
@@ -194,7 +195,7 @@ class LocalRepo {
 	private constructor(
 		private readonly dir: string,
 		private state: RepoState,
-	) {}
+	) { }
 
 	private static path(dir: string): string {
 		return join(dir, ".fangorn", "repo.json");
@@ -280,8 +281,8 @@ class LocalRepo {
 
 const program = new Command();
 
-program.name("fangorn").description("Fangorn Network CLI").version("0.4.0");
-
+program.name("fangorn").description("Fangorn Network CLI")
+	.version((createRequire(import.meta.url)("../../package.json") as { version: string }).version);
 /// initialize the fangorn cli
 program
 	.command("init")
@@ -409,8 +410,8 @@ program
 					const minted = (e as { agentId?: bigint }).agentId;
 					throw minted !== undefined
 						? new Error(
-								`${(e as Error).message.replace(/; finish it with .*/, "")}. Finish it with: fangorn card ${url} --repo ${repo} --update ${String(chainId)}:${String(minted)}`,
-							)
+							`${(e as Error).message.replace(/; finish it with .*/, "")}. Finish it with: fangorn card ${url} --repo ${repo} --update ${String(chainId)}:${String(minted)}`,
+						)
 						: e;
 				}
 				s.stop();
@@ -659,7 +660,7 @@ program
 					if (
 						parent &&
 						parent !==
-							(await fangorn.onChainTip(fangorn.getAddress(), repo.namespace()))
+						(await fangorn.onChainTip(fangorn.getAddress(), repo.namespace()))
 					) {
 						throw new Error(
 							"push your local commits before committing paid records",
@@ -835,6 +836,40 @@ program
 	});
 
 program
+	.command("stitch")
+	.description(
+		"Stitch repos into one tree from the update log, or update a stitch with --from. A pattern is " +
+		"`publisher/repo`, a repo name (every publisher's), '*' (every repo; quote it), or '/regex/' on `publisher/repo`",
+	)
+	.argument("<patterns...>")
+	.option("--from <stitch>", "The previous stitch to update (same patterns)")
+	.option(
+		"--verify <stitch>",
+		"Check a stitch against the chain instead of building one",
+	)
+	.action(
+		async (patterns: string[], opts: { from?: string; verify?: string }) => {
+			try {
+				const fangorn = getFangorn();
+				if (opts.verify) {
+					const ok = await fangorn.verifyStitch(opts.verify, patterns);
+					console.log(ok ? "valid" : "INVALID");
+					process.exit(ok ? 0 : 1);
+				}
+				const stitch = await fangorn.restitch(patterns, opts.from);
+				const { root, n, logRoot } = await fangorn.readStitch(stitch);
+				console.log(`stitch  ${stitch}`);
+				console.log(`root    ${root}`);
+				console.log(`log     ${String(n)} entries, root ${logRoot}`);
+				process.exit(0);
+			} catch (err) {
+				console.error("Failed:", (err as Error).message);
+				process.exit(1);
+			}
+		},
+	);
+
+program
 	.command("clone")
 	.description(
 		"Track an existing on-chain namespace by reconstructing its tip locally",
@@ -970,10 +1005,10 @@ program
 				// Status/logging on stderr so stdout stays a clean JSON-lines stream for piping.
 				console.error(
 					`Subscribing to "${namespace ?? "*"}" @ ${owner ?? "*"} ` +
-						(fromBlock !== undefined
-							? `from block ${fromBlock.toString()}`
-							: "(live from current tip)") +
-						` — Ctrl-C to stop.`,
+					(fromBlock !== undefined
+						? `from block ${fromBlock.toString()}`
+						: "(live from current tip)") +
+					` — Ctrl-C to stop.`,
 				);
 
 				const controller = new AbortController();
@@ -988,22 +1023,22 @@ program
 				// it back down. Without it the filter is one exact publisher and repo.
 				const stream = options.all
 					? fangorn.subscribeAll({
-							repo: namespace,
-							owner,
-							fromBlock,
-							signal: controller.signal,
-						})
+						repo: namespace,
+						owner,
+						fromBlock,
+						signal: controller.signal,
+					})
 					: fangorn.subscribe({
-							repo: namespace ?? "",
-							owner,
-							fromBlock,
-							signal: controller.signal,
-						});
+						repo: namespace ?? "",
+						owner,
+						fromBlock,
+						signal: controller.signal,
+					});
 
 				for await (const change of stream) {
 					process.stdout.write(
 						JSON.stringify(change, bigintReplacer, options.pretty ? 2 : 0) +
-							"\n",
+						"\n",
 					);
 					writeCursor(change.blockNumber);
 				}

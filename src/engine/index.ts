@@ -13,6 +13,11 @@ import {
 	type CommitUpdate,
 	type Registry,
 	ZERO_HEAD,
+	EMPTY_MMR,
+	logLeaf,
+	mmrAppend,
+	mmrRoot,
+	type Mmr,
 } from "../contracts/index.js";
 import { MetadataStorage } from "../providers/storage/types.js";
 import {
@@ -27,10 +32,11 @@ import {
 	lookupMst,
 	readMst,
 	diffMst,
+	type Stitch,
 } from "./records.js";
 import { packCar, readCar } from "./car.js";
 
-export type { Ref } from "./records.js";
+export type { Ref, Stitch } from "./records.js";
 
 export type RecordType = string;
 export type RepoName = string;
@@ -53,8 +59,11 @@ export interface StoredRecord {
 	payload: Record<string, unknown>;
 }
 
-/** A decoded commit, γ = (e, parent, root) plus its repo name and CAR (see CommitBlock). */
-export type CommitObject = CommitBlock;
+/**
+ * A decoded commit: the event (e, parent, diff, root) plus its repo name and CAR
+ * (see CommitBlock). `diff` is null for commits written before events carried one.
+ */
+export type CommitObject = Omit<CommitBlock, "diff"> & { diff: CID | null };
 
 export interface RepoContents {
 	records: StoredRecord[];
@@ -86,12 +95,41 @@ export function rootHexFromCid(commitCid: CID): Hex {
 	return bytesToHex(commitCid.multihash.digest);
 }
 
+/** The dag-cbor CID of a commit (or any block) from its bare sha256 digest, as the registry stores heads. */
+/** A stitch block (see `restitch`): stored on its own, like a commit. */
+interface StitchBlock {
+	parent: CID | null;
+	root: CID;
+	car: CID | null;
+	/** log entries folded in, and the mountain range's peaks after them */
+	n: number;
+	peaks: (Hex | null)[];
+	/** the clock it read the log up to: where the next stitch resumes */
+	t: number;
+}
+
+/** A repo's key in a stitch across repos. */
+const stitchKey = (publisher: Address, repo: string) =>
+	`${publisher.toLowerCase()}/${repo}`;
+
+export function cidFromDigest(digest: Hex): CID {
+	return CID.createV1(
+		dagCbor.code,
+		Digest.create(sha256.code, hexToBytes(digest)),
+	);
+}
+
 /** The update that settles `commit`. */
-export function commitUpdate(commit: CommitBlock): CommitUpdate {
+export function commitUpdate(commit: CommitObject): CommitUpdate {
+	if (!commit.diff)
+		throw new Error(
+			"commit has no diff: it is not in the current commit format — rebuild it",
+		);
 	return {
 		repo: commit.repo,
 		epoch: commit.epoch,
 		parent: commit.parent ? rootHexFromCid(commit.parent) : ZERO_HEAD,
+		diff: rootHexFromCid(commit.diff),
 		root: rootHexFromCid(commit.root),
 		car: bytesToHex(commit.car.bytes),
 	};
@@ -99,11 +137,11 @@ export function commitUpdate(commit: CommitBlock): CommitUpdate {
 
 /** The head the registry computes for `u`. */
 export async function commitHead(u: CommitUpdate): Promise<Hex> {
-	const link = (digest: Hex) =>
-		CID.createV1(dagCbor.code, Digest.create(sha256.code, hexToBytes(digest)));
+	const link = cidFromDigest;
 	const block = await encodeBlock({
 		epoch: u.epoch,
 		parent: u.parent === ZERO_HEAD ? null : link(u.parent),
+		diff: link(u.diff),
 		root: link(u.root),
 		repo: u.repo,
 		car: CID.decode(hexToBytes(u.car)),
@@ -229,13 +267,7 @@ export class FangornEngine {
 	/** Read and decode a commit object by CID (directly addressable — no CAR needed). */
 	async getCommit(commitCid: CID): Promise<CommitObject> {
 		const key = commitCid.toString();
-		let bytes = this.cache.get(key);
-		if (!bytes) {
-			bytes = await this.storage.getRawBlock(key);
-			assertBlockMatches(commitCid, bytes);
-			this.cache.set(key, bytes);
-		}
-
+		const bytes = await this.directBlock(commitCid);
 		const decoded = decodeBlock<Partial<CommitBlock>>(bytes);
 		if (typeof decoded.epoch !== "number" || typeof decoded.repo !== "string") {
 			throw new Error(
@@ -246,25 +278,50 @@ export class FangornEngine {
 		return {
 			epoch: decoded.epoch,
 			parent: decoded.parent ? CID.parse(String(decoded.parent)) : null,
+			diff: decoded.diff ? CID.parse(String(decoded.diff)) : null,
 			root: CID.parse(String(decoded.root)),
 			repo: decoded.repo,
 			car: CID.parse(String(decoded.car)),
 		};
 	}
 
-	/** Pull every block of `commit`'s CAR into the local cache. */
-	private async loadCar(commitCid: CID, commit: CommitObject): Promise<void> {
-		const bytes = await this.storage.getFile(commit.car.toString());
-		for (const block of await readCar(bytes, { verify: false })) {
-			const key = block.cid.toString();
-			if (!this.cache.has(key)) this.unverified.set(key, block.bytes);
+	/** A block stored on its own (a commit or stitch block), hash-checked and cached. */
+	private async directBlock(cid: CID): Promise<Uint8Array> {
+		const key = cid.toString();
+		let bytes = this.cache.get(key);
+		if (!bytes) {
+			bytes = await this.storage.getRawBlock(key);
+			assertBlockMatches(cid, bytes);
+			this.cache.set(key, bytes);
 		}
-		this.loadedCars.add(commitCid.toString());
+		return bytes;
+	}
+
+	/** The packfile and parent of a link in a chain: a commit, or a stitch. */
+	private async chainLink(
+		cid: CID,
+	): Promise<{ car: CID | null; parent: CID | null }> {
+		const b = decodeBlock<{ car?: CID | null; parent?: CID | null }>(
+			await this.directBlock(cid),
+		);
+		return { car: b.car ?? null, parent: b.parent ?? null };
+	}
+
+	/** Pull every block of a chain link's CAR into the local cache. */
+	private async loadCar(linkCid: CID, car: CID | null): Promise<void> {
+		if (car) {
+			const bytes = await this.storage.getFile(car.toString());
+			for (const block of await readCar(bytes, { verify: false })) {
+				const key = block.cid.toString();
+				if (!this.cache.has(key)) this.unverified.set(key, block.bytes);
+			}
+		}
+		this.loadedCars.add(linkCid.toString());
 	}
 
 	/**
-	 * Resolve a data block: local cache first, then walk the commit chain from
-	 * `hint`, loading one ancestor CAR at a time until the block turns up.
+	 * Resolve a data block: local cache first, then walk the chain (commits, or
+	 * stitches) from `hint`, loading one ancestor CAR at a time until the block turns up.
 	 */
 	private async getBlock(cid: CID, hint: CID | null): Promise<Uint8Array> {
 		const key = cid.toString();
@@ -283,13 +340,13 @@ export class FangornEngine {
 
 		let cursor = hint;
 		while (cursor) {
-			const commit = await this.getCommit(cursor);
+			const link = await this.chainLink(cursor);
 			if (!this.loadedCars.has(cursor.toString())) {
-				await this.loadCar(cursor, commit);
+				await this.loadCar(cursor, link.car);
 				const found = local();
 				if (found) return found;
 			}
-			cursor = commit.parent;
+			cursor = link.parent;
 		}
 		throw new Error(`Block payload missing for key: ${key}`);
 	}
@@ -380,8 +437,19 @@ export class FangornEngine {
 
 		// Rebuild the tree; only nodes on changed paths have new CIDs.
 		const mst = await buildMst(state);
-		for (const node of mst.nodes) {
-			if (!old.nodeCids.has(node.cid.toString())) carBlocks.push(node);
+		// The event's diff: every id whose record changed, null where it is gone.
+		const delta = new Map<string, CID | null>();
+		for (const [id, cid] of state)
+			if (!old.state.get(id)?.equals(cid)) delta.set(id, cid);
+		for (const id of old.state.keys()) if (!state.has(id)) delta.set(id, null);
+		const diff = await buildMst(delta);
+		const fresh = new Set<string>();
+		for (const node of [...mst.nodes, ...diff.nodes]) {
+			const key = node.cid.toString();
+			if (!old.nodeCids.has(key) && !fresh.has(key)) {
+				fresh.add(key);
+				carBlocks.push(node);
+			}
 		}
 
 		// Persist: one CAR upload for the delta, then the commit block naming it.
@@ -394,6 +462,7 @@ export class FangornEngine {
 		const commitObj: CommitBlock = {
 			epoch: await this.registry.epoch(),
 			parent: base,
+			diff: diff.root,
 			root: mst.root,
 			repo,
 			car,
@@ -505,16 +574,46 @@ export class FangornEngine {
 		return { id, cid: link.toString(), type: r.type, payload: r.payload };
 	}
 
+	/** The diff an event carries: id → new record CID, or null where the record was deleted. */
+	async eventDiff(commitCid: CID): Promise<Map<string, CID | null>> {
+		const { diff } = await this.getCommit(commitCid);
+		if (!diff)
+			throw new Error(`commit ${commitCid.toString()} predates diff events`);
+		return (
+			await readMst<CID | null>(diff, (cid) => this.getBlock(cid, commitCid))
+		).state;
+	}
+
+	/**
+	 * The events after `old` up to `tip`, composed into one id → CID | null map, newest write
+	 * winning. Null when `old` is not an ancestor of `tip`, or an event between them has no diff.
+	 */
+	private async eventsSince(
+		old: CID,
+		tip: CID,
+	): Promise<Map<string, CID | null> | null> {
+		// Commit blocks are small and loose: find the path first, then open CARs for its diffs.
+		const path: CID[] = [];
+		for await (const { cid, commit } of this.walkParents(tip)) {
+			if (cid.equals(old)) break;
+			if (!commit.diff || !commit.parent) return null;
+			path.push(cid);
+		}
+		const net = new Map<string, CID | null>();
+		for (const cid of path)
+			for (const [id, v] of await this.eventDiff(cid))
+				if (!net.has(id)) net.set(id, v);
+		return net;
+	}
+
 	/**
 	 * Net change to a single repo between two on-chain roots — the core of
-	 * the subscription light-client. A plain comparison of the two id → CID
-	 * maps; only records that actually changed are decoded.
+	 * the subscription light-client. Only records that actually changed are decoded.
 	 *
-	 * Diffing root-to-root (rather than walking commits) is deliberately robust:
-	 * it yields the correct net delta even across a force-push / non-fast-forward
-	 * reorg — exactly what an index builder needs (what to (re)embed, what to evict).
-	 * Reads only the nodes on changed paths (`diffMst`): 10 new records in a
-	 * 50k-record repo cost ~10 × depth nodes, not two 50k-key walks.
+	 * When `old` is an ancestor of `new`, this reads the diffs the events carry (WHITEPAPER_1 §3.3,
+	 * Following) and looks each changed id up in the old tree. Otherwise, across a reset to another
+	 * chain or a commit from before diff events, it diffs the two trees (`diffMst`). Either way the
+	 * result is the net delta an index builder needs: what to (re)embed, what to evict.
 	 */
 	async repoDiff(
 		oldRootHex: string | null,
@@ -529,6 +628,27 @@ export class FangornEngine {
 			oldRootHex && oldRootHex !== ZERO_BYTES32
 				? this.hexToRootCid(oldRootHex)
 				: null;
+
+		const events =
+			oldCommit && newCommit
+				? await this.eventsSince(oldCommit, newCommit)
+				: null;
+		if (oldCommit && newCommit && events) {
+			const oldRoot = (await this.getCommit(oldCommit)).root;
+			const puts: StoredRecord[] = [];
+			const deletes: string[] = [];
+			const superseded: string[] = [];
+			for (const [id, after] of events) {
+				const before = await lookupMst(oldRoot, id, (cid) =>
+					this.getBlock(cid, oldCommit),
+				);
+				if (before && after && before.equals(after)) continue;
+				if (before) superseded.push(before.toString());
+				if (after) puts.push(await this.decodeRecord(id, after, newCommit));
+				else if (before) deletes.push(id);
+			}
+			return { puts, deletes, superseded };
+		}
 
 		const root = async (c: CID | null) =>
 			c ? (await this.getCommit(c)).root : null;
@@ -549,25 +669,40 @@ export class FangornEngine {
 		};
 	}
 
-	/** Diff a commit against its parent. */
+	/** Diff a commit against its parent: its event's diff, or two full states for an older commit. */
 	async diffCommit(commitCid: CID): Promise<CommitDiff> {
 		const commit = await this.getCommit(commitCid);
 		const ns = commit.repo;
-		const child = (await this.stateAt(commitCid)).state;
-		const par = commit.parent
-			? (await this.stateAt(commit.parent)).state
-			: new Map<string, CID>();
-
 		const added: string[] = [];
 		const updated: string[] = [];
 		const removed: string[] = [];
-		for (const [id, cid] of child) {
-			const prev = par.get(id);
-			if (!prev) added.push(`${ns}/${id}`);
-			else if (prev.toString() !== cid.toString()) updated.push(`${ns}/${id}`);
+
+		if (commit.diff) {
+			const parent = commit.parent;
+			const parentRoot = parent ? (await this.getCommit(parent)).root : null;
+			for (const [id, cid] of await this.eventDiff(commitCid)) {
+				if (!cid) removed.push(`${ns}/${id}`);
+				else if (
+					parent &&
+					parentRoot &&
+					(await lookupMst(parentRoot, id, (c) => this.getBlock(c, parent)))
+				)
+					updated.push(`${ns}/${id}`);
+				else added.push(`${ns}/${id}`);
+			}
+		} else {
+			const child = (await this.stateAt(commitCid)).state;
+			const par = commit.parent
+				? (await this.stateAt(commit.parent)).state
+				: new Map<string, CID>();
+			for (const [id, cid] of child) {
+				const prev = par.get(id);
+				if (!prev) added.push(`${ns}/${id}`);
+				else if (!prev.equals(cid)) updated.push(`${ns}/${id}`);
+			}
+			for (const id of par.keys())
+				if (!child.has(id)) removed.push(`${ns}/${id}`);
 		}
-		for (const id of par.keys())
-			if (!child.has(id)) removed.push(`${ns}/${id}`);
 
 		return {
 			parent: commit.parent?.toString() ?? null,
@@ -577,6 +712,210 @@ export class FangornEngine {
 			added: added.sort(),
 			updated: updated.sort(),
 			removed: removed.sort(),
+		};
+	}
+
+	/** A stitch to the current head of (publisher, repo), at `key` if given. One `getHead` read, no logs. */
+	async stitchTo(
+		publisher: Address,
+		repo: RepoName,
+		key?: string,
+	): Promise<Stitch> {
+		const { pos, head } = await this.registry.headAt({ publisher, repo });
+		if (pos === 0) throw new Error(`${publisher} has no head in repo ${repo}`);
+		return {
+			publisher,
+			repo,
+			pos,
+			head,
+			...(key === undefined ? {} : { key }),
+		};
+	}
+
+	/**
+	 * A stitch across repos: an MST of `publisher/repo` → head commit, folded from the
+	 * update log up to entry n and tagged with the log's root there. Pass the previous
+	 * stitch to read only the log since it, and upload only the nodes it doesn't have
+	 * (one CAR). Returns the stitch block's CID, its name; with nothing new, `prev`.
+	 * Use the same `filter` every time for one stitch. `fromBlock` is where the log
+	 * starts (the registry's deploy block).
+	 * ponytail: rehashes the whole tree (O(repos)); and readers walk back one CAR per
+	 * stitch to find old nodes, so checkpoint with a full CAR (`prev = null`) when the
+	 * chain gets long.
+	 */
+	async restitch(
+		prev: CID | null,
+		filter?: (publisher: Address, repo: RepoName) => boolean,
+		fromBlock = 0n,
+	): Promise<CID> {
+		const base = prev ? await this.readStitch(prev) : null;
+		const to = await this.registry.clock();
+		const entries = await this.registry.log(
+			{},
+			base ? base.t + 1n : fromBlock,
+			to,
+		);
+		if (prev && entries.length === 0) return prev;
+
+		const old =
+			base && prev
+				? await readMst(base.root, (c) => this.getBlock(c, prev))
+				: { state: new Map<string, CID>(), nodeCids: new Set<string>() };
+		const state = new Map<string, CID | null>(old.state);
+		let mmr: Mmr = base ?? EMPTY_MMR;
+		for (const e of entries) {
+			mmr = mmrAppend(mmr, logLeaf(e));
+			if (!filter || filter(e.publisher, e.repo))
+				state.set(stitchKey(e.publisher, e.repo), this.hexToRootCid(e.head));
+		}
+
+		const { root, nodes } = await buildMst(state);
+		const fresh = new Map<string, Block>();
+		for (const n of nodes)
+			if (!old.nodeCids.has(n.cid.toString())) fresh.set(n.cid.toString(), n);
+		for (const n of fresh.values()) this.putLocal(n);
+		const car = fresh.size
+			? fileCid(
+					await this.storage.putFile(
+						await packCar(root, fresh.values()),
+						`${root.toString()}.car`,
+					),
+				)
+			: null;
+		const block = await encodeBlock({
+			parent: prev,
+			root,
+			car,
+			n: mmr.n,
+			t: Number(to),
+			peaks: mmr.peaks,
+		} satisfies StitchBlock);
+		await this.storage.putBlock(block);
+		this.putLocal(block);
+		this.loadedCars.add(block.cid.toString());
+		return block.cid;
+	}
+
+	/** A stitch block: its tree root, and the log it was folded from (n entries, root `logRoot`). */
+	async readStitch(stitch: CID): Promise<{
+		root: CID;
+		n: number;
+		t: bigint;
+		peaks: (Hex | null)[];
+		logRoot: Hex;
+	}> {
+		const b = decodeBlock<StitchBlock>(await this.directBlock(stitch));
+		const mmr = { n: b.n, peaks: b.peaks };
+		return {
+			root: CID.parse(String(b.root)),
+			...mmr,
+			t: BigInt(b.t),
+			logRoot: mmrRoot(mmr),
+		};
+	}
+
+	/**
+	 * The head commit a stitch holds for (publisher, repo), or null if it doesn't
+	 * include the repo. Every node read is hash-checked.
+	 * ponytail: like `lookupMst`, trusts key order on the path; `readMst` proves absence.
+	 */
+	async stitchedHead(
+		stitch: CID,
+		publisher: Address,
+		repo: RepoName,
+	): Promise<CID | null> {
+		const { root } = await this.readStitch(stitch);
+		return lookupMst(root, stitchKey(publisher, repo), (c) =>
+			this.getBlock(c, stitch),
+		);
+	}
+
+	/** Every (publisher, repo) → head commit a stitch holds: what an indexer follows. */
+	async stitchHeads(
+		stitch: CID,
+	): Promise<{ publisher: Address; repo: RepoName; head: CID }[]> {
+		const { root } = await this.readStitch(stitch);
+		const { state } = await readMst(root, (c) => this.getBlock(c, stitch));
+		// the key is `${publisher}/${repo}`; a publisher is 42 chars, a repo may hold "/"
+		return [...state].map(([k, head]) => ({
+			publisher: k.slice(0, 42) as Address,
+			repo: k.slice(43),
+			head,
+		}));
+	}
+
+	/**
+	 * Check a stitch without trusting whoever built it: replay the whole log, check it
+	 * against the contract's log root, and rebuild the stitch from its first n entries
+	 * under the same `filter`. Reads no stitch nodes, only the stitch block.
+	 * ponytail: O(log) per check; store log roots on chain if that gets slow.
+	 */
+	async verifyStitch(
+		stitch: CID,
+		filter?: (publisher: Address, repo: RepoName) => boolean,
+		fromBlock = 0n,
+	): Promise<boolean> {
+		const s = await this.readStitch(stitch);
+		const to = await this.registry.clock();
+		const entries = await this.registry.log({}, fromBlock, to);
+		if (entries.length < s.n) return false;
+		let mmr = EMPTY_MMR;
+		const state = new Map<string, CID | null>();
+		for (const [i, e] of entries.entries()) {
+			mmr = mmrAppend(mmr, logLeaf(e));
+			if (i >= s.n) continue;
+			if (!filter || filter(e.publisher, e.repo))
+				state.set(stitchKey(e.publisher, e.repo), this.hexToRootCid(e.head));
+			if (i === s.n - 1 && mmrRoot(mmr) !== s.logRoot) return false;
+		}
+		if (s.n === 0 && s.logRoot !== mmrRoot(EMPTY_MMR)) return false;
+		if (mmrRoot(mmr) !== (await this.registry.logRoot(to))) return false;
+		return (await buildMst(state)).root.equals(s.root);
+	}
+
+	/**
+	 * Check a stitch against the registry (WHITEPAPER_1 Proposition 4.2) and resolve it:
+	 * the record at its key as of that position (null if absent), or, with no key, the event's diff.
+	 * Throws if the repo never had `head` at `pos`. `latest` says whether the repo has moved on.
+	 * A stitch at the current generation is checked with one `getHead` read.
+	 * ponytail: an older stitch still scans the log from `fromBlock` (and trusts the RPC).
+	 * Upgrade: walk parents back from the on-chain head, recomputing `commitHead` each hop
+	 * (O(distance), no logs), or an MMR opening against `logRoot()` (O(log n), needs a proof server).
+	 */
+	async checkStitch(
+		s: Stitch,
+		fromBlock = 0n,
+	): Promise<{
+		latest: boolean;
+		record?: StoredRecord | null;
+		diff?: Map<string, CID | null>;
+	}> {
+		const ref = { publisher: s.publisher, repo: s.repo };
+		const cur = await this.registry.headAt(ref);
+		if (s.pos < 1 || s.pos > cur.pos)
+			throw new Error(
+				`no position ${s.pos.toString()} in ${s.publisher}/${s.repo}`,
+			);
+		const latest = s.pos === cur.pos;
+		const had = latest
+			? cur.head
+			: (await this.registry.log(ref, fromBlock)).find((e) => e.pos === s.pos)
+					?.head;
+		if (had?.toLowerCase() !== s.head.toLowerCase())
+			throw new Error(
+				`false stitch: ${s.publisher}/${s.repo} had ${had ?? "nothing"} at position ${s.pos.toString()}, not ${s.head}`,
+			);
+		const commit = this.hexToRootCid(s.head);
+		if (s.key === undefined)
+			return { latest, diff: await this.eventDiff(commit) };
+		const cid = await lookupMst(
+			(await this.getCommit(commit)).root,
+			s.key,
+			(c) => this.getBlock(c, commit),
+		);
+		return {
+			latest,
+			record: cid ? await this.decodeRecord(s.key, cid, commit) : null,
 		};
 	}
 

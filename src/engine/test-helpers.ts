@@ -5,6 +5,7 @@ import type {
 	StorageMeta,
 } from "../providers/storage/types.js";
 import { MemRegistry } from "../test/mem-registry.js";
+import { readCar } from "./car.js";
 import { CID } from "multiformats/cid";
 import * as raw from "multiformats/codecs/raw";
 import { sha256 } from "multiformats/hashes/sha2";
@@ -68,6 +69,15 @@ export class MemStorage implements MetadataStorage {
 
 	get<T>(_uri: string): Promise<T> {
 		return Promise.reject(new Error("MemStorage.get not implemented"));
+	}
+
+	/** Every block stored, loose or inside a CAR. */
+	async allBlocks(): Promise<Map<string, Uint8Array>> {
+		const out = new Map(this.blocks);
+		for (const bytes of this.files.values())
+			for (const b of await readCar(bytes, { verify: false }))
+				out.set(b.cid.toString(), b.bytes);
+		return out;
 	}
 
 	delete(_uri: string): Promise<void> {

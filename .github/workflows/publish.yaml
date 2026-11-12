@@ -1,0 +1,40 @@
+# Publishes to npm on every merge to main, if package.json's version is not
+# already on npm. Bump the version in the PR to release; otherwise this is a no-op.
+# Auth is npm Trusted Publishing (OIDC): no token. Configure it on npmjs.com under
+# the package's settings -> Trusted Publisher -> GitHub Actions, workflow publish.yaml.
+
+name: Publish
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  id-token: write # npm trusted publishing (OIDC)
+
+concurrency: publish
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/prepare
+      - id: check
+        run: |
+          v=$(node -p "require('./package.json').version")
+          if npm view "@fangorn-network/sdk@$v" version >/dev/null 2>&1; then
+            echo "v$v already published, skipping"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.check.outputs.publish
+        run: pnpm build
+      - if: steps.check.outputs.publish
+        # trusted publishing needs npm >= 11.5.1; node 22 ships npm 10. Provenance is automatic.
+        run: |
+          npm install -g npm@^11.5.1
+          npm publish --access public

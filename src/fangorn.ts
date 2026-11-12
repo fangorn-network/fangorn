@@ -2,6 +2,7 @@ import {
 	createPublicClient,
 	createWalletClient,
 	http,
+	toHex,
 	type Hash,
 	type Hex,
 	type PublicClient,
@@ -39,6 +40,7 @@ import {
 	RecordInput,
 	rootHexFromCid,
 	type SignedUpdate,
+	type Stitch,
 } from "./engine/index.js";
 import {
 	PreparedTx,
@@ -737,6 +739,67 @@ export class Fangorn {
 		return this.engine.diffCommit(CID.parse(commitCid));
 	}
 
+	/** A stitch (WHITEPAPER_1 §4) to the current head of a repo, at `key` if given. */
+	stitchTo(publisher: Hex, repo: string, key?: string): Promise<Stitch> {
+		return this.engine.stitchTo(publisher, repo, key);
+	}
+
+	/** Check a stitch against the registry, and resolve what it names. */
+	checkStitch(s: Stitch) {
+		return this.engine.checkStitch(s, this.ctx.config.fromBlock);
+	}
+
+	/**
+	 * Build or update a stitch across the repos `patterns` match (see `stitchFilter`),
+	 * from the update log. Pass the previous stitch to update it. Returns the stitch's CID.
+	 */
+	async restitch(patterns: string[], prev?: string): Promise<string> {
+		const cid = await this.engine.restitch(
+			prev ? CID.parse(prev) : null,
+			stitchFilter(patterns),
+			this.ctx.config.fromBlock,
+		);
+		return cid.toString();
+	}
+
+	/** A stitch's tree root, and the log it was folded from: n entries, with root `logRoot`. */
+	async readStitch(stitch: string) {
+		const s = await this.engine.readStitch(CID.parse(stitch));
+		return { root: s.root.toString(), n: s.n, logRoot: s.logRoot };
+	}
+
+	/** Check a stitch against the contract's log root, rebuilding it under the same patterns. */
+	verifyStitch(stitch: string, patterns: string[]): Promise<boolean> {
+		return this.engine.verifyStitch(
+			CID.parse(stitch),
+			stitchFilter(patterns),
+			this.ctx.config.fromBlock,
+		);
+	}
+
+	/** The head commit a stitch holds for a repo, or null if it doesn't include it. */
+	async stitchedHead(
+		stitch: string,
+		publisher: Hex,
+		repo: string,
+	): Promise<string | null> {
+		const head = await this.engine.stitchedHead(
+			CID.parse(stitch),
+			publisher,
+			repo,
+		);
+		return head?.toString() ?? null;
+	}
+
+	/** Every repo a stitch holds, at its head (the on-chain digest, as `repoDiff` takes it). */
+	async stitchHeads(stitch: string) {
+		return (await this.engine.stitchHeads(CID.parse(stitch))).map((h) => ({
+			publisher: h.publisher,
+			repo: h.repo,
+			head: toHex(h.head.multihash.digest),
+		}));
+	}
+
 	/**
 	 * Lists every record currently committed under a repo, resolved
 	 * from the publisher's on-chain root — useful for verifying what actually
@@ -1028,4 +1091,28 @@ export class Fangorn {
 		if (!address) throw new Error("No account connected to wallet client");
 		return address;
 	}
+}
+
+/**
+ * Which repos a stitch covers. A pattern is `publisher/repo`, a repo name (every
+ * publisher's), `*` (every repo), or `/regex/` matched against `publisher/repo`
+ * (publisher lowercased).
+ */
+export function stitchFilter(
+	patterns: string[],
+): (publisher: Hex, repo: string) => boolean {
+	const tests = patterns.map((p) => {
+		if (p === "*") return () => true;
+		if (p.length > 2 && p.startsWith("/") && p.endsWith("/")) {
+			const re = new RegExp(p.slice(1, -1));
+			return (id: string) => re.test(id);
+		}
+		const i = p.indexOf("/");
+		const want = i < 0 ? null : `${p.slice(0, i).toLowerCase()}${p.slice(i)}`;
+		return (id: string, repo: string) => (want ? id === want : repo === p);
+	});
+	return (publisher, repo) => {
+		const id = `${publisher.toLowerCase()}/${repo}`;
+		return tests.some((t) => t(id, repo));
+	};
 }

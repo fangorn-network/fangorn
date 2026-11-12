@@ -1,6 +1,6 @@
 {
 	"name": "@fangorn-network/sdk",
-	"version": "0.1.4",
+	"version": "0.1.5",
 	"description": "decentralized, verifiable and platformless content management framework",
 	"repository": {
 		"type": "git",
@@ -26,9 +26,6 @@
 		"test:live": "vitest run --config vitest.e2e.config.ts src/e2e/live.e2e.test.ts",
 		"abis": "scripts/gen-abis.sh",
 		"tsc": "tsc",
-		"deploy": "dotenvx run -f .env -- tsx deploy.ts",
-		"setup:embeddings": "dotenvx run -f .env -- tsx src/test/setup-embeddings-testdata.ts",
-		"cleanup:embeddings": "dotenvx run -f .env -- tsx src/test/cleanup-embeddings-testdata.ts",
 		"prepare:cli": "npm run build",
 		"fangorn": "dotenvx run -f .env -- node dist/src/cli/cli.js"
 	},
