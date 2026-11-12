@@ -15,7 +15,7 @@ on what the client _sends_ and how it _interprets_ what comes back. They prove:
 - the client fails early and legibly where it can, instead of forwarding a revert
 
 They cannot prove the contract accepts the call. Contract behaviour is already
-covered by the Forge tests in `contracts/solidity/test/` (`forge test`), and the
+covered by the Forge tests in `contracts/test/` (`forge test`), and the
 two suites meet only in the e2e suites, on a fork of the live chain. When a scenario below
 restates a contract rule, it is because the _client_ has to encode or anticipate
 that rule — not to re-test it.

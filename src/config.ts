@@ -38,7 +38,7 @@ export interface NetworkConfig {
 	keyServer?: string;
 }
 
-// Network/deployment settings only. Addresses are the proxies in contracts/solidity/script/Deployments.sol.
+// Network/deployment settings only. Addresses are the proxies in contracts/script/Deployments.sol.
 export const BaseSepoliaConfig = {
 	dataRegistryContractAddress: "0x0F3eb0E62CF610dbaC6B3aD4Bf4cE38Ab50EBCC5",
 	settlementRegistryContractAddress:

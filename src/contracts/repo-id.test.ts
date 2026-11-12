@@ -4,7 +4,7 @@ import { keccak256, toHex } from "viem";
 import { repoId } from "./data-registry/index.js";
 
 // Golden fixture shared with the contracts (`test_repo_id_matches_sdk_fixture` in
-// contracts/solidity/test/DataRegistry.t.sol). If the derivations diverge, every
+// contracts/test/DataRegistry.t.sol). If the derivations diverge, every
 // head reads as zero and every update lands where nobody watches — silently.
 describe("id derivation", () => {
 	it("matches the contract's golden fixture", () => {

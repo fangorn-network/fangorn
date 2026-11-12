@@ -71,7 +71,7 @@ export function memoryNetwork(Registry: typeof MemRegistry = MemRegistry) {
 /** The contracts checkout. Override with FANGORN_CONTRACTS_DIR. */
 const CONTRACTS =
 	process.env.FANGORN_CONTRACTS_DIR ??
-	resolve(import.meta.dirname, "../../../contracts/solidity");
+	resolve(import.meta.dirname, "../../../contracts");
 
 const has = (cmd: string) => spawnSync(cmd, ["--version"]).status === 0;
 

@@ -1,6 +1,6 @@
 /**
  * Generated from `forge inspect SettlementRegistry abi` in fangorn-network/contracts
- * (solidity/src/SettlementRegistry.sol). Regenerate with scripts/gen-abis.sh, do not edit.
+ * (src/SettlementRegistry.sol). Regenerate with scripts/gen-abis.sh, do not edit.
  */
 export const SETTLEMENT_REGISTRY_ABI = [
 	{
