@@ -1,6 +1,7 @@
 # Publishes to npm on every merge to main, if package.json's version is not
 # already on npm. Bump the version in the PR to release; otherwise this is a no-op.
-# Needs the NPM_TOKEN repo secret (an npm automation token).
+# Auth is npm Trusted Publishing (OIDC): no token. Configure it on npmjs.com under
+# the package's settings -> Trusted Publisher -> GitHub Actions, workflow publish.yaml.
 
 name: Publish
 
@@ -11,7 +12,7 @@ on:
 
 permissions:
   contents: read
-  id-token: write # npm provenance
+  id-token: write # npm trusted publishing (OIDC)
 
 concurrency: publish
 
@@ -33,8 +34,7 @@ jobs:
       - if: steps.check.outputs.publish
         run: pnpm build
       - if: steps.check.outputs.publish
+        # trusted publishing needs npm >= 11.5.1; node 22 ships npm 10. Provenance is automatic.
         run: |
-          npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
-          npm publish --access public --provenance
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          npm install -g npm@^11.5.1
+          npm publish --access public
