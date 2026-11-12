@@ -17,22 +17,23 @@ const ref = { publisher: P, repo: "s" };
 const E = 493_000;
 const ROOT: Hex =
 	"0xc3a75f27a0777dd37f80e7252ba50f882a088dd9b6e3e602281b9c217375cd9f";
+const DIFF: Hex = `0x${"11".repeat(32)}`;
 const CAR: Hex =
 	"0x01551220039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81";
 const FIRST: Hex =
-	"0x745133376af45492027c3773e51c69553b6c728af140de19e4b3489c0e789c94";
+	"0x96e5fb518a2070784f5c2920494d35c7585a7c3ebf0e11c48138ff607d4f499f";
 const SECOND: Hex =
-	"0x43eed88abf71cb580f34d4da9a0307977e54039e9a7c335f49040293328fb44e";
+	"0xd4d5aecb442c8e8c510ea16de16af34726babf069c375356b50468be21998242";
 const LONG: Hex =
-	"0xc2d736394f98eeacb72b4f1f2d20961d558ec56ca6fa7a9a90fe3de736ed93f4";
+	"0x25028509d1c083e454d4dbc6840c45b88354603a44a96683298c26557bf6fd8a";
 const SMALL: Hex =
-	"0xa9cbca8f0bd56bab838f43d0dfdb3bf460163017d793b3fe17798837173b6d0b";
+	"0xb3f8e42d45c2f0db59f96985b4528e253c855a01db88631ef84ed5182d584ef1";
 
 const u = (
 	repo: string,
 	epoch: number,
 	parent: Hex = ZERO_HEAD,
-): CommitUpdate => ({ repo, epoch, parent, root: ROOT, car: CAR });
+): CommitUpdate => ({ repo, epoch, parent, diff: DIFF, root: ROOT, car: CAR });
 const at = (epoch: number) => () => epoch * EPOCH_SECONDS + 5;
 
 describe("commitHead", () => {

@@ -7,3 +7,4 @@ export * from "./types/index.js";
 export * from "./crypto/encryption.js";
 export * from "./crypto/paid.js";
 export * from "./cli/sell.js";
+export type { Ref, Stitch } from "./engine/index.js";

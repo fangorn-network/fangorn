@@ -14,7 +14,7 @@ import * as dagCbor from "@ipld/dag-cbor";
 //
 //   record   { id, type, payload }                     — one version of an entity
 //   MST node { level, left, entries: [{ key, value, right }] }
-//   commit   { epoch, parent, root, repo, car }
+//   commit   { epoch, parent, diff, root, repo, car }
 //
 // Relations are not a separate block kind: a relation is a record whose payload
 // holds `src`/`dst` references (`Ref`). Everything is canonical dag-cbor over
@@ -58,17 +58,30 @@ export interface RecordBlock {
 }
 
 /**
- * A reference from one record to another (FOUNDATIONS §2.2), stored as a plain
- * payload value. `local`: a record id in the same repo state, follows
- * updates. `pinned`: one exact record version, by CID.
- * ponytail: no `live` (cross-repo) refs and no resolver yet — add with
- * the §10 graph extension.
+ * A stitch (WHITEPAPER_1 §4): the event `head` at position `pos` of repo
+ * (publisher, repo). With `key`, it names the record at that key in the event's
+ * state; without, the event itself (its diff). Checked by `checkStitch`.
  */
-export type Ref = { local: string } | { pinned: string };
+export interface Stitch {
+	publisher: `0x${string}`;
+	repo: string;
+	pos: number;
+	head: `0x${string}`;
+	key?: string;
+}
 
 /**
- * Commit block: γ = (e, parent, root) of WHITEPAPER_1 §3.1, whose name is the
- * on-chain head. `root` is the repo's MST root.
+ * A reference from one record to another, stored as a plain payload value.
+ * `local`: a record id in the same repo state, follows updates. `pinned`: one
+ * exact record version, by CID. `stitch`: an event or record of any repo, at a
+ * position the registry's log can check.
+ */
+export type Ref = { local: string } | { pinned: string } | { stitch: Stitch };
+
+/**
+ * Commit block: the event (e, parent, diff, root) of WHITEPAPER_1 §2, whose
+ * name is the on-chain head. `root` is the repo's MST root. `diff` is an MST
+ * of what changed against the parent: id → new record CID, or null for a delete.
  *
  * Two more fields:
  *   • `repo`: the repo's name, which events carry only as keccak256(name);
@@ -80,6 +93,7 @@ export type Ref = { local: string } | { pinned: string };
 export interface CommitBlock {
 	epoch: number;
 	parent: CID | null;
+	diff: CID;
 	root: CID;
 	repo: string;
 	car: CID;
@@ -122,7 +136,8 @@ const MAX_DEPTH = 256 / MST_BITS + 1;
 
 export interface MstEntry {
 	key: string;
-	value: CID;
+	/** A record CID; null only in a diff tree, where it means "deleted". */
+	value: CID | null;
 	/** Subtree of keys between this key and the next one. */
 	right: CID | null;
 }
@@ -156,7 +171,7 @@ export function keyLevel(key: string): number {
  * make commits CPU-bound.
  */
 export async function buildMst(
-	state: Map<string, CID>,
+	state: Map<string, CID | null>,
 ): Promise<{ root: CID; nodes: Block[] }> {
 	const items = [...state]
 		.map(([key, value]) => ({ key, value, level: keyLevel(key) }))
@@ -212,11 +227,12 @@ export async function buildMst(
  * and comparing roots catches duplicate, misordered, misplaced and wrong-level
  * keys in one check.
  */
-export async function readMst(
+
+export async function readMst<V extends CID | null = CID>(
 	root: CID,
 	getBlock: (cid: CID) => Promise<Uint8Array>,
-): Promise<{ state: Map<string, CID>; nodeCids: Set<string> }> {
-	const state = new Map<string, CID>();
+): Promise<{ state: Map<string, V>; nodeCids: Set<string> }> {
+	const state = new Map<string, V>();
 	const nodeCids = new Set<string>();
 
 	const walk = async (cid: CID, depth: number): Promise<void> => {
@@ -234,7 +250,7 @@ export async function readMst(
 		}
 		if (node.left) await walk(node.left, depth + 1);
 		for (const e of node.entries) {
-			state.set(e.key, e.value);
+			state.set(e.key, e.value as V);
 			if (e.right) await walk(e.right, depth + 1);
 		}
 	};
@@ -266,6 +282,7 @@ export async function diffMst(
 	deletes: string[];
 	before: Map<string, CID>;
 }> {
+	// state trees only: values are never null here
 	type Item = { sub: CID; level: number } | { key: string; value: CID };
 	// Stacks, head last. A root's level is unknown until read: Infinity opens both roots first.
 	const a: Item[] = oldRoot ? [{ sub: oldRoot, level: Infinity }] : [];
@@ -277,6 +294,8 @@ export async function diffMst(
 			? [{ sub: node.left, level: node.level - 1 }]
 			: [];
 		for (const e of node.entries) {
+			if (!e.value)
+				throw new Error(`state tree ${sub.toString()} holds a null`);
 			items.push({ key: e.key, value: e.value });
 			if (e.right) items.push({ sub: e.right, level: node.level - 1 });
 		}

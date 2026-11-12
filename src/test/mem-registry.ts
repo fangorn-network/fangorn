@@ -7,6 +7,12 @@ import {
 } from "viem";
 import { commitHead } from "../engine/index.js";
 import {
+	EMPTY_MMR,
+	logLeaf,
+	mmrAppend,
+	mmrRoot,
+} from "../contracts/data-registry/mmr.js";
+import {
 	type PreparedTx,
 	type CommitUpdate,
 	type LogFilter,
@@ -42,11 +48,16 @@ export class MemLedger {
 	/** The clock: one tick per entry of the ordering. */
 	t = 0n;
 	listeners = new Set<(entry: UpdateEntry) => void>();
+	/** The contract's log root after each tick, fixed once written (like chain state). */
+	mmr = EMPTY_MMR;
+	logRoots = [mmrRoot(EMPTY_MMR)];
 
 	append(entry: Omit<UpdateEntry, "t" | "id">) {
 		this.t++;
 		const e = { ...entry, t: this.t, id: this.entries.length.toString() };
 		this.entries.push(e);
+		this.mmr = mmrAppend(this.mmr, logLeaf(e));
+		this.logRoots.push(mmrRoot(this.mmr));
 		for (const listener of this.listeners) listener(e);
 	}
 }
@@ -75,6 +86,12 @@ export class MemRegistry implements Registry {
 	head(ref: RepoRef): Promise<Hex> {
 		return Promise.resolve(
 			this.ledger.heads.get(refKey(ref))?.head ?? ZERO_HEAD,
+		);
+	}
+
+	headAt(ref: RepoRef): Promise<{ pos: number; head: Hex }> {
+		return Promise.resolve(
+			this.ledger.heads.get(refKey(ref)) ?? { pos: 0, head: ZERO_HEAD },
 		);
 	}
 
@@ -136,6 +153,10 @@ export class MemRegistry implements Registry {
 		return Promise.reject(
 			new Error("MemRegistry has no transactions to prepare"),
 		);
+	}
+
+	logRoot(at = this.ledger.t): Promise<Hex> {
+		return Promise.resolve(this.ledger.logRoots[Number(at)]);
 	}
 
 	log(filter: LogFilter, from: bigint, to?: bigint): Promise<UpdateEntry[]> {

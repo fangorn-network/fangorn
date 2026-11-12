@@ -93,6 +93,11 @@ export const DATA_REGISTRY_ABI = [
 				internalType: "bytes32",
 			},
 			{
+				name: "diff",
+				type: "bytes32",
+				internalType: "bytes32",
+			},
+			{
 				name: "root",
 				type: "bytes32",
 				internalType: "bytes32",
@@ -314,6 +319,11 @@ export const DATA_REGISTRY_ABI = [
 				internalType: "bytes32",
 			},
 			{
+				name: "diff",
+				type: "bytes32",
+				internalType: "bytes32",
+			},
+			{
 				name: "root",
 				type: "bytes32",
 				internalType: "bytes32",
@@ -354,6 +364,11 @@ export const DATA_REGISTRY_ABI = [
 			},
 			{
 				name: "parent",
+				type: "bytes32",
+				internalType: "bytes32",
+			},
+			{
+				name: "diff",
 				type: "bytes32",
 				internalType: "bytes32",
 			},

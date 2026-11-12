@@ -834,6 +834,40 @@ program
 	});
 
 program
+	.command("stitch")
+	.description(
+		"Stitch repos into one tree from the update log, or update a stitch with --from. A pattern is " +
+			"`publisher/repo`, a repo name (every publisher's), '*' (every repo; quote it), or '/regex/' on `publisher/repo`",
+	)
+	.argument("<patterns...>")
+	.option("--from <stitch>", "The previous stitch to update (same patterns)")
+	.option(
+		"--verify <stitch>",
+		"Check a stitch against the chain instead of building one",
+	)
+	.action(
+		async (patterns: string[], opts: { from?: string; verify?: string }) => {
+			try {
+				const fangorn = getFangorn();
+				if (opts.verify) {
+					const ok = await fangorn.verifyStitch(opts.verify, patterns);
+					console.log(ok ? "valid" : "INVALID");
+					process.exit(ok ? 0 : 1);
+				}
+				const stitch = await fangorn.restitch(patterns, opts.from);
+				const { root, n, logRoot } = await fangorn.readStitch(stitch);
+				console.log(`stitch  ${stitch}`);
+				console.log(`root    ${root}`);
+				console.log(`log     ${String(n)} entries, root ${logRoot}`);
+				process.exit(0);
+			} catch (err) {
+				console.error("Failed:", (err as Error).message);
+				process.exit(1);
+			}
+		},
+	);
+
+program
 	.command("clone")
 	.description(
 		"Track an existing on-chain namespace by reconstructing its tip locally",

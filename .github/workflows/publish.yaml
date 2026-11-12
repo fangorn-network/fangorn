@@ -1,0 +1,40 @@
+# Publishes to npm on every merge to main, if package.json's version is not
+# already on npm. Bump the version in the PR to release; otherwise this is a no-op.
+# Needs the NPM_TOKEN repo secret (an npm automation token).
+
+name: Publish
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  id-token: write # npm provenance
+
+concurrency: publish
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/prepare
+      - id: check
+        run: |
+          v=$(node -p "require('./package.json').version")
+          if npm view "@fangorn-network/sdk@$v" version >/dev/null 2>&1; then
+            echo "v$v already published, skipping"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.check.outputs.publish
+        run: pnpm build
+      - if: steps.check.outputs.publish
+        run: |
+          npm config set //registry.npmjs.org/:_authToken "$NPM_TOKEN"
+          npm publish --access public --provenance
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
