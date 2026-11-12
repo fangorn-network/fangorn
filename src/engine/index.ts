@@ -830,6 +830,20 @@ export class FangornEngine {
 		);
 	}
 
+	/** Every (publisher, repo) → head commit a stitch holds: what an indexer follows. */
+	async stitchHeads(
+		stitch: CID,
+	): Promise<{ publisher: Address; repo: RepoName; head: CID }[]> {
+		const { root } = await this.readStitch(stitch);
+		const { state } = await readMst(root, (c) => this.getBlock(c, stitch));
+		// the key is `${publisher}/${repo}`; a publisher is 42 chars, a repo may hold "/"
+		return [...state].map(([k, head]) => ({
+			publisher: k.slice(0, 42) as Address,
+			repo: k.slice(43),
+			head,
+		}));
+	}
+
 	/**
 	 * Check a stitch without trusting whoever built it: replay the whole log, check it
 	 * against the contract's log root, and rebuild the stitch from its first n entries

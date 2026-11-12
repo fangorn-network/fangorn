@@ -150,6 +150,20 @@ describe("a stitch across repos", () => {
 		);
 	});
 
+	it("lists every head a stitch holds", async () => {
+		const a1 = await push(mine, PUBLISHER, "a", null);
+		const b1 = await push(theirs, OTHER, "b/c", null);
+		const heads = await reader().stitchHeads(await mine.restitch(null));
+		expect(
+			heads.map((h) => [h.publisher, h.repo, h.head.toString()]).sort(),
+		).toEqual(
+			[
+				[PUBLISHER.toLowerCase(), "a", a1.toString()],
+				[OTHER.toLowerCase(), "b/c", b1.toString()],
+			].sort(),
+		);
+	});
+
 	it("an update gives the same root as a stitch built from scratch, uploading only new nodes", async () => {
 		let prev: CID | null = null;
 		const heads: CID[] = [];

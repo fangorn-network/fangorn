@@ -2,6 +2,7 @@ import {
 	createPublicClient,
 	createWalletClient,
 	http,
+	toHex,
 	type Hash,
 	type Hex,
 	type PublicClient,
@@ -788,6 +789,15 @@ export class Fangorn {
 			repo,
 		);
 		return head?.toString() ?? null;
+	}
+
+	/** Every repo a stitch holds, at its head (the on-chain digest, as `repoDiff` takes it). */
+	async stitchHeads(stitch: string) {
+		return (await this.engine.stitchHeads(CID.parse(stitch))).map((h) => ({
+			publisher: h.publisher,
+			repo: h.repo,
+			head: toHex(h.head.multihash.digest),
+		}));
 	}
 
 	/**
