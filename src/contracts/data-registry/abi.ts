@@ -1,6 +1,6 @@
 /**
  * Generated from `forge inspect DataRegistry abi` in fangorn-network/contracts
- * (solidity/src/DataRegistry.sol). Regenerate with scripts/gen-abis.sh, do not edit.
+ * (src/DataRegistry.sol). Regenerate with scripts/gen-abis.sh, do not edit.
  */
 export const DATA_REGISTRY_ABI = [
 	{
