@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { Command } from "commander";
+import { createRequire } from "node:module";
 import { intro, outro, text, spinner, confirm } from "@clack/prompts";
 import {
 	createPublicClient,
@@ -280,7 +281,7 @@ class LocalRepo {
 
 const program = new Command();
 
-program.name("fangorn").description("Fangorn Network CLI").version("0.4.0");
+program.name("fangorn").description("Fangorn Network CLI").version(createRequire(import.meta.url)("../../package.json").version);
 
 /// initialize the fangorn cli
 program
