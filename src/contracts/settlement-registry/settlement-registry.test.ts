@@ -47,7 +47,9 @@ const VECTOR_PUBLISHER =
 const TERMS_TYPE =
 	"Terms(address publisher,bytes32 repo,bytes32 key,uint256 price,uint16 shareBps,uint64 generation,uint64 deadline)";
 
-function client(opts: { generation?: bigint; wallet?: boolean } = {}) {
+function client(
+	opts: { generation?: bigint; wallet?: boolean; reverted?: boolean } = {},
+) {
 	const writes: { functionName: string; args: readonly unknown[] }[] = [];
 	const reads: { functionName: string; args: readonly unknown[] }[] = [];
 	const publicClient = {
@@ -68,7 +70,11 @@ function client(opts: { generation?: bigint; wallet?: boolean } = {}) {
 		estimateFeesPerGas: () =>
 			Promise.resolve({ maxFeePerGas: 1n, maxPriorityFeePerGas: 1n }),
 		estimateContractGas: () => Promise.resolve(1n),
-		waitForTransactionReceipt: () => Promise.resolve({}),
+		waitForTransactionReceipt: () =>
+			Promise.resolve({
+				status: opts.reverted ? "reverted" : "success",
+				gasUsed: 1n,
+			}),
 	} as unknown as PublicClient;
 	const walletClient = createWalletClient({
 		account,
@@ -316,6 +322,13 @@ describe("writes", () => {
 			{ functionName: "setDenied", args: [REFERRER, true] },
 			{ functionName: "setDisabled", args: [account.address, REPO, KEY, true] },
 		]);
+	});
+
+	it("a mined revert rejects instead of returning the hash", async () => {
+		const { reg } = client({ reverted: true });
+		await expect(reg.raiseGeneration(REPO)).rejects.toThrow(
+			/raiseGeneration reverted in tx 0xhash/,
+		);
 	});
 
 	it("writes need a wallet", () => {
