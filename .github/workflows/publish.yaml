@@ -43,8 +43,9 @@ jobs:
           npm publish --access public
 
   # Opens (or refreshes) a PR in westmarch bumping the SDK to what was just published.
-  # GITHUB_TOKEN can't write to another repo: WESTMARCH_TOKEN is a fine-grained PAT
-  # scoped to fangorn-network/westmarch with Contents + Pull requests: read/write.
+  # GITHUB_TOKEN can't write to another repo, so this mints a short-lived token from a
+  # GitHub App installed on westmarch (Contents + Pull requests: read/write).
+  # Needs repo variable WESTMARCH_APP_ID and secret WESTMARCH_APP_PRIVATE_KEY.
   bump-westmarch:
     name: Bump SDK in westmarch
     needs: publish
@@ -52,12 +53,18 @@ jobs:
     runs-on: ubuntu-latest
     env:
       V: ${{ needs.publish.outputs.version }}
-      GH_TOKEN: ${{ secrets.WESTMARCH_TOKEN }}
     steps:
+      - id: app
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.WESTMARCH_APP_ID }}
+          private-key: ${{ secrets.WESTMARCH_APP_PRIVATE_KEY }}
+          owner: fangorn-network
+          repositories: westmarch
       - uses: actions/checkout@v4
         with:
           repository: fangorn-network/westmarch
-          token: ${{ secrets.WESTMARCH_TOKEN }}
+          token: ${{ steps.app.outputs.token }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -68,10 +75,13 @@ jobs:
             sleep 15
           done
           npm install --ignore-scripts "@fangorn-network/sdk@^$V"
-      - run: |
+      - env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          BOT: ${{ steps.app.outputs.app-slug }}[bot]
+        run: |
           branch="bump-sdk-v$V"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898333+github-actions[bot]@users.noreply.github.com"
+          git config user.name "$BOT"
+          git config user.email "$(gh api "/users/$BOT" --jq .id)+$BOT@users.noreply.github.com"
           git checkout -b "$branch"
           git commit -am "Bump @fangorn-network/sdk to $V"
           git push --force origin "$branch"
