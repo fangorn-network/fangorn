@@ -33,13 +33,23 @@ export interface PreparedTx {
  * Two deliberate choices, both about transactions that would otherwise silently
  * fail on a live L2:
  *
- * - **30% gas headroom.** The estimate is taken against the current state; by the
- *   time the transaction lands the state has moved. Unused gas is refunded, so
- *   the headroom is free and running out of it is not.
+ * - **30% + APPEND_ALLOWANCE gas headroom.** The estimate is taken against the
+ *   current state; by the time the transaction lands the state has moved. The
+ *   fixed allowance covers the one jump the 30% can't: other updates landing
+ *   first, so this one appends to the log at a length of 2^k − 1. Unused gas is
+ *   refunded, so the headroom is free and running out of it is not.
  * - **3x maxFeePerGas.** This is a ceiling, not a payment — you pay
  *   base + priority. Quoting it tightly is how a transaction gets stuck when the
  *   base fee ticks up between estimate and inclusion.
  */
+/**
+ * The most DataRegistry._append can cost over an append estimated at any other
+ * log length: 63 merges (cold SLOAD + keccak, ~2.5k each) and a first write to
+ * peaks[63] (~20k). logLength is a uint64, so this is a hard bound, not a guess.
+ * The contracts repo pins it: test_append_worst_case_fits_sdk_allowance.
+ */
+export const APPEND_ALLOWANCE = 200_000n;
+
 export async function sendWrite(
 	publicClient: PublicClient,
 	walletClient: WalletClient,
@@ -64,6 +74,7 @@ export async function sendWrite(
 		value,
 	} as unknown as Parameters<typeof publicClient.estimateContractGas>[0]);
 
+	const limit = (gas * 130n) / 100n + APPEND_ALLOWANCE;
 	const hash = await walletClient.writeContract({
 		address,
 		abi,
@@ -71,13 +82,18 @@ export async function sendWrite(
 		args,
 		chain,
 		account,
-		gas: (gas * 130n) / 100n,
+		gas: limit,
 		maxFeePerGas: fees.maxFeePerGas * 3n,
 		maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
 		value,
 	} as unknown as Parameters<typeof walletClient.writeContract>[0]);
 
-	await publicClient.waitForTransactionReceipt({ hash });
+	// A mined revert still yields a receipt; without this it reads as success.
+	const receipt = await publicClient.waitForTransactionReceipt({ hash });
+	if (receipt.status !== "success")
+		throw new Error(
+			`${functionName} reverted in tx ${hash} (gasUsed ${String(receipt.gasUsed)} of ${String(limit)})`,
+		);
 	return hash;
 }
 

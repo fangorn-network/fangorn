@@ -224,7 +224,9 @@ export async function setAgentFile(
 		chain: c.chain,
 		account: c.walletClient.account ?? null,
 	});
-	await c.publicClient.waitForTransactionReceipt({ hash });
+	const { status } = await c.publicClient.waitForTransactionReceipt({ hash });
+	if (status !== "success")
+		throw new Error(`setAgentURI reverted in tx ${hash}`);
 	return hash;
 }
 

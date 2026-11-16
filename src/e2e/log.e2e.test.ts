@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { pad, toHex } from "viem";
 import {
 	DATA_REGISTRY_ABI,
 	EMPTY_MMR,
@@ -36,5 +37,48 @@ describe.skipIf(skipChain)("The update log (contracts on anvil)", () => {
 		expect((await fangorn.readStitch(stitch)).n).toBe(log.length);
 		expect(await fangorn.verifyStitch(stitch, ["*"])).toBe(true);
 		expect(await fangorn.verifyStitch(stitch, ["r1"])).toBe(false);
+	}, 120_000);
+});
+
+// Regression: a gas estimate goes stale when other updates land before it.
+// Two writers both estimate at log length 2^40 − 2 and land in one block, so
+// the second appends at 2^40 − 1: 40 merges and a first write to peaks[40],
+// ~120k over its estimate. That used to run out of gas and still report success.
+describe.skipIf(skipChain)("Concurrent appends (contracts on anvil)", () => {
+	let net: ChainNetwork;
+	beforeAll(async () => {
+		net = await chainNetwork();
+	}, 120_000);
+	afterAll(() => net.stop());
+
+	it("land when the log reaches 2^k − 1 after the estimate", async () => {
+		const clients = [await net.client(), await net.client()];
+		for (const c of clients) await c.initRepo("r");
+		// logLength is slot 2 (forge inspect DataRegistry storageLayout)
+		await net.chain.setStorageAt({
+			address: net.config.dataRegistryContractAddress,
+			index: 2,
+			value: pad(toHex(2n ** 40n - 2n)),
+		});
+
+		await net.chain.setAutomine(false);
+		try {
+			const writes = clients.map((c) =>
+				c.uploadBatch("r", [{ id: "a", type: "note", payload: {} }]),
+			);
+			while ((await net.chain.getTxpoolStatus()).pending < 2)
+				await new Promise((r) => setTimeout(r, 50));
+			await net.chain.mine({ blocks: 1 });
+			await Promise.all(writes);
+		} finally {
+			await net.chain.setAutomine(true);
+		}
+
+		for (const c of clients) {
+			const head = await c
+				.getRegistry()
+				.headAt({ publisher: c.getAddress(), repo: "r" });
+			expect(head.pos).toBe(2);
+		}
 	}, 120_000);
 });
