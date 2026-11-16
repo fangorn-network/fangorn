@@ -89,6 +89,12 @@ const ZERO_BYTES32 = ZERO_HEAD;
 export const MAX_REPO_NAME_LENGTH = 256;
 
 /**
+ * Every this many positions, a commit's CAR holds the whole state (see `checkpoint`), so a
+ * cold read walks back at most this many CARs (~2 fetches each: under Workers' 1000 subrequests).
+ */
+export const CHECKPOINT_EVERY = 100;
+
+/**
  * The root of the graph, committed to IPFS, as hex
  */
 export function rootHexFromCid(commitCid: CID): Hex {
@@ -210,6 +216,13 @@ export interface CreateCommitOptions {
 	 */
 	// TODO: needed?
 	replace?: boolean;
+	/**
+	 * Pack the whole state (every MST node and live record) into this commit's CAR, not just
+	 * the delta. `getBlock` walks back one CAR per commit, so this caps how far it goes.
+	 * ponytail: a full copy of the repo every CHECKPOINT_EVERY commits; a block → commit
+	 * index would avoid it if big repos make that costly.
+	 */
+	checkpoint?: boolean;
 }
 
 /** One repo's state at a commit: id → record CID, plus its MST node CIDs. */
@@ -432,7 +445,14 @@ export class FangornEngine {
 			state.set(id, block.cid);
 			recordCids[id] = block.cid.toString();
 			// a record unchanged since the parent is already stored
-			if (!oldRecordCids.has(block.cid.toString())) carBlocks.push(block);
+			if (opts.checkpoint || !oldRecordCids.has(block.cid.toString()))
+				carBlocks.push(block);
+		}
+		if (opts.checkpoint) {
+			const staged = new Set(Object.values(recordCids));
+			for (const cid of state.values())
+				if (!staged.has(cid.toString()))
+					carBlocks.push({ cid, bytes: await this.getBlock(cid, base) });
 		}
 
 		// Rebuild the tree; only nodes on changed paths have new CIDs.
@@ -446,7 +466,7 @@ export class FangornEngine {
 		const fresh = new Set<string>();
 		for (const node of [...mst.nodes, ...diff.nodes]) {
 			const key = node.cid.toString();
-			if (!old.nodeCids.has(key) && !fresh.has(key)) {
+			if ((opts.checkpoint || !old.nodeCids.has(key)) && !fresh.has(key)) {
 				fresh.add(key);
 				carBlocks.push(node);
 			}
@@ -941,7 +961,7 @@ export class FangornEngine {
 
 	/**
 	 * Fetch the current version of one record by id — one MST path from the
-	 * on-chain root, then the record block. Null if the repo has no such id.
+	 * on-chain root, then the record block. Null if the repo has no such id, or no commits.
 	 */
 	async readRecord(
 		publisher: Address,
@@ -949,10 +969,7 @@ export class FangornEngine {
 		id: string,
 	): Promise<StoredRecord | null> {
 		const head = await this.resolveHeadCommit(publisher, repo);
-		if (!head)
-			throw new Error(
-				`publisher ${publisher} has no on-chain commits in repo ${repo}`,
-			);
+		if (!head) return null;
 		const get = (cid: CID) => this.getBlock(cid, head);
 		const cid = await lookupMst((await this.getCommit(head)).root, id, get);
 		return cid ? this.decodeRecord(id, cid, head) : null;
