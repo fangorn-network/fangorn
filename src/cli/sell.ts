@@ -65,11 +65,8 @@ export async function sealRecords(
 
 	const out: RecordInput[] = [];
 	let kRepo: Uint8Array;
-	const existing = (
-		await fangorn.engine
-			.readRecord(publisher, repo, depositId)
-			.catch(() => null)
-	)?.payload as Deposit | undefined;
+	const existing = (await fangorn.engine.readRecord(publisher, repo, depositId))
+		?.payload as Deposit | undefined;
 	if (existing) {
 		kRepo = await requestKey({ deposit: existing, key: WHOLE_REPO, signer });
 	} else {
@@ -77,9 +74,7 @@ export async function sealRecords(
 		// so a buyer here could never open the deposit.
 		const keyServer = o.keyServer ?? fangorn.getConfig().keyServer;
 		if (!keyServer)
-			throw new Error(
-				"no key server: pass keyServer (CLI: --key-server)",
-			);
+			throw new Error("no key server: pass keyServer (CLI: --key-server)");
 		const res = await fetch(`${keyServer}/pubkey`);
 		if (!res.ok)
 			throw new Error(

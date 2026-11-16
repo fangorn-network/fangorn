@@ -39,6 +39,7 @@ import {
 	RepoDiff,
 	RecordInput,
 	rootHexFromCid,
+	CHECKPOINT_EVERY,
 	type SignedUpdate,
 	type Stitch,
 } from "./engine/index.js";
@@ -255,18 +256,26 @@ export class Fangorn {
 		return this.engine.pushCommit(publisher, repo, commitCid);
 	}
 
-	/** Stage records into one commit on top of `base`. */
-	private createCommit(opts: {
+	/** Stage records into one commit on top of `base`, a checkpoint every CHECKPOINT_EVERY positions. */
+	private async createCommit(opts: {
 		repo: string;
 		base: CID | null;
 		records: { id?: string; type: string; payload: unknown }[];
 		deletes?: string[];
 		replace?: boolean;
+		/** whose head this commit advances; defaults to this client's account */
+		publisher?: Hex;
 	}) {
+		const { publisher, ...rest } = opts;
+		const { pos } = await this.ctx.registry.headAt({
+			publisher: publisher ?? this.getAddress(),
+			repo: opts.repo,
+		});
 		return this.engine.createCommit({
-			...opts,
+			...rest,
+			checkpoint: (pos + 1) % CHECKPOINT_EVERY === 0,
 			// Payloads are objects (field names → values); wrap anything else.
-			records: opts.records.map((r) => ({
+			records: rest.records.map((r) => ({
 				id: r.id,
 				type: r.type,
 				payload:
@@ -486,6 +495,7 @@ export class Fangorn {
 			records: opts.records ?? [],
 			deletes: opts.deletes,
 			replace: opts.replace,
+			publisher: opts.owner,
 		});
 
 		const newRoot = rootHexFromCid(commitCid);

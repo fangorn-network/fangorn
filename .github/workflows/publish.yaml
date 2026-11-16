@@ -20,6 +20,8 @@ jobs:
   publish:
     name: Publish to npm
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/prepare
@@ -30,6 +32,7 @@ jobs:
             echo "v$v already published, skipping"
           else
             echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "version=$v" >> "$GITHUB_OUTPUT"
           fi
       - if: steps.check.outputs.publish
         run: pnpm build
@@ -38,3 +41,40 @@ jobs:
         run: |
           npm install -g npm@^11.5.1
           npm publish --access public
+
+  # Opens (or refreshes) a PR in westmarch bumping the SDK to what was just published.
+  # GITHUB_TOKEN can't write to another repo: WESTMARCH_TOKEN is a fine-grained PAT
+  # scoped to fangorn-network/westmarch with Contents + Pull requests: read/write.
+  bump-westmarch:
+    name: Bump SDK in westmarch
+    needs: publish
+    if: needs.publish.outputs.version
+    runs-on: ubuntu-latest
+    env:
+      V: ${{ needs.publish.outputs.version }}
+      GH_TOKEN: ${{ secrets.WESTMARCH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: fangorn-network/westmarch
+          token: ${{ secrets.WESTMARCH_TOKEN }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: |
+          # the registry can lag a fresh publish by a minute or so
+          for i in $(seq 1 10); do
+            npm view "@fangorn-network/sdk@$V" version && break
+            sleep 15
+          done
+          npm install --ignore-scripts "@fangorn-network/sdk@^$V"
+      - run: |
+          branch="bump-sdk-v$V"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898333+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git commit -am "Bump @fangorn-network/sdk to $V"
+          git push --force origin "$branch"
+          gh pr view "$branch" >/dev/null 2>&1 || gh pr create --head "$branch" \
+            --title "Bump @fangorn-network/sdk to $V" \
+            --body "Automated: fangorn-network/fangorn published v$V ($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/commit/$GITHUB_SHA)."
