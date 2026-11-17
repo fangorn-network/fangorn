@@ -12,8 +12,12 @@ import { repoId, type UpdateEntry } from "./index.js";
 
 const tag = (s: string) => stringToHex(s, { size: 32 });
 
-/** The leaf the contract appended for one log entry. */
-export const logLeaf = (e: UpdateEntry): Hex =>
+/**
+ * The leaf the contract appended for one log entry. The contract hashes the repo's raw bytes,
+ * which need not be UTF-8: a decoded `repo` with U+FFFD in it re-hashes to another id, so pass
+ * the event's indexed `repo_id` as `repoId` where the entry has it.
+ */
+export const logLeaf = (e: UpdateEntry & { repoId?: Hex }): Hex =>
 	keccak256(
 		encodeAbiParameters(
 			[
@@ -27,7 +31,7 @@ export const logLeaf = (e: UpdateEntry): Hex =>
 			[
 				tag("leaf"),
 				e.publisher,
-				repoId(e.repo),
+				e.repoId ?? repoId(e.repo),
 				BigInt(e.pos),
 				e.head,
 				e.timestamp,

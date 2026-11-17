@@ -1,4 +1,6 @@
-import type { CID } from "multiformats/cid";
+import { CID } from "multiformats/cid";
+import { sha256 } from "multiformats/hashes/sha2";
+import { equals } from "multiformats/bytes";
 
 /**
  * A backend-agnostic interface for storing and retrieving opaque content.
@@ -63,4 +65,49 @@ export interface MetadataStorage {
 	 * Delete content by URI
 	 */
 	delete(uri: string): Promise<void>;
+}
+
+const RAW_CODE = 0x55;
+const SHA2_256 = 0x12;
+
+/**
+ * Check the CID a backend says it stored `block` under. Readers fetch a block by
+ * its raw-codec sibling (same sha256 digest), so any other answer means the block
+ * is unreadable: fail the upload, not every later read of the head that names it.
+ */
+export function assertStoredBlock(returned: string, block: RawBlock): void {
+	let cid: CID | undefined;
+	try {
+		cid = CID.parse(returned.replace(/^ipfs:\/\//, ""));
+	} catch {
+		/* reported below */
+	}
+	const want = CID.createV1(RAW_CODE, block.cid.multihash);
+	if (!cid?.equals(want))
+		throw new Error(
+			`storage stored block ${block.cid.toString()} as ${JSON.stringify(returned)}, expected ${want.toString()}: readers could not fetch it`,
+		);
+}
+
+/**
+ * Check the CID a backend says it stored `bytes` under, where it can be checked
+ * locally: a single raw sha256 block. A chunked (dag-pb) file is left to the
+ * per-block hash checks on read.
+ */
+export async function assertStoredFile(
+	returned: string,
+	bytes: Uint8Array,
+): Promise<void> {
+	let cid: CID;
+	try {
+		cid = CID.parse(returned.replace(/^ipfs:\/\//, ""));
+	} catch {
+		return; // not a CID at all: the caller's own parse (fileCid) reports it
+	}
+	if (cid.code !== RAW_CODE || cid.multihash.code !== SHA2_256) return;
+	const digest = await sha256.digest(bytes);
+	if (!equals(cid.multihash.digest, digest.digest))
+		throw new Error(
+			`storage returned ${returned} for ${String(bytes.length)} bytes whose sha256 does not match it`,
+		);
 }

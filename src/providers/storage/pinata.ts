@@ -2,7 +2,13 @@ import { encode } from "multiformats/block";
 import { PinataSDK } from "pinata";
 import * as dagCbor from "@ipld/dag-cbor";
 import { CID } from "multiformats/cid";
-import { MetadataStorage, RawBlock, StorageMeta } from "./types.js";
+import {
+	assertStoredBlock,
+	assertStoredFile,
+	MetadataStorage,
+	RawBlock,
+	StorageMeta,
+} from "./types.js";
 import { serialize, retrieveByCid, withUploadRetry } from "./utils.js";
 import { packCar } from "../../engine/car.js";
 import { keccak256, stringToBytes } from "viem";
@@ -129,7 +135,8 @@ export class PinataBackend implements MetadataStorage {
 			const file = new File([bytes as BlobPart], cid.toString(), {
 				type: "application/octet-stream",
 			});
-			await this.pinata.upload.public.file(file);
+			const upload = await this.pinata.upload.public.file(file);
+			assertStoredBlock(upload.cid, block);
 		});
 	}
 
@@ -145,6 +152,7 @@ export class PinataBackend implements MetadataStorage {
 				type: "application/octet-stream",
 			});
 			const upload = await this.pinata.upload.public.file(file);
+			await assertStoredFile(upload.cid, bytes);
 			return upload.cid;
 		});
 	}

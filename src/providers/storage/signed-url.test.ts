@@ -116,10 +116,18 @@ describe("SignedUrlBackend", () => {
 			}),
 		);
 		const backend = new SignedUrlBackend(WORKER, signer, GATEWAY);
+		// A 5xx is retried (with real backoff sleeps), so run the clock forward.
+		vi.useFakeTimers();
+		vi.spyOn(console, "warn").mockImplementation(() => undefined);
+		const err = backend
+			.putFile(new Uint8Array([1]), "x")
+			.catch((e: unknown) => e as Error);
+		await vi.runAllTimersAsync();
 		// The detail is the actionable half — it must reach the caller.
-		await expect(backend.putFile(new Uint8Array([1]), "x")).rejects.toThrow(
+		expect(((await err) as Error).message).toMatch(
 			/Failed to create Pinata upload URL\..*invalid JWT/,
 		);
+		vi.useRealTimers();
 	});
 
 	it("translates a dag-cbor commit CID to its raw sibling for gateway reads", async () => {

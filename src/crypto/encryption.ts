@@ -73,6 +73,13 @@ export function unseal(
 	resourceId: Hex,
 ): Uint8Array {
 	const ephPub = ciphertext.slice(0, X25519_PUBKEY_LENGTH);
+	// X25519 ignores bit 255 and reduces u mod p, so 2^255-19 <= u and a set top bit are
+	// other spellings of the same key. Only honest (canonical) encodings open.
+	let u = 0n;
+	for (let i = X25519_PUBKEY_LENGTH - 1; i >= 0; i--)
+		u = (u << 8n) | BigInt(ephPub[i]);
+	if (u >= 2n ** 255n - 19n)
+		throw new Error("non-canonical ephemeral public key");
 	const nonce = ciphertext.slice(
 		X25519_PUBKEY_LENGTH,
 		X25519_PUBKEY_LENGTH + GCM_NONCE_LENGTH,

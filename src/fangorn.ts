@@ -88,6 +88,14 @@ export interface SubscribeOptions {
 	pollingInterval?: number;
 	/** Abort to stop the subscription and release the watch. */
 	signal?: AbortSignal;
+	/**
+	 * Called for a log entry the stream skips because its commit can't be read
+	 * (blocks missing from storage, or not what they claim). Anyone can log such
+	 * an entry, so it must not end a stream of other publishers' repos. The next
+	 * readable entry of the same repo diffs from the last head the stream did
+	 * read, so a skip loses no changes once the repo moves on. Default: a warning.
+	 */
+	onSkip?: (err: Error, entry: UpdateEntry) => void;
 }
 
 function walletSigner(walletClient: WalletClient): SignedUrlSigner {
@@ -715,8 +723,8 @@ export class Fangorn {
 	 * anywhere more than one consumer wants the same stream.
 	 */
 	feed(opts: { pollingInterval?: number } = {}): CommitFeed {
-		this._feed ??= new CommitFeed((signal) =>
-			this.subscribeAll({ ...opts, signal }),
+		this._feed ??= new CommitFeed((signal, fromBlock, onSkip) =>
+			this.subscribeAll({ ...opts, signal, fromBlock, onSkip }),
 		);
 		return this._feed;
 	}
@@ -908,7 +916,7 @@ export class Fangorn {
 				for (const log of await registry.log(filter, opts.fromBlock)) {
 					if (seen.has(log.id)) continue;
 					seen.add(log.id);
-					const change = await this.toRepoChange(log, lastHead);
+					const change = await this.readChange(log, lastHead, opts.onSkip);
 					if (change) yield change;
 				}
 			}
@@ -930,12 +938,31 @@ export class Fangorn {
 
 				if (seen.has(log.id)) continue;
 				seen.add(log.id);
-				const change = await this.toRepoChange(log, lastHead);
+				const change = await this.readChange(log, lastHead, opts.onSkip);
 				if (change) yield change;
 			}
 		} finally {
 			unwatch();
 			opts.signal?.removeEventListener("abort", onAbort);
+		}
+	}
+
+	/** `toRepoChange`, skipping (and reporting) an entry whose commit can't be read. */
+	private async readChange(
+		log: UpdateEntry,
+		lastHead: Map<string, Hex>,
+		onSkip?: (err: Error, entry: UpdateEntry) => void,
+	): Promise<RepoChange | null> {
+		try {
+			return await this.toRepoChange(log, lastHead);
+		} catch (e) {
+			const err = e instanceof Error ? e : new Error(String(e));
+			if (onSkip) onSkip(err, log);
+			else
+				console.warn(
+					`[fangorn] skipped ${log.publisher}/${log.repo} head ${log.head} (block ${log.t.toString()}): ${err.message}`,
+				);
+			return null;
 		}
 	}
 
@@ -964,11 +991,12 @@ export class Fangorn {
 		}
 		const key = `${log.publisher.toLowerCase()}/${log.repo}`;
 		const oldRoot = lastHead.get(key) ?? log.parent;
-		lastHead.set(key, log.head);
 		const diff = await this.engine.repoDiff(
 			oldRoot === ZERO_BYTES32 ? null : oldRoot,
 			log.head,
 		);
+		// Only once read: an unreadable head must not become the next diff's base.
+		lastHead.set(key, log.head);
 		if (!diff.puts.length && !diff.deletes.length) return null;
 
 		return {

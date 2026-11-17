@@ -1,7 +1,14 @@
 #!/usr/bin/env node
 import { Command } from "commander";
 import { createRequire } from "node:module";
-import { intro, outro, text, spinner, confirm } from "@clack/prompts";
+import {
+	intro,
+	outro,
+	text,
+	password,
+	spinner,
+	confirm,
+} from "@clack/prompts";
 import {
 	createPublicClient,
 	formatEther,
@@ -17,15 +24,15 @@ import {
 	mkdirSync,
 	readFileSync,
 	writeFileSync,
-	chmodSync,
+	renameSync,
 } from "fs";
-import { dirname, join } from "path";
+import { dirname, join, resolve } from "path";
 import { homedir } from "os";
 import "dotenv/config";
 
 import { Fangorn } from "../fangorn.js";
 import { sealRecords } from "./sell.js";
-import { fileToRecords, walk, type Staged } from "./stage.js";
+import { addPaths, type Staged } from "./stage.js";
 import { handleCancel, selectChain } from "./index.js";
 import getNetwork, { NetworkConfig, nonBlank } from "../config.js";
 import { StorageConfig } from "../types/index.js";
@@ -70,10 +77,17 @@ function readStoredConfig(): StoredConfig {
 	return JSON.parse(readFileSync(CONFIG_PATH, "utf-8")) as StoredConfig;
 }
 
+/** Write through a temp file and a rename, so a crash never leaves a torn file. */
+function writeAtomic(path: string, data: string, mode = 0o644): void {
+	const tmp = `${path}.${process.pid.toString()}.tmp`;
+	// created with `mode` (never briefly world-readable), then swapped in whole
+	writeFileSync(tmp, data, { encoding: "utf-8", mode });
+	renameSync(tmp, path);
+}
+
 function writeStoredConfig(stored: StoredConfig): void {
-	if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true });
-	writeFileSync(CONFIG_PATH, JSON.stringify(stored, null, 2), "utf-8");
-	chmodSync(CONFIG_PATH, 0o600);
+	if (!existsSync(CONFIG_DIR)) mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
+	writeAtomic(CONFIG_PATH, JSON.stringify(stored, null, 2), 0o600);
 }
 
 function loadConfig(): Config {
@@ -234,11 +248,7 @@ class LocalRepo {
 	}
 
 	private save(): void {
-		writeFileSync(
-			LocalRepo.path(this.dir),
-			JSON.stringify(this.state, null, 2),
-			"utf-8",
-		);
+		writeAtomic(LocalRepo.path(this.dir), JSON.stringify(this.state, null, 2));
 	}
 
 	namespace(): string {
@@ -269,10 +279,9 @@ class LocalRepo {
 	}
 
 	setStaged(s: Staged): void {
-		writeFileSync(
+		writeAtomic(
 			join(this.dir, ".fangorn", "index.json"),
 			JSON.stringify(s, null, 2),
-			"utf-8",
 		);
 	}
 }
@@ -290,14 +299,27 @@ program
 	.action(async () => {
 		intro("Fangorn Setup");
 
+		if (existsSync(CONFIG_PATH)) {
+			const overwrite = await confirm({
+				message: `${CONFIG_PATH} exists. Replace it? Its private key is gone for good unless you have it elsewhere.`,
+				initialValue: false,
+			});
+			handleCancel(overwrite);
+			if (!overwrite) {
+				outro("Kept the existing config.");
+				process.exit(0);
+				return;
+			}
+		}
+
 		const chainName = await selectChain();
 
-		const privateKey = await text({
+		// Masked: an echoed key lands in scrollback and screen shares (see `wallet --reveal`).
+		const privateKey = await password({
 			message: "Wallet private key (stored locally, never transmitted):",
-			placeholder: "0x...",
 			validate: (v) => {
 				if (!v) return "Required";
-				if (!v.startsWith("0x") || v.length !== 66)
+				if (!/^0x[0-9a-fA-F]{64}$/.test(v))
 					return "Must be a valid 0x-prefixed 32-byte hex key";
 			},
 		});
@@ -305,7 +327,7 @@ program
 
 		// Storage: either your own Pinata JWT + gateway, or the access worker for
 		// signed-url uploads (no JWT). Leave the JWT blank to use signed URLs.
-		const pinataJwt = await text({
+		const pinataJwt = await password({
 			message:
 				"Pinata JWT — leave blank to use Fangorn's shared Pinata account (testnet convenience; files may be unpinned without notice):",
 		});
@@ -337,6 +359,7 @@ program
 		});
 
 		outro(`Config saved to ${CONFIG_PATH}`);
+		process.exit(0);
 	});
 
 // ─── card ──────────────────────────────────────────────────────────────────────
@@ -538,29 +561,14 @@ program
 	.action((paths: string[], options: { type?: string; idColumn: string }) => {
 		try {
 			const repo = LocalRepo.open();
-			const staged = repo.staged();
-			let n = 0;
-			for (const p of paths) {
-				for (const rel of walk(repo.root(), join(process.cwd(), p))) {
-					const got = fileToRecords(repo.root(), rel, options);
-					if (!got) {
-						console.warn(`skipped (binary): ${rel}`);
-						continue;
-					}
-					// Re-adding replaces a staged record with the same id and un-stages its delete.
-					const ids = new Set(got.records.map((r) => r.id));
-					staged.records = staged.records
-						.filter((r) => !r.id || !ids.has(r.id))
-						.concat(got.records);
-					staged.deletes = staged.deletes
-						.filter((d) => !ids.has(d))
-						.concat(got.deletes);
-					n += got.records.length + got.deletes.length;
-					console.log(
-						`added ${rel} (${got.records.length.toString()} record(s))`,
-					);
-				}
-			}
+			const { staged, added, skipped, n } = addPaths(
+				repo.root(),
+				paths.map((p) => resolve(p)),
+				options,
+				repo.staged(),
+			);
+			for (const rel of skipped) console.warn(`skipped (binary): ${rel}`);
+			for (const line of added) console.log(`added ${line}`);
 			repo.setStaged(staged);
 			console.log(`${n.toString()} change(s) staged. Run \`fangorn commit\`.`);
 			process.exit(0);
@@ -728,14 +736,36 @@ program
 			const head = repo.head();
 			if (!head) throw new Error("nothing to push — no commits yet");
 			const fangorn = getFangorn();
+			const tip = await fangorn.onChainTip(
+				fangorn.getAddress(),
+				repo.namespace(),
+			);
+			// The registry takes one commit at a time, each on the current head: push
+			// every commit since the on-chain tip, oldest first. A push that fails midway
+			// leaves the chain on one of them, and running push again resumes from there.
+			const pending: string[] = [];
+			for await (const c of fangorn.log(head)) {
+				if (c.cid === tip) break;
+				pending.unshift(c.cid);
+				if (!c.parent && tip)
+					throw new Error(
+						`the on-chain tip ${tip} is not in local history (pushed from elsewhere?): ` +
+						"`fangorn clone` it, or `fangorn reset` to abandon it",
+					);
+			}
+			if (!pending.length) {
+				console.log("Everything up to date.");
+				process.exit(0);
+				return;
+			}
 			const s = spinner();
-
-			s.start("Pushing...");
-			const { txHash, onChainTip } = await fangorn.push(repo.namespace(), head);
-			s.stop();
-
-			console.log(`Tx:  ${txHash}`);
-			console.log(`Tip: ${onChainTip}`);
+			for (const [i, cid] of pending.entries()) {
+				s.start(`Pushing ${(i + 1).toString()}/${pending.length.toString()}...`);
+				const { txHash } = await fangorn.push(repo.namespace(), cid);
+				s.stop();
+				console.log(`Tx:  ${txHash}`);
+			}
+			console.log(`Tip: ${head}`);
 			process.exit(0);
 		} catch (err) {
 			console.error("Failed:", (err as Error).message);
@@ -968,9 +998,10 @@ program
 
 				// Resume cursor: last fully-processed block, persisted per filter.
 				const repoDir = join(process.cwd(), ".fangorn");
+				// encoded: a namespace is any string, and must not path its way out of .fangorn
 				const cursorPath = join(
 					repoDir,
-					`subscribe-${owner ?? "all"}-${namespace ?? "all"}.json`,
+					`subscribe-${owner ?? "all"}-${encodeURIComponent(namespace ?? "all")}.json`,
 				);
 				const readCursor = (): bigint | undefined => {
 					// Genesis, not `undefined` — an undefined fromBlock means "live from the
@@ -988,14 +1019,13 @@ program
 				};
 				const writeCursor = (block: bigint) => {
 					if (!existsSync(repoDir)) mkdirSync(repoDir, { recursive: true });
-					writeFileSync(
+					writeAtomic(
 						cursorPath,
 						JSON.stringify(
 							{ owner, namespace, lastBlock: block.toString() },
 							null,
 							2,
 						),
-						"utf-8",
 					);
 				};
 				const bigintReplacer = (_k: string, v: unknown) =>
@@ -1035,12 +1065,19 @@ program
 						signal: controller.signal,
 					});
 
+				// A block can hold several changes, and the cursor resumes at the block
+				// after it: save a block only once a later one starts, so dying mid-block
+				// replays that block's changes instead of skipping the rest of them.
+				// ponytail: at-least-once — a restart re-emits the last block's changes.
+				let block: bigint | undefined;
 				for await (const change of stream) {
+					if (block !== undefined && change.blockNumber > block)
+						writeCursor(block);
+					block = change.blockNumber;
 					process.stdout.write(
 						JSON.stringify(change, bigintReplacer, options.pretty ? 2 : 0) +
 						"\n",
 					);
-					writeCursor(change.blockNumber);
 				}
 				process.exit(0);
 			} catch (err) {
@@ -1107,23 +1144,28 @@ program
 		"DANGER!: reset this namespace's on-chain head to zero (abandons all prior commits)",
 	)
 	.action(async () => {
-		const namespace = LocalRepo.open().namespace();
-		const confirmFirst = await confirm({
-			message: `Are you sure? The on-chain head for "${namespace}" will reset to 0x0000...`,
-		});
-		handleCancel(confirmFirst);
-		if (!confirmFirst) {
-			console.log("Reset aborted.");
+		try {
+			const namespace = LocalRepo.open().namespace();
+			const confirmFirst = await confirm({
+				message: `Are you sure? The on-chain head for "${namespace}" will reset to 0x0000...`,
+			});
+			handleCancel(confirmFirst);
+			if (!confirmFirst) {
+				console.log("Reset aborted.");
+				process.exit(0);
+				return;
+			}
+
+			await getFangorn().reset(namespace);
+
+			console.log(
+				`On-chain head for "${namespace}" reset to zero. \`repo init\` will now start fresh.`,
+			);
 			process.exit(0);
+		} catch (err) {
+			console.error("Failed:", (err as Error).message);
+			process.exit(1);
 		}
-
-		// If both prompts pass and aren't canceled:
-		await getFangorn().reset(namespace);
-
-		console.log(
-			`On-chain head for "${namespace}" reset to zero. \`repo init\` will now start fresh.`,
-		);
-		process.exit(0);
 	});
 
 program.parse();

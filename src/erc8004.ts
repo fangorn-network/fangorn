@@ -17,6 +17,7 @@ import {
 	type WalletClient,
 } from "viem";
 import type { MetadataStorage } from "./providers/storage/types.js";
+import { confirmTx } from "./contracts/write.js";
 
 /** The ERC-8004 identity registry by chain id */
 export const IDENTITY_REGISTRY: Record<number, Address> = {
@@ -227,9 +228,7 @@ export async function setAgentFile(
 		chain: c.chain,
 		account: c.walletClient.account ?? null,
 	});
-	const { status } = await c.publicClient.waitForTransactionReceipt({ hash });
-	if (status !== "success")
-		throw new Error(`setAgentURI reverted in tx ${hash}`);
+	await confirmTx(c.publicClient, hash, "setAgentURI");
 	return hash;
 }
 
@@ -244,7 +243,7 @@ export async function mintAgent(c: Erc8004Clients): Promise<bigint> {
 		chain: c.chain,
 		account: c.walletClient.account ?? null,
 	});
-	const receipt = await c.publicClient.waitForTransactionReceipt({ hash });
+	const { receipt } = await confirmTx(c.publicClient, hash, "register");
 	const minted = parseEventLogs({
 		abi: ABI,
 		eventName: "Registered",
