@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { zeroAddress } from "viem";
-import getNetwork, { SupportedNetworks } from "./config.js";
+import getNetwork, {
+	ArbitrumConfig,
+	BaseConfig,
+	SupportedNetworks,
+} from "./config.js";
 import { IDENTITY_REGISTRY } from "./erc8004.js";
 
 describe("supported networks", () => {
@@ -19,12 +23,22 @@ describe("supported networks", () => {
 
 	it("gives each network its own key server and upload worker", () => {
 		// A key server answers for one SettlementRegistry: sharing one across networks
-		// would seal deposits a buyer on the other network can never open.
+		// would seal deposits a buyer on the other network can never open. Either is
+		// optional (mainnet runs neither yet), but a key server comes with a registry.
 		const nets = Object.values(SupportedNetworks);
+		for (const c of nets)
+			expect(Boolean(c.keyServer)).toBe(Boolean(c.settlementRegistryContractAddress));
 		for (const field of ["keyServer", "signedUrlWorker"] as const) {
-			const urls = nets.map((c) => c[field]);
-			expect(urls.every(Boolean)).toBe(true);
-			expect(new Set(urls).size).toBe(nets.length);
+			const urls = nets.map((c) => c[field]).filter(Boolean);
+			expect(new Set(urls).size).toBe(urls.length);
+		}
+	});
+
+	it("keeps paid records off on mainnet", () => {
+		for (const c of [BaseConfig, ArbitrumConfig]) {
+			expect(c).not.toHaveProperty("settlementRegistryContractAddress");
+			expect(c).not.toHaveProperty("keyServer");
+			expect(IDENTITY_REGISTRY[c.caip2]).toBeDefined();
 		}
 	});
 

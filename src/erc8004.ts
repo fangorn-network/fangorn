@@ -24,6 +24,9 @@ export const IDENTITY_REGISTRY: Record<number, Address> = {
 	84532: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
 	// Arbitrum Sepolia: the same proxy and implementation (checked 2026-11-11)
 	421614: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+	// Base and Arbitrum One: the mainnet proxy (bytecode checked 2026-11-17)
+	8453: "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
+	42161: "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
 };
 
 const ABI = parseAbi([
