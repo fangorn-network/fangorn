@@ -20,8 +20,6 @@ export class CommitFeed {
 	/**
 	 * The last block a change was delivered from, and the changes delivered from it:
 	 * a restart resumes there instead of at the tip, and skips what it already sent.
-	 * ponytail: null until the first delivery, so a watch that fails before
-	 * delivering anything restarts live; seed it from a clock if that matters.
 	 */
 	private cursor: { block: bigint; sent: Set<string> } | null = null;
 
@@ -38,6 +36,8 @@ export class CommitFeed {
 		) => AsyncGenerator<RepoChange>,
 		/** Delay before reopening the watch after it fails or ends. */
 		private readonly restartDelayMs = 2_000,
+		/** Read the current block before opening a replayable chain source. */
+		private readonly clock?: () => Promise<bigint>,
 	) {}
 
 	/** Number of live listeners — 0 means the underlying watch is closed. */
@@ -79,6 +79,11 @@ export class CommitFeed {
 		void (async () => {
 			while (!stopped()) {
 				try {
+					if (!this.cursor && this.clock) {
+						const tip = await this.clock();
+						if (stopped()) return;
+						this.cursor = { block: tip + 1n, sent: new Set() };
+					}
 					for await (const change of this.open(
 						abort.signal,
 						this.cursor?.block,

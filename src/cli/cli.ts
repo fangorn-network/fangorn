@@ -589,6 +589,11 @@ program
 			staged.records = staged.records.filter(
 				(r) => !r.id || !ids.includes(r.id),
 			);
+			if (staged.sources) {
+				staged.sources = Object.fromEntries(
+					Object.entries(staged.sources).filter(([id]) => !ids.includes(id)),
+				);
+			}
 			staged.deletes = [...new Set([...staged.deletes, ...ids])];
 			repo.setStaged(staged);
 			console.log(`${ids.length.toString()} delete(s) staged.`);
@@ -1065,15 +1070,14 @@ program
 						signal: controller.signal,
 					});
 
-				// A block can hold several changes, and the cursor resumes at the block
-				// after it: save a block only once a later one starts, so dying mid-block
-				// replays that block's changes instead of skipping the rest of them.
-				// ponytail: at-least-once — a restart re-emits the last block's changes.
+				// Checkpoint before emitting the first change of each block. Resuming
+				// from lastBlock + 1 then replays the entire in-flight block.
 				let block: bigint | undefined;
 				for await (const change of stream) {
-					if (block !== undefined && change.blockNumber > block)
-						writeCursor(block);
-					block = change.blockNumber;
+					if (change.blockNumber !== block) {
+						writeCursor(change.blockNumber - 1n);
+						block = change.blockNumber;
+					}
 					process.stdout.write(
 						JSON.stringify(change, bigintReplacer, options.pretty ? 2 : 0) +
 						"\n",

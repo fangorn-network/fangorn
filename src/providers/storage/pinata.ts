@@ -9,7 +9,12 @@ import {
 	RawBlock,
 	StorageMeta,
 } from "./types.js";
-import { serialize, retrieveByCid, withUploadRetry } from "./utils.js";
+import {
+	serialize,
+	retrieveByCid,
+	fetchRawByCid,
+	withUploadRetry,
+} from "./utils.js";
 import { packCar } from "../../engine/car.js";
 import { keccak256, stringToBytes } from "viem";
 import { sha256 } from "multiformats/hashes/sha2";
@@ -42,6 +47,11 @@ export class PinataBackend implements MetadataStorage {
 			const upload = await this.pinata.upload.public.file(file, {
 				metadata: meta,
 			});
+			await assertStoredFile(
+				upload.cid,
+				new TextEncoder().encode(content),
+				this,
+			);
 			return upload.cid;
 		});
 	}
@@ -55,6 +65,12 @@ export class PinataBackend implements MetadataStorage {
 
 			// 1. Upload the file to get the CID and Pinata's internal File UUID
 			const upload = await this.pinata.upload.public.file(file).name(name);
+
+			await assertStoredFile(
+				upload.cid,
+				new TextEncoder().encode(content),
+				this,
+			);
 
 			// 2. Compute the state root deterministically from the generated CID
 			const stateRoot = keccak256(stringToBytes(upload.cid)).toLowerCase();
@@ -116,7 +132,9 @@ export class PinataBackend implements MetadataStorage {
 			const file = new File([bytes.buffer as ArrayBuffer], "data.car", {
 				type: "application/vnd.ipld.car",
 			});
-			await this.pinata.upload.public.file(file).car();
+			const upload = await this.pinata.upload.public.file(file).car();
+			if (!rootBlock.cid.equals(CID.parse(upload.cid)))
+				throw new Error("storage returned the wrong CAR root");
 		});
 
 		return uriByName;
@@ -152,7 +170,7 @@ export class PinataBackend implements MetadataStorage {
 				type: "application/octet-stream",
 			});
 			const upload = await this.pinata.upload.public.file(file);
-			await assertStoredFile(upload.cid, bytes);
+			await assertStoredFile(upload.cid, bytes, this);
 			return upload.cid;
 		});
 	}
@@ -181,6 +199,8 @@ export class PinataBackend implements MetadataStorage {
 
 	/** Raw bytes for a block CID, with no decoding — what blockstore traversal needs. */
 	async getRawBlock(uri: string): Promise<Uint8Array> {
+		if (CID.parse(uri.replace(/^ipfs:\/\//, "")).code === 0x70)
+			return fetchRawByCid(uri, this.gateway, { rawBlock: true });
 		const { bytes } = await this.fetchRaw(uri);
 		return bytes;
 	}

@@ -31,6 +31,10 @@ afterEach(() => {
 describe("SignedUrlBackend", () => {
 	it("runs the ownership handshake, then uploads to the presigned URL", async () => {
 		const signer = makeSigner();
+		const expectedCid = CID.createV1(
+			0x55,
+			await sha256.digest(new Uint8Array([1, 2, 3])),
+		).toString();
 		let grantBody: { message?: string; signature?: string } = {};
 		let uploadedNetwork: FormDataEntryValue | null = null;
 		let uploadedFile: FormDataEntryValue | null = null;
@@ -56,7 +60,7 @@ describe("SignedUrlBackend", () => {
 				const fd = init?.body as FormData;
 				uploadedNetwork = fd.get("network");
 				uploadedFile = fd.get("file");
-				return jsonRes({ data: { cid: "bafkreiuploaded" } });
+				return jsonRes({ data: { cid: expectedCid } });
 			}
 			throw new Error(`unexpected fetch: ${target}`);
 		});
@@ -65,7 +69,7 @@ describe("SignedUrlBackend", () => {
 		const backend = new SignedUrlBackend(WORKER, signer, GATEWAY);
 		const cid = await backend.putFile(new Uint8Array([1, 2, 3]), "data.car");
 
-		expect(cid).toBe("bafkreiuploaded");
+		expect(cid).toBe(expectedCid);
 		expect(signer.signMessage).toHaveBeenCalledWith("SIGN ME");
 		expect(grantBody.message).toBe("SIGN ME");
 		expect(grantBody.signature).toBe("0xdeadbeef");

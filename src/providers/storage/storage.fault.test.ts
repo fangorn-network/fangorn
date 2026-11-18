@@ -1,5 +1,6 @@
 /* eslint-disable vitest/no-conditional-expect -- each generated fault decides the expected outcome */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as UnixFS from "@ipld/unixfs";
 import fc from "fast-check";
 import { CID } from "multiformats/cid";
 import * as dagCbor from "@ipld/dag-cbor";
@@ -184,7 +185,7 @@ describe("SignedUrlBackend uploads under injected faults", () => {
 			),
 		);
 		expect(res.ok).toBe(false);
-		if (!res.ok) expect(res.e.message).toMatch(/sha256 does not match/);
+		if (!res.ok) expect(res.e.message).toMatch(/does not match/);
 	});
 
 	it("a 429 with a JSON body from the worker is retried, not fatal", async () => {
@@ -247,24 +248,43 @@ describe("PinataBackend uploads under injected faults", () => {
 		);
 	});
 
-	it("putFile checks a raw CID's digest, and leaves a chunked (dag-pb) one to read-time checks", async () => {
+	it("putFile verifies raw files and authenticates a chunked file through its UnixFS links", async () => {
 		const bytes = new Uint8Array([1, 2, 3]);
 		const raw = CID.createV1(0x55, await sha256.digest(bytes)).toString();
 		const otherRaw = CID.createV1(
 			0x55,
 			await sha256.digest(new Uint8Array([9])),
 		).toString();
-		const dagPb = CID.createV1(0x70, await sha256.digest(bytes)).toString();
+		const encoded = UnixFS.encode({
+			type: UnixFS.NodeType.File,
+			layout: "advanced",
+			parts: [
+				{
+					cid: CID.parse(raw),
+					contentByteLength: bytes.length,
+					dagByteLength: bytes.length,
+				},
+			],
+		});
+		const dagPb = CID.createV1(0x70, await sha256.digest(encoded)).toString();
+		const wrongRoot = CID.createV1(0x70, await sha256.digest(bytes)).toString();
 		for (const [cid, ok] of [
 			[raw, true],
 			[otherRaw, false],
 			[dagPb, true],
+			[wrongRoot, false],
+			["invalid", false],
 		] as const) {
-			const res = await settle(
-				withFakeSdk(() => Promise.resolve(cid)).putFile(bytes, "c.car"),
-			);
+			const backend = withFakeSdk(() => Promise.resolve(cid));
+			vi.spyOn(backend, "getRawBlock").mockResolvedValue(encoded);
+			const res = await settle(backend.putFile(bytes, "c.car"));
 			expect(res.ok).toBe(ok);
 		}
+		const backend = withFakeSdk(() => Promise.resolve(dagPb));
+		vi.spyOn(backend, "getRawBlock").mockResolvedValue(encoded);
+		await expect(
+			backend.putFile(new Uint8Array([3, 2, 1]), "other.car"),
+		).rejects.toThrow(/does not match/);
 	});
 });
 

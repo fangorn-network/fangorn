@@ -1,3 +1,4 @@
+import { CID } from "multiformats/cid";
 import { Hex } from "viem";
 import { FangornConfig } from "../../config.js";
 import {
@@ -175,16 +176,19 @@ export class SignedUrlBackend implements MetadataStorage {
 	}
 
 	async put(data: unknown, meta?: StorageMeta): Promise<string> {
-		return this.uploadBytes(
-			new TextEncoder().encode(serialize(data)),
+		const bytes = new TextEncoder().encode(serialize(data));
+		const cid = await this.uploadBytes(
+			bytes,
 			meta?.name ?? "file",
 			"text/plain",
 		);
+		await assertStoredFile(cid, bytes, this);
+		return cid;
 	}
 
 	async putFile(bytes: Uint8Array, name: string): Promise<string> {
 		const cid = await this.uploadBytes(bytes, name, "application/octet-stream");
-		await assertStoredFile(cid, bytes);
+		await assertStoredFile(cid, bytes, this);
 		return cid;
 	}
 
@@ -204,7 +208,9 @@ export class SignedUrlBackend implements MetadataStorage {
 	}
 
 	async getRawBlock(uri: string): Promise<Uint8Array> {
-		return fetchRawByCid(uri, this.gateway);
+		return fetchRawByCid(uri, this.gateway, {
+			rawBlock: CID.parse(uri.replace(/^ipfs:\/\//, "")).code === 0x70,
+		});
 	}
 
 	async get<T>(uri: string): Promise<T> {

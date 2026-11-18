@@ -673,6 +673,7 @@ export class FangornEngine {
 	async repoDiff(
 		oldRootHex: string | null,
 		newRootHex: string,
+		{ useEventDiff = true } = {},
 	): Promise<RepoDiff> {
 		// A zero new root is a reset/tombstone-all: the after-state is empty and its
 		// commit block (hexToRootCid(ZERO) = bafyreiaaaa…) is never stored, so it must
@@ -685,7 +686,7 @@ export class FangornEngine {
 				: null;
 
 		const events =
-			oldCommit && newCommit
+			useEventDiff && oldCommit && newCommit
 				? await this.eventsSince(oldCommit, newCommit)
 				: null;
 		if (oldCommit && newCommit && events) {

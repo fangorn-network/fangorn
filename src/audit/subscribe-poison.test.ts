@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { bytesToHex, type Hex } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { CID } from "multiformats/cid";
@@ -44,6 +44,40 @@ async function drain(stream: AsyncGenerator<RepoChange>, until: number) {
 }
 
 describe("audit: a subscriber of every repo vs one unreadable entry", () => {
+	it.each(["temporary", "persistent"])(
+		"recovers a repo after a %s failure reading its first observed head",
+		async (failure) => {
+			const net = memoryNetwork();
+			const pub = await net.client();
+			const reader = await net.client();
+			await pub.initRepo("feed");
+			const first = await pub.upload("feed", { n: 1 }, "t", "a");
+			const fromBlock = await net.clock();
+			const { commitCid } = await pub.engine.createCommit({
+				repo: "feed",
+				base: CID.parse(first.commitCid),
+				checkpoint: true,
+				records: [{ id: "b", type: "t", payload: { n: 2 } }],
+			});
+			await pub.push("feed", commitCid.toString());
+			const bytes = await net.storage.getRawBlock(first.commitCid);
+			net.storage.blocks.delete(first.commitCid);
+			const onSkip = vi.fn(() => {
+				if (failure === "temporary")
+					net.storage.blocks.set(first.commitCid, bytes);
+			});
+			const stream = reader.subscribeAll({ fromBlock, onSkip });
+			const firstChange = await stream.next();
+			await stream.return(undefined);
+			expect(onSkip).toHaveBeenCalledTimes(1);
+			if (firstChange.done) throw new Error("stream ended before recovery");
+			expect(firstChange.value.puts.map((r) => r.id).sort()).toEqual([
+				"a",
+				"b",
+			]);
+		},
+	);
+
 	it.each([
 		["subscribeAll()", {}],
 		["subscribeAll({ repo })", { repo: "feed" }],
@@ -70,6 +104,29 @@ describe("audit: a subscriber of every repo vs one unreadable entry", () => {
 });
 
 describe("audit: CommitFeed restart", () => {
+	it("catches up after the watch fails before its first delivery", async () => {
+		const net = memoryNetwork();
+		const pub = await net.client();
+		const reader = await net.client();
+		await pub.initRepo("feed");
+		const registry = reader.getRegistry();
+		vi.spyOn(registry, "log").mockRejectedValueOnce(new Error("RPC offline"));
+		const failed = vi.fn();
+		const delivered: string[] = [];
+		const off = reader
+			.feed()
+			.on((change) => delivered.push(...change.puts.map((r) => r.id)), failed);
+		try {
+			await vi.waitFor(() => { expect(failed).toHaveBeenCalledOnce(); });
+			await pub.upload("feed", { n: 1 }, "t", "during-restart");
+			await vi.waitFor(() => { expect(delivered).toEqual(["during-restart"]); }, {
+				timeout: 4000,
+			});
+		} finally {
+			off();
+		}
+	});
+
 	it("does not drop entries published while it is restarting", async () => {
 		const net = memoryNetwork();
 		const pub = await net.client();

@@ -7,6 +7,8 @@ import type { RecordInput } from "../engine/index.js";
 export interface Staged {
 	records: RecordInput[];
 	deletes: string[];
+	/** Staging-only provenance. Older indexes have no source information. */
+	sources?: Record<string, string>;
 }
 
 export interface StageOpts {
@@ -182,7 +184,8 @@ export function addPaths(
 ): { staged: Staged; added: string[]; skipped: string[]; n: number } {
 	const added: string[] = [];
 	const skipped: string[] = [];
-	const from = new Map<string, string>(); // record id → the file it came from, this add
+	const sources = new Map(Object.entries(staged.sources ?? {}));
+	const stagedIds = new Set(staged.records.map((r) => r.id));
 	let n = 0;
 	for (const rel of [...new Set(paths.flatMap((p) => walk(root, p)))]) {
 		let got: Staged | null;
@@ -195,15 +198,25 @@ export function addPaths(
 			skipped.push(rel);
 			continue;
 		}
+		const seen = new Set<string>();
 		for (const { id } of got.records) {
 			if (id === undefined) continue;
-			const other = from.get(id);
-			// ids are made id-safe (spaces, non-ASCII → _), so distinct names can meet
-			if (other !== undefined)
+			const other = sources.get(id);
+			if (other === undefined && stagedIds.has(id))
 				throw new Error(
-					`record id ${JSON.stringify(id)} comes from ${other === rel ? `two rows of ${rel}` : `both ${other} and ${rel}`}; give each record its own id (--id-column) or rename`,
+					`staged record ${JSON.stringify(id)} has an unknown source; commit it or unstage it with fangorn rm before replacing it`,
 				);
-			from.set(id, rel);
+			// ids are made id-safe (spaces, non-ASCII → _), so distinct names can meet
+			if (seen.has(id))
+				throw new Error(
+					`record id ${JSON.stringify(id)} comes from two rows of ${rel}; give each record its own id`,
+				);
+			if (other !== undefined && other !== rel)
+				throw new Error(
+					`record id ${JSON.stringify(id)} comes from both ${other} and ${rel}; give each record its own id or rename the file`,
+				);
+			seen.add(id);
+			sources.set(id, rel);
 		}
 		const ids = new Set(got.records.map((r) => r.id));
 		staged = {
@@ -215,5 +228,10 @@ export function addPaths(
 		n += got.records.length + got.deletes.length;
 		added.push(`${rel} (${got.records.length.toString()} record(s))`);
 	}
-	return { staged, added, skipped, n };
+	return {
+		staged: { ...staged, sources: Object.fromEntries(sources) },
+		added,
+		skipped,
+		n,
+	};
 }

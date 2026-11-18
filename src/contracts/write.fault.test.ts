@@ -1,5 +1,7 @@
 /* eslint-disable vitest/no-conditional-expect -- each generated fault decides the expected outcome */
 import { describe, expect, it } from "vitest";
+import { CID } from "multiformats/cid";
+import { sha256 } from "multiformats/hashes/sha2";
 import fc from "fast-check";
 import {
 	WaitForTransactionReceiptTimeoutError,
@@ -218,7 +220,30 @@ describe("write paths under injected faults", () => {
 });
 
 describe("ERC-8004 writes under injected faults", () => {
-	const storage = { put: () => Promise.resolve("bafkqaaa") };
+	const storage = {
+		put: async (file: unknown) =>
+			CID.createV1(
+				0x55,
+				await sha256.digest(new TextEncoder().encode(JSON.stringify(file))),
+			).toString(),
+	};
+
+	it("rejects an invalid metadata CID before sending a transaction", async () => {
+		const { publicClient, walletClient, sent } = clients("ok");
+		await expect(
+			setAgentFile(
+				{
+					chain: baseSepolia,
+					publicClient,
+					walletClient,
+					storage: { put: () => Promise.resolve("invalid") },
+				},
+				1n,
+				{},
+			),
+		).rejects.toThrow();
+		expect(sent).toHaveLength(0);
+	});
 
 	it("setAgentFile reports success only for its own successful tx", async () => {
 		await fc.assert(

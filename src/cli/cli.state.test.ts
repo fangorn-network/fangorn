@@ -317,6 +317,33 @@ describe("cli local state", () => {
 		expect(existsSync(join(work, ".fangorn/index.json"))).toBe(false);
 	});
 
+	it("persists source filenames across adds and releases them on rm", async () => {
+		await fangorn("repo", "init", "r");
+		writeFileSync(join(work, "a b.txt"), "one");
+		writeFileSync(join(work, "a_b.txt"), "two");
+		expect((await fangorn("add", "a b.txt")).code).toBe(0);
+		const index = join(work, ".fangorn/index.json");
+		const before = readFileSync(index, "utf8");
+		expect((await fangorn("add", "a_b.txt")).code).toBe(1);
+		expect(readFileSync(index, "utf8")).toBe(before);
+		expect((await fangorn("rm", "a_b.txt")).code).toBe(0);
+		expect((await fangorn("add", "a_b.txt")).code).toBe(0);
+	});
+
+	it("protects records in an index written before source paths were recorded", async () => {
+		await fangorn("repo", "init", "r");
+		const index = join(work, ".fangorn/index.json");
+		const legacy = JSON.stringify({
+			records: [{ id: "a", type: "t", payload: { v: 1 } }],
+			deletes: [],
+		});
+		writeFileSync(index, legacy);
+		writeFileSync(join(work, "data.csv"), "id,v\na,2\n");
+		expect((await fangorn("add", "data.csv")).out).toContain("unknown source");
+		expect(readFileSync(index, "utf8")).toBe(legacy);
+		expect((await fangorn("commit")).code).toBe(0);
+	});
+
 	it("add names the file that failed to parse", async () => {
 		await fangorn("repo", "init", "r");
 		writeFileSync(join(work, "bad.json"), "{nope");
@@ -383,6 +410,20 @@ describe("cli subscribe cursor", () => {
 		const r = await fangorn("subscribe", "r", "--owner", OWNER);
 		expect(r.code).toBe(0);
 		expect(r.out).toContain('"n":3');
+	});
+
+	it("resumes at the first block after a crash during its delivery", async () => {
+		await fangorn("repo", "init", "r");
+		h.changes = [
+			{ blockNumber: 0n, n: 1 },
+			{ blockNumber: 0n, n: 2 },
+		];
+		h.crashAfter = 1;
+		expect((await fangorn("subscribe", "r", "--owner", OWNER)).code).toBe(1);
+		h.crashAfter = Infinity;
+		const result = await fangorn("subscribe", "r", "--owner", OWNER);
+		expect(h.streamFrom).toBe(0n);
+		expect(result.out).toContain('"n":2');
 	});
 
 	it("keeps the cursor inside .fangorn whatever the namespace", async () => {

@@ -91,9 +91,9 @@ export interface SubscribeOptions {
 	/**
 	 * Called for a log entry the stream skips because its commit can't be read
 	 * (blocks missing from storage, or not what they claim). Anyone can log such
-	 * an entry, so it must not end a stream of other publishers' repos. The next
-	 * readable entry of the same repo diffs from the last head the stream did
-	 * read, so a skip loses no changes once the repo moves on. Default: a warning.
+	 * an entry. Other repos continue streaming. When the same repo next has
+	 * readable state, the stream reports its net changes since the last readable
+	 * head (or the first observed parent). Defaults to a warning.
 	 */
 	onSkip?: (err: Error, entry: UpdateEntry) => void;
 }
@@ -723,8 +723,11 @@ export class Fangorn {
 	 * anywhere more than one consumer wants the same stream.
 	 */
 	feed(opts: { pollingInterval?: number } = {}): CommitFeed {
-		this._feed ??= new CommitFeed((signal, fromBlock, onSkip) =>
-			this.subscribeAll({ ...opts, signal, fromBlock, onSkip }),
+		this._feed ??= new CommitFeed(
+			(signal, fromBlock, onSkip) =>
+				this.subscribeAll({ ...opts, signal, fromBlock, onSkip }),
+			undefined,
+			() => this.ctx.registry.clock(),
 		);
 		return this._feed;
 	}
@@ -983,17 +986,20 @@ export class Fangorn {
 		log: UpdateEntry,
 		lastHead: Map<string, Hex>,
 	): Promise<RepoChange | null> {
+		const key = `${log.publisher.toLowerCase()}/${log.repo}`;
+		const oldRoot = lastHead.get(key) ?? log.parent;
+		// Keep the starting parent even if the first read fails.
+		lastHead.set(key, oldRoot);
 		const declared = await this.engine.repoOf(log.head);
 		if (declared !== log.repo) {
 			throw new Error(
 				`commit ${log.head} declares repo "${declared}", which does not match the repo it was committed to ("${log.repo}")`,
 			);
 		}
-		const key = `${log.publisher.toLowerCase()}/${log.repo}`;
-		const oldRoot = lastHead.get(key) ?? log.parent;
 		const diff = await this.engine.repoDiff(
 			oldRoot === ZERO_BYTES32 ? null : oldRoot,
 			log.head,
+			{ useEventDiff: oldRoot === log.parent },
 		);
 		// Only once read: an unreadable head must not become the next diff's base.
 		lastHead.set(key, log.head);
