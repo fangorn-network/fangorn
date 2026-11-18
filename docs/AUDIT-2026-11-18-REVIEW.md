@@ -6,7 +6,7 @@ Method: every source change (18 non-test files) was read against its claimed fin
 
 ## A. Summary
 
-**Follow-up status.** B1–B5 were fixed after the initial review. Section C remains open. The table below records the initial checks. [Post-fix results](#f-section-b-fixes-and-verification)
+**Follow-up status.** B1–B5 and C1 were fixed after the initial review. C2–C5 remain open. The table below records the initial checks. [Post-fix results](#f-section-b-fixes-and-verification)
 
 Historical reads and live watches passed the checks for the release-blocking `Updated` ABI change. The remaining gaps affect staging, subscription recovery, upload verification, ERC-8004 receipt reporting, and plain-text preservation. Sections B and C describe the conditions under which each fix falls short.
 
@@ -60,7 +60,9 @@ Block uploads verify the expected raw CID. File uploads verify raw SHA-256 CIDs,
 
 ## C. Other gaps
 
-### C1. Symlink escape in `fangorn add`, only partly fixed (High)
+### C1. Symlink escape in `fangorn add`, only partly fixed (High) — fixed
+
+**Status:** fixed after the review. See [section G](#g-section-c-fixes-and-verification).
 
 Location: `src/cli/stage.ts:76-91` (`walk`).
 
@@ -137,3 +139,11 @@ Suggested fix: delete the temp file before writing (or open it with the `wx` fla
 | B5 — Upload references | Raw files are checked against their SHA-256 digest. For chunked UnixFS files, the verifier authenticates DAG-PB nodes and checks linked byte ranges against the uploaded content. Paid-field handles and ERC-8004 registration metadata are checked before publication. | Tests cover valid and mismatched file content, an incorrect UnixFS root, a malformed ciphertext reference, and rejection of an invalid metadata CID before a transaction is sent. [Storage tests](../src/providers/storage/storage.fault.test.ts) · [Paid-field tests](../src/crypto/paid.test.ts) · [ERC-8004 tests](../src/contracts/write.fault.test.ts) |
 
 **Post-fix verification.** All 278 SDK unit tests across 38 files passed. All 22 targeted Anvil tests across the SDK, CLI, cards, log, watch, and paid suites passed. TypeScript, ESLint, the package build, and `git diff --check` also passed. The full e2e suite was not rerun.
+
+## G. Section C fixes and verification
+
+| Finding | Implemented behavior | Regression coverage |
+| --- | --- | --- |
+| C1 — Symlink escape in `fangorn add` | `walk()` resolves both the repo root and the selected path with `realpathSync`, then checks containment and walks the resolved path. A named symlink, or a path under a symlinked ancestor, that leads outside the repo is rejected. A symlink that stays inside the repo stages files under their real path. A repo reached through a symlinked path still works. Symlinks inside a directory are still not followed. | The walk test covers a symlinked directory, a symlinked file, and a path under a symlinked ancestor (all rejected), plus an inside link and a symlinked repo root (both accepted). The test fails with the fix reverted. [Walk tests](../src/cli/stage.fuzz.test.ts) |
+
+**Post-fix verification.** All 279 SDK unit tests across 38 files passed. TypeScript, ESLint and Prettier (on the changed files) were clean. The e2e suite was not rerun.
