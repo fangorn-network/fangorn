@@ -161,7 +161,7 @@ describe("client MMR vs DataRegistry", () => {
 			),
 			{ seed: 0x3338, numRuns: Math.min(runs, 20) },
 		);
-	});
+	}, 120_000); // ~1s locally, >10s on CI under coverage
 });
 
 // ── The contract's own roots ─────────────────────────────────────────────────
