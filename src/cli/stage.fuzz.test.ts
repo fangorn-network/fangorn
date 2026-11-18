@@ -224,4 +224,26 @@ describe("walk", () => {
 		);
 		expect(() => walk(join(base, "repo"), base)).toThrow(/outside the repo/);
 	});
+
+	it("refuses a named symlink, or a symlinked ancestor, that leads out of the repo", () => {
+		const base = tmp();
+		const root = join(base, "repo");
+		const outside = join(base, "outside");
+		mkdirSync(join(root, "sub"), { recursive: true });
+		mkdirSync(outside);
+		writeFileSync(join(outside, "SECRET"), "k");
+		writeFileSync(join(root, "sub", "a.txt"), "1");
+		symlinkSync(outside, join(root, "dir-link"));
+		symlinkSync(join(outside, "SECRET"), join(root, "file-link"));
+		symlinkSync(join(root, "sub"), join(root, "inside-link"));
+		for (const p of ["dir-link", "file-link", "dir-link/SECRET"])
+			expect(() => walk(root, join(root, p))).toThrow(/outside the repo/);
+		// a link that stays inside resolves to its real path
+		expect(walk(root, join(root, "inside-link"))).toEqual(["sub/a.txt"]);
+		// a repo reached through a symlink still works
+		symlinkSync(root, join(base, "repo-link"));
+		expect(
+			walk(join(base, "repo-link"), join(base, "repo-link", "sub")),
+		).toEqual(["sub/a.txt"]);
+	});
 });

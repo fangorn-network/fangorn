@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, statSync } from "fs";
+import { readFileSync, readdirSync, realpathSync, statSync } from "fs";
 import { basename, extname, isAbsolute, join, relative, sep } from "path";
 import type { RecordInput } from "../engine/index.js";
 
@@ -73,11 +73,14 @@ const safeId = (s: string): string => s.replace(/[^\x21-\x7e]/g, "_");
 /**
  * Files under `path` (file or dir) as sorted root-relative posix paths. Dot entries are
  * skipped, and symlinks inside a directory are not followed (no escaping the repo, no cycles).
- * Throws for a path outside `root`.
+ * Throws for a path outside `root`, judged by real paths: a named symlink, or a symlinked
+ * ancestor, that leads out of the repo is outside it.
  */
 export function walk(root: string, path: string): string[] {
-	const rel = (p: string) => relative(root, p).split(sep).join("/");
-	const top = rel(path);
+	const realRoot = realpathSync(root);
+	const real = realpathSync(path);
+	const rel = (p: string) => relative(realRoot, p).split(sep).join("/");
+	const top = rel(real);
 	if (top === ".." || top.startsWith("../") || isAbsolute(top))
 		throw new Error(`${path} is outside the repo at ${root}`);
 	const out: string[] = [];
@@ -88,7 +91,7 @@ export function walk(root: string, path: string): string[] {
 			else if (e.isFile()) out.push(rel(p));
 		}
 	};
-	if (statSync(path).isDirectory()) visit(path);
+	if (statSync(real).isDirectory()) visit(real);
 	else out.push(top);
 	return out.filter((p) => !p.split("/").some((s) => s.startsWith("."))).sort();
 }
