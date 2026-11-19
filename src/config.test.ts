@@ -1,9 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { zeroAddress } from "viem";
-import getNetwork, {
-	BaseConfig,
-	SupportedNetworks,
-} from "./config.js";
+import getNetwork, { BaseConfig, SupportedNetworks } from "./config.js";
 import { IDENTITY_REGISTRY } from "./erc8004.js";
 
 describe("supported networks", () => {
@@ -26,7 +23,9 @@ describe("supported networks", () => {
 		// optional (mainnet runs neither yet), but a key server comes with a registry.
 		const nets = Object.values(SupportedNetworks);
 		for (const c of nets)
-			expect(Boolean(c.keyServer)).toBe(Boolean(c.settlementRegistryContractAddress));
+			expect(Boolean(c.keyServer)).toBe(
+				Boolean(c.settlementRegistryContractAddress),
+			);
 		for (const field of ["keyServer", "signedUrlWorker"] as const) {
 			const urls = nets.map((c) => c[field]).filter(Boolean);
 			expect(new Set(urls).size).toBe(urls.length);
@@ -42,6 +41,8 @@ describe("supported networks", () => {
 	});
 
 	it("refuses an unknown name, listing the supported ones", () => {
-		expect(() => getNetwork("mainnet")).toThrow(/baseSepolia, arbitrumSepolia, base/);
+		expect(() => getNetwork("mainnet")).toThrow(
+			/baseSepolia, arbitrumSepolia, base/,
+		);
 	});
 });

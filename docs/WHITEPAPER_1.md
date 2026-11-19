@@ -217,7 +217,7 @@ $$
 \mathit{ref} = (\rho,\ i,\ h,\ k)
 $$
 
-naming the event $h$ at position $i$ of repo $\rho$. The key $k$ is a record of $M_h$, or $\bot$ to stitch the event itself, meaning its diff: *this change*. The stitch's other fields belong to whoever stitched: a rank, a tag, a note, a verdict.
+naming the event $h$ at position $i$ of repo $\rho$. The key $k$ is a record of $M_h$, or $\bot$ to stitch the event itself, meaning its diff: _this change_. The stitch's other fields belong to whoever stitched: a rank, a tag, a note, a verdict.
 
 $h$ is the name of an event, so a stitch is a link in the global DAG. It runs from the stitching repo's state into another repo's clock. As in Twine [TW], the event that adds a stitch provably happened after the event it stitches (§1.2). Stitches thus give cross-repo happened-before that is visible in the DAG itself. The ordering service additionally places both events in one total order.
 
@@ -308,16 +308,16 @@ $N$ is SHA-256 over a canonical encoding (CIDv1). On chain, the log uses keccak-
 
 **Costs.**
 
-| Operation | Cost | Status |
-|---|---|---|
-| Update, on chain | one guard, one name, four slot writes, MMR append (< 2 hashes on average) | Lemma 8.4 [proof]; gas [estimate] |
-| Read a slice of $r$ repos, $m$ records | heads, plus $r$ events, $r(h+1) + m/(2^b-1)$ nodes in expectation, and $m$ records; 4 round trips | Lemma 8.2 [proof] |
-| Head as of $t'$ | 2 log openings, $\le 4\lfloor \log_2 M \rfloor$ names | Proposition 3.6 [proof] |
-| Check a stitch | 1 log opening, 1 event, $O(h+1)$ nodes | Proposition 4.2 [proof] |
-| Follow $\Gamma_t \to \Gamma_{t'}$ | SMT diff over $c'$ changed repos, plus the events between heads and their diffs | §3.3 [proof sketch] |
-| Follow a pointwise view | $O(\lvert X \rvert (h+1))$ per diff on $X$ keys | Proposition 5.4 [proof] |
-| Prove a malformed event | 3 openings | Proposition 2.2 [proof sketch] |
-| Fraud proof, pointwise key-revealing lens | 1 view opening plus 1 point read | Proposition C.2 [proof] |
+| Operation                                 | Cost                                                                                              | Status                            |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------- | --------------------------------- |
+| Update, on chain                          | one guard, one name, four slot writes, MMR append (< 2 hashes on average)                         | Lemma 8.4 [proof]; gas [estimate] |
+| Read a slice of $r$ repos, $m$ records    | heads, plus $r$ events, $r(h+1) + m/(2^b-1)$ nodes in expectation, and $m$ records; 4 round trips | Lemma 8.2 [proof]                 |
+| Head as of $t'$                           | 2 log openings, $\le 4\lfloor \log_2 M \rfloor$ names                                             | Proposition 3.6 [proof]           |
+| Check a stitch                            | 1 log opening, 1 event, $O(h+1)$ nodes                                                            | Proposition 4.2 [proof]           |
+| Follow $\Gamma_t \to \Gamma_{t'}$         | SMT diff over $c'$ changed repos, plus the events between heads and their diffs                   | §3.3 [proof sketch]               |
+| Follow a pointwise view                   | $O(\lvert X \rvert (h+1))$ per diff on $X$ keys                                                   | Proposition 5.4 [proof]           |
+| Prove a malformed event                   | 3 openings                                                                                        | Proposition 2.2 [proof sketch]    |
+| Fraud proof, pointwise key-revealing lens | 1 view opening plus 1 point read                                                                  | Proposition C.2 [proof]           |
 
 ## 9. Scope
 
@@ -331,14 +331,14 @@ $N$ is SHA-256 over a canonical encoding (CIDv1). On chain, the log uses keccak-
 
 A web search engine does five things: it crawls, indexes, ranks and serves. Each is a point of trust, and together they make one party the gatekeeper of what can be found. This appendix gives the same function, built for software agents, with none of those points of trust. It is a design on Part I, not part of the protocol, and its results are tagged as in §0.1.
 
-| | A search engine | The global index |
-|---|---|---|
-| **Crawl** | best effort, never known to be complete | follow $\Gamma_t$: every head, provably complete (Theorem 4) |
-| **Index** | private, unauditable | a view of $\Gamma_t$ that anyone may recompute, refute (Prop. A.2), or serve |
-| **Rank** | one secret function for everyone | exact similarity, plus signals each reader chooses (A.5) |
-| **Serve** | from the engine | by name, from any host |
-| **Answer** | take it or leave it | each hit carries a receipt anyone can recheck (A.6) |
-| **De-index** | silent | impossible: a missing record is a fraud proof |
+|              | A search engine                         | The global index                                                             |
+| ------------ | --------------------------------------- | ---------------------------------------------------------------------------- |
+| **Crawl**    | best effort, never known to be complete | follow $\Gamma_t$: every head, provably complete (Theorem 4)                 |
+| **Index**    | private, unauditable                    | a view of $\Gamma_t$ that anyone may recompute, refute (Prop. A.2), or serve |
+| **Rank**     | one secret function for everyone        | exact similarity, plus signals each reader chooses (A.5)                     |
+| **Serve**    | from the engine                         | by name, from any host                                                       |
+| **Answer**   | take it or leave it                     | each hit carries a receipt anyone can recheck (A.6)                          |
+| **De-index** | silent                                  | impossible: a missing record is a fraud proof                                |
 
 ### A.1 The clustered view
 
@@ -483,16 +483,16 @@ This covers the global root itself (§5), filters, indexes, sub-logs and embeddi
 
 ## References
 
-| Key | Reference |
-|---|---|
-| [AT19] | A. Auvolat, F. Taïani. Merkle Search Trees: Efficient State-Based CRDTs in Open Networks. SRDS 2019 |
-| [CER] | Ceramic. Protocol documentation. developers.ceramic.network |
-| [FC] | Farcaster. Protocol specification and Snapchain documentation. github.com/farcasterxyz |
-| [KFH+24] | M. Kleppmann et al. Bluesky and the AT Protocol: Usable Decentralized Social Media. DIN '24. arXiv:2402.03239 |
-| [L78] | L. Lamport. Time, Clocks, and the Ordering of Events in a Distributed System. CACM 21(7), 1978 |
-| [MCRDT20] | H. Sanjuán, S. Pöyhtäri, P. Teixeira, I. Psaras. Merkle-CRDTs: Merkle-DAGs meet CRDTs. arXiv:2004.00107 |
-| [NIP01] | Nostr. NIP-01. github.com/nostr-protocol/nips |
-| [T16] | P. Todd. Merkle Mountain Ranges. OpenTimestamps, 2016 |
-| [TG] | The Graph. Documentation. thegraph.com/docs |
-| [TW] | Twine Protocol. Documentation. docs.twine.world |
-| [WP2] | Fangorn II: sealed data and payment |
+| Key       | Reference                                                                                                     |
+| --------- | ------------------------------------------------------------------------------------------------------------- |
+| [AT19]    | A. Auvolat, F. Taïani. Merkle Search Trees: Efficient State-Based CRDTs in Open Networks. SRDS 2019           |
+| [CER]     | Ceramic. Protocol documentation. developers.ceramic.network                                                   |
+| [FC]      | Farcaster. Protocol specification and Snapchain documentation. github.com/farcasterxyz                        |
+| [KFH+24]  | M. Kleppmann et al. Bluesky and the AT Protocol: Usable Decentralized Social Media. DIN '24. arXiv:2402.03239 |
+| [L78]     | L. Lamport. Time, Clocks, and the Ordering of Events in a Distributed System. CACM 21(7), 1978                |
+| [MCRDT20] | H. Sanjuán, S. Pöyhtäri, P. Teixeira, I. Psaras. Merkle-CRDTs: Merkle-DAGs meet CRDTs. arXiv:2004.00107       |
+| [NIP01]   | Nostr. NIP-01. github.com/nostr-protocol/nips                                                                 |
+| [T16]     | P. Todd. Merkle Mountain Ranges. OpenTimestamps, 2016                                                         |
+| [TG]      | The Graph. Documentation. thegraph.com/docs                                                                   |
+| [TW]      | Twine Protocol. Documentation. docs.twine.world                                                               |
+| [WP2]     | Fangorn II: sealed data and payment                                                                           |
