@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { CID } from "multiformats/cid";
+import { sha256 } from "multiformats/hashes/sha2";
 import type { Hex } from "viem";
 import { Fangorn } from "./fangorn.js";
 import { BaseSepoliaConfig, NetworkConfig } from "./config.js";
@@ -16,14 +18,16 @@ async function uploadThroughWorker(
 	worker = WORKER,
 ): Promise<Record<string, unknown>[]> {
 	const sent: Record<string, unknown>[] = [];
+	const cid = CID.createV1(
+		0x55,
+		await sha256.digest(new Uint8Array([1])),
+	).toString();
 	vi.stubGlobal(
 		"fetch",
 		vi.fn((url: string | URL, init?: RequestInit) => {
 			// The upload POST carries FormData, so route before touching the body.
 			if (String(url) !== worker) {
-				return Promise.resolve(
-					new Response(JSON.stringify({ data: { cid: "bafkrei" } })),
-				);
+				return Promise.resolve(new Response(JSON.stringify({ data: { cid } })));
 			}
 			const body = JSON.parse(init?.body as string) as { signature?: string };
 			sent.push(body);

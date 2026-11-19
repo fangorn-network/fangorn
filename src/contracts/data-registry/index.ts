@@ -2,6 +2,7 @@ import {
 	keccak256,
 	toHex,
 	type Abi,
+	type AbiEvent,
 	type Address,
 	type Hash,
 	type Hex,
@@ -112,10 +113,12 @@ export interface UpdateEntry {
 	t: bigint;
 	/** That block's timestamp: the `t` of the paper's entry, and what the contract's log leaf hashes. */
 	timestamp: bigint;
-	/** The entry's position in the whole log (every repo), from 0. */
-	index: bigint;
+	/** The entry's position in the whole log (every repo), from 0. Absent on pre-upgrade (V0) logs. */
+	index?: bigint;
 	/** Unique per entry, for de-duplication across catch-up and live. */
 	id: string;
+	/** The event's indexed repo id, where the entry came from one (the contract hashes the raw name). */
+	repoId?: Hex;
 }
 
 /** A slice of the update log: every repo, one publisher's, one repo name across publishers, or one repo. */
@@ -258,15 +261,15 @@ export class ChainRegistry implements Registry {
 		);
 	}
 
-	/** U's `Updated` events, narrowed on-chain by publisher and repo. */
-	private source(filter: LogFilter) {
+	/** U's `Updated` events of one version, narrowed on-chain by publisher and repo. */
+	private source(filter: LogFilter, event: UpdatedEvent) {
 		const ids =
 			filter.repo === undefined ? {} : { repo_id: repoId(filter.repo) };
 		const who =
 			filter.publisher === undefined ? {} : { publisher: filter.publisher };
 		return {
 			address: this.data,
-			abi: DATA_REGISTRY_ABI,
+			abi: [event],
 			eventName: "Updated",
 			args: { ...who, ...ids },
 		};
@@ -277,17 +280,25 @@ export class ChainRegistry implements Registry {
 		from: bigint,
 		to?: bigint,
 	): Promise<UpdateEntry[]> {
+		// Both versions of the event: the proxy was upgraded in place, so its history
+		// before the upgrade carries the old topic.
 		const logs = await getLogsInWindows(
 			this.publicClient,
 			from,
 			to,
-			(fromBlock, toBlock) =>
-				this.publicClient.getContractEvents({
-					...this.source(filter),
-					fromBlock,
-					toBlock,
-					strict: true,
-				} as never),
+			async (fromBlock, toBlock) =>
+				(
+					await Promise.all(
+						UPDATED_EVENTS.map((event) =>
+							this.publicClient.getContractEvents({
+								...this.source(filter, event),
+								fromBlock,
+								toBlock,
+								strict: true,
+							} as never),
+						),
+					)
+				).flat(),
 			this.logWindow,
 		);
 		// Windows arrive oldest first, but order within a window is the node's choice.
@@ -298,7 +309,35 @@ export class ChainRegistry implements Registry {
 					? -1
 					: 1,
 		);
-		return sorted.map(toEntry);
+		return this.withTimestamps(sorted);
+	}
+
+	/**
+	 * Old-version logs don't carry their block's timestamp: one block read per
+	 * distinct block. New-version logs carry it.
+	 */
+	private async withTimestamps(logs: EntryLog[]): Promise<UpdateEntry[]> {
+		const blocks = [
+			...new Set(
+				logs
+					.filter((l) => l.args.timestamp === undefined)
+					.map((l) => l.blockNumber),
+			),
+		];
+		const times = new Map(
+			await Promise.all(
+				blocks.map(
+					async (n) =>
+						[
+							n,
+							(await this.publicClient.getBlock({ blockNumber: n })).timestamp,
+						] as const,
+				),
+			),
+		);
+		return logs.map((l) =>
+			toEntry(l, l.args.timestamp ?? times.get(l.blockNumber) ?? 0n),
+		);
 	}
 
 	watch(
@@ -307,15 +346,44 @@ export class ChainRegistry implements Registry {
 		onError?: (err: Error) => void,
 		pollingInterval?: number,
 	): () => void {
-		return this.publicClient.watchContractEvent({
-			...this.source(filter),
+		let queue = Promise.resolve();
+		const publisher = filter.publisher?.toLowerCase();
+		const id = filter.repo === undefined ? undefined : repoId(filter.repo);
+		// ONE watch over both event versions, filtered here. Not one watch per version:
+		// viem keys a watch by address/eventName/args/interval but not its abi, so two
+		// such watches share one poller with the first one's abi, and the other version's
+		// logs never arrive (or every log arrives twice).
+		// ponytail: no topic filter, so a one-repo watch polls every update on the
+		// registry; watch UPDATED alone with `source(filter, UPDATED)` once no deployment
+		// still emits UPDATED_V0.
+		const unwatch = this.publicClient.watchContractEvent({
+			address: this.data,
+			abi: UPDATED_EVENTS,
 			strict: true,
 			pollingInterval,
-			onLogs: (logs: EntryLog[]) => {
-				for (const l of logs) onEntry(toEntry(l));
+			// Batches are chained so entries arrive in order even though each waits on block reads.
+			onLogs: (logs: (EntryLog & { eventName?: string })[]) => {
+				// A reorg re-sends logs it dropped with `removed: true`. They are not
+				// updates; the canonical chain's log (if any) arrives on its own.
+				const live = logs.filter(
+					(l) =>
+						!l.removed &&
+						l.eventName === "Updated" &&
+						(publisher === undefined ||
+							l.args.publisher.toLowerCase() === publisher) &&
+						(id === undefined || l.args.repo_id === id),
+				);
+				if (!live.length) return;
+				queue = queue
+					.then(() => this.withTimestamps(live))
+					.then((entries) => {
+						for (const e of entries) onEntry(e);
+					})
+					.catch((e: unknown) => onError?.(e as Error));
 			},
 			onError,
 		} as never);
+		return unwatch;
 	}
 
 	clock(): Promise<bigint> {
@@ -327,23 +395,54 @@ function updateArgs(u: CommitUpdate) {
 	return [u.repo, BigInt(u.epoch), u.parent, u.diff, u.root, u.car] as const;
 }
 
-/** An `Updated` log. */
+/** `Updated` as the contract emits it. */
+const UPDATED = DATA_REGISTRY_ABI.find(
+	(i) => i.type === "event" && i.name === "Updated",
+) as AbiEvent;
+
+/**
+ * `Updated` as the contract emitted it before it gained `index` and `timestamp`
+ * (contracts 0f178bb). The proxy is upgraded in place, so the log before the
+ * upgrade has this topic.
+ */
+export const UPDATED_V0 = {
+	type: "event",
+	name: "Updated",
+	anonymous: false,
+	inputs: [
+		{ name: "publisher", type: "address", indexed: true },
+		{ name: "repo_id", type: "bytes32", indexed: true },
+		{ name: "repo", type: "string", indexed: false },
+		{ name: "pos", type: "uint64", indexed: false },
+		{ name: "parent", type: "bytes32", indexed: false },
+		{ name: "head", type: "bytes32", indexed: false },
+	],
+} as const satisfies AbiEvent;
+
+type UpdatedEvent = AbiEvent;
+const UPDATED_EVENTS: readonly UpdatedEvent[] = [UPDATED_V0, UPDATED];
+
+/** An `Updated` log, of either version. */
 interface EntryLog {
 	args: {
 		publisher: Address;
+		repo_id: Hex;
 		repo: string;
 		pos: bigint | number;
 		parent: Hex;
 		head: Hex;
-		index: bigint;
-		timestamp: bigint;
+		/** new version only */
+		index?: bigint;
+		/** new version only: the block's timestamp */
+		timestamp?: bigint;
 	};
 	blockNumber: bigint;
 	transactionHash: Hash;
 	logIndex: number;
+	removed?: boolean;
 }
 
-function toEntry(log: EntryLog): UpdateEntry {
+function toEntry(log: EntryLog, timestamp: bigint): UpdateEntry {
 	return {
 		publisher: log.args.publisher,
 		repo: log.args.repo,
@@ -351,8 +450,9 @@ function toEntry(log: EntryLog): UpdateEntry {
 		parent: log.args.parent,
 		head: log.args.head,
 		t: log.blockNumber,
-		timestamp: log.args.timestamp,
+		timestamp,
 		index: log.args.index,
 		id: `${log.transactionHash}:${log.logIndex.toString()}`,
+		repoId: log.args.repo_id,
 	};
 }

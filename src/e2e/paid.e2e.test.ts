@@ -397,7 +397,8 @@ describe.skipIf(skipChain)("paid records (contracts on anvil)", () => {
 			[{ id: "b", type: "note", payload: { body: "b" } }],
 			o,
 		);
-		expect(second.map((r) => r.id)).toEqual(["b"]);
+		// the existing deposit is re-emitted (a no-op here; kept by a --replace commit)
+		expect(second.map((r) => r.id)).toEqual(["@deposit/0", "b"]);
 		await pub.uploadBatch("sealed", second);
 
 		const buyer = await net.client();

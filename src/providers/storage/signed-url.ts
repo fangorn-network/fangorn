@@ -1,6 +1,13 @@
+import { CID } from "multiformats/cid";
 import { Hex } from "viem";
 import { FangornConfig } from "../../config.js";
-import { MetadataStorage, RawBlock, StorageMeta } from "./types.js";
+import {
+	assertStoredBlock,
+	assertStoredFile,
+	MetadataStorage,
+	RawBlock,
+	StorageMeta,
+} from "./types.js";
 import { serialize, fetchRawByCid, withUploadRetry } from "./utils.js";
 
 /**
@@ -9,6 +16,9 @@ import { serialize, fetchRawByCid, withUploadRetry } from "./utils.js";
  * config's `signedUrlWorker`, so a Base client reaches Base's worker.
  */
 export const DEFAULT_SIGNED_URL_WORKER = FangornConfig.signedUrlWorker;
+
+/** The worker's handshake is two tiny JSON round trips. */
+const WORKER_TIMEOUT_MS = 30_000;
 
 interface WorkerResponse {
 	ok?: boolean;
@@ -75,8 +85,11 @@ export class SignedUrlBackend implements MetadataStorage {
 		// uploadId lets the worker charge one logical upload once across retries.
 		const challenge = await this.workerJson({ address, size, uploadId });
 		if (!challenge.challenge) {
-			throw new Error(
-				`Presigned-URL worker did not issue a challenge: ${workerError(challenge)}`,
+			throw Object.assign(
+				new Error(
+					`Presigned-URL worker did not issue a challenge: ${workerError(challenge)}`,
+				),
+				{ statusCode: challenge.status },
 			);
 		}
 
@@ -90,8 +103,11 @@ export class SignedUrlBackend implements MetadataStorage {
 			uploadId,
 		});
 		if (!grant.ok || !grant.uploadUrl) {
-			throw new Error(
-				`Presigned-URL worker denied an upload URL: ${workerError(grant)}`,
+			throw Object.assign(
+				new Error(
+					`Presigned-URL worker denied an upload URL: ${workerError(grant)}`,
+				),
+				{ statusCode: grant.status },
 			);
 		}
 		return { uploadUrl: grant.uploadUrl, network: grant.network ?? "public" };
@@ -99,14 +115,22 @@ export class SignedUrlBackend implements MetadataStorage {
 
 	private async workerJson(
 		body: Record<string, unknown>,
-	): Promise<WorkerResponse> {
+	): Promise<WorkerResponse & { status: number }> {
 		const res = await fetch(this.workerUrl, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify(body),
+			// A stalled worker would otherwise hang the publish forever; a timeout
+			// reads as transient, so withUploadRetry tries again.
+			signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
 		});
 		const json = (await res.json().catch(() => null)) as WorkerResponse | null;
-		return json ?? { error: `HTTP ${res.status.toString()}` };
+		// The status rides along so a 429/5xx with a JSON body still reads as
+		// transient to withUploadRetry, not only a bodiless one.
+		return {
+			...(json ?? { error: `HTTP ${res.status.toString()}` }),
+			status: res.status,
+		};
 	}
 
 	/** Upload bytes via a fresh one-time presigned URL; returns the pinned CID. */
@@ -152,22 +176,30 @@ export class SignedUrlBackend implements MetadataStorage {
 	}
 
 	async put(data: unknown, meta?: StorageMeta): Promise<string> {
-		return this.uploadBytes(
-			new TextEncoder().encode(serialize(data)),
+		const bytes = new TextEncoder().encode(serialize(data));
+		const cid = await this.uploadBytes(
+			bytes,
 			meta?.name ?? "file",
 			"text/plain",
 		);
+		await assertStoredFile(cid, bytes, this);
+		return cid;
 	}
 
 	async putFile(bytes: Uint8Array, name: string): Promise<string> {
-		return this.uploadBytes(bytes, name, "application/octet-stream");
+		const cid = await this.uploadBytes(bytes, name, "application/octet-stream");
+		await assertStoredFile(cid, bytes, this);
+		return cid;
 	}
 
 	async putBlock(block: RawBlock): Promise<void> {
-		await this.uploadBytes(
-			block.bytes,
-			block.cid.toString(),
-			"application/octet-stream",
+		assertStoredBlock(
+			await this.uploadBytes(
+				block.bytes,
+				block.cid.toString(),
+				"application/octet-stream",
+			),
+			block,
 		);
 	}
 
@@ -176,7 +208,9 @@ export class SignedUrlBackend implements MetadataStorage {
 	}
 
 	async getRawBlock(uri: string): Promise<Uint8Array> {
-		return fetchRawByCid(uri, this.gateway);
+		return fetchRawByCid(uri, this.gateway, {
+			rawBlock: CID.parse(uri.replace(/^ipfs:\/\//, "")).code === 0x70,
+		});
 	}
 
 	async get<T>(uri: string): Promise<T> {

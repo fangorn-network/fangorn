@@ -43,10 +43,42 @@ export function decodeBlock<T>(bytes: Uint8Array): T {
 	return dagCbor.decode(bytes);
 }
 
+/** Whether `bytes` hash to `cid`. */
+export function blockMatches(cid: CID, bytes: Uint8Array): boolean {
+	return bytesToHex(cid.multihash.digest) === bytesToHex(sha256Sync(bytes));
+}
+
 /** Throw unless `bytes` hash to `cid`. Hosts are untrusted; every fetched block goes through this. */
 export function assertBlockMatches(cid: CID, bytes: Uint8Array): void {
-	if (bytesToHex(cid.multihash.digest) !== bytesToHex(sha256Sync(bytes))) {
+	if (!blockMatches(cid, bytes)) {
 		throw new Error(`block ${cid.toString()} does not match its content hash`);
+	}
+}
+
+/**
+ * Throw on a value dag-cbor would store as something else: a string (or map key) with a lone
+ * UTF-16 surrogate, which encodes as U+FFFD, and an own `__proto__` key, which decodes as
+ * the object's prototype instead of a field. Either would change a record between put and read.
+ */
+export function assertStorable(value: unknown, path = "payload"): void {
+	if (typeof value === "string") {
+		if (!value.isWellFormed())
+			throw new Error(`${path} is not a well-formed (UTF-16) string`);
+	} else if (Array.isArray(value)) {
+		value.forEach((v, i) => {
+			assertStorable(v, `${path}[${i.toString()}]`);
+		});
+	} else if (
+		value &&
+		typeof value === "object" &&
+		!(value instanceof Uint8Array) &&
+		!CID.asCID(value)
+	) {
+		for (const [k, v] of Object.entries(value)) {
+			if (k === "__proto__") throw new Error(`${path} has a __proto__ key`);
+			assertStorable(k, `${path} key`);
+			assertStorable(v, `${path}.${k}`);
+		}
 	}
 }
 
@@ -240,6 +272,12 @@ export async function readMst<V extends CID | null = CID>(
 			throw new Error(
 				`MST at ${root.toString()} is deeper than ${MAX_DEPTH.toString()}`,
 			);
+		// a tree's keys are distinct, so no honest tree holds one node twice; a DAG that
+		// repeats one would unroll exponentially
+		if (nodeCids.has(cid.toString()))
+			throw new Error(
+				`MST at ${root.toString()} repeats node ${cid.toString()}`,
+			);
 		nodeCids.add(cid.toString());
 		const node = decodeBlock<Partial<MstNode>>(await getBlock(cid));
 		if (!Array.isArray(node.entries)) {
@@ -287,8 +325,13 @@ export async function diffMst(
 	// Stacks, head last. A root's level is unknown until read: Infinity opens both roots first.
 	const a: Item[] = oldRoot ? [{ sub: oldRoot, level: Infinity }] : [];
 	const b: Item[] = newRoot ? [{ sub: newRoot, level: Infinity }] : [];
+	// each side opens a node once (see readMst's repeat check)
+	const opened = new Set<string>();
 	const open = async (s: Item[], get: (cid: CID) => Promise<Uint8Array>) => {
 		const { sub } = s.pop() as { sub: CID };
+		const seen = `${s === a ? "a" : "b"}${sub.toString()}`;
+		if (opened.has(seen)) throw new Error(`MST repeats node ${sub.toString()}`);
+		opened.add(seen);
 		const node = decodeBlock<MstNode>(await get(sub));
 		const items: Item[] = node.left
 			? [{ sub: node.left, level: node.level - 1 }]

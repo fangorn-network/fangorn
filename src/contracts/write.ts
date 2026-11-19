@@ -1,11 +1,14 @@
 import {
 	encodeFunctionData,
 	toHex,
+	WaitForTransactionReceiptTimeoutError,
+	zeroAddress,
 	type Abi,
 	type Address,
 	type Hash,
 	type Hex,
 	type PublicClient,
+	type TransactionReceipt,
 	type WalletClient,
 } from "viem";
 
@@ -61,6 +64,7 @@ export async function sendWrite(
 ): Promise<Hash> {
 	if (!walletClient.chain) throw new Error("Chain required");
 	if (!walletClient.account) throw new Error("Account required");
+	assertDeployed(address, functionName);
 	const { chain, account } = walletClient;
 
 	const fees = await publicClient.estimateFeesPerGas();
@@ -88,13 +92,70 @@ export async function sendWrite(
 		value,
 	} as unknown as Parameters<typeof walletClient.writeContract>[0]);
 
-	// A mined revert still yields a receipt; without this it reads as success.
-	const receipt = await publicClient.waitForTransactionReceipt({ hash });
+	return (await confirmTx(publicClient, hash, functionName, limit)).hash;
+}
+
+/**
+ * Wait for `hash` to be mined and throw unless it is what took effect.
+ *
+ * - A mined revert still yields a receipt; without the status check it reads as success.
+ * - viem resolves with the REPLACEMENT's receipt when another transaction takes the
+ *   nonce (a second process on the same key, a wallet "cancel"). That receipt says
+ *   nothing about this call, so only a reprice (same to, value and data: a wallet
+ *   speed-up) counts.
+ * - A timeout is not a failure: the transaction may still land. Say so, so nobody
+ *   resends blind (a push resent onto its own landed head reverts as stale).
+ */
+export async function confirmTx(
+	publicClient: PublicClient,
+	hash: Hash,
+	what: string,
+	gasLimit?: bigint,
+): Promise<{ receipt: TransactionReceipt; hash: Hash }> {
+	let replaced: { reason: string; hash: Hash } | undefined;
+	let receipt: TransactionReceipt;
+	try {
+		receipt = await publicClient.waitForTransactionReceipt({
+			hash,
+			onReplaced: (r) => {
+				replaced = {
+					reason: r.reason,
+					hash: r.transactionReceipt.transactionHash,
+				};
+			},
+		});
+	} catch (err) {
+		if (err instanceof WaitForTransactionReceiptTimeoutError)
+			throw new Error(
+				`${what}: tx ${hash} was not confirmed in time. It may still land — re-read the chain before retrying.`,
+				{ cause: err },
+			);
+		throw err;
+	}
+	if (replaced && replaced.reason !== "repriced")
+		throw new Error(
+			`${what}: tx ${hash} was ${replaced.reason} by tx ${replaced.hash} (another transaction took its nonce); it did not take effect`,
+		);
+	const mined = replaced?.hash ?? hash;
 	if (receipt.status !== "success")
 		throw new Error(
-			`${functionName} reverted in tx ${hash} (gasUsed ${String(receipt.gasUsed)} of ${String(limit)})`,
+			`${what} reverted in tx ${mined}` +
+				(gasLimit === undefined
+					? ""
+					: ` (gasUsed ${String(receipt.gasUsed)} of ${String(gasLimit)})`),
 		);
-	return hash;
+	return { receipt, hash: mined };
+}
+
+/**
+ * A call to the zero address (an undeployed network's placeholder) runs no code, so
+ * it estimates, mines and reports success while doing nothing.
+ */
+function assertDeployed(address: Address, functionName: string): void {
+	if (address.toLowerCase() === zeroAddress)
+		throw new Error(
+			`${functionName}: the contract address is the zero address — this network's contract is not deployed (or not configured)`,
+		);
 }
 
 /** Guard for clients that accept a read-only construction. */
@@ -135,6 +196,7 @@ export async function prepareWrite(
 	args: readonly unknown[],
 	opts: { fallbackGas: bigint; simulate?: boolean },
 ): Promise<PreparedTx> {
+	assertDeployed(address, functionName);
 	const data = encodeFunctionData({
 		abi,
 		functionName,
