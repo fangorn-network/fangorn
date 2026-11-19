@@ -8,6 +8,7 @@ import {
 	password,
 	spinner,
 	confirm,
+	log,
 } from "@clack/prompts";
 import {
 	createPublicClient,
@@ -349,6 +350,17 @@ program
 			placeholder: "https://pinata-url-provider.your-subdomain.workers.dev",
 		});
 		handleCancel(signedUrlWorkerUrl);
+
+		// Reads work on any chain; publishing without a JWT needs the chain's hosted worker.
+		const net = getNetwork(chainName);
+		if (
+			!net.signedUrlWorker &&
+			!nonBlank(pinataJwt as string) &&
+			!nonBlank(signedUrlWorkerUrl as string)
+		)
+			log.warn(
+				`No hosted upload worker exists for ${net.chain.name}. If publishing data, include your own Pinata JWT (rerun \`fangorn init\`, or set PINATA_JWT).`,
+			);
 
 		writeStoredConfig({
 			privateKey: privateKey as Hex,
