@@ -112,6 +112,8 @@ export interface UpdateEntry {
 	t: bigint;
 	/** That block's timestamp: the `t` of the paper's entry, and what the contract's log leaf hashes. */
 	timestamp: bigint;
+	/** The entry's position in the whole log (every repo), from 0. */
+	index: bigint;
 	/** Unique per entry, for de-duplication across catch-up and live. */
 	id: string;
 }
@@ -296,24 +298,7 @@ export class ChainRegistry implements Registry {
 					? -1
 					: 1,
 		);
-		return this.withTimestamps(sorted);
-	}
-
-	/** Logs don't carry their block's timestamp: one block read per distinct block. */
-	private async withTimestamps(logs: EntryLog[]): Promise<UpdateEntry[]> {
-		const blocks = [...new Set(logs.map((l) => l.blockNumber))];
-		const times = new Map(
-			await Promise.all(
-				blocks.map(
-					async (n) =>
-						[
-							n,
-							(await this.publicClient.getBlock({ blockNumber: n })).timestamp,
-						] as const,
-				),
-			),
-		);
-		return logs.map((l) => toEntry(l, times.get(l.blockNumber) ?? 0n));
+		return sorted.map(toEntry);
 	}
 
 	watch(
@@ -322,19 +307,12 @@ export class ChainRegistry implements Registry {
 		onError?: (err: Error) => void,
 		pollingInterval?: number,
 	): () => void {
-		let queue = Promise.resolve();
 		return this.publicClient.watchContractEvent({
 			...this.source(filter),
 			strict: true,
 			pollingInterval,
-			// Batches are chained so entries arrive in order even though each waits on block reads.
 			onLogs: (logs: EntryLog[]) => {
-				queue = queue
-					.then(() => this.withTimestamps(logs))
-					.then((entries) => {
-						for (const e of entries) onEntry(e);
-					})
-					.catch((e: unknown) => onError?.(e as Error));
+				for (const l of logs) onEntry(toEntry(l));
 			},
 			onError,
 		} as never);
@@ -357,13 +335,15 @@ interface EntryLog {
 		pos: bigint | number;
 		parent: Hex;
 		head: Hex;
+		index: bigint;
+		timestamp: bigint;
 	};
 	blockNumber: bigint;
 	transactionHash: Hash;
 	logIndex: number;
 }
 
-function toEntry(log: EntryLog, timestamp: bigint): UpdateEntry {
+function toEntry(log: EntryLog): UpdateEntry {
 	return {
 		publisher: log.args.publisher,
 		repo: log.args.repo,
@@ -371,7 +351,8 @@ function toEntry(log: EntryLog, timestamp: bigint): UpdateEntry {
 		parent: log.args.parent,
 		head: log.args.head,
 		t: log.blockNumber,
-		timestamp,
+		timestamp: log.args.timestamp,
+		index: log.args.index,
 		id: `${log.transactionHash}:${log.logIndex.toString()}`,
 	};
 }

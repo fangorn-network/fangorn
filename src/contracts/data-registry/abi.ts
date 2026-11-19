@@ -62,6 +62,13 @@ export const DATA_REGISTRY_ABI = [
 	},
 	{
 		type: "function",
+		name: "acceptAdmin",
+		inputs: [],
+		outputs: [],
+		stateMutability: "nonpayable",
+	},
+	{
+		type: "function",
 		name: "admin",
 		inputs: [],
 		outputs: [
@@ -226,6 +233,19 @@ export const DATA_REGISTRY_ABI = [
 				name: "",
 				type: "bytes32",
 				internalType: "bytes32",
+			},
+		],
+		stateMutability: "view",
+	},
+	{
+		type: "function",
+		name: "pendingAdmin",
+		inputs: [],
+		outputs: [
+			{
+				name: "",
+				type: "address",
+				internalType: "address",
 			},
 		],
 		stateMutability: "view",
@@ -436,6 +456,25 @@ export const DATA_REGISTRY_ABI = [
 	},
 	{
 		type: "event",
+		name: "AdminProposed",
+		inputs: [
+			{
+				name: "admin",
+				type: "address",
+				indexed: false,
+				internalType: "address",
+			},
+			{
+				name: "pending_admin",
+				type: "address",
+				indexed: false,
+				internalType: "address",
+			},
+		],
+		anonymous: false,
+	},
+	{
+		type: "event",
 		name: "Initialized",
 		inputs: [
 			{
@@ -486,6 +525,18 @@ export const DATA_REGISTRY_ABI = [
 				type: "bytes32",
 				indexed: false,
 				internalType: "bytes32",
+			},
+			{
+				name: "index",
+				type: "uint64",
+				indexed: false,
+				internalType: "uint64",
+			},
+			{
+				name: "timestamp",
+				type: "uint64",
+				indexed: false,
+				internalType: "uint64",
 			},
 		],
 		anonymous: false,
