@@ -1,5 +1,5 @@
 import { Chain, Hex } from "viem";
-import { arbitrum, arbitrumSepolia, base, baseSepolia } from "viem/chains";
+import { arbitrumSepolia, base, baseSepolia } from "viem/chains";
 
 /**
  * Blank input means "not set", never a value of "". Returns the trimmed value,
