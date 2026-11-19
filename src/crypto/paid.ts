@@ -11,7 +11,10 @@ import {
 	type Address,
 	type Hex,
 } from "viem";
-import type { MetadataStorage } from "../providers/storage/types.js";
+import {
+	assertStoredFile,
+	type MetadataStorage,
+} from "../providers/storage/types.js";
 import { aesGcmDecrypt, aesGcmEncrypt, GCM_NONCE_LENGTH } from "./aes.js";
 import { seal, unseal, type AccessSigner } from "./encryption.js";
 import { getRandomValues } from "./rand.js";
@@ -204,7 +207,8 @@ export async function sealField(p: {
 	/** `recordKey(id)` */
 	key: Hex;
 	field: string;
-	storage: Pick<MetadataStorage, "putFile">;
+	storage: Pick<MetadataStorage, "putFile"> &
+		Partial<Pick<MetadataStorage, "getRawBlock">>;
 }): Promise<FieldHandle> {
 	const stmt = statement(p.scope);
 	const ct = encryptField(
@@ -214,11 +218,13 @@ export async function sealField(p: {
 		p.key,
 		p.field,
 	);
+	const cid = await p.storage.putFile(ct, `${p.key}.${p.field}`);
+	await assertStoredFile(cid, ct, p.storage);
 	return {
 		"@type": "handle",
 		gadget: GADGET_FIELD_V1,
 		generation: p.scope.generation.toString(),
-		cid: await p.storage.putFile(ct, `${p.key}.${p.field}`),
+		cid,
 	};
 }
 

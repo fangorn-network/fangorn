@@ -25,7 +25,9 @@ import {
 	CommitBlock,
 	RecordBlock,
 	assertBlockMatches,
+	assertStorable,
 	assertValidRecordId,
+	blockMatches,
 	buildMst,
 	decodeBlock,
 	encodeBlock,
@@ -35,6 +37,7 @@ import {
 	type Stitch,
 } from "./records.js";
 import { packCar, readCar } from "./car.js";
+import { equals } from "multiformats/bytes";
 
 export type { Ref, Stitch } from "./records.js";
 
@@ -173,10 +176,16 @@ export function fileCid(uri: string): CID {
 	}
 }
 
-/** Repos must be non-empty strings whose length does not exceed MAX_REPO_NAME_LENGTH */
+/**
+ * Repos must be non-empty, well-formed strings whose length does not exceed MAX_REPO_NAME_LENGTH.
+ * Well-formed: a lone UTF-16 surrogate encodes as U+FFFD, so two such names would be one repo on chain.
+ */
 export function assertValidRepoName(repo: RepoName): void {
 	if (typeof repo !== "string" || repo.length === 0) {
 		throw new Error("repo must be a non-empty string");
+	}
+	if (!repo.isWellFormed()) {
+		throw new Error("repo must be a well-formed (UTF-16) string");
 	}
 	if (repo.length > MAX_REPO_NAME_LENGTH) {
 		throw new Error(
@@ -326,7 +335,18 @@ export class FangornEngine {
 			const bytes = await this.storage.getFile(car.toString());
 			for (const block of await readCar(bytes, { verify: false })) {
 				const key = block.cid.toString();
-				if (!this.cache.has(key)) this.unverified.set(key, block.bytes);
+				if (this.cache.has(key)) continue;
+				const prev = this.unverified.get(key);
+				if (!prev) this.unverified.set(key, block.bytes);
+				// Any publisher's CAR can claim any CID: when two disagree, check the newcomer now
+				// rather than let it replace (or be shadowed by) the other unchecked.
+				else if (
+					!equals(prev, block.bytes) &&
+					blockMatches(block.cid, block.bytes)
+				) {
+					this.unverified.delete(key);
+					this.cache.set(key, block.bytes);
+				}
 			}
 		}
 		this.loadedCars.add(linkCid.toString());
@@ -338,13 +358,18 @@ export class FangornEngine {
 	 */
 	private async getBlock(cid: CID, hint: CID | null): Promise<Uint8Array> {
 		const key = cid.toString();
+		// a bad copy (another publisher's CAR may hold one) is dropped and the walk goes on
+		let tampered = false as boolean;
 		const local = () => {
 			const hit = this.cache.get(key);
 			if (hit) return hit;
 			const raw = this.unverified.get(key);
 			if (!raw) return null;
-			assertBlockMatches(cid, raw);
 			this.unverified.delete(key);
+			if (!blockMatches(cid, raw)) {
+				tampered = true;
+				return null;
+			}
 			this.cache.set(key, raw);
 			return raw;
 		};
@@ -354,13 +379,15 @@ export class FangornEngine {
 		let cursor = hint;
 		while (cursor) {
 			const link = await this.chainLink(cursor);
-			if (!this.loadedCars.has(cursor.toString())) {
+			if (!this.loadedCars.has(cursor.toString()))
 				await this.loadCar(cursor, link.car);
-				const found = local();
-				if (found) return found;
-			}
+			// check even a CAR loaded already: a concurrent read may have loaded it since we looked
+			const found = local();
+			if (found) return found;
 			cursor = link.parent;
 		}
+		if (tampered)
+			throw new Error(`block ${key} does not match its content hash`);
 		throw new Error(`Block payload missing for key: ${key}`);
 	}
 
@@ -432,24 +459,27 @@ export class FangornEngine {
 		for (const id of opts.deletes ?? []) state.delete(id);
 
 		const carBlocks: Block[] = [];
-		const recordCids: Record<string, string> = {};
+		// a Map: ids like "constructor" or "__proto__" are valid
+		const recordCids = new Map<string, string>();
 		for (const r of opts.records) {
 			const id = r.id ?? globalThis.crypto.randomUUID();
 			assertValidRecordId(id);
-			if (id in recordCids) throw new Error(`record id ${id} staged twice`);
+			if (recordCids.has(id)) throw new Error(`record id ${id} staged twice`);
+			assertStorable(r.type, "type");
+			assertStorable(r.payload);
 			const block = await encodeBlock({
 				id,
 				type: r.type,
 				payload: r.payload,
 			} satisfies RecordBlock);
 			state.set(id, block.cid);
-			recordCids[id] = block.cid.toString();
+			recordCids.set(id, block.cid.toString());
 			// a record unchanged since the parent is already stored
 			if (opts.checkpoint || !oldRecordCids.has(block.cid.toString()))
 				carBlocks.push(block);
 		}
 		if (opts.checkpoint) {
-			const staged = new Set(Object.values(recordCids));
+			const staged = new Set(recordCids.values());
 			for (const cid of state.values())
 				if (!staged.has(cid.toString()))
 					carBlocks.push({ cid, bytes: await this.getBlock(cid, base) });
@@ -492,7 +522,12 @@ export class FangornEngine {
 		this.putLocal(commitBlock);
 		this.loadedCars.add(commitBlock.cid.toString());
 
-		return { commitCid: commitBlock.cid, root: mst.root, recordCids };
+		return {
+			commitCid: commitBlock.cid,
+			root: mst.root,
+			// fromEntries defines own properties, so a "__proto__" id is a key, not a prototype
+			recordCids: Object.fromEntries(recordCids),
+		};
 	}
 
 	/**
@@ -638,6 +673,7 @@ export class FangornEngine {
 	async repoDiff(
 		oldRootHex: string | null,
 		newRootHex: string,
+		{ useEventDiff = true } = {},
 	): Promise<RepoDiff> {
 		// A zero new root is a reset/tombstone-all: the after-state is empty and its
 		// commit block (hexToRootCid(ZERO) = bafyreiaaaa…) is never stored, so it must
@@ -650,7 +686,7 @@ export class FangornEngine {
 				: null;
 
 		const events =
-			oldCommit && newCommit
+			useEventDiff && oldCommit && newCommit
 				? await this.eventsSince(oldCommit, newCommit)
 				: null;
 		if (oldCommit && newCommit && events) {

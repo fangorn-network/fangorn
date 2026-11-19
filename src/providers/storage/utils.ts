@@ -107,7 +107,7 @@ export async function withUploadRetry<T>(
 export async function fetchRawByCid(
 	cid: string,
 	gateway = "https://ipfs.io",
-	{ retries = 5, timeoutMs = 16_000 } = {},
+	{ retries = 5, timeoutMs = 16_000, rawBlock = false } = {},
 ): Promise<Uint8Array> {
 	let fetchCid = cid.replace(/^ipfs:\/\//, "");
 	if (fetchCid.startsWith("bafyrei")) {
@@ -123,7 +123,7 @@ export async function fetchRawByCid(
 
 	const base = (gateway || "https://ipfs.io").replace(/\/$/, "");
 	const origin = /^https?:\/\//.test(base) ? base : `https://${base}`;
-	const url = `${origin}/ipfs/${fetchCid}`;
+	const url = `${origin}/ipfs/${fetchCid}${rawBlock ? "?format=raw" : ""}`;
 
 	let lastError: unknown;
 	for (let attempt = 0; attempt < retries; attempt++) {

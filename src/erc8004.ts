@@ -16,7 +16,12 @@ import {
 	type PublicClient,
 	type WalletClient,
 } from "viem";
-import type { MetadataStorage } from "./providers/storage/types.js";
+import {
+	assertStoredFile,
+	type MetadataStorage,
+} from "./providers/storage/types.js";
+import { serialize } from "./providers/storage/utils.js";
+import { confirmTx } from "./contracts/write.js";
 
 /** The ERC-8004 identity registry by chain id */
 export const IDENTITY_REGISTRY: Record<number, Address> = {
@@ -24,6 +29,9 @@ export const IDENTITY_REGISTRY: Record<number, Address> = {
 	84532: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
 	// Arbitrum Sepolia: the same proxy and implementation (checked 2026-11-11)
 	421614: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
+	// Base and Arbitrum One: the mainnet proxy (bytecode checked 2026-11-17)
+	8453: "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
+	42161: "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
 };
 
 const ABI = parseAbi([
@@ -174,7 +182,8 @@ export interface Erc8004Clients {
 	chain: Chain;
 	publicClient: PublicClient;
 	walletClient: WalletClient;
-	storage: Pick<MetadataStorage, "put">;
+	storage: Pick<MetadataStorage, "put"> &
+		Partial<Pick<MetadataStorage, "getRawBlock">>;
 }
 
 // A public RPC behind a load balancer can hand the next transaction the nonce of one that just
@@ -215,7 +224,11 @@ export async function setAgentFile(
 	agentId: bigint,
 	file: unknown,
 ): Promise<Hex> {
-	const cid = await c.storage.put(file, { name: "agent-registration.json" });
+	const bytes = new TextEncoder().encode(serialize(file));
+	const cid = (
+		await c.storage.put(file, { name: "agent-registration.json" })
+	).replace(/^ipfs:\/\//, "");
+	await assertStoredFile(cid, bytes, c.storage);
 	const hash = await c.walletClient.writeContract({
 		address: registry(c.chain),
 		abi: ABI,
@@ -224,9 +237,7 @@ export async function setAgentFile(
 		chain: c.chain,
 		account: c.walletClient.account ?? null,
 	});
-	const { status } = await c.publicClient.waitForTransactionReceipt({ hash });
-	if (status !== "success")
-		throw new Error(`setAgentURI reverted in tx ${hash}`);
+	await confirmTx(c.publicClient, hash, "setAgentURI");
 	return hash;
 }
 
@@ -241,7 +252,7 @@ export async function mintAgent(c: Erc8004Clients): Promise<bigint> {
 		chain: c.chain,
 		account: c.walletClient.account ?? null,
 	});
-	const receipt = await c.publicClient.waitForTransactionReceipt({ hash });
+	const { receipt } = await confirmTx(c.publicClient, hash, "register");
 	const minted = parseEventLogs({
 		abi: ABI,
 		eventName: "Registered",

@@ -4,11 +4,12 @@ export default defineConfig({
 	test: {
 		clearMocks: true,
 		coverage: {
-			include: ["src"],
+			include: ["src/**/*.ts"],
 			reporter: ["html", "lcov"],
 			provider: "v8",
 		},
-		exclude: ["lib", "**/*e2e.test.ts", "node_modules"],
+		// dist: stale local builds of old tests (gitignored), some hit live Pinata.
+		exclude: ["lib", "dist", "**/*e2e.test.ts", "node_modules"],
 		environment: "node",
 		pool: "forks",
 		server: {

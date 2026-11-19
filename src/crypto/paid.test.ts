@@ -137,6 +137,19 @@ describe("paid fields", () => {
 		});
 		const storage = new MemStorage();
 
+		it("rejects an unreadable ciphertext reference before returning the handle", async () => {
+			await expect(
+				sealField({
+					plaintext: enc.encode("paid"),
+					kRepo,
+					scope,
+					key: KEY_A,
+					field: "body",
+					storage: { putFile: () => Promise.resolve("invalid") },
+				}),
+			).rejects.toThrow();
+		});
+
 		it("a record buyer opens the record, and nothing else", async () => {
 			const handle = await sealField({
 				plaintext: enc.encode("the eagles are coming"),

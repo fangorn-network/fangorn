@@ -32,8 +32,8 @@ export interface SellOptions {
 
 /**
  * Make records sellable: seal `fields` of each record (as JSON, under `field-v1`), and add the
- * publisher's signed terms under "@terms". Returns the records to commit, plus the repo's
- * `@deposit/<generation>` record if the repo had none for this generation.
+ * publisher's signed terms under "@terms". Returns the records to commit, led by the repo's
+ * `@deposit/<generation>` record (new, or the existing one re-emitted).
  *
  * The deposit is read from the repo's on-chain head. Commit and push this before sealing more:
  * a second call before the push makes a second deposit, and the first commit's fields would
@@ -69,6 +69,13 @@ export async function sealRecords(
 		?.payload as Deposit | undefined;
 	if (existing) {
 		kRepo = await requestKey({ deposit: existing, key: WHOLE_REPO, signer });
+		// Re-emitted so a `--replace` commit (which starts from empty) keeps the deposit
+		// these fields open under. In a normal commit it's the same block: no change.
+		out.push({
+			id: depositId,
+			type: "deposit",
+			payload: existing as unknown as Record<string, unknown>,
+		});
 	} else {
 		// The network's own: another network's key server checks another SettlementRegistry,
 		// so a buyer here could never open the deposit.

@@ -130,13 +130,17 @@ export class MemRegistry implements Registry {
 	}
 
 	private async apply(publisher: Address, u: CommitUpdate): Promise<Hash> {
+		const ref = { publisher, repo: u.repo };
+		// Hashed first: from the parent check to the write must not await, or two
+		// concurrent updates on one parent both pass it (the contract's is atomic).
+		const head = await commitHead(u);
 		const now = epochOf(this.now());
 		if (u.epoch > now || u.epoch + WINDOW < now)
 			throw new Error("EpochOutOfWindow");
-		const ref = { publisher, repo: u.repo };
-		if ((await this.head(ref)) !== u.parent) throw new Error("StaleStateRoot");
-		const head = await commitHead(u);
-		const pos = (this.ledger.heads.get(refKey(ref))?.pos ?? 0) + 1;
+		const cur = this.ledger.heads.get(refKey(ref));
+		if ((cur?.head ?? ZERO_HEAD) !== u.parent)
+			throw new Error("StaleStateRoot");
+		const pos = (cur?.pos ?? 0) + 1;
 		this.ledger.heads.set(refKey(ref), { pos, head });
 		this.ledger.append({
 			publisher,
