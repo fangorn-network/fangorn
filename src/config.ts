@@ -76,13 +76,9 @@ export const ArbitrumSepoliaConfig = {
 	keyServer: "https://arbitrum-sepolia.keys-test.fangorn.network",
 } satisfies NetworkConfig;
 
-// Mainnet: the DataRegistry only. No settlementRegistryContractAddress or keyServer, so
-// paid records are off (`getSettlementRegistry` throws), and no signedUrlWorker until a
-// mainnet one runs (hosted uploads need a `workerUrl`, or bring { pinata }).
-// ponytail: dataRegistryContractAddress and fromBlock are zero until deployed; register
-// the config in SupportedNetworks then, and config.test.ts checks it was filled in.
+// Mainnet: the DataRegistry only
 export const BaseConfig = {
-	dataRegistryContractAddress: "0x0000000000000000000000000000000000000000",
+	dataRegistryContractAddress: "0x3206C1FBb8fD62DEDBCBdc2eDa09cDff3039Db2B",
 	fromBlock: 0n,
 	chain: base,
 	// mainnet.base.org answers getLogs with "request limit reached"; this one caps
@@ -91,18 +87,6 @@ export const BaseConfig = {
 	caip2: 8453,
 	ipfsGateway: "https://ipfs-test.fangorn.network",
 	logWindow: 50_000n,
-} satisfies NetworkConfig;
-
-export const ArbitrumConfig = {
-	dataRegistryContractAddress: "0x0000000000000000000000000000000000000000",
-	fromBlock: 0n,
-	chain: arbitrum,
-	// Served 100,000-block address-filtered ranges (measured 2026-11-17). publicnode's
-	// Arbitrum One wants a token for anything but the tip.
-	rpcUrl: "https://arb1.arbitrum.io/rpc",
-	caip2: 42161,
-	ipfsGateway: "https://ipfs-test.fangorn.network",
-	logWindow: 100_000n,
 } satisfies NetworkConfig;
 
 /**
