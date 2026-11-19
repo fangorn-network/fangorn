@@ -126,14 +126,12 @@ function resolveStorage(
 		);
 	if ("signedUrl" in storage) {
 		// The hosted worker, which bills the signing publisher's quota. Blank (an
-		// unset CLI field) counts as unset.
+		// unset CLI field) counts as unset. A chain without one (Base, for now) gets
+		// null: the client still reads, and refuses uploads when one is attempted.
 		const workerUrl =
-			nonBlank(storage.signedUrl.workerUrl) ?? nonBlank(config.signedUrlWorker);
-		if (!workerUrl) {
-			throw new Error(
-				`no hosted upload worker on chain ${config.caip2.toString()}: pass storage.signedUrl.workerUrl, or bring your own storage ({ pinata } or { backend })`,
-			);
-		}
+			nonBlank(storage.signedUrl.workerUrl) ??
+			nonBlank(config.signedUrlWorker) ??
+			null;
 		return new SignedUrlBackend(
 			workerUrl,
 			walletSigner(walletClient),

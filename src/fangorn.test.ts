@@ -74,10 +74,18 @@ describe("signed-url uploads → the network's hosted worker", () => {
 		).toHaveLength(2);
 	});
 
-	it("refuses hosted uploads on a network with no worker, not falling back to another network's", () => {
+	it("refuses hosted uploads on a network with no worker, not falling back to another network's", async () => {
 		const noWorker = { ...BaseSepoliaConfig, signedUrlWorker: undefined };
-		expect(() => create(noWorker)).toThrow(/no hosted upload worker/);
-		expect(() => create(noWorker, WORKER)).not.toThrow();
+		const fetch = vi.fn();
+		vi.stubGlobal("fetch", fetch);
+		// The client is still made (it reads through the gateway); only uploads refuse,
+		// at once and not retried (a retry would back off past the test timeout).
+		const fangorn = create(noWorker);
+		await expect(
+			fangorn.getStorage().putFile(new Uint8Array([1]), "x"),
+		).rejects.toThrow(/no hosted upload worker/);
+		expect(fetch).not.toHaveBeenCalled();
+		expect(await uploadThroughWorker(create(noWorker, WORKER))).toHaveLength(2);
 	});
 
 	it("treats a blank workerUrl (an unset CLI field) as unset", async () => {

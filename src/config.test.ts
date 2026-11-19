@@ -42,6 +42,6 @@ describe("supported networks", () => {
 	});
 
 	it("refuses an unknown name, listing the supported ones", () => {
-		expect(() => getNetwork("mainnet")).toThrow(/baseSepolia, arbitrumSepolia/);
+		expect(() => getNetwork("mainnet")).toThrow(/baseSepolia, arbitrumSepolia, base/);
 	});
 });

@@ -76,9 +76,11 @@ export const ArbitrumSepoliaConfig = {
 	keyServer: "https://arbitrum-sepolia.keys-test.fangorn.network",
 } satisfies NetworkConfig;
 
-// Mainnet: the DataRegistry only
+// Mainnet: the DataRegistry only. No upload worker yet, so hosted uploads are refused
+// (reads work); no SettlementRegistry or key server, so no paid records.
 export const BaseConfig = {
-	dataRegistryContractAddress: "0x3206C1FBb8fD62DEDBCBdc2eDa09cDff3039Db2B",
+	// The proxy (contracts/script/Deployments.sol). Its implementation, 0x3206…Db2B, holds no state.
+	dataRegistryContractAddress: "0x543D559Cf7583FE7003d4A19E26BF3A4DB75fbC8",
 	fromBlock: 59598762n,
 	chain: base,
 	// mainnet.base.org answers getLogs with "request limit reached"; this one caps
@@ -101,10 +103,11 @@ export const FangornConfig = BaseSepoliaConfig;
 export const SupportedNetworks: Record<string, NetworkConfig> = {
 	baseSepolia: BaseSepoliaConfig,
 	arbitrumSepolia: ArbitrumSepoliaConfig,
+	base: BaseConfig,
 };
 
 /**
- * Get a network's deployment by name ("baseSepolia" or "arbitrumSepolia").
+ * Get a network's deployment by name ("baseSepolia", "arbitrumSepolia" or "base").
  * @returns The corresponding config if it is supported, otherwise an error
  */
 export default function getNetwork(name: string): NetworkConfig {
