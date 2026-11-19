@@ -53,6 +53,25 @@ export interface PreparedTx {
  */
 export const APPEND_ALLOWANCE = 200_000n;
 
+/**
+ * writeContract reads the nonce as the node's pending count. Two sends from one key
+ * that overlap both read it before either reaches the pool, take the same nonce, and
+ * the second is rejected as "replacement transaction underpriced". So sends from one
+ * account go one at a time, each only until the node has it (not until it is mined):
+ * the next then reads a count that includes it. A failed send leaves no gap, unlike
+ * viem's nonceManager, which never gives back a nonce it handed out.
+ */
+// ponytail: per-process; two processes on one key still race (confirmTx says so loudly).
+const sending = new Map<string, Promise<unknown>>();
+function oneAtATime<T>(key: string, f: () => Promise<T>): Promise<T> {
+	const run = (sending.get(key) ?? Promise.resolve()).then(f, f);
+	sending.set(
+		key,
+		run.catch(() => undefined),
+	);
+	return run;
+}
+
 export async function sendWrite(
 	publicClient: PublicClient,
 	walletClient: WalletClient,
@@ -79,18 +98,20 @@ export async function sendWrite(
 	} as unknown as Parameters<typeof publicClient.estimateContractGas>[0]);
 
 	const limit = (gas * 130n) / 100n + APPEND_ALLOWANCE;
-	const hash = await walletClient.writeContract({
-		address,
-		abi,
-		functionName,
-		args,
-		chain,
-		account,
-		gas: limit,
-		maxFeePerGas: fees.maxFeePerGas * 3n,
-		maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
-		value,
-	} as unknown as Parameters<typeof walletClient.writeContract>[0]);
+	const hash = await oneAtATime(`${account.address}.${String(chain.id)}`, () =>
+		walletClient.writeContract({
+			address,
+			abi,
+			functionName,
+			args,
+			chain,
+			account,
+			gas: limit,
+			maxFeePerGas: fees.maxFeePerGas * 3n,
+			maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
+			value,
+		} as unknown as Parameters<typeof walletClient.writeContract>[0]),
+	);
 
 	return (await confirmTx(publicClient, hash, functionName, limit)).hash;
 }
