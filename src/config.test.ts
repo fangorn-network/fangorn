@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { zeroAddress } from "viem";
 import getNetwork, {
-	ArbitrumConfig,
 	BaseConfig,
 	SupportedNetworks,
 } from "./config.js";
@@ -35,7 +34,7 @@ describe("supported networks", () => {
 	});
 
 	it("keeps paid records off on mainnet", () => {
-		for (const c of [BaseConfig, ArbitrumConfig]) {
+		for (const c of [BaseConfig]) {
 			expect(c).not.toHaveProperty("settlementRegistryContractAddress");
 			expect(c).not.toHaveProperty("keyServer");
 			expect(IDENTITY_REGISTRY[c.caip2]).toBeDefined();

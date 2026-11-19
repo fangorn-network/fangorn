@@ -113,6 +113,8 @@ export interface UpdateEntry {
 	t: bigint;
 	/** That block's timestamp: the `t` of the paper's entry, and what the contract's log leaf hashes. */
 	timestamp: bigint;
+	/** The entry's position in the whole log (every repo), from 0. Absent on pre-upgrade (V0) logs. */
+	index?: bigint;
 	/** Unique per entry, for de-duplication across catch-up and live. */
 	id: string;
 	/** The event's indexed repo id, where the entry came from one (the contract hashes the raw name). */
@@ -449,6 +451,7 @@ function toEntry(log: EntryLog, timestamp: bigint): UpdateEntry {
 		head: log.args.head,
 		t: log.blockNumber,
 		timestamp,
+		index: log.args.index,
 		id: `${log.transactionHash}:${log.logIndex.toString()}`,
 		repoId: log.args.repo_id,
 	};

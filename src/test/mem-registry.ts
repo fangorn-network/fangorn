@@ -52,9 +52,14 @@ export class MemLedger {
 	mmr = EMPTY_MMR;
 	logRoots = [mmrRoot(EMPTY_MMR)];
 
-	append(entry: Omit<UpdateEntry, "t" | "id">) {
+	append(entry: Omit<UpdateEntry, "t" | "id" | "index">) {
 		this.t++;
-		const e = { ...entry, t: this.t, id: this.entries.length.toString() };
+		const e = {
+			...entry,
+			t: this.t,
+			id: this.entries.length.toString(),
+			index: BigInt(this.entries.length),
+		};
 		this.entries.push(e);
 		this.mmr = mmrAppend(this.mmr, logLeaf(e));
 		this.logRoots.push(mmrRoot(this.mmr));
