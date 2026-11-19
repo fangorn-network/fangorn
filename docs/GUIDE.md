@@ -52,7 +52,7 @@ ETH_PRIVATE_KEY=0x...
 PINATA_JWT=...
 PINATA_GATEWAY=https://your-gateway.mypinata.cloud
 SIGNED_URL_WORKER_URL=...       # optional
-CHAIN_NAME=arbitrumSepolia      # optional: baseSepolia (default) or arbitrumSepolia
+CHAIN_NAME=arbitrumSepolia      # optional: baseSepolia (default), arbitrumSepolia or base (mainnet)
 FANGORN_RPC_URL=...             # optional overrides, e.g. for a local anvil
 FANGORN_DATA_REGISTRY=0x...
 FANGORN_SETTLEMENT_REGISTRY=0x...
@@ -446,7 +446,7 @@ A whole-repo buyer calls `requestKey` once, then calls `deriveRecordKey` and `de
 
 ## Network config
 
-Fangorn runs on Base Sepolia (the default) and Arbitrum Sepolia, each with its own DataRegistry and SettlementRegistry. The two deployments share nothing: a repo committed on one isn't visible on the other. The configs are in [`src/config.ts`](../src/config.ts): `BaseSepoliaConfig` (also exported as `FangornConfig`) and `ArbitrumSepoliaConfig`. Pass one to `Fangorn.create({ config })`, or look one up by name with `getNetwork("arbitrumSepolia")`. Any other deployment, such as anvil, is a `NetworkConfig` you pass yourself. The contracts work as follows:
+Fangorn runs on Base Sepolia (the default) and Arbitrum Sepolia, each with its own DataRegistry and SettlementRegistry, and on Base mainnet with a DataRegistry only (no paid records, and no hosted upload worker yet: publish there with your own Pinata JWT). The deployments share nothing: a repo committed on one isn't visible on another. The configs are in [`src/config.ts`](../src/config.ts): `BaseSepoliaConfig` (also exported as `FangornConfig`), `ArbitrumSepoliaConfig` and `BaseConfig`. Pass one to `Fangorn.create({ config })`, or look one up by name with `getNetwork("arbitrumSepolia")`. Any other deployment, such as anvil, is a `NetworkConfig` you pass yourself. The contracts work as follows:
 
 - **DataRegistry** holds every repo's head and the update log.
 - **SettlementRegistry** holds signed per-record prices, referral splits, and read access (USDC and Semaphore).

@@ -15,7 +15,8 @@ export const selectChain = async (): Promise<string> => {
 		message: "Pick your chain.",
 		options: Object.entries(SupportedNetworks).map(([value, c]) => ({
 			value,
-			label: c.chain.name,
+			// Mainnet spends real ETH: say so next to its testnet namesake.
+			label: c.chain.testnet ? c.chain.name : `${c.chain.name} (mainnet)`,
 		})),
 	});
 	handleCancel(choice);

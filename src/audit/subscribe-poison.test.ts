@@ -117,11 +117,18 @@ describe("audit: CommitFeed restart", () => {
 			.feed()
 			.on((change) => delivered.push(...change.puts.map((r) => r.id)), failed);
 		try {
-			await vi.waitFor(() => { expect(failed).toHaveBeenCalledOnce(); });
-			await pub.upload("feed", { n: 1 }, "t", "during-restart");
-			await vi.waitFor(() => { expect(delivered).toEqual(["during-restart"]); }, {
-				timeout: 4000,
+			await vi.waitFor(() => {
+				expect(failed).toHaveBeenCalledOnce();
 			});
+			await pub.upload("feed", { n: 1 }, "t", "during-restart");
+			await vi.waitFor(
+				() => {
+					expect(delivered).toEqual(["during-restart"]);
+				},
+				{
+					timeout: 4000,
+				},
+			);
 		} finally {
 			off();
 		}

@@ -61,16 +61,23 @@ export interface SignedUrlSigner {
  * Every upload is charged to the signing publisher's storage quota.
  */
 export class SignedUrlBackend implements MetadataStorage {
-	private readonly workerUrl: string;
+	// null: the chain has no hosted worker. Reads still work (they go to the
+	// gateway); uploads are refused rather than sent to another chain's worker.
+	private readonly workerUrl: string | null;
 
 	constructor(
-		workerUrl: string | undefined,
+		workerUrl: string | null | undefined,
 		private readonly signer: SignedUrlSigner,
 		private readonly gateway: string,
 	) {
 		// Blank/whitespace (e.g. an unset CLI field) falls back to the default —
 		// so `??` alone won't do, it wouldn't catch "".
-		this.workerUrl = workerUrl?.trim() ? workerUrl : DEFAULT_SIGNED_URL_WORKER;
+		this.workerUrl =
+			workerUrl === null
+				? null
+				: workerUrl?.trim()
+					? workerUrl
+					: DEFAULT_SIGNED_URL_WORKER;
 	}
 
 	/** Run the worker challenge handshake → one-time presigned upload URL + network. */
@@ -116,6 +123,11 @@ export class SignedUrlBackend implements MetadataStorage {
 	private async workerJson(
 		body: Record<string, unknown>,
 	): Promise<WorkerResponse & { status: number }> {
+		// Worded to stay out of isTransientUpload's patterns, so it fails at once.
+		if (!this.workerUrl)
+			throw new Error(
+				"no hosted upload worker on this chain: pass storage.signedUrl.workerUrl, or bring your own storage ({ pinata } or { backend })",
+			);
 		const res = await fetch(this.workerUrl, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
