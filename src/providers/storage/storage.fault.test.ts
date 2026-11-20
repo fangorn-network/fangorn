@@ -286,6 +286,33 @@ describe("PinataBackend uploads under injected faults", () => {
 			backend.putFile(new Uint8Array([3, 2, 1]), "other.car"),
 		).rejects.toThrow(/does not match/);
 	});
+
+	// Pinata's gateway answers ?format=raw with the whole file, never the root block, so a chunked upload has to be
+	// verified from the bytes alone. Expected CIDs are ipfs-unixfs-importer's (CIDv1, raw leaves, 256 KiB chunks,
+	// balanced), which also reproduces the CID Pinata returned for a real 498 KB view.json.
+	it("putFile verifies a chunked file in Pinata's layout without the gateway serving raw blocks", async () => {
+		const gen = (n: number) => {
+			const b = new Uint8Array(n);
+			for (let i = 0; i < n; i++) b[i] = (i * 31 + (i >> 8)) % 251;
+			return b;
+		};
+		for (const [n, cid] of [
+			[600000, "bafybeidhcwdroqooxqyi34nbry4yjfhfhbwml6zgrrtq546trrfh3eftg4"],
+			// 175 chunks: two levels at kubo's fan-out of 174
+			[174 * 262144 + 5, "bafybeie6ip5jdr5dy44iuyagyufvmai7z7d6cdj4dhlgqzyeg7rmwhmzpe"],
+			// the same bytes at helia's fan-out of 1024
+			[174 * 262144 + 5, "bafybeibioqq2nljgesgqouibf4uqpja36rrjukudshbf4m5dn5feprlkdu"],
+		] as const) {
+			const bytes = gen(n);
+			const backend = withFakeSdk(() => Promise.resolve(cid));
+			vi.spyOn(backend, "getRawBlock").mockResolvedValue(bytes); // the whole file, as Pinata's gateway does
+			await backend.putFile(bytes, "view.json");
+			bytes[n - 1] ^= 1;
+			await expect(backend.putFile(bytes, "view.json")).rejects.toThrow(
+				/does not match/,
+			);
+		}
+	}, 60_000); // hashes ~45 MB several times
 });
 
 describe("gateway reads under injected faults", () => {

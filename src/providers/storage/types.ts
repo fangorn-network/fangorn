@@ -91,6 +91,48 @@ export function assertStoredBlock(returned: string, block: RawBlock): void {
 		);
 }
 
+/**
+ * The root CID of `content` imported as a UnixFS file in kubo's layout (CIDv1, raw leaves of 256 KiB, balanced,
+ * `fanout` links a node), which is how Pinata stores an upload. Built from the bytes alone, so a match proves the
+ * CID commits to them without fetching anything.
+ */
+async function kuboFileRoot(
+	content: Uint8Array,
+	fanout: number,
+): Promise<CID | undefined> {
+	const CHUNK = 262144;
+	let level: { cid: CID; size: number; tsize: number }[] = [];
+	for (let o = 0; o < content.length; o += CHUNK) {
+		const leaf = content.subarray(o, o + CHUNK);
+		level.push({
+			cid: CID.createV1(RAW_CODE, await sha256.digest(leaf)),
+			size: leaf.length,
+			tsize: leaf.length,
+		});
+	}
+	while (level.length > 1) {
+		const next: typeof level = [];
+		for (let i = 0; i < level.length; i += fanout) {
+			const kids = level.slice(i, i + fanout);
+			const file = new UnixFS({ type: "file" });
+			for (const k of kids) file.addBlockSize(BigInt(k.size));
+			const node = dagPb.encode(
+				dagPb.prepare({
+					Data: file.marshal(),
+					Links: kids.map((k) => ({ Hash: k.cid, Name: "", Tsize: k.tsize })),
+				}),
+			);
+			next.push({
+				cid: CID.createV1(dagPb.code, await sha256.digest(node)),
+				size: kids.reduce((s, k) => s + k.size, 0),
+				tsize: node.length + kids.reduce((s, k) => s + k.tsize, 0),
+			});
+		}
+		level = next;
+	}
+	return level[0]?.cid;
+}
+
 /** Verify the file reference before including it in a commit or paid handle. */
 export async function assertStoredFile(
 	returned: string,
@@ -141,5 +183,12 @@ export async function assertStoredFile(
 			offset = end;
 		}
 	}
+	// A chunked file: rebuild it locally first. Pinata's gateway can't serve raw
+	// blocks (it answers ?format=raw with the whole file), so the walk below can't
+	// verify its uploads. Fan-out only matters past 174 chunks (~43 MB): kubo uses
+	// 174, helia 1024. Any rebuild that matches proves the same thing.
+	if (root.code === dagPb.code)
+		for (const fanout of [174, 1024])
+			if ((await kuboFileRoot(bytes, fanout))?.equals(root)) return;
 	await verify(root, bytes, 0);
 }
