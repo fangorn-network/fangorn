@@ -217,7 +217,7 @@ export class Fangorn {
 			throw new Error("Either privateKey or walletClient must be provided");
 		}
 
-		const config = options.config ?? FangornConfig;
+		const config: NetworkConfig = options.config ?? FangornConfig;
 
 		const walletClient =
 			options.walletClient ??
@@ -229,7 +229,7 @@ export class Fangorn {
 
 		const publicClient = createPublicClient({
 			chain: config.chain,
-			transport: http(config.rpcUrl),
+			transport: http(config.rpcUrl, config.rpcRetry),
 		}) as PublicClient;
 
 		const ctx: FangornContext = {
@@ -771,20 +771,31 @@ export class Fangorn {
 	/**
 	 * Build or update a stitch across the repos `patterns` match (see `stitchFilter`),
 	 * from the update log. Pass the previous stitch to update it. Returns the stitch's CID.
+	 * `upTo` folds only up to that block, for a catch-up in bounded steps; a step that ends
+	 * before the head needs an RPC that serves historical state. Throws if the log read
+	 * doesn't match the contract's log root (see `FangornEngine.restitch`).
 	 */
-	async restitch(patterns: string[], prev?: string): Promise<string> {
+	async restitch(
+		patterns: string[],
+		prev?: string,
+		upTo?: bigint,
+	): Promise<string> {
 		const cid = await this.engine.restitch(
 			prev ? CID.parse(prev) : null,
 			stitchFilter(patterns),
 			this.ctx.config.fromBlock,
+			upTo,
 		);
 		return cid.toString();
 	}
 
-	/** A stitch's tree root, and the log it was folded from: n entries, with root `logRoot`. */
+	/**
+	 * A stitch's tree root, and the log it was folded from: n entries up to block t,
+	 * with root `logRoot`.
+	 */
 	async readStitch(stitch: string) {
 		const s = await this.engine.readStitch(CID.parse(stitch));
-		return { root: s.root.toString(), n: s.n, logRoot: s.logRoot };
+		return { root: s.root.toString(), n: s.n, t: s.t, logRoot: s.logRoot };
 	}
 
 	/** Check a stitch against the contract's log root, rebuilding it under the same patterns. */

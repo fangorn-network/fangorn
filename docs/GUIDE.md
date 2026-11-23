@@ -454,6 +454,10 @@ Fangorn runs on Base Sepolia (the default) and Arbitrum Sepolia, each with its o
 
 Base Sepolia's default RPC is `base-sepolia-rpc.publicnode.com`. The official `sepolia.base.org` endpoint caps `eth_getLogs` at 200 blocks, which is too few to scan the registry's history. Each config's `logWindow` is the largest block range one log query may span on its RPC.
 
+A public RPC rate-limits bursts. Reads retry a refused request (a 429) a few times by default, waiting longer each time or as long as the server's `Retry-After` asks. Set `rpcRetry` on the config (`{ retryCount, retryDelay }`, as viem takes them) to wait longer: for example `{ retryCount: 8, retryDelay: 500 }` waits out about four minutes of throttling per read. That suits a one-shot catch-up. Keep the default where a failed run is simply run again, such as a cron job.
+
+`restitch` checks every fold against the contract's `logRoot()` as of the block the fold ends at, and throws without writing anything if they differ. This catches an RPC that left out or altered an entry. `restitch(patterns, prev, upTo)` stops a fold at block `upTo`, so a long catch-up can run in bounded steps, for example to fit a Cloudflare Worker's limits. A step that ends before the head reads `logRoot()` at an old block, which needs an RPC that serves historical state (an archive node). publicnode, the Base Sepolia default, does. Most RPCs keep only recent state, and on those an older step fails with the RPC's error instead.
+
 Each network has its own hosted upload worker (`signedUrlWorker`) and key server (`keyServer`). `fangorn commit --paid` seals new deposits to the network's key server unless you pass `--key-server`. A key server only releases keys for purchases on its own network's SettlementRegistry. Arbitrum Sepolia's USDC is Circle's (`0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d`), whose EIP-712 name is `"USD Coin"`, not Base's `"USDC"`. Read the name from the token rather than hardcoding it when you sign a payment.
 
 ---

@@ -45,6 +45,9 @@ export const EPOCH_SECONDS = 3600;
 /** W: how many epochs a commit may lag the ordering's clock. */
 export const WINDOW = 24;
 
+/** How many block reads `log` keeps in flight for old-version timestamps. */
+const TIMESTAMP_READS = 8;
+
 export function epochOf(unixSeconds: number | bigint): number {
 	return Math.floor(Number(unixSeconds) / EPOCH_SECONDS);
 }
@@ -314,26 +317,32 @@ export class ChainRegistry implements Registry {
 
 	/**
 	 * Old-version logs don't carry their block's timestamp: one block read per
-	 * distinct block. New-version logs carry it.
+	 * distinct block. New-version logs carry it. At most TIMESTAMP_READS at a time:
+	 * a first catch-up reads hundreds, and a public RPC throttles them all at once
+	 * (each retry wave was another burst). A failed read stops the rest.
 	 */
 	private async withTimestamps(logs: EntryLog[]): Promise<UpdateEntry[]> {
-		const blocks = [
+		const queue = [
 			...new Set(
 				logs
 					.filter((l) => l.args.timestamp === undefined)
 					.map((l) => l.blockNumber),
 			),
 		];
-		const times = new Map(
-			await Promise.all(
-				blocks.map(
-					async (n) =>
-						[
-							n,
-							(await this.publicClient.getBlock({ blockNumber: n })).timestamp,
-						] as const,
-				),
-			),
+		const times = new Map<bigint, bigint>();
+		const read = async () => {
+			for (let n = queue.shift(); n !== undefined; n = queue.shift()) {
+				try {
+					const block = await this.publicClient.getBlock({ blockNumber: n });
+					times.set(n, block.timestamp);
+				} catch (e) {
+					queue.length = 0;
+					throw e;
+				}
+			}
+		};
+		await Promise.all(
+			Array.from({ length: Math.min(TIMESTAMP_READS, queue.length) }, read),
 		);
 		return logs.map((l) =>
 			toEntry(l, l.args.timestamp ?? times.get(l.blockNumber) ?? 0n),
