@@ -771,8 +771,9 @@ export class Fangorn {
 	/**
 	 * Build or update a stitch across the repos `patterns` match (see `stitchFilter`),
 	 * from the update log. Pass the previous stitch to update it. Returns the stitch's CID.
-	 * `upTo` folds only up to that block, for a catch-up in bounded steps. Throws if the log
-	 * read doesn't match the contract's log root (see `FangornEngine.restitch`).
+	 * `upTo` folds only up to that block, for a catch-up in bounded steps; a step that ends
+	 * before the head needs an RPC that serves historical state. Throws if the log read
+	 * doesn't match the contract's log root (see `FangornEngine.restitch`).
 	 */
 	async restitch(
 		patterns: string[],

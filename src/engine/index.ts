@@ -800,6 +800,10 @@ export class FangornEngine {
 	 * Throws, writing nothing, if the folded log doesn't match the contract's log root
 	 * at the fold's end: an RPC that left out or altered an entry (a lagging node
 	 * behind a load balancer). The next restitch from `prev` folds that range again.
+	 * That check reads the log root as of the fold's end block, so a step that ends
+	 * before the head needs an RPC that serves historical state (an archive node; Base
+	 * Sepolia's default, publicnode, does). Most RPCs keep only recent state, and on
+	 * those an older step fails with the RPC's error rather than skipping the check.
 	 * ponytail: rehashes the whole tree (O(repos)); and readers walk back one CAR per
 	 * stitch to find old nodes, so checkpoint with a full CAR (`prev = null`) when the
 	 * chain gets long.
