@@ -255,6 +255,35 @@ describe("a stitch across repos", () => {
 		expect(await reader().verifyStitch(s, only)).toBe(true);
 	});
 
+	it("a bounded step with nothing in it still moves the stitch to its end", async () => {
+		// blocks with no update in them: the clock moves, the log root doesn't
+		const idle = (blocks: number) => {
+			for (let i = 0; i < blocks; i++) {
+				ledger.t++;
+				ledger.logRoots.push(ledger.logRoots[ledger.logRoots.length - 1]);
+			}
+		};
+		await push(mine, PUBLISHER, "a", null);
+		const s0 = await mine.restitch(null);
+		idle(5);
+		await push(mine, PUBLISHER, "b", null); // at t 7
+		const writes = storage.writes;
+		const s1 = await mine.restitch(s0, undefined, 0n, 3n);
+		expect(await mine.readStitch(s1)).toMatchObject({ n: 1, t: 3n });
+		expect((await mine.readStitch(s1)).root).toEqual(
+			(await mine.readStitch(s0)).root,
+		);
+		expect(storage.writes - writes).toBe(1); // the stitch block, no CAR
+		const s2 = await mine.restitch(s1, undefined, 0n, 6n);
+		expect(await mine.readStitch(s2)).toMatchObject({ n: 1, t: 6n });
+		const s3 = await mine.restitch(s2, undefined, 0n, 9n);
+		expect(await mine.readStitch(s3)).toMatchObject({ n: 2, t: 7n });
+		expect(await reader().stitchedHead(s3, PUBLISHER, "b")).not.toBeNull();
+		expect(await reader().verifyStitch(s3)).toBe(true);
+		// caught up, with nothing new: the same stitch, as without a bound
+		expect((await mine.restitch(s3, undefined, 0n, 99n)).equals(s3)).toBe(true);
+	});
+
 	it("with nothing new in the log, returns the same stitch", async () => {
 		await push(mine, PUBLISHER, "a", null);
 		const s = await mine.restitch(null);

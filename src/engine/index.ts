@@ -795,7 +795,8 @@ export class FangornEngine {
 	 * (one CAR). Returns the stitch block's CID, its name; with nothing new, `prev`.
 	 * Use the same `filter` every time for one stitch. `fromBlock` is where the log
 	 * starts (the registry's deploy block). `upTo` stops the fold at that block (the
-	 * head if later or unset), so a long catch-up can be taken in bounded steps.
+	 * head if later or unset), so a long catch-up can be taken in bounded steps: a
+	 * step always moves the stitch to its end, even with nothing in it.
 	 * Throws, writing nothing, if the folded log doesn't match the contract's log root
 	 * at the fold's end: an RPC that left out or altered an entry (a lagging node
 	 * behind a load balancer). The next restitch from `prev` folds that range again.
@@ -817,24 +818,35 @@ export class FangornEngine {
 			base ? base.t + 1n : fromBlock,
 			to,
 		);
-		if (prev && entries.length === 0) return prev;
+		if (prev && entries.length === 0 && to === head) return prev;
+
+		let mmr: Mmr = base ?? EMPTY_MMR;
+		for (const e of entries) mmr = mmrAppend(mmr, logLeaf(e));
+		const onChain = await this.registry.logRoot(to);
+		if (mmrRoot(mmr) !== onChain)
+			throw new Error(
+				`the log read up to block ${String(to)} (${String(mmr.n)} entries) doesn't match the contract's log root there: an entry is missing or altered`,
+			);
+		// A bounded step with nothing in it: the same tree, further along the log, so
+		// the next step starts after it (returning `prev` would repeat this one forever).
+		if (base && prev && entries.length === 0)
+			return this.writeStitch({
+				parent: prev,
+				root: base.root,
+				car: null,
+				n: mmr.n,
+				t: Number(to),
+				peaks: mmr.peaks,
+			});
 
 		const old =
 			base && prev
 				? await readMst(base.root, (c) => this.getBlock(c, prev))
 				: { state: new Map<string, CID>(), nodeCids: new Set<string>() };
 		const state = new Map<string, CID | null>(old.state);
-		let mmr: Mmr = base ?? EMPTY_MMR;
-		for (const e of entries) {
-			mmr = mmrAppend(mmr, logLeaf(e));
+		for (const e of entries)
 			if (!filter || filter(e.publisher, e.repo))
 				state.set(stitchKey(e.publisher, e.repo), this.hexToRootCid(e.head));
-		}
-		const onChain = await this.registry.logRoot(to);
-		if (mmrRoot(mmr) !== onChain)
-			throw new Error(
-				`the log read up to block ${String(to)} (${String(mmr.n)} entries) doesn't match the contract's log root there: an entry is missing or altered`,
-			);
 
 		const { root, nodes } = await buildMst(state);
 		const fresh = new Map<string, Block>();
@@ -849,14 +861,18 @@ export class FangornEngine {
 					),
 				)
 			: null;
-		const block = await encodeBlock({
+		return this.writeStitch({
 			parent: prev,
 			root,
 			car,
 			n: mmr.n,
 			t: Number(to),
 			peaks: mmr.peaks,
-		} satisfies StitchBlock);
+		});
+	}
+
+	private async writeStitch(stitch: StitchBlock): Promise<CID> {
+		const block = await encodeBlock(stitch);
 		await this.storage.putBlock(block);
 		this.putLocal(block);
 		this.loadedCars.add(block.cid.toString());
