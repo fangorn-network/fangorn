@@ -210,6 +210,51 @@ describe("a stitch across repos", () => {
 		expect(await reader().verifyStitch(s2)).toBe(false);
 	});
 
+	it("writes no stitch from a log that doesn't match the contract's log root", async () => {
+		await push(mine, PUBLISHER, "a", null);
+		await push(theirs, OTHER, "b", null);
+		const s1 = await mine.restitch(null);
+		await push(mine, PUBLISHER, "c", null);
+		await push(mine, PUBLISHER, "d", null);
+		const writes = storage.writes;
+		// an RPC that leaves out the newest entry (a lagging node behind a load balancer)
+		const log = ledger.entries;
+		ledger.entries = log.slice(0, -1);
+		await expect(mine.restitch(s1)).rejects.toThrow(/log root/);
+		await expect(reader().restitch(null)).rejects.toThrow(/log root/);
+		// one that leaves out the whole tail: no progress, so nothing is skipped either
+		ledger.entries = log.slice(0, -2);
+		expect((await mine.restitch(s1)).equals(s1)).toBe(true);
+		expect(storage.writes).toBe(writes);
+		// the next restitch from the last good stitch folds that range again
+		ledger.entries = log;
+		const s2 = await mine.restitch(s1);
+		expect((await mine.readStitch(s2)).n).toBe(4);
+		expect(await reader().verifyStitch(s2)).toBe(true);
+	});
+
+	it("folds in bounded steps to the same stitch as one fold", async () => {
+		let a = await push(mine, PUBLISHER, "a", null);
+		await push(theirs, OTHER, "b", null);
+		a = await push(mine, PUBLISHER, "a", a);
+		await push(mine, PUBLISHER, "c", null);
+		await push(mine, PUBLISHER, "a", a);
+		const only = (p: Hex, r: string) => r !== "c";
+		let s = await mine.restitch(null, only, 0n, 2n);
+		expect(await mine.readStitch(s)).toMatchObject({ n: 2, t: 2n });
+		s = await mine.restitch(s, only, 0n, 4n);
+		expect(await mine.readStitch(s)).toMatchObject({ n: 4, t: 4n });
+		s = await mine.restitch(s, only, 0n, 99n); // past the head: up to the head
+		expect(await mine.readStitch(s)).toMatchObject({ n: 5, t: 5n });
+		const whole = await reader().restitch(null, only);
+		expect(
+			(await mine.readStitch(s)).root.equals(
+				(await mine.readStitch(whole)).root,
+			),
+		).toBe(true);
+		expect(await reader().verifyStitch(s, only)).toBe(true);
+	});
+
 	it("with nothing new in the log, returns the same stitch", async () => {
 		await push(mine, PUBLISHER, "a", null);
 		const s = await mine.restitch(null);

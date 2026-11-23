@@ -794,7 +794,11 @@ export class FangornEngine {
 	 * stitch to read only the log since it, and upload only the nodes it doesn't have
 	 * (one CAR). Returns the stitch block's CID, its name; with nothing new, `prev`.
 	 * Use the same `filter` every time for one stitch. `fromBlock` is where the log
-	 * starts (the registry's deploy block).
+	 * starts (the registry's deploy block). `upTo` stops the fold at that block (the
+	 * head if later or unset), so a long catch-up can be taken in bounded steps.
+	 * Throws, writing nothing, if the folded log doesn't match the contract's log root
+	 * at the fold's end: an RPC that left out or altered an entry (a lagging node
+	 * behind a load balancer). The next restitch from `prev` folds that range again.
 	 * ponytail: rehashes the whole tree (O(repos)); and readers walk back one CAR per
 	 * stitch to find old nodes, so checkpoint with a full CAR (`prev = null`) when the
 	 * chain gets long.
@@ -803,9 +807,11 @@ export class FangornEngine {
 		prev: CID | null,
 		filter?: (publisher: Address, repo: RepoName) => boolean,
 		fromBlock = 0n,
+		upTo?: bigint,
 	): Promise<CID> {
 		const base = prev ? await this.readStitch(prev) : null;
-		const to = await this.registry.clock();
+		const head = await this.registry.clock();
+		const to = upTo !== undefined && upTo < head ? upTo : head;
 		const entries = await this.registry.log(
 			{},
 			base ? base.t + 1n : fromBlock,
@@ -824,6 +830,11 @@ export class FangornEngine {
 			if (!filter || filter(e.publisher, e.repo))
 				state.set(stitchKey(e.publisher, e.repo), this.hexToRootCid(e.head));
 		}
+		const onChain = await this.registry.logRoot(to);
+		if (mmrRoot(mmr) !== onChain)
+			throw new Error(
+				`the log read up to block ${String(to)} (${String(mmr.n)} entries) doesn't match the contract's log root there: an entry is missing or altered`,
+			);
 
 		const { root, nodes } = await buildMst(state);
 		const fresh = new Map<string, Block>();

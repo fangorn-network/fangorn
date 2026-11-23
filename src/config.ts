@@ -1,4 +1,4 @@
-import { Chain, Hex } from "viem";
+import { Chain, Hex, HttpTransportConfig } from "viem";
 import { arbitrumSepolia, base, baseSepolia } from "viem/chains";
 
 /**
@@ -30,6 +30,10 @@ export interface NetworkConfig {
 	// The most blocks one eth_getLogs call may span on `rpcUrl` (default 1000).
 	// `FANGORN_LOG_WINDOW` overrides it, for a private RPC.
 	logWindow?: bigint;
+	// How reads from `rpcUrl` retry a failed request, such as a 429 (viem's defaults when unset:
+	// 3 retries from 150 ms, doubling, or the server's Retry-After). Raise it where a run can wait
+	// out a rate limit (a one-shot catch-up); keep it low where a failed run is simply run again.
+	rpcRetry?: Pick<HttpTransportConfig, "retryCount" | "retryDelay">;
 	// The hosted upload worker for this network. Hosted uploads
 	// (`storage: { signedUrl: {} }`) go through it unless given a `workerUrl`.
 	signedUrlWorker?: string;
