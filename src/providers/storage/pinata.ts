@@ -13,6 +13,7 @@ import {
 	serialize,
 	retrieveByCid,
 	fetchRawByCid,
+	fetchRawStreamByCid,
 	withUploadRetry,
 } from "./utils.js";
 import { packCar } from "../../engine/car.js";
@@ -179,6 +180,15 @@ export class PinataBackend implements MetadataStorage {
 	async getFile(uri: string): Promise<Uint8Array> {
 		const { bytes } = await this.fetchRaw(uri);
 		return bytes;
+	}
+
+	/**
+	 * `getFile` as a stream of chunks. The SDK's gateway read buffers the whole body, so this fetches
+	 * the same public gateway URL directly (`<gateway>/ipfs/<cid>`, raw sibling for a dag-cbor CID), as
+	 * `getRawBlock` does for UnixFS blocks.
+	 */
+	getFileStream(uri: string): Promise<AsyncIterable<Uint8Array>> {
+		return fetchRawStreamByCid(uri, this.gateway);
 	}
 
 	async get<T>(uri: string): Promise<T> {

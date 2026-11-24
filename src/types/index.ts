@@ -10,6 +10,8 @@ export interface FangornContext {
 	metadataStorage: MetadataStorage | undefined;
 	/** Heads and the update log (WHITEPAPER_1 §3.2). */
 	registry: Registry;
+	/** FangornCreateOptions.leanCars */
+	leanCars?: boolean;
 }
 
 export type StorageConfig =
@@ -32,4 +34,7 @@ export interface FangornCreateOptions {
 	// The registry to read and write history through. Defaults to the deployed
 	// contracts (`ChainRegistry`).
 	registry?: Registry;
+	// Read CARs without their records until one is asked for (see FangornEngine's
+	// `leanCars`): for indexing big repos with little memory, e.g. in a Worker.
+	leanCars?: boolean;
 }

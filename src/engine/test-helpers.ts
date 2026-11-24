@@ -50,6 +50,28 @@ export class MemStorage implements MetadataStorage {
 		return Promise.resolve(bytes);
 	}
 
+	/** Streams opened by getFileStream, and how many were ended before their last chunk. */
+	streams = 0;
+	streamsEndedEarly = 0;
+
+	/** A file in 1000-byte chunks, so a stream reader sees blocks split across chunks. */
+	getFileStream(uri: string): Promise<AsyncIterable<Uint8Array>> {
+		const bytes = this.files.get(uri);
+		if (!bytes) return Promise.reject(new Error(`no such file: ${uri}`));
+		this.reads++;
+		this.streams++;
+		const chunks = async function* (this: MemStorage) {
+			let off = 0;
+			try {
+				for (; off < bytes.length; off += 1000)
+					yield await Promise.resolve(bytes.slice(off, off + 1000)); // as a network read would
+			} finally {
+				if (off < bytes.length) this.streamsEndedEarly++;
+			}
+		};
+		return Promise.resolve(chunks.call(this));
+	}
+
 	getRawBlock(uri: string): Promise<Uint8Array> {
 		const bytes = this.blocks.get(uri);
 		if (!bytes) return Promise.reject(new Error(`no such block: ${uri}`));

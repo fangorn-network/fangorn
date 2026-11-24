@@ -1,6 +1,6 @@
 {
 	"name": "@fangorn-network/sdk",
-	"version": "0.2.3",
+	"version": "0.2.4",
 	"description": "decentralized, verifiable and platformless version control for data",
 	"repository": {
 		"type": "git",
