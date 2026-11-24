@@ -31,12 +31,14 @@ import {
 	buildMst,
 	decodeBlock,
 	encodeBlock,
+	isRecordBlock,
 	lookupMst,
 	readMst,
+	walkMst,
 	diffMst,
 	type Stitch,
 } from "./records.js";
-import { packCar, readCar } from "./car.js";
+import { packCar, readCar, readCarStream } from "./car.js";
 import { equals } from "multiformats/bytes";
 
 export type { Ref, Stitch } from "./records.js";
@@ -242,6 +244,17 @@ interface RepoState {
 
 const EMPTY_STATE: RepoState = { state: new Map(), nodeCids: new Set() };
 
+/** A record block's contents, checking it is filed under its own id. */
+function recordOf(id: string, link: CID, bytes: Uint8Array): StoredRecord {
+	const r = decodeBlock<RecordBlock>(bytes);
+	if (r.id !== id) {
+		throw new Error(
+			`record ${link.toString()} has id ${r.id}, filed under ${id}`,
+		);
+	}
+	return { id, cid: link.toString(), type: r.type, payload: r.payload };
+}
+
 export class FangornEngine {
 	/**
 	 * Local block cache. Written blocks land here immediately; remote blocks
@@ -257,11 +270,28 @@ export class FangornEngine {
 	 * checked when `getBlock` first hands it out, then moves to `cache`.
 	 */
 	private unverified = new Map<string, Uint8Array>();
+	/**
+	 * With `leanCars`: records a loaded CAR held but `loadCar` left out, by CID, each with the chain
+	 * link whose CAR holds it. `getRecords` fetches them in bulk; `getBlock` loads that CAR in full.
+	 */
+	private skipped = new Map<string, string>();
+	/** Chain links whose CAR has been loaded with every block (records too). */
+	private fullCars = new Map<string, Promise<void>>();
+	private readonly leanCars: boolean;
 
+	/**
+	 * `leanCars`: load CARs without their records, which a tree walk never reads, and fetch records
+	 * when asked for (`getRecords`, or `getBlock` loading that CAR again in full). For a reader with
+	 * little memory and big repos (a Worker indexing a 50k-record commit). It costs a second download
+	 * of a CAR whose records are read, so a reader with memory to spare leaves it off.
+	 */
 	constructor(
 		private storage: MetadataStorage,
 		private registry: Registry,
-	) {}
+		{ leanCars = false }: { leanCars?: boolean } = {},
+	) {
+		this.leanCars = leanCars;
+	}
 
 	/**
 	 * Reconstructs the CID a commit's raw digest hex refers to. The contract only
@@ -329,27 +359,73 @@ export class FangornEngine {
 		return { car: b.car ?? null, parent: b.parent ?? null };
 	}
 
-	/** Pull every block of a chain link's CAR into the local cache. */
-	private async loadCar(linkCid: CID, car: CID | null): Promise<void> {
+	/**
+	 * Pull a chain link's CAR into the local cache: every block, or with `leanCars` every block but
+	 * the records (noted in `skipped`). `full` loads the records too.
+	 */
+	private async loadCar(
+		linkCid: CID,
+		car: CID | null,
+		full = !this.leanCars,
+	): Promise<void> {
 		if (car) {
-			const bytes = await this.storage.getFile(car.toString());
-			for (const block of await readCar(bytes, { verify: false })) {
-				const key = block.cid.toString();
+			const link = linkCid.toString();
+			for await (const [key, bytes] of this.carBlocks(car)) {
 				if (this.cache.has(key)) continue;
+				if (!full && isRecordBlock(bytes)) {
+					if (!this.unverified.has(key) && !this.skipped.has(key))
+						this.skipped.set(key, link);
+					continue;
+				}
+				this.skipped.delete(key);
+				// a streamed block can be a view into its chunk: keeping the view would keep the chunk
+				const own = this.leanCars ? bytes.slice() : bytes;
 				const prev = this.unverified.get(key);
-				if (!prev) this.unverified.set(key, block.bytes);
+				if (!prev) this.unverified.set(key, own);
 				// Any publisher's CAR can claim any CID: when two disagree, check the newcomer now
 				// rather than let it replace (or be shadowed by) the other unchecked.
-				else if (
-					!equals(prev, block.bytes) &&
-					blockMatches(block.cid, block.bytes)
-				) {
+				else if (!equals(prev, own) && blockMatches(CID.parse(key), own)) {
 					this.unverified.delete(key);
-					this.cache.set(key, block.bytes);
+					this.cache.set(key, own);
 				}
 			}
 		}
 		this.loadedCars.add(linkCid.toString());
+	}
+
+	/** A CAR's blocks, unchecked: streamed with `leanCars` (when storage can), else read whole. */
+	private async *carBlocks(car: CID): AsyncGenerator<[string, Uint8Array]> {
+		const uri = car.toString();
+		if (this.leanCars && this.storage.getFileStream)
+			yield* readCarStream(await this.storage.getFileStream(uri));
+		else
+			for (const b of await readCar(await this.storage.getFile(uri), {
+				verify: false,
+			}))
+				yield [b.cid.toString(), b.bytes];
+	}
+
+	/** Load a chain link's CAR again, records included, once however many reads ask at a time. */
+	private loadFull(link: string): Promise<void> {
+		let loading = this.fullCars.get(link);
+		if (!loading) {
+			const linkCid = CID.parse(link);
+			loading = this.chainLink(linkCid)
+				.then(({ car }) => this.loadCar(linkCid, car, true))
+				.catch((err: unknown) => {
+					this.fullCars.delete(link);
+					throw err;
+				});
+			this.fullCars.set(link, loading);
+		}
+		return loading;
+	}
+
+	/** Whether a block is in hand, or known to be in a loaded CAR. */
+	private located(key: string): boolean {
+		return (
+			this.cache.has(key) || this.unverified.has(key) || this.skipped.has(key)
+		);
 	}
 
 	/**
@@ -373,7 +449,14 @@ export class FangornEngine {
 			this.cache.set(key, raw);
 			return raw;
 		};
-		const hit = local();
+		// a record a lean load left out: load its CAR in full (getRecords reads them in bulk instead)
+		const fromSkipped = async () => {
+			const holder = this.skipped.get(key);
+			if (!holder) return null;
+			await this.loadFull(holder);
+			return local();
+		};
+		const hit = local() ?? (await fromSkipped());
 		if (hit) return hit;
 
 		let cursor = hint;
@@ -382,7 +465,7 @@ export class FangornEngine {
 			if (!this.loadedCars.has(cursor.toString()))
 				await this.loadCar(cursor, link.car);
 			// check even a CAR loaded already: a concurrent read may have loaded it since we looked
-			const found = local();
+			const found = local() ?? (await fromSkipped());
 			if (found) return found;
 			cursor = link.parent;
 		}
@@ -620,13 +703,70 @@ export class FangornEngine {
 		link: CID,
 		hint: CID,
 	): Promise<StoredRecord> {
-		const r = decodeBlock<RecordBlock>(await this.getBlock(link, hint));
-		if (r.id !== id) {
-			throw new Error(
-				`record ${link.toString()} has id ${r.id}, filed under ${id}`,
-			);
+		return recordOf(id, link, await this.getBlock(link, hint));
+	}
+
+	/**
+	 * A commit's records as `[id, record CID]` in id order, from just after `after`, reading only the
+	 * tree (no records) and holding only the path it is on: for reading a big repo a range at a time.
+	 * Each node read is checked canonical (`walkMst`).
+	 */
+	async *entriesAt(
+		commitCid: CID,
+		{ after = null }: { after?: string | null } = {},
+	): AsyncGenerator<[string, CID]> {
+		const { root } = await this.getCommit(commitCid);
+		yield* walkMst(root, (cid) => this.getBlock(cid, commitCid), {
+			after,
+		});
+	}
+
+	/**
+	 * Many records at once, in the order asked, each hash-checked and filed under its id. With
+	 * `leanCars`, the records a lean load left out are fetched in one streamed pass per CAR that
+	 * holds them, keeping only these: memory goes with how many are asked for, not the CAR's size.
+	 * `hint` is a commit whose history holds them (the tip they were read from).
+	 */
+	async getRecords(
+		entries: [id: string, cid: CID][],
+		hint: CID,
+	): Promise<StoredRecord[]> {
+		const found = new Map<string, Uint8Array>();
+		const wanted = new Map<string, Set<string>>(); // chain link → record CIDs its CAR holds
+		for (const [, cid] of entries) {
+			const key = cid.toString();
+			if (found.has(key)) continue;
+			// walk back, loading CARs, until some CAR has it (lean loads leave records out)
+			for (let cursor: CID | null = hint; cursor && !this.located(key); ) {
+				const link = await this.chainLink(cursor);
+				if (!this.loadedCars.has(cursor.toString()))
+					await this.loadCar(cursor, link.car);
+				cursor = link.parent;
+			}
+			const holder = this.skipped.get(key);
+			if (!holder) found.set(key, await this.getBlock(cid, hint));
+			else {
+				let keys = wanted.get(holder);
+				if (!keys) wanted.set(holder, (keys = new Set()));
+				keys.add(key);
+			}
 		}
-		return { id, cid: link.toString(), type: r.type, payload: r.payload };
+		for (const [link, keys] of wanted) {
+			const { car } = await this.chainLink(CID.parse(link));
+			if (!car) continue;
+			for await (const [key, bytes] of this.carBlocks(car)) {
+				if (!keys.delete(key)) continue;
+				found.set(key, bytes.slice());
+				if (keys.size === 0) break; // ends the download
+			}
+		}
+		return entries.map(([id, cid]) => {
+			const bytes = found.get(cid.toString());
+			if (!bytes)
+				throw new Error(`Block payload missing for key: ${cid.toString()}`);
+			assertBlockMatches(cid, bytes);
+			return recordOf(id, cid, bytes);
+		});
 	}
 
 	/** The diff an event carries: id → new record CID, or null where the record was deleted. */

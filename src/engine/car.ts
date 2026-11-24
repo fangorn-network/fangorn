@@ -1,4 +1,4 @@
-import { CarWriter, CarReader } from "@ipld/car";
+import { CarWriter, CarReader, CarBlockIterator } from "@ipld/car";
 import { CID } from "multiformats/cid";
 import { assertBlockMatches, type Block } from "./records.js";
 
@@ -49,4 +49,23 @@ export async function readCar(
 		blocks.push({ cid: ours, bytes: blockBytes });
 	}
 	return blocks;
+}
+
+/**
+ * A CAR's blocks as `[cid string, bytes]`, read from a stream of chunks without holding the whole
+ * file: unchecked (the caller checks what it keeps) and possibly views into a chunk, so copy a block
+ * to keep it. Stopping early closes the source, so a download ends with the read.
+ */
+export async function* readCarStream(
+	chunks: AsyncIterable<Uint8Array>,
+): AsyncGenerator<[string, Uint8Array]> {
+	const source = chunks[Symbol.asyncIterator]();
+	try {
+		const blocks = await CarBlockIterator.fromIterable({
+			[Symbol.asyncIterator]: () => source,
+		});
+		for await (const { cid, bytes } of blocks) yield [cid.toString(), bytes];
+	} finally {
+		await source.return?.();
+	}
 }

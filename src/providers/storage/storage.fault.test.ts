@@ -357,6 +357,64 @@ describe("gateway reads under injected faults", () => {
 			{ seed: SEED, numRuns: RUNS },
 		);
 	});
+
+	// getFileStream: both backends read a file the same way, from the same gateway URL
+	const backends = () => [
+		new SignedUrlBackend(WORKER, signer, GATEWAY),
+		new PinataBackend("jwt", GATEWAY),
+	];
+	const fileOf = async (n: number) => {
+		const bytes = new Uint8Array(n).map((_, i) => i % 251);
+		return {
+			bytes,
+			cid: CID.createV1(0x55, await sha256.digest(bytes)).toString(),
+		};
+	};
+
+	it("streams a file from the gateway after the same bounded retries", async () => {
+		const file = await fileOf(70_000);
+		for (const backend of backends()) {
+			const urls: string[] = [];
+			vi.stubGlobal("fetch", (url: string | URL) => {
+				urls.push(String(url));
+				return Promise.resolve(
+					urls.length < 3
+						? new Response("", { status: 503 })
+						: new Response(file.bytes),
+				);
+			});
+			const res = await settle(backend.getFileStream(file.cid));
+			if (!res.ok) throw res.e;
+			const chunks: Uint8Array[] = [];
+			for await (const c of res.v) chunks.push(c);
+			expect(Buffer.concat(chunks)).toEqual(Buffer.from(file.bytes));
+			expect(urls).toEqual(Array(3).fill(`${GATEWAY}/ipfs/${file.cid}`));
+		}
+	});
+
+	it("ending a file stream early cancels the download", async () => {
+		const file = await fileOf(10);
+		for (const backend of backends()) {
+			let cancelled = false;
+			let pulled = 0;
+			// 1 MB, so a backend that reads it all (instead of streaming) fails on the asserts below
+			const body = new ReadableStream<Uint8Array>({
+				pull: (c) => {
+					if (++pulled > 1000) c.close();
+					else c.enqueue(new Uint8Array(1000));
+				},
+				cancel: () => {
+					cancelled = true;
+				},
+			});
+			vi.stubGlobal("fetch", () => Promise.resolve(new Response(body)));
+			const res = await settle(backend.getFileStream(file.cid));
+			if (!res.ok) throw res.e;
+			for await (const _ of res.v) break;
+			expect(cancelled).toBe(true);
+			expect(pulled).toBeLessThan(10);
+		}
+	});
 });
 
 describe("reads through a lying storage backend", () => {

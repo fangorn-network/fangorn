@@ -53,6 +53,12 @@ export interface MetadataStorage {
 	getFile(uri: string): Promise<Uint8Array>;
 
 	/**
+	 * The same bytes as `getFile`, as a stream of chunks, for reading a big file without holding it.
+	 * Ending the iteration early cancels the transfer. Optional: callers fall back to `getFile`.
+	 */
+	getFileStream?(uri: string): Promise<AsyncIterable<Uint8Array>>;
+
+	/**
 	 * Retrieve content by URI previously returned from put().
 	 */
 	get<T>(uri: string): Promise<T>;

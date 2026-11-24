@@ -8,7 +8,12 @@ import {
 	RawBlock,
 	StorageMeta,
 } from "./types.js";
-import { serialize, fetchRawByCid, withUploadRetry } from "./utils.js";
+import {
+	serialize,
+	fetchRawByCid,
+	fetchRawStreamByCid,
+	withUploadRetry,
+} from "./utils.js";
 
 /**
  * The hosted worker for the default network (Base Sepolia). Used when neither
@@ -217,6 +222,10 @@ export class SignedUrlBackend implements MetadataStorage {
 
 	async getFile(uri: string): Promise<Uint8Array> {
 		return fetchRawByCid(uri, this.gateway);
+	}
+
+	getFileStream(uri: string): Promise<AsyncIterable<Uint8Array>> {
+		return fetchRawStreamByCid(uri, this.gateway);
 	}
 
 	async getRawBlock(uri: string): Promise<Uint8Array> {

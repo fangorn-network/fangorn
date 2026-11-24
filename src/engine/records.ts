@@ -43,6 +43,23 @@ export function decodeBlock<T>(bytes: Uint8Array): T {
 	return dagCbor.decode(bytes);
 }
 
+/**
+ * Whether a block is a record, read from its first bytes without decoding it. Canonical dag-cbor sorts
+ * map keys shortest first, so a record (`{ id, type, payload }`) is a map whose first key is `id`
+ * (`62 69 64`). MST nodes start with `left`, commits with `car`, stitch entries with `pos`. A wrong
+ * answer costs only memory or a refetch, never a wrong read: see the engine's `leanCars`.
+ */
+export function isRecordBlock(bytes: Uint8Array): boolean {
+	return (
+		bytes.length > 3 &&
+		bytes[0] >= 0xa0 && // a map of at most 23 entries
+		bytes[0] <= 0xb7 &&
+		bytes[1] === 0x62 && // a 2-byte text key…
+		bytes[2] === 0x69 && // "i"
+		bytes[3] === 0x64 // "d"
+	);
+}
+
 /** Whether `bytes` hash to `cid`. */
 export function blockMatches(cid: CID, bytes: Uint8Array): boolean {
 	return bytesToHex(cid.multihash.digest) === bytesToHex(sha256Sync(bytes));
@@ -142,16 +159,20 @@ export const MAX_RECORD_ID_LENGTH = 256;
  * random (FOUNDATIONS P7): a guessable id lets an observer test what exists.
  */
 export function assertValidRecordId(id: string): void {
-	if (
-		typeof id !== "string" ||
-		id.length === 0 ||
-		id.length > MAX_RECORD_ID_LENGTH ||
-		!/^[\x21-\x7e]+$/.test(id)
-	) {
+	if (!isValidRecordId(id)) {
 		throw new Error(
 			`invalid record id ${JSON.stringify(id)}: must be 1-${MAX_RECORD_ID_LENGTH.toString()} printable ASCII characters, no spaces`,
 		);
 	}
+}
+
+function isValidRecordId(id: unknown): id is string {
+	return (
+		typeof id === "string" &&
+		id.length > 0 &&
+		id.length <= MAX_RECORD_ID_LENGTH &&
+		/^[\x21-\x7e]+$/.test(id)
+	);
 }
 
 // ── Merkle Search Tree (FOUNDATIONS §2.3) ────────────────────────────────────
@@ -299,6 +320,78 @@ export async function readMst<V extends CID | null = CID>(
 		throw new Error(`MST at ${root.toString()} is not canonical`);
 	}
 	return { state, nodeCids };
+}
+
+/**
+ * A record tree's entries in key order, from just after `after` (from the start when it's null), as
+ * `[key, value]`. For reading a big tree a range at a time: it holds only the path it is on, where
+ * `readMst` holds every key and rebuilds the tree.
+ *
+ * Instead of that rebuild, each node it opens is checked against what `buildMst` makes. A node at level
+ * L, between keys lo and hi:
+ *   - its keys are valid record ids, strictly increasing, inside (lo, hi), and each is at level L;
+ *   - its children are nodes at level L - 1, and a level-0 node has none;
+ *   - a node with no keys has a left child (a gap with no key at L), except the empty tree's root,
+ *     and the root has a key (its level is the highest key's).
+ * Levels come from the keys, so these pin the one canonical tree over the keys read. A walk that
+ * stops early has checked only what it read. Absence still needs the whole walk (or `readMst`).
+ */
+export async function* walkMst<V extends CID | null = CID>(
+	root: CID,
+	getBlock: (cid: CID) => Promise<Uint8Array>,
+	{ after = null }: { after?: string | null } = {},
+): AsyncGenerator<[string, V]> {
+	const refuse = (cid: CID, why: string): never => {
+		throw new Error(
+			`MST at ${root.toString()} is not canonical: node ${cid.toString()} ${why}`,
+		);
+	};
+	// `after` at or past `bound`: everything below the bound is already read
+	const past = (bound: string | null) =>
+		after !== null && bound !== null && after >= bound;
+
+	async function* node(
+		cid: CID,
+		level: number | null,
+		lo: string | null,
+		hi: string | null,
+		depth: number,
+	): AsyncGenerator<[string, V]> {
+		if (depth > MAX_DEPTH)
+			refuse(cid, `is deeper than ${MAX_DEPTH.toString()}`);
+		const n = decodeBlock<Partial<MstNode>>(await getBlock(cid));
+		if (!Array.isArray(n.entries) || typeof n.level !== "number")
+			return refuse(cid, "is not a record tree node");
+		if (level !== null && n.level !== level)
+			refuse(cid, `is at level ${n.level.toString()}, not ${level.toString()}`);
+		const L = n.level,
+			entries = n.entries,
+			root = depth === 0;
+		if (L === 0 && (n.left || entries.some((e) => e.right)))
+			refuse(cid, "is at level 0 with children");
+		if (entries.length === 0 && (root ? n.left : !n.left))
+			refuse(cid, root ? "is a root without a key" : "is empty");
+		let prev = lo;
+		for (const e of entries) {
+			if (!isValidRecordId(e.key))
+				refuse(cid, `holds ${JSON.stringify(e.key)}, not a record id`);
+			if ((prev !== null && e.key <= prev) || (hi !== null && e.key >= hi))
+				refuse(cid, `holds key ${e.key} out of order`);
+			if (keyLevel(e.key) !== L)
+				refuse(cid, `holds key ${e.key} at level ${L.toString()}`);
+			prev = e.key;
+		}
+		const first = entries[0]?.key ?? hi;
+		if (n.left && !past(first))
+			yield* node(n.left, L - 1, lo, first, depth + 1);
+		for (const [i, e] of entries.entries()) {
+			const next = entries[i + 1]?.key ?? hi;
+			if (after === null || e.key > after) yield [e.key, e.value as V];
+			if (e.right && !past(next))
+				yield* node(e.right, L - 1, e.key, next, depth + 1);
+		}
+	}
+	yield* node(root, null, null, null, 0);
 }
 
 /**

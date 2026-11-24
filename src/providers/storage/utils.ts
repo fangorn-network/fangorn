@@ -107,8 +107,39 @@ export async function withUploadRetry<T>(
 export async function fetchRawByCid(
 	cid: string,
 	gateway = "https://ipfs.io",
-	{ retries = 5, timeoutMs = 16_000, rawBlock = false } = {},
+	options: { retries?: number; timeoutMs?: number; rawBlock?: boolean } = {},
 ): Promise<Uint8Array> {
+	return fetchFromGateway(
+		cid,
+		gateway,
+		options,
+		async (res) => new Uint8Array(await res.arrayBuffer()),
+	);
+}
+
+/**
+ * `fetchRawByCid` as a stream of chunks, for a file too big to hold. Retries until the gateway
+ * answers; a failure after that ends the stream with an error (the caller retries the read).
+ * Ending the iteration early cancels the transfer.
+ */
+export async function fetchRawStreamByCid(
+	cid: string,
+	gateway = "https://ipfs.io",
+	options: { retries?: number; timeoutMs?: number } = {},
+): Promise<AsyncIterable<Uint8Array>> {
+	return fetchFromGateway(cid, gateway, options, (res) => {
+		if (!res.body) throw new Error("the gateway answered without a body");
+		return Promise.resolve(res.body);
+	});
+}
+
+/** One gateway read with retries; `read` takes the response while the timeout still runs. */
+async function fetchFromGateway<T>(
+	cid: string,
+	gateway: string,
+	{ retries = 5, timeoutMs = 16_000, rawBlock = false },
+	read: (res: Response) => Promise<T>,
+): Promise<T> {
 	let fetchCid = cid.replace(/^ipfs:\/\//, "");
 	if (fetchCid.startsWith("bafyrei")) {
 		try {
@@ -135,7 +166,7 @@ export async function fetchRawByCid(
 			const res = await fetch(url, { signal: controller.signal });
 			if (!res.ok)
 				throw new Error(`HTTP ${res.status.toString()} ${res.statusText}`);
-			return new Uint8Array(await res.arrayBuffer());
+			return await read(res);
 		} catch (err) {
 			lastError = err;
 			// Let the gateway ledger sync before retrying (replication lag / 4xx).

@@ -202,6 +202,7 @@ export class Fangorn {
 		this._engine ??= new FangornEngine(
 			this.ctx.metadataStorage,
 			this.ctx.registry,
+			{ leanCars: this.ctx.leanCars },
 		);
 		return this._engine;
 	}
@@ -240,6 +241,7 @@ export class Fangorn {
 			registry:
 				options.registry ??
 				new ChainRegistry(config, publicClient, walletClient),
+			leanCars: options.leanCars,
 		};
 		ctx.metadataStorage = resolveStorage(options.storage, walletClient, config);
 		return new Fangorn(ctx);
