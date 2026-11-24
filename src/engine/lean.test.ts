@@ -329,6 +329,30 @@ describe("leanCars", () => {
 		expect(internals(lean).skipped.size).toBe(0);
 	});
 
+	it("diffEntriesAt streams a commit's diff event, deletes as null", async () => {
+		const lean = new FangornEngine(storage, registry, { leanCars: true });
+		const got: [string, string | null][] = [];
+		for await (const [id, cid] of lean.diffEntriesAt(tip))
+			got.push([id, cid?.toString() ?? null]);
+		const ref = [...(await new FangornEngine(storage, registry).eventDiff(tip))]
+			.map(([id, cid]): [string, string | null] => [
+				id,
+				cid?.toString() ?? null,
+			])
+			.sort((a, b) => (a[0] < b[0] ? -1 : 1));
+		expect(got).toEqual(ref);
+		expect(got.filter(([, c]) => c === null)).toHaveLength(5);
+		expect(got).toHaveLength(35);
+		const after = got[10][0];
+		const rest: string[] = [];
+		for await (const [id] of lean.diffEntriesAt(tip, { after })) rest.push(id);
+		expect(rest).toEqual(got.slice(11).map(([id]) => id));
+		// a repo's first commit has one too: every record, put
+		let genesis = 0;
+		for await (const [, cid] of lean.diffEntriesAt(first)) if (cid) genesis++;
+		expect(genesis).toBe(300);
+	});
+
 	it("gives the same answers without a streaming storage", async () => {
 		const plain = new MemStorage();
 		plain.blocks = storage.blocks;

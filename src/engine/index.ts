@@ -722,6 +722,22 @@ export class FangornEngine {
 	}
 
 	/**
+	 * `entriesAt` over a commit's diff event (what `eventDiff` returns, as a stream): `[id, record CID]`
+	 * for each record it put, `[id, null]` for each it deleted. Throws for a commit without one.
+	 */
+	async *diffEntriesAt(
+		commitCid: CID,
+		{ after = null }: { after?: string | null } = {},
+	): AsyncGenerator<[string, CID | null]> {
+		const { diff } = await this.getCommit(commitCid);
+		if (!diff)
+			throw new Error(`commit ${commitCid.toString()} predates diff events`);
+		yield* walkMst<CID | null>(diff, (cid) => this.getBlock(cid, commitCid), {
+			after,
+		});
+	}
+
+	/**
 	 * Many records at once, in the order asked, each hash-checked and filed under its id. With
 	 * `leanCars`, the records a lean load left out are fetched in one streamed pass per CAR that
 	 * holds them, keeping only these: memory goes with how many are asked for, not the CAR's size.
